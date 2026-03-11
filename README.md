@@ -83,6 +83,46 @@ The scraper exposes:
 - `POST /internal/scrape`
 - `POST /internal/stop`
 
+## Passing the BC Bid browser check
+
+The containerized scraper path is still vulnerable to BC Bid's `/page.aspx/en/bas/browser_check` gate. When that page shows a captcha or the run fails with `Accessibility settings`, use the headed local Chrome flow instead of the container endpoint.
+
+Run this from the repo root:
+
+```bash
+npm run scrape:live
+```
+
+If you changed the default local secrets or URLs, set them explicitly:
+
+```bash
+CONVEX_SITE_URL=http://127.0.0.1:3211 \
+INGEST_SHARED_SECRET=replace-me \
+npm run scrape:live
+```
+
+What this does:
+
+1. Opens a visible Chrome session instead of headless Chromium.
+2. Reuses a persistent profile at `services/scraper/.runtime/live-profile`.
+3. Writes artifacts under `services/scraper/.runtime/artifacts/<runId>`.
+4. Pushes progress and final results into the same Convex `scrapeRuns` records used by the dashboard.
+
+Operator steps when the browser check appears:
+
+1. Leave the opened Chrome window running.
+2. If BC Bid redirects to `/page.aspx/en/bas/browser_check`, complete the captcha or continue flow in that window.
+3. Wait until the browser lands on the public Opportunities page.
+4. Do not close Chrome until the terminal prints the `finish` payload.
+
+Notes:
+
+- `npm run scrape:live` uses the local `chrome` browser channel by default, so Google Chrome needs to be installed on the machine running the command.
+- Future live runs reuse the same profile, so the browser check may be skipped until BC Bid challenges that profile again.
+- If you want a clean browser session, delete `services/scraper/.runtime/live-profile` or point `SCRAPER_USER_DATA_DIR` at a different directory.
+- The dashboard and Convex admin pages will still show live progress while this manual headed run is active.
+- The internal `POST /internal/scrape` endpoint remains useful for unattended runs, but it can still fail when BC Bid challenges headless traffic.
+
 ## Full Docker stack
 
 ```bash
@@ -121,6 +161,12 @@ docker compose exec -T scraper sh -lc \
     --header='X-Internal-Token: replace-me' \
     --post-data='{\"trigger\":\"manual\"}' \
     http://localhost:3001/internal/scrape"
+```
+
+If that run fails at the BC Bid browser check, use the headed local fallback instead:
+
+```bash
+npm run scrape:live
 ```
 
 4. Confirm the dashboard shows a live phase, progress bar, heartbeat, and page/detail counters while the run is active.

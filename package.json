@@ -18,6 +18,7 @@
     "docker:down": "docker compose down",
     "docker:up": "docker compose up --build",
     "install:browsers": "npx playwright install chromium",
+    "scrape:live": "npm run scrape:live --workspace @bcbid/scraper",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspace @bcbid/shared && npm run typecheck --workspace @bcbid/web && npm run typecheck --workspace @bcbid/scraper && tsc -p convex/tsconfig.json --noEmit"
