@@ -1,17 +1,14 @@
+import { v } from "convex/values";
+
 import { mutation } from "./_generated/server";
 
-export const clearAllData = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const tables = ["opportunities", "addenda", "attachments", "scrapeRuns"] as const;
-    let total = 0;
-    for (const table of tables) {
-      const docs = await ctx.db.query(table).collect();
-      for (const doc of docs) {
-        await ctx.db.delete(doc._id);
-      }
-      total += docs.length;
+export const clearTable = mutation({
+  args: { table: v.union(v.literal("opportunities"), v.literal("addenda"), v.literal("attachments"), v.literal("scrapeRuns")) },
+  handler: async (ctx, { table }) => {
+    const docs = await ctx.db.query(table).take(500);
+    for (const doc of docs) {
+      await ctx.db.delete(doc._id);
     }
-    return { deleted: total };
+    return { deleted: docs.length, remaining: docs.length === 500 };
   },
 });

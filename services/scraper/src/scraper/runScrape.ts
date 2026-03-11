@@ -126,22 +126,27 @@ async function waitForResultsGrid(page: Page) {
   );
 }
 
-async function waitForSearchPage(page: Page, config: ScraperConfig, runDir: string, control?: ScrapeExecutionControl) {
-  throwIfStopped(control);
-  await page.goto(`${config.baseUrl}${SEARCH_PATH}`, { waitUntil: "domcontentloaded" });
-
-  if (page.url().includes("/page.aspx/en/bas/browser_check")) {
-    await page.waitForTimeout(3_000);
+async function waitForBrowserCheck(page: Page, runDir: string, timeoutMs = 30_000, control?: ScrapeExecutionControl) {
+  const deadline = Date.now() + timeoutMs;
+  while (page.url().includes("/page.aspx/en/bas/browser_check")) {
     throwIfStopped(control);
-    if (page.url().includes("/page.aspx/en/bas/browser_check")) {
+    if (Date.now() > deadline) {
       const html = await page.content();
       const state = parseBrowserCheckPage(html);
       await capturePageArtifacts(page, runDir, "browser-check");
       throw new Error(
-        `BC Bid browser check did not complete automatically. hasCaptcha=${state.hasCaptcha} message=${state.message ?? "n/a"}`
+        `BC Bid browser check did not complete after ${timeoutMs / 1000}s. hasCaptcha=${state.hasCaptcha} message=${state.message ?? "n/a"}`
       );
     }
+    await page.waitForTimeout(2_000);
   }
+}
+
+async function waitForSearchPage(page: Page, config: ScraperConfig, runDir: string, control?: ScrapeExecutionControl) {
+  throwIfStopped(control);
+  await page.goto(`${config.baseUrl}${SEARCH_PATH}`, { waitUntil: "domcontentloaded" });
+
+  await waitForBrowserCheck(page, runDir, 30_000, control);
 
   await page.waitForSelector("#mainForm", { timeout: 30_000 });
 }
@@ -463,13 +468,26 @@ export async function runScrapeJob(
       percent: 3
     });
 
+    const stealthArgs = [
+      "--disable-blink-features=AutomationControlled",
+      "--disable-features=IsolateOrigins,site-per-process",
+      "--no-first-run",
+      "--no-default-browser-check"
+    ];
+
     context = await chromium.launchPersistentContext(config.userDataDir, {
       headless: config.browser.headless,
       channel: config.browser.channel,
       viewport: { width: 1440, height: 960 },
-      args: config.browser.launchArgs,
+      args: [...stealthArgs, ...config.browser.launchArgs],
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+    });
+
+    // Remove navigator.webdriver flag to reduce bot detection
+    const page0 = context.pages()[0] ?? (await context.newPage());
+    await page0.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => false });
     });
     control?.setContext(context);
 
