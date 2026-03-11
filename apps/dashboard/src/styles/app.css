@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  --color-bg-base: #060a10;
+  --color-bg-surface: rgba(11, 17, 24, 0.82);
+  --color-bg-surface-strong: rgba(9, 13, 18, 0.94);
+  --color-bg-subtle: rgba(255, 255, 255, 0.03);
+  --color-bg-hover: rgba(255, 255, 255, 0.06);
+
+  --color-border-default: rgba(189, 216, 227, 0.10);
+  --color-border-strong: rgba(189, 216, 227, 0.16);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+
+  --color-text-primary: #eff6f9;
+  --color-text-secondary: #8fa6b2;
+  --color-text-tertiary: #5d7a8a;
+
+  --color-accent: #72bfff;
+  --color-accent-strong: #2f95ff;
+  --color-accent-muted: rgba(114, 191, 255, 0.14);
+
+  --color-green: #2fd89f;
+  --color-green-muted: rgba(47, 216, 159, 0.14);
+
+  --color-orange: #ff9f66;
+  --color-orange-muted: rgba(255, 159, 102, 0.16);
+
+  --color-red: #ff6b6b;
+  --color-red-muted: rgba(255, 107, 107, 0.15);
+
+  --color-yellow: #f6d56a;
+  --color-yellow-muted: rgba(246, 213, 106, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--color-bg-base);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--color-text-primary);
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(114, 191, 255, 0.08), transparent 50%),
+    radial-gradient(ellipse at 100% 0%, rgba(47, 216, 159, 0.05), transparent 40%),
+    var(--color-bg-base);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient progress bar fill */
+.progress-fill-gradient {
+  background: linear-gradient(90deg, #2fd89f 0%, #72bfff 45%, #ff9f66 100%);
+  box-shadow: 0 0 20px rgba(114, 191, 255, 0.3);
+}

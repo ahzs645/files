@@ -13,6 +13,7 @@
     "convex:codegen": "npx convex codegen --typecheck disable",
     "convex:dev": "npx convex dev",
     "dev:scraper": "npm run dev --workspace @bcbid/scraper",
+    "dev:dashboard": "npm run dev --workspace @bcbid/dashboard",
     "dev:web": "npm run dev --workspace @bcbid/web",
     "docker:down": "docker compose down",
     "docker:up": "docker compose up --build",
