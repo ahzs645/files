@@ -14,27 +14,60 @@ import {
   toAbsoluteUrl
 } from "./utils";
 
+/**
+ * Extract clean visible text from a Cheerio element, stripping out script tags,
+ * style tags, select/option dropdowns, hidden inputs, and grid-view JS noise
+ * that BC Bid embeds inline in detail pages.
+ */
+function cleanText($: cheerio.CheerioAPI, el: ReturnType<cheerio.CheerioAPI>): string {
+  const clone = el.clone();
+  clone.find("script, style, select, noscript, [type='hidden']").remove();
+  return normalizeWhitespace(clone.text());
+}
+
+/**
+ * Returns true when a value looks like scraped noise rather than a real field value.
+ * Typical noise: long runs of dropdown options, JS grid init code, or repeated timestamps.
+ */
+function isNoiseValue(value: string): boolean {
+  // Contains JS grid initialization patterns
+  if (/__ivCtrl\[/.test(value)) return true;
+  // Contains long runs of AM/PM time options from time-picker dropdowns
+  if (/(\d{1,2}:\d{2}:\d{2}\s*(AM|PM)\s*){4,}/i.test(value)) return true;
+  // Unreasonably long for a single field value (real values are rarely >2000 chars)
+  if (value.length > 2000) return true;
+  // Contains "Delete the value." or "Delete all values." UI control text
+  if (/Delete (the|all) value/i.test(value)) return true;
+  // Contains "See All" UI button text mixed in
+  if (/See All(Delete|See all)/i.test(value)) return true;
+  return false;
+}
+
 function readFieldRows($: cheerio.CheerioAPI): OpportunityField[] {
   const fields = new Map<string, string>();
 
-  $(".iv-form-row, .iv-field-row, .field, tr").each((_, element) => {
+  $(".iv-form-row, .iv-field-row").each((_, element) => {
+    const el = $(element);
     const label = normalizeWhitespace(
-      $(element)
-        .find(".iv-field-label, .label-field, th, label")
+      el
+        .find(".iv-field-label, .label-field, label")
         .first()
         .text()
         .replace(/[:*]$/, "")
     );
 
-    let value = normalizeWhitespace(
-      $(element)
-        .find(".iv-field-value, .readonly, .iv-field-text, td, .control-wrapper")
-        .not(".label-field")
-        .first()
-        .text()
-    );
+    const valueEl = el
+      .find(".iv-field-value, .readonly, .iv-field-text")
+      .not(".label-field")
+      .first();
+
+    const value = cleanText($, valueEl);
 
     if (!label || !value || value === label) {
+      return;
+    }
+
+    if (isNoiseValue(value)) {
       return;
     }
 
@@ -95,14 +128,12 @@ function readAttachments($: cheerio.CheerioAPI, baseUrl: string): OpportunityAtt
 export function parseDetailPage(html: string, baseUrl: string, pageUrl: string): OpportunityDetailScrape {
   const $ = cheerio.load(html);
   const detailFields = readFieldRows($);
-  const descriptionText =
-    normalizeWhitespace(
-      $("[data-testid='description'], [class*='description'], [id*='description'], .iv-rich-text, .iv-html")
-        .first()
-        .text()
-    ) ||
-    detailFields.find((field) => /description/i.test(field.label))?.value ||
-    "";
+
+  const descriptionEl = $("[data-testid='description'], [class*='description'], [id*='description'], .iv-rich-text, .iv-html").first();
+  let descriptionText = descriptionEl.length ? cleanText($, descriptionEl) : "";
+  if (!descriptionText || isNoiseValue(descriptionText)) {
+    descriptionText = detailFields.find((field) => /description/i.test(field.label))?.value || "";
+  }
 
   const processId =
     extractProcessId(pageUrl) ||

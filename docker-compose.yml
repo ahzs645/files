@@ -43,6 +43,18 @@ services:
     ports:
       - "${WEB_PORT:-4173}:4173"
 
+  app:
+    build:
+      context: .
+      dockerfile: ./apps/dashboard/Dockerfile
+      args:
+        VITE_CONVEX_URL: ${VITE_CONVEX_URL:-http://127.0.0.1:${PORT:-3210}}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-5174}:5173"
+
   scraper:
     build:
       context: .

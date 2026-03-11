@@ -90,6 +90,48 @@ describe("shared BC Bid parsers", () => {
     expect(result.descriptionText).toContain("Modernize and migrate");
   });
 
+  it("strips scripts, selects, and noise from detail fields", async () => {
+    const html = await readFixture("detail", "with-noise.html");
+    const result = parseDetailPage(
+      html,
+      "https://www.bcbid.gov.bc.ca",
+      "https://www.bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/226348"
+    );
+
+    expect(result.processId).toBe("226348");
+
+    // Should extract clean field values without JS or dropdown noise
+    const oppId = result.detailFields.find((f) => f.label === "Opportunity ID");
+    expect(oppId?.value).toBe("BC-2026-0099");
+
+    const status = result.detailFields.find((f) => f.label === "Status");
+    expect(status?.value).toBe("Open");
+
+    const issuedBy = result.detailFields.find((f) => f.label === "Issued by");
+    expect(issuedBy?.value).toBe("City of Delta");
+
+    const summary = result.detailFields.find((f) => f.label === "Summary Details");
+    expect(summary?.value).toContain("Winskill Aquatic Centre");
+
+    // Fields with only noise (time picker dropdowns, "Delete the value") should be excluded
+    const opening = result.detailFields.find((f) => f.label === "Opening Date and Time");
+    expect(opening).toBeUndefined();
+
+    // Description should be clean — no __ivCtrl JS
+    expect(result.descriptionText).toContain("Ceramic");
+    expect(result.descriptionText).not.toContain("__ivCtrl");
+    expect(result.descriptionText).not.toContain("GridView");
+
+    // No field value should contain JS grid initialization code
+    for (const field of result.detailFields) {
+      expect(field.value).not.toContain("__ivCtrl");
+      expect(field.value).not.toContain("GridView");
+    }
+
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0]?.name).toBe("Bid Package.pdf");
+  });
+
   it("handles missing optional sections", async () => {
     const html = await readFixture("detail", "without-optionals.html");
     const result = parseDetailPage(
