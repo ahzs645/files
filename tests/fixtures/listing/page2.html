@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <form id="mainForm" method="post" action="/page.aspx/en/rfp/request_browse_public">
+      <button type="submit">Search</button>
+      <input type="hidden" id="hdnCurrentPageIndexbody_x_grid_grd" name="hdnCurrentPageIndexbody_x_grid_grd" value="1" />
+      <table id="body_x_grid_grd">
+        <tbody>
+          <tr>
+            <td>Open</td>
+            <td>BC-2026-0003</td>
+            <td><a href="/page.aspx/en/bpm/process_manage_extranet/226322">GIS Platform Renewal</a></td>
+            <td>Information Technology; Geospatial</td>
+            <td>RFP</td>
+            <td>Mar 05, 2026</td>
+            <td>Apr 10, 2026</td>
+            <td>30 days</td>
+            <td>0</td>
+            <td>Mar 05, 2026</td>
+            <td>GeoBC</td>
+            <td>Ministry of Forests</td>
+            <td>Yes</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="iv-grid-pager">
+        <a href="#">1</a>
+        <span>2</span>
+      </div>
+    </form>
+    <script>
+      window.__ivCtrl = {
+        body_x_grid_grd: {
+          GoToPageOfGrid: function (_groupIndex, pageIndex) {
+            window.location.href = "/page.aspx/en/rfp/request_browse_public?passed=1&page=" + (pageIndex + 1);
+          }
+        }
+      };
+    </script>
+  </body>
+  </html>

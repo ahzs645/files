@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Browser check: BC Bid</title>
+    <script src="https://www.google.com/recaptcha/api.js?render=test-key"></script>
+  </head>
+  <body>
+    <form id="mainForm" method="post" action="/page.aspx/en/bas/browser_check">
+      <div id="body_x_lblMessage">Please wait while we are checking your browser.</div>
+      <input type="hidden" id="captcha_response" name="captcha_response" />
+    </form>
+    <script>
+      setTimeout(function () {
+        window.location.href = "/page.aspx/en/rfp/request_browse_public?passed=1&page=1";
+      }, 50);
+    </script>
+  </body>
+  </html>

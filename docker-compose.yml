@@ -1,0 +1,70 @@
+services:
+  backend:
+    image: ghcr.io/get-convex/convex-backend:latest
+    ports:
+      - "${PORT:-3210}:3210"
+      - "${SITE_PROXY_PORT:-3211}:3211"
+    environment:
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:${PORT:-3210}}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-http://127.0.0.1:${SITE_PROXY_PORT:-3211}}
+      INSTANCE_NAME: ${INSTANCE_NAME:-bc-bid-monitor}
+      INSTANCE_SECRET: ${INSTANCE_SECRET:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      DO_NOT_REQUIRE_SSL: "true"
+      DISABLE_METRICS_ENDPOINT: "true"
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - convex-data:/convex/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${DASHBOARD_PORT:-6791}:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${NEXT_PUBLIC_DEPLOYMENT_URL:-http://127.0.0.1:${PORT:-3210}}
+
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+      args:
+        VITE_CONVEX_URL: ${VITE_CONVEX_URL:-http://127.0.0.1:${PORT:-3210}}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-4173}:4173"
+
+  scraper:
+    build:
+      context: .
+      dockerfile: ./services/scraper/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      SCRAPER_PORT: 3001
+      SCRAPER_INTERNAL_TOKEN: ${SCRAPER_INTERNAL_TOKEN:-replace-me}
+      INGEST_SHARED_SECRET: ${INGEST_SHARED_SECRET:-replace-me}
+      CONVEX_SITE_URL: ${SCRAPER_CONVEX_SITE_URL:-http://backend:3211}
+      BCBID_BASE_URL: ${BCBID_BASE_URL:-https://www.bcbid.gov.bc.ca}
+      SCRAPE_CRON: ${SCRAPE_CRON:-0 */6 * * *}
+      SCRAPER_RUN_ON_STARTUP: ${SCRAPER_RUN_ON_STARTUP:-false}
+      SCRAPER_USER_DATA_DIR: /data/profile
+      SCRAPER_ARTIFACT_DIR: /data/artifacts
+      DETAIL_CONCURRENCY: ${DETAIL_CONCURRENCY:-2}
+      SCRAPE_STATUS: ${SCRAPE_STATUS:-val}
+    volumes:
+      - scraper-data:/data
+
+volumes:
+  convex-data:
+  scraper-data:

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+.env.*.local
+convex/_generated/
+services/scraper/.runtime/
+services/scraper/artifacts/
+playwright-report/
+test-results/

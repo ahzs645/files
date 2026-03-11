@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <form id="mainForm" method="post" action="/page.aspx/en/rfp/request_browse_public">
+      <select name="body:x:selSrfxCode">
+        <option value="">All</option>
+        <option value="val" selected>Open</option>
+      </select>
+      <button type="submit">Search</button>
+      <input type="hidden" id="hdnCurrentPageIndexbody_x_grid_grd" name="hdnCurrentPageIndexbody_x_grid_grd" value="0" />
+      <table id="body_x_grid_grd">
+        <tbody>
+          <tr>
+            <td>Open</td>
+            <td>BC-2026-0001</td>
+            <td><a href="/page.aspx/en/bpm/process_manage_extranet/226320">Enterprise Cloud Migration Services</a></td>
+            <td>Information Technology; Cloud Services</td>
+            <td>RFP</td>
+            <td>Mar 08, 2026</td>
+            <td>Apr 15, 2026</td>
+            <td>35 days</td>
+            <td>1</td>
+            <td>Mar 10, 2026</td>
+            <td>Ministry of Health</td>
+            <td>Ministry of Health</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td>Open</td>
+            <td>BC-2026-0002</td>
+            <td><a href="/page.aspx/en/bpm/process_manage_extranet/226321">Cybersecurity Audit</a></td>
+            <td>Information Technology; Security</td>
+            <td>RFP</td>
+            <td>Mar 07, 2026</td>
+            <td>Apr 01, 2026</td>
+            <td>21 days</td>
+            <td>2</td>
+            <td>Mar 09, 2026</td>
+            <td>Office of the CIO</td>
+            <td>Province of BC</td>
+            <td>No</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="iv-grid-pager">
+        <span>1</span>
+        <a href="#">2</a>
+      </div>
+    </form>
+    <script>
+      window.__ivCtrl = {
+        body_x_grid_grd: {
+          GoToPageOfGrid: function (_groupIndex, pageIndex) {
+            window.location.href = "/page.aspx/en/rfp/request_browse_public?passed=1&page=" + (pageIndex + 1);
+          }
+        }
+      };
+    </script>
+  </body>
+  </html>

@@ -1,0 +1,41 @@
+{
+  "name": "bc-bid-monitor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @bcbid/web",
+    "convex:codegen": "npx convex codegen --typecheck disable",
+    "convex:dev": "npx convex dev",
+    "dev:scraper": "npm run dev --workspace @bcbid/scraper",
+    "dev:web": "npm run dev --workspace @bcbid/web",
+    "docker:down": "docker compose down",
+    "docker:up": "docker compose up --build",
+    "install:browsers": "npx playwright install chromium",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspace @bcbid/shared && npm run typecheck --workspace @bcbid/web && npm run typecheck --workspace @bcbid/scraper && tsc -p convex/tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.4.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "convex": "^1.32.0",
+    "jsdom": "^28.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@bcbid/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./parsers": "./src/parsers/index.ts",
+    "./types": "./src/types.ts"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
