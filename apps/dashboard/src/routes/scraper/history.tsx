@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { ArrowLeft, History } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { ScrapeRun } from "@bcbid/shared";
-import { Card, CardHeader } from "../../components/ui/Card";
+import { Card } from "../../components/ui/Card";
 import { RunHistoryCard } from "../../components/scraper/RunHistoryCard";
 import { Spinner } from "../../components/ui/Spinner";
 
@@ -49,7 +49,7 @@ function HistoryPage() {
           </div>
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-4">
           {recentRuns.map((run) => (
             <RunHistoryCard key={run._id} run={run} />
           ))}

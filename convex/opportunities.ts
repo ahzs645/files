@@ -129,3 +129,52 @@ export const getByProcessId = query({
     };
   }
 });
+
+export const listByRunId = query({
+  args: {
+    runId: v.id("scrapeRuns"),
+    limit: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    const opportunities = (
+      await ctx.db
+        .query("opportunities")
+        .withIndex("by_lastRunId", (queryBuilder) => queryBuilder.eq("lastRunId", args.runId))
+        .collect()
+    )
+      .sort(sortOpportunities)
+      .slice(0, limit);
+
+    return await Promise.all(
+      opportunities.map(async (opportunity) => {
+        const [addenda, attachments] = await Promise.all([
+          ctx.db
+            .query("addenda")
+            .withIndex("by_sourceKey", (queryBuilder) => queryBuilder.eq("sourceKey", opportunity.sourceKey))
+            .collect(),
+          ctx.db
+            .query("attachments")
+            .withIndex("by_sourceKey", (queryBuilder) => queryBuilder.eq("sourceKey", opportunity.sourceKey))
+            .collect()
+        ]);
+
+        return {
+          sourceKey: opportunity.sourceKey,
+          processId: opportunity.processId,
+          opportunityId: opportunity.opportunityId,
+          status: opportunity.status,
+          description: opportunity.description,
+          type: opportunity.type,
+          issuedBy: opportunity.issuedBy,
+          closingDate: opportunity.closingDate,
+          amendments: opportunity.amendments,
+          detailUrl: opportunity.detailUrl,
+          detailFieldCount: opportunity.detailFields.length,
+          addendaCount: addenda.length,
+          attachmentCount: attachments.length
+        };
+      })
+    );
+  }
+});

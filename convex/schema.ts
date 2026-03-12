@@ -43,6 +43,7 @@ export default defineSchema({
     .index("by_sourceKey", ["sourceKey"])
     .index("by_processId", ["processId"])
     .index("by_opportunityId", ["opportunityId"])
+    .index("by_lastRunId", ["lastRunId"])
     .index("by_status", ["status"])
     .index("by_type", ["type"])
     .index("by_issuedBy", ["issuedBy"])
