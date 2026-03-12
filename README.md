@@ -83,6 +83,31 @@ Run the scraper service:
 npm run dev:scraper
 ```
 
+## Bulk contract award imports
+
+For large award exports, use the local importer instead of the browser file picker. It reads a file or directory of JSON exports directly from disk, uploads them in batches, and saves a resumable checkpoint under `.runtime/`.
+
+Run it against your downloads folder:
+
+```bash
+npm run import:awards -- "/Users/ahmadjalil/Downloads/contrscts"
+```
+
+Useful variants:
+
+```bash
+npm run import:awards -- "/Users/ahmadjalil/Downloads/contrscts" --dry-run
+npm run import:awards -- "/Users/ahmadjalil/Downloads/contrscts" --reset-state
+```
+
+Run it in the background and capture logs:
+
+```bash
+nohup npm run import:awards -- "/Users/ahmadjalil/Downloads/contrscts" > .runtime/contract-awards-import.log 2>&1 &
+```
+
+The script loads `VITE_CONVEX_URL` from `.env.local` when present. Override the batch size or target URL with `--batch-size` and `--url` if needed.
+
 The scraper exposes:
 
 - `GET /health`

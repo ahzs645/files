@@ -17,6 +17,7 @@
     "dev:web": "npm run dev --workspace @bcbid/web",
     "docker:down": "docker compose down",
     "docker:up": "docker compose up --build",
+    "import:awards": "tsx ./scripts/importContractAwards.ts",
     "install:browsers": "npx playwright install chromium",
     "scrape:live": "npm run scrape:live --workspace @bcbid/scraper",
     "test": "vitest run",
