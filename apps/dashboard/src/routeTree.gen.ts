@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ContractAwardsRouteImport } from './routes/contract-awards'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ScraperIndexRouteImport } from './routes/scraper/index'
 import { Route as OpportunitiesIndexRouteImport } from './routes/opportunities/index'
 import { Route as ScraperHistoryRouteImport } from './routes/scraper/history'
 import { Route as OpportunitiesProcessIdRouteImport } from './routes/opportunities/$processId'
 
+const ContractAwardsRoute = ContractAwardsRouteImport.update({
+  id: '/contract-awards',
+  path: '/contract-awards',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,6 +49,7 @@ const OpportunitiesProcessIdRoute = OpportunitiesProcessIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/contract-awards': typeof ContractAwardsRoute
   '/opportunities/$processId': typeof OpportunitiesProcessIdRoute
   '/scraper/history': typeof ScraperHistoryRoute
   '/opportunities/': typeof OpportunitiesIndexRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/contract-awards': typeof ContractAwardsRoute
   '/opportunities/$processId': typeof OpportunitiesProcessIdRoute
   '/scraper/history': typeof ScraperHistoryRoute
   '/opportunities': typeof OpportunitiesIndexRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/contract-awards': typeof ContractAwardsRoute
   '/opportunities/$processId': typeof OpportunitiesProcessIdRoute
   '/scraper/history': typeof ScraperHistoryRoute
   '/opportunities/': typeof OpportunitiesIndexRoute
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/contract-awards'
     | '/opportunities/$processId'
     | '/scraper/history'
     | '/opportunities/'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/contract-awards'
     | '/opportunities/$processId'
     | '/scraper/history'
     | '/opportunities'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/contract-awards'
     | '/opportunities/$processId'
     | '/scraper/history'
     | '/opportunities/'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ContractAwardsRoute: typeof ContractAwardsRoute
   OpportunitiesProcessIdRoute: typeof OpportunitiesProcessIdRoute
   ScraperHistoryRoute: typeof ScraperHistoryRoute
   OpportunitiesIndexRoute: typeof OpportunitiesIndexRoute
@@ -97,6 +110,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/contract-awards': {
+      id: '/contract-awards'
+      path: '/contract-awards'
+      fullPath: '/contract-awards'
+      preLoaderRoute: typeof ContractAwardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -137,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ContractAwardsRoute: ContractAwardsRoute,
   OpportunitiesProcessIdRoute: OpportunitiesProcessIdRoute,
   ScraperHistoryRoute: ScraperHistoryRoute,
   OpportunitiesIndexRoute: OpportunitiesIndexRoute,

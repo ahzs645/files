@@ -1,4 +1,5 @@
 const btnScrape = document.getElementById("btnScrape");
+const btnCancel = document.getElementById("btnCancel");
 const btnResume = document.getElementById("btnResume");
 const btnCsv = document.getElementById("btnCsv");
 const btnJson = document.getElementById("btnJson");
@@ -58,7 +59,8 @@ function stopPolling() {
 }
 
 function updateUI(state) {
-  // Hide resume by default
+  // Hide cancel/resume by default
+  btnCancel.style.display = "none";
   btnResume.style.display = "none";
 
   switch (state.status) {
@@ -90,6 +92,7 @@ function updateUI(state) {
       }
       btnScrape.disabled = true;
       btnScrape.textContent = "Scraping...";
+      btnCancel.style.display = "block";
       btnCsv.disabled = true;
       btnJson.disabled = true;
       statsEl.textContent = state.totalRecords
@@ -150,6 +153,29 @@ function updateUI(state) {
       break;
   }
 }
+
+// Cancel scrape
+btnCancel.addEventListener("click", async () => {
+  // Tell content script to stop
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: "CANCEL_SCRAPE" });
+    } catch (e) {}
+  }
+  // Force-stop in background state regardless
+  const state = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
+  if (state.status === "running") {
+    await chrome.runtime.sendMessage({
+      type: "SCRAPE_STOPPED",
+      pagesScraped: state.pagesScraped,
+      error: "Cancelled by user — click Resume to continue.",
+    });
+  }
+  stopPolling();
+  const updated = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
+  updateUI(updated);
+});
 
 // Start fresh scrape
 btnScrape.addEventListener("click", async () => {

@@ -125,6 +125,13 @@
     .btn-json:hover:not(:disabled) {
       background: #2472a4;
     }
+    .btn-cancel {
+      background: #e74c3c;
+      color: white;
+    }
+    .btn-cancel:hover:not(:disabled) {
+      background: #c0392b;
+    }
     .btn-resume {
       background: #e67e22;
       color: white;
@@ -155,6 +162,7 @@
     </div>
     <div class="btn-group">
       <button class="btn-primary" id="btnScrape">Scrape All Pages</button>
+      <button class="btn-cancel" id="btnCancel" style="display:none">Cancel</button>
       <button class="btn-resume" id="btnResume" style="display:none">Resume Scraping</button>
       <div class="export-row">
         <button class="btn-csv" id="btnCsv" disabled>Export CSV</button>

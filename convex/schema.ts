@@ -5,6 +5,7 @@ import {
   addendumValidator,
   attachmentValidator,
   fieldValidator,
+  nullableNumber,
   nullableString,
   runCountsValidator,
   runProgressValidator,
@@ -75,6 +76,31 @@ export default defineSchema({
   })
     .index("by_sourceKey", ["sourceKey"])
     .index("by_processId", ["processId"]),
+
+  contractAwards: defineTable({
+    importKey: v.string(),
+    opportunityId: nullableString,
+    opportunityDescription: v.string(),
+    opportunityType: nullableString,
+    issuingOrganization: nullableString,
+    issuingLocation: nullableString,
+    contractNumber: nullableString,
+    contactEmail: nullableString,
+    contractValueText: nullableString,
+    contractValue: nullableNumber,
+    currency: nullableString,
+    successfulSupplier: nullableString,
+    supplierAddress: nullableString,
+    awardDate: nullableString,
+    justification: nullableString,
+    searchText: v.string(),
+    sourceFileName: nullableString,
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_importKey", ["importKey"])
+    .index("by_updatedAt", ["updatedAt"])
+    .index("by_awardDate", ["awardDate"]),
 
   scrapeRuns: defineTable({
     status: runStatusValidator,

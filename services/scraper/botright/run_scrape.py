@@ -21,6 +21,11 @@ SEARCH_PATH = "/page.aspx/en/rfp/request_browse_public"
 STOP_REQUESTED = False
 ACTIVE_BROWSER = None
 BOTRIGHT_USER_DATA_DIR = os.environ.get("BOTRIGHT_USER_DATA_DIR")
+REMOVABLE_TEXT_SELECTORS = (
+    "script, style, select, noscript, [type='hidden'], .iv-menu-container, .menu, "
+    ".dropdown.icon, .dropdown-clear, .sr-only, .tooltip-field, button"
+)
+FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field']"
 
 _ORIGINAL_LAUNCH_PERSISTENT_CONTEXT = BrowserType.launch_persistent_context
 
@@ -161,7 +166,7 @@ def clean_text(element: Optional[Any]) -> str:
         return ""
 
     clone = BeautifulSoup(str(element), "html.parser")
-    for removable in clone.select("script, style, select, noscript, [type='hidden']"):
+    for removable in clone.select(REMOVABLE_TEXT_SELECTORS):
         removable.decompose()
     return normalize_whitespace(clone.get_text(" ", strip=True))
 
@@ -178,6 +183,126 @@ def is_noise_value(value: str) -> bool:
     if re.search(r"See All(Delete|See all)", value, re.IGNORECASE):
         return True
     return False
+
+
+def is_boilerplate_description(value: str) -> bool:
+    return bool(re.search(r"log in|register with bc bid|prepare a submission", value, re.IGNORECASE))
+
+
+def has_hidden_style(element: Any) -> bool:
+    return bool(re.search(r"display\s*:\s*none|visibility\s*:\s*hidden", element.get("style", ""), re.IGNORECASE))
+
+
+def is_hidden_context(element: Any) -> bool:
+    if element is None:
+        return True
+
+    current = element
+    while current is not None and getattr(current, "name", None):
+        classes = current.get("class", []) or []
+        if (
+            "hidden" in classes
+            or current.has_attr("hidden")
+            or current.get("aria-hidden") == "true"
+            or has_hidden_style(current)
+        ):
+            return True
+        current = current.parent
+
+    return False
+
+
+def get_table_headers(table: Any) -> List[str]:
+    return [
+        normalize_whitespace(header.get_text(" ", strip=True))
+        for header in table.select("thead th, thead td, tr:first-child th")
+        if normalize_whitespace(header.get_text(" ", strip=True))
+    ]
+
+
+def get_table_rows(table: Any) -> List[Any]:
+    body_rows = table.select("tbody tr")
+    if body_rows:
+        return body_rows
+    return table.select("tr")[1:]
+
+
+def is_addenda_table(headers: List[str]) -> bool:
+    first_header = headers[0] if headers else ""
+    second_header = headers[1] if len(headers) > 1 else ""
+    return bool(
+        re.fullmatch(r"addend(?:a|um)?|amendments?", first_header, re.IGNORECASE)
+        and re.search(r"\bdate\b", second_header, re.IGNORECASE)
+    )
+
+
+def is_amendment_history_table(headers: List[str]) -> bool:
+    first_header = headers[0] if headers else ""
+    second_header = headers[1] if len(headers) > 1 else ""
+    third_header = headers[2] if len(headers) > 2 else ""
+    return bool(
+        re.fullmatch(r"#|amendment\s*#?", first_header, re.IGNORECASE)
+        and re.search(r"\bamendment reason\b", second_header, re.IGNORECASE)
+        and re.search(r"\bdate\b", third_header, re.IGNORECASE)
+    )
+
+
+def is_attachment_metadata(value: str) -> bool:
+    if not value:
+        return True
+    if re.fullmatch(r"\d+", value):
+        return True
+    if re.fullmatch(r"yes|no|true|false", value, re.IGNORECASE):
+        return True
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM)?)?", value, re.IGNORECASE):
+        return True
+    if re.fullmatch(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},\s+\d{4}", value, re.IGNORECASE):
+        return True
+    return False
+
+
+def file_name_from_url(url: str) -> Optional[str]:
+    cleaned = (url or "").split("?", 1)[0]
+    tail = cleaned.rsplit("/", 1)[-1] if "/" in cleaned else cleaned
+    return normalize_whitespace(tail) or None
+
+
+def extract_field_label(field: Any) -> str:
+    label_element = field.select_one(".label-field, label")
+    label = normalize_whitespace(label_element.get_text(" ", strip=True) if label_element else "")
+    return re.sub(r"[:*]$", "", label)
+
+
+def extract_field_value(field: Any) -> str:
+    scopes = [
+        field.select_one("[data-iv-role='controlWrapper']"),
+        field.select_one(".control-wrapper"),
+        field,
+    ]
+
+    for scope in [scope for scope in scopes if scope is not None]:
+        input_values: List[str] = []
+        for element in scope.select("input, textarea"):
+            input_type = (element.get("type") or "").lower()
+            if input_type in {"hidden", "checkbox", "radio"}:
+                continue
+
+            value = normalize_whitespace(element.get("value") or element.text or "")
+            if value and not is_noise_value(value):
+                input_values.append(value)
+
+        clone = BeautifulSoup(str(scope), "html.parser")
+        for removable in clone.select(".label-field, label, h1, h2, h3, h4, h5, h6, .default"):
+            removable.decompose()
+        for removable in clone.select("input, textarea"):
+            removable.decompose()
+
+        text_value = clean_text(clone)
+        combined = normalize_whitespace(" ".join(dedupe_strings([*input_values, text_value])))
+        if combined and not is_noise_value(combined):
+            return combined
+
+    return ""
 
 
 def parse_browser_check_page(html: str) -> Dict[str, Any]:
@@ -292,18 +417,12 @@ def parse_listing_page(html: str, base_url: str) -> Dict[str, Any]:
 def read_field_rows(soup: BeautifulSoup) -> List[Dict[str, str]]:
     fields: Dict[str, str] = {}
 
-    for row in soup.select(".iv-form-row, .iv-field-row"):
-        label_element = row.select_one(".iv-field-label, .label-field, label")
-        label = normalize_whitespace(label_element.get_text(" ", strip=True) if label_element else "")
-        label = re.sub(r"[:*]$", "", label)
+    for row in soup.select(FIELD_SELECTORS):
+        if is_hidden_context(row):
+            continue
 
-        value_element = None
-        for candidate in row.select(".iv-field-value, .readonly, .iv-field-text"):
-            if "label-field" not in (candidate.get("class") or []):
-                value_element = candidate
-                break
-
-        value = clean_text(value_element)
+        label = extract_field_label(row)
+        value = extract_field_value(row)
 
         if not label or not value or value == label or is_noise_value(value):
             continue
@@ -314,35 +433,85 @@ def read_field_rows(soup: BeautifulSoup) -> List[Dict[str, str]]:
     return [{"label": label, "value": value} for label, value in fields.items()]
 
 
+def read_grid_fields(soup: BeautifulSoup) -> List[Dict[str, str]]:
+    fields: Dict[str, str] = {}
+
+    for table in soup.select("table"):
+        if is_hidden_context(table):
+            continue
+
+        headers = get_table_headers(table)
+        if not headers or is_addenda_table(headers) or is_amendment_history_table(headers) or table.select_one("a[href*='download_public']"):
+            continue
+
+        rows = get_table_rows(table)
+        if not rows:
+            continue
+
+        if len(headers) == 1:
+            label = headers[0]
+            values = dedupe_strings(
+                [
+                    clean_text((row.select("td") or [row])[0])
+                    for row in rows
+                    if clean_text((row.select("td") or [row])[0]) and not is_noise_value(clean_text((row.select("td") or [row])[0]))
+                ]
+            )
+            values = [value for value in values if value != label]
+            if label and values and label not in fields:
+                fields[label] = ", ".join(values)
+            continue
+
+        if len(rows) != 1:
+            continue
+
+        cells = rows[0].select("td")
+        for index, label in enumerate(headers[: len(cells)]):
+            value = clean_text(cells[index])
+            if not label or not value or value == label or is_noise_value(value) or label in fields:
+                continue
+            fields[label] = value
+
+    return [{"label": label, "value": value} for label, value in fields.items()]
+
+
 def read_addenda(soup: BeautifulSoup, base_url: str) -> List[Dict[str, Optional[str]]]:
     addenda: List[Dict[str, Optional[str]]] = []
     seen = set()
 
     for table in soup.select("table"):
-        headers = [
-            normalize_whitespace(header.get_text(" ", strip=True))
-            for header in table.select("thead th, thead td, tr:first-child th")
-        ]
-        headers = [header for header in headers if header]
-        first_header = headers[0] if headers else ""
-        second_header = headers[1] if len(headers) > 1 else ""
-        if not re.fullmatch(r"addend(?:a|um)?|amendments?", first_header, re.IGNORECASE):
-            continue
-        if not re.search(r"\bdate\b", second_header, re.IGNORECASE):
+        headers = get_table_headers(table)
+        if not is_addenda_table(headers) and not is_amendment_history_table(headers):
             continue
 
-        for row in table.select("tbody tr"):
+        for row in get_table_rows(table):
             cells = row.find_all("td")
             if not cells:
                 continue
 
-            title = normalize_whitespace(cells[0].get_text(" ", strip=True))
+            title = ""
+            date = None
+            link_url = None
+
+            if is_amendment_history_table(headers):
+                amendment_number = normalize_whitespace(cells[0].get_text(" ", strip=True) if len(cells) > 0 else "")
+                reason = normalize_whitespace(cells[1].get_text(" ", strip=True) if len(cells) > 1 else "")
+                if amendment_number and reason:
+                    title = f"Amendment {amendment_number}: {reason}"
+                else:
+                    title = reason or (f"Amendment {amendment_number}" if amendment_number else "")
+                date = parse_date_to_iso(cells[2].get_text(" ", strip=True) if len(cells) > 2 else None)
+                link = row.select_one("a[href*='download_public']")
+                link_url = to_absolute_url(base_url, link.get("href") if link else None)
+            else:
+                title = normalize_whitespace(cells[0].get_text(" ", strip=True))
+                date = parse_date_to_iso(cells[1].get_text(" ", strip=True) if len(cells) > 1 else None)
+                link = cells[0].select_one("a[href]")
+                link_url = to_absolute_url(base_url, link.get("href") if link else None)
+
             if not title or re.search(r"title", title, re.IGNORECASE):
                 continue
 
-            date = parse_date_to_iso(cells[1].get_text(" ", strip=True) if len(cells) > 1 else None)
-            link = cells[0].select_one("a[href]")
-            link_url = to_absolute_url(base_url, link.get("href") if link else None)
             key = f"{title}::{date or ''}::{link_url or ''}"
             if key in seen:
                 continue
@@ -358,42 +527,90 @@ def read_addenda(soup: BeautifulSoup, base_url: str) -> List[Dict[str, Optional[
     return addenda
 
 
-def read_attachments(soup: BeautifulSoup, base_url: str) -> List[Dict[str, str]]:
-    urls = dedupe_strings(
-        [
-            to_absolute_url(base_url, element.get("href")) or ""
-            for element in soup.select("a[href*='download_public']")
-        ]
-    )
+def derive_attachment_name(anchor: Any, url: str) -> str:
+    anchor_text = normalize_whitespace(anchor.get_text(" ", strip=True))
+    row = anchor.find_parent("tr")
 
+    if row is not None:
+        row_candidates: List[str] = []
+        for cell in row.select("td"):
+            clone = BeautifulSoup(str(cell), "html.parser")
+            for removable in clone.select("a[href], .default"):
+                removable.decompose()
+            value = clean_text(clone)
+            if value and not is_attachment_metadata(value):
+                row_candidates.append(value)
+
+        row_candidates = dedupe_strings(row_candidates)
+        row_title = next((value for value in row_candidates if value != anchor_text), row_candidates[0] if row_candidates else "")
+        if row_title and anchor_text and row_title != anchor_text and anchor_text not in row_title and row_title not in anchor_text:
+            return f"{row_title} - {anchor_text}"
+        if row_title:
+            return row_title
+
+    return anchor_text or file_name_from_url(url) or "Attachment"
+
+
+def read_attachments(soup: BeautifulSoup, base_url: str, excluded_urls: set[str]) -> List[Dict[str, str]]:
     attachments: List[Dict[str, str]] = []
-    for url in urls:
-        matching = soup.select_one(f"a[href='{url}']")
-        if not matching:
-            tail = url.split("/")[-1]
-            matching = soup.select_one(f"a[href$='{tail}']") if tail else None
+    seen = set()
 
+    for element in soup.select("a[href*='download_public']"):
+        if is_hidden_context(element):
+            continue
+
+        url = to_absolute_url(base_url, element.get("href"))
+        if not url or url in excluded_urls or url in seen:
+            continue
+
+        seen.add(url)
         attachments.append(
             {
                 "url": url,
-                "name": normalize_whitespace(matching.get_text(" ", strip=True) if matching else "") or "Attachment",
+                "name": derive_attachment_name(element, url),
             }
         )
 
     return attachments
 
 
+def merge_fields(*collections: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    fields: Dict[str, str] = {}
+    for collection in collections:
+        for field in collection:
+            if field["label"] not in fields:
+                fields[field["label"]] = field["value"]
+    return [{"label": label, "value": value} for label, value in fields.items()]
+
+
 def parse_detail_page(html: str, base_url: str, page_url: str) -> Dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
-    detail_fields = read_field_rows(soup)
+    detail_fields = merge_fields(read_field_rows(soup), read_grid_fields(soup))
+    addenda = read_addenda(soup, base_url)
+    attachments = read_attachments(
+        soup,
+        base_url,
+        {addendum["link"] for addendum in addenda if addendum.get("link")},
+    )
 
-    description_element = soup.select_one("[data-testid='description'], [class*='description'], [id*='description'], .iv-rich-text, .iv-html")
+    description_element = soup.select_one("[data-testid='description'], [class*='description'], [id*='description']")
     description_text = clean_text(description_element)
-    if not description_text or is_noise_value(description_text):
+    if not description_text or is_noise_value(description_text) or is_boilerplate_description(description_text):
         description_text = next(
-            (field["value"] for field in detail_fields if re.search(r"description", field["label"], re.IGNORECASE)),
+            (field["value"] for field in detail_fields if re.search(r"summary details", field["label"], re.IGNORECASE)),
             "",
         )
+    if not description_text or is_noise_value(description_text) or is_boilerplate_description(description_text):
+        description_text = next(
+            (
+                field["value"]
+                for field in detail_fields
+                if re.fullmatch(r"(opportunity )?description", field["label"], re.IGNORECASE)
+            ),
+            "",
+        )
+    if not description_text or is_noise_value(description_text) or is_boilerplate_description(description_text):
+        description_text = clean_text(soup.select_one(".iv-rich-text, .iv-html"))
 
     process_id = extract_process_id(page_url)
     if not process_id:
@@ -410,8 +627,8 @@ def parse_detail_page(html: str, base_url: str, page_url: str) -> Dict[str, Any]
         "detailUrl": page_url,
         "descriptionText": description_text,
         "detailFields": detail_fields,
-        "addenda": read_addenda(soup, base_url),
-        "attachments": read_attachments(soup, base_url),
+        "addenda": addenda,
+        "attachments": attachments,
         "sourceCapturedAt": utc_now_iso(),
     }
 

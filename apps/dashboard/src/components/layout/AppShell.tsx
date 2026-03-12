@@ -1,10 +1,11 @@
 import { type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, FileText, Radio, History } from "lucide-react";
+import { LayoutDashboard, FileText, Radio, History, Database } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/opportunities", label: "Opportunities", icon: FileText },
+  { to: "/contract-awards", label: "Contract Awards", icon: Database },
   { to: "/scraper", label: "Scraper", icon: Radio },
   { to: "/scraper/history", label: "Run History", icon: History },
 ] as const;

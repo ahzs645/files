@@ -45,6 +45,22 @@ export const opportunityValidator = v.object({
   sourceCapturedAt: v.string()
 });
 
+export const contractAwardImportValidator = v.object({
+  opportunityId: nullableString,
+  opportunityDescription: v.string(),
+  opportunityType: nullableString,
+  issuingOrganization: nullableString,
+  issuingLocation: nullableString,
+  contractNumber: nullableString,
+  contactEmail: nullableString,
+  contractValueText: nullableString,
+  currency: nullableString,
+  successfulSupplier: nullableString,
+  supplierAddress: nullableString,
+  awardDate: nullableString,
+  justification: nullableString
+});
+
 export const runCountsValidator = v.object({
   listingCount: v.number(),
   detailCount: v.number(),

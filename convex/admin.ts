@@ -3,7 +3,15 @@ import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 
 export const clearTable = mutation({
-  args: { table: v.union(v.literal("opportunities"), v.literal("addenda"), v.literal("attachments"), v.literal("scrapeRuns")) },
+  args: {
+    table: v.union(
+      v.literal("opportunities"),
+      v.literal("addenda"),
+      v.literal("attachments"),
+      v.literal("contractAwards"),
+      v.literal("scrapeRuns")
+    )
+  },
   handler: async (ctx, { table }) => {
     const docs = await ctx.db.query(table).take(500);
     for (const doc of docs) {

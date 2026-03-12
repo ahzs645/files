@@ -97,6 +97,48 @@ export interface OpportunityFilters {
   limit?: number;
 }
 
+export interface ContractAwardImportRecord {
+  opportunityId: string | null;
+  opportunityDescription: string;
+  opportunityType: string | null;
+  issuingOrganization: string | null;
+  issuingLocation: string | null;
+  contractNumber: string | null;
+  contactEmail: string | null;
+  contractValueText: string | null;
+  currency: string | null;
+  successfulSupplier: string | null;
+  supplierAddress: string | null;
+  awardDate: string | null;
+  justification: string | null;
+}
+
+export interface ContractAwardListItem extends ContractAwardImportRecord {
+  importKey: string;
+  contractValue: number | null;
+  sourceFileName: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ContractAwardRecord extends ContractAwardListItem {
+  searchText: string;
+}
+
+export interface ContractAwardFilters {
+  search?: string;
+  cursor?: string | null;
+  limit?: number;
+}
+
+export interface ContractAwardsSummary {
+  total: number;
+  organizations: number;
+  suppliers: number;
+  latestImportAt: number | null;
+  latestImportFile: string | null;
+}
+
 export interface ScrapeRunCounts {
   listingCount: number;
   detailCount: number;

@@ -25,6 +25,31 @@ export function sortOpportunities(
   return left.opportunityId.localeCompare(right.opportunityId);
 }
 
+export function sortContractAwards(
+  left: Doc<"contractAwards">,
+  right: Doc<"contractAwards">
+): number {
+  const leftAwardDate = left.awardDate ?? "0000-00-00";
+  const rightAwardDate = right.awardDate ?? "0000-00-00";
+  if (leftAwardDate !== rightAwardDate) {
+    return rightAwardDate.localeCompare(leftAwardDate);
+  }
+
+  const leftValue = left.contractValue ?? -1;
+  const rightValue = right.contractValue ?? -1;
+  if (leftValue !== rightValue) {
+    return rightValue - leftValue;
+  }
+
+  if (left.updatedAt !== right.updatedAt) {
+    return right.updatedAt - left.updatedAt;
+  }
+
+  return (left.opportunityId ?? left.opportunityDescription).localeCompare(
+    right.opportunityId ?? right.opportunityDescription
+  );
+}
+
 export function isClosingSoon(closingDate: string | null | undefined): boolean {
   if (!closingDate) {
     return false;

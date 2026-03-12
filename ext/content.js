@@ -2,14 +2,19 @@
 // All pagination is AJAX-based, content script state is preserved throughout.
 
 let isScraping = false;
+let cancelRequested = false;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "TRIGGER_SCRAPE" && !isScraping) {
     isScraping = true;
+    cancelRequested = false;
     sendResponse({ ok: true });
     runScrape(msg.resumeFromPage || 0);
   } else if (msg.type === "TRIGGER_SCRAPE" && isScraping) {
     sendResponse({ ok: false, error: "Already scraping" });
+  } else if (msg.type === "CANCEL_SCRAPE") {
+    cancelRequested = true;
+    sendResponse({ ok: true });
   }
   return true;
 });
@@ -26,18 +31,13 @@ async function runScrape(resumeFromPage) {
       return;
     }
 
-    // Get record count (click "More than X" if needed)
+    // Read record count without clicking — just parse whatever is showing
     let totalRecords = 0;
     const countEl = document.querySelector('[data-role="pager-count"]');
     if (countEl) {
       const text = countEl.innerText.trim();
-      if (text.toLowerCase().includes("more than")) {
-        countEl.click();
-        totalRecords = await waitForRecordCount(countEl);
-      } else {
-        const match = text.match(/([\d,]+)\s*Record\(s\)/i);
-        if (match) totalRecords = parseInt(match[1].replace(/,/g, ""), 10);
-      }
+      const match = text.match(/([\d,]+)\s*Record\(s\)/i);
+      if (match) totalRecords = parseInt(match[1].replace(/,/g, ""), 10);
     }
 
     // Extract headers
@@ -62,16 +62,18 @@ async function runScrape(resumeFromPage) {
 
     // If resuming, navigate to the resume page; otherwise go to first page
     if (resumeFromPage > 0) {
-      // Navigate to the target page by clicking FirstPage then NextPage repeatedly
-      // Or use the grid's GoToPageOfGrid via the page buttons
-      await navigateToPage(table, resumeFromPage);
+      await navigateToPage(resumeFromPage);
     } else {
-      const firstBtn = document.getElementById(
-        "body_x_grid_gridPagerBtnFirstPage"
-      );
-      if (firstBtn && !firstBtn.classList.contains("disabled")) {
-        firstBtn.click();
-        await waitForAjaxUpdate(table);
+      // Only click FirstPage if we're not already on page 0
+      const curPage = getCurrentPageIndex();
+      if (curPage !== "0" && curPage !== "-1") {
+        const firstBtn = document.getElementById(
+          "body_x_grid_gridPagerBtnFirstPage"
+        );
+        if (firstBtn && !firstBtn.classList.contains("disabled")) {
+          firstBtn.click();
+          await waitForAjaxUpdate(null);
+        }
       }
     }
 
@@ -79,7 +81,11 @@ async function runScrape(resumeFromPage) {
     let pagesScraped = resumeFromPage;
 
     while (true) {
-      const rows = scrapeCurrentPage(table, headers.length);
+      // Re-query table each iteration (AJAX may replace the element)
+      const currentTable = document.getElementById("body_x_grid_grd");
+      if (!currentTable) break;
+
+      const rows = scrapeCurrentPage(currentTable, headers.length);
       pagesScraped++;
 
       chrome.runtime.sendMessage({
@@ -91,7 +97,18 @@ async function runScrape(resumeFromPage) {
         pagesScraped,
       });
 
-      // Check for next page
+      // Check if cancelled
+      if (cancelRequested) {
+        chrome.runtime.sendMessage({
+          type: "SCRAPE_STOPPED",
+          pagesScraped,
+          error: "Cancelled by user — click Resume to continue.",
+        });
+        isScraping = false;
+        return;
+      }
+
+      // Check for next page (re-query since DOM may have been replaced)
       const nextBtn = document.getElementById(
         "body_x_grid_gridPagerBtnNextPage"
       );
@@ -103,9 +120,8 @@ async function runScrape(resumeFromPage) {
       await sleep(200);
 
       // Click next with retry
-      const advanced = await clickNextWithRetry(table, nextBtn);
+      const advanced = await clickNextWithRetry(nextBtn);
       if (!advanced) {
-        // Save where we stopped so we can resume
         chrome.runtime.sendMessage({
           type: "SCRAPE_STOPPED",
           pagesScraped,
@@ -124,11 +140,18 @@ async function runScrape(resumeFromPage) {
 }
 
 // Click next page with up to 3 retries and increasing delay
-async function clickNextWithRetry(table, nextBtn) {
+async function clickNextWithRetry(nextBtn) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      nextBtn.click();
-      const updated = await waitForAjaxUpdate(table, 10000);
+      // Re-query button on retries (DOM may have been replaced)
+      const btn =
+        attempt === 1
+          ? nextBtn
+          : document.getElementById("body_x_grid_gridPagerBtnNextPage");
+      if (!btn || btn.classList.contains("disabled")) return false;
+
+      btn.click();
+      const updated = await waitForAjaxUpdate(null, 10000);
       if (updated) return true;
     } catch (e) {
       // ignore, will retry
@@ -136,28 +159,20 @@ async function clickNextWithRetry(table, nextBtn) {
     // Wait before retry: 2s, 5s, 10s
     const delay = attempt === 1 ? 2000 : attempt === 2 ? 5000 : 10000;
     await sleep(delay);
-
-    // Re-find the button in case DOM changed
-    const freshBtn = document.getElementById(
-      "body_x_grid_gridPagerBtnNextPage"
-    );
-    if (!freshBtn || freshBtn.classList.contains("disabled")) return false;
   }
   return false;
 }
 
 // Navigate to a specific page index for resume
-async function navigateToPage(table, targetPage) {
-  // Go to first page
+async function navigateToPage(targetPage) {
   const firstBtn = document.getElementById(
     "body_x_grid_gridPagerBtnFirstPage"
   );
   if (firstBtn && !firstBtn.classList.contains("disabled")) {
     firstBtn.click();
-    await waitForAjaxUpdate(table);
+    await waitForAjaxUpdate(null);
   }
 
-  // Click next until we reach the target page
   for (let i = 0; i < targetPage; i++) {
     await sleep(200);
     const nextBtn = document.getElementById(
@@ -165,7 +180,7 @@ async function navigateToPage(table, targetPage) {
     );
     if (!nextBtn || nextBtn.classList.contains("disabled")) break;
     nextBtn.click();
-    await waitForAjaxUpdate(table);
+    await waitForAjaxUpdate(null);
   }
 }
 
@@ -194,11 +209,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function waitForRecordCount(el) {
+// The count button gets REPLACED (button -> span) after AJAX.
+// Must re-query the DOM each poll, not reference the old element.
+function waitForRecordCount() {
   return new Promise((resolve) => {
     let checks = 0;
     const interval = setInterval(() => {
       checks++;
+      // Re-query DOM each time — the element gets replaced
+      const el = document.querySelector('[data-role="pager-count"]');
+      if (!el) {
+        if (checks >= 40) { clearInterval(interval); resolve(0); }
+        return;
+      }
       const text = el.innerText.trim();
       if (!text.toLowerCase().includes("more than")) {
         clearInterval(interval);
@@ -206,7 +229,7 @@ function waitForRecordCount(el) {
         resolve(match ? parseInt(match[1].replace(/,/g, ""), 10) : 0);
         return;
       }
-      if (checks >= 60) {
+      if (checks >= 40) {
         clearInterval(interval);
         resolve(0);
       }
@@ -214,26 +237,43 @@ function waitForRecordCount(el) {
   });
 }
 
-// Wait for AJAX table update — returns true if DOM changed, false on timeout
+// Wait for AJAX page update by polling the hidden page index field.
+// The table element may get replaced entirely during AJAX, so
+// MutationObserver on the old element is unreliable.
 function waitForAjaxUpdate(table, timeout) {
-  timeout = timeout || 8000;
+  timeout = timeout || 10000;
+  const before = getCurrentPageIndex();
+  const beforeFirstRow = getFirstRowText();
   return new Promise((resolve) => {
-    const target = table.querySelector("tbody") || table;
-    let resolved = false;
-    const done = (success) => {
-      if (!resolved) {
-        resolved = true;
-        resolve(success);
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed += 150;
+      const nowPage = getCurrentPageIndex();
+      const nowRow = getFirstRowText();
+      // Detect change: page index changed OR first row content changed
+      if (nowPage !== before || (beforeFirstRow && nowRow !== beforeFirstRow)) {
+        clearInterval(interval);
+        setTimeout(() => resolve(true), 200); // small buffer for DOM to settle
+        return;
       }
-    };
-    const observer = new MutationObserver(() => {
-      observer.disconnect();
-      setTimeout(() => done(true), 300);
-    });
-    observer.observe(target, { childList: true, subtree: true });
-    setTimeout(() => {
-      observer.disconnect();
-      done(false);
-    }, timeout);
+      if (elapsed >= timeout) {
+        clearInterval(interval);
+        resolve(false);
+      }
+    }, 150);
   });
+}
+
+function getCurrentPageIndex() {
+  const el = document.querySelector('[name="hdnCurrentPageIndexbody_x_grid_grd"]');
+  return el ? el.value : "-1";
+}
+
+function getFirstRowText() {
+  const table = document.getElementById("body_x_grid_grd");
+  if (!table) return "";
+  const firstDataRow = table.querySelector("tbody tr:first-child, tr:nth-child(2)");
+  if (!firstDataRow) return "";
+  const firstCell = firstDataRow.querySelector("td");
+  return firstCell ? firstCell.innerText.trim() : "";
 }
