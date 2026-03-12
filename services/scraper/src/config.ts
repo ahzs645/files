@@ -24,8 +24,10 @@ const envSchema = z.object({
     .default(true),
   SCRAPER_BROWSER_CHANNEL: z.string().optional(),
   SCRAPER_BROWSER_ARGS: z.string().optional(),
+  SCRAPER_BROWSER_CHECK_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
   SCRAPER_USER_DATA_DIR: z.string().default(path.resolve(process.cwd(), "services/scraper/.runtime/profile")),
   SCRAPER_ARTIFACT_DIR: z.string().default(path.resolve(process.cwd(), "services/scraper/.runtime/artifacts")),
+  SCRAPER_INGEST_BATCH_SIZE: z.coerce.number().int().positive().default(1),
   DETAIL_CONCURRENCY: z.coerce.number().int().positive().default(2),
   SCRAPE_STATUS: z.string().default("val"),
   SCRAPE_KEYWORD: z.string().optional(),
@@ -58,12 +60,14 @@ export function loadConfig() {
     browser: {
       headless: env.SCRAPER_HEADLESS,
       channel: env.SCRAPER_BROWSER_CHANNEL,
+      browserCheckTimeoutMs: env.SCRAPER_BROWSER_CHECK_TIMEOUT_MS,
       launchArgs: env.SCRAPER_BROWSER_ARGS
         ? env.SCRAPER_BROWSER_ARGS.split(",").map((value) => value.trim()).filter(Boolean)
         : []
     },
     userDataDir: env.SCRAPER_USER_DATA_DIR,
     artifactDir: env.SCRAPER_ARTIFACT_DIR,
+    ingestBatchSize: env.SCRAPER_INGEST_BATCH_SIZE,
     detailConcurrency: env.DETAIL_CONCURRENCY,
     filters: {
       status: env.SCRAPE_STATUS,

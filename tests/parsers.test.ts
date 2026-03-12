@@ -114,6 +114,53 @@ describe("shared BC Bid parsers", () => {
     expect(result.descriptionText).toContain("Modernize and migrate");
   });
 
+  it("ignores non-addenda tables that only mention amendments", () => {
+    const html = `
+      <html>
+        <body>
+          <table>
+            <thead>
+              <tr><th>Amendments</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>2</td><td>Open</td></tr>
+              <tr><td>0</td><td>Closed</td></tr>
+            </tbody>
+          </table>
+          <table>
+            <thead>
+              <tr><th>Addenda</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><a href="/bare.aspx/en/fil/download_public/attachment-guid-1">Addendum 1</a></td>
+                <td>Mar 10, 2026</td>
+              </tr>
+              <tr>
+                <td><a href="/bare.aspx/en/fil/download_public/attachment-guid-1">Addendum 1</a></td>
+                <td>Mar 10, 2026</td>
+              </tr>
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const result = parseDetailPage(
+      html,
+      "https://www.bcbid.gov.bc.ca",
+      "https://www.bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/226320"
+    );
+
+    expect(result.addenda).toEqual([
+      {
+        title: "Addendum 1",
+        date: "2026-03-10",
+        link: "https://www.bcbid.gov.bc.ca/bare.aspx/en/fil/download_public/attachment-guid-1"
+      }
+    ]);
+  });
+
   it("strips scripts, selects, and noise from detail fields", async () => {
     const html = await readFixture("detail", "with-noise.html");
     const result = parseDetailPage(

@@ -20,6 +20,7 @@ from playwright.async_api import BrowserType
 SEARCH_PATH = "/page.aspx/en/rfp/request_browse_public"
 STOP_REQUESTED = False
 ACTIVE_BROWSER = None
+BOTRIGHT_USER_DATA_DIR = os.environ.get("BOTRIGHT_USER_DATA_DIR")
 
 _ORIGINAL_LAUNCH_PERSISTENT_CONTEXT = BrowserType.launch_persistent_context
 
@@ -27,6 +28,15 @@ _ORIGINAL_LAUNCH_PERSISTENT_CONTEXT = BrowserType.launch_persistent_context
 # Botright hardcodes chromium_sandbox=True. Docker does not provide the Linux
 # namespace support Chromium expects for that mode, so force it off here.
 async def launch_persistent_context_without_sandbox(self, *args, **kwargs):
+    if BOTRIGHT_USER_DATA_DIR:
+        user_data_dir = str(Path(BOTRIGHT_USER_DATA_DIR).expanduser())
+        Path(user_data_dir).mkdir(parents=True, exist_ok=True)
+
+        if args:
+            args = (user_data_dir, *args[1:])
+        else:
+            kwargs["user_data_dir"] = user_data_dir
+
     kwargs["chromium_sandbox"] = False
     return await _ORIGINAL_LAUNCH_PERSISTENT_CONTEXT(self, *args, **kwargs)
 
@@ -306,10 +316,19 @@ def read_field_rows(soup: BeautifulSoup) -> List[Dict[str, str]]:
 
 def read_addenda(soup: BeautifulSoup, base_url: str) -> List[Dict[str, Optional[str]]]:
     addenda: List[Dict[str, Optional[str]]] = []
+    seen = set()
 
     for table in soup.select("table"):
-        table_text = normalize_whitespace(table.get_text(" ", strip=True))
-        if not re.search(r"addend|amend", table_text, re.IGNORECASE):
+        headers = [
+            normalize_whitespace(header.get_text(" ", strip=True))
+            for header in table.select("thead th, thead td, tr:first-child th")
+        ]
+        headers = [header for header in headers if header]
+        first_header = headers[0] if headers else ""
+        second_header = headers[1] if len(headers) > 1 else ""
+        if not re.fullmatch(r"addend(?:a|um)?|amendments?", first_header, re.IGNORECASE):
+            continue
+        if not re.search(r"\bdate\b", second_header, re.IGNORECASE):
             continue
 
         for row in table.select("tbody tr"):
@@ -321,12 +340,18 @@ def read_addenda(soup: BeautifulSoup, base_url: str) -> List[Dict[str, Optional[
             if not title or re.search(r"title", title, re.IGNORECASE):
                 continue
 
+            date = parse_date_to_iso(cells[1].get_text(" ", strip=True) if len(cells) > 1 else None)
             link = cells[0].select_one("a[href]")
+            link_url = to_absolute_url(base_url, link.get("href") if link else None)
+            key = f"{title}::{date or ''}::{link_url or ''}"
+            if key in seen:
+                continue
+            seen.add(key)
             addenda.append(
                 {
                     "title": title,
-                    "date": parse_date_to_iso(cells[1].get_text(" ", strip=True) if len(cells) > 1 else None),
-                    "link": to_absolute_url(base_url, link.get("href") if link else None),
+                    "date": date,
+                    "link": link_url,
                 }
             )
 
@@ -514,19 +539,68 @@ def throw_if_stopped() -> None:
 
 async def wait_for_results_grid(page: Any) -> None:
     await page.wait_for_function(
-        "() => Boolean(document.querySelector('#body_x_grid_grd')) || /no record/i.test(document.body.textContent ?? '')",
+        "() => Boolean(document.querySelector('#body_x_grid_grd')) || /no record/i.test(document.body?.textContent ?? '')",
         timeout=30000,
     )
+
+
+async def try_return_to_opportunities(page: Any) -> bool:
+    locator = page.locator(
+        "a[href*='/page.aspx/en/rfp/request_browse_public'], "
+        "a:has-text('Opportunities'), "
+        "button:has-text('Opportunities')"
+    )
+
+    if await locator.count() == 0:
+        return False
+
+    try:
+        await asyncio.gather(
+            page.wait_for_load_state("domcontentloaded", timeout=10000),
+            locator.first.click(),
+        )
+    except Exception:
+        pass
+
+    return True
 
 
 async def wait_for_browser_check(page: Any, run_dir: Path, timeout_ms: int = 30000) -> None:
     deadline = time.monotonic() + (timeout_ms / 1000)
     attempted_solver = False
+    opportunities_return_attempts = 0
+    max_opportunities_return_attempts = 5
 
     while "/page.aspx/en/bas/browser_check" in page.url:
         throw_if_stopped()
-        html = await page.content()
+        try:
+            html = await page.content()
+        except Exception as error:
+            if re.search(r"page is navigating|changing the content", str(error), re.IGNORECASE):
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(250)
+                continue
+            raise
         state = parse_browser_check_page(html)
+
+        if (
+            opportunities_return_attempts < max_opportunities_return_attempts
+            and state["message"]
+            and re.search(r"wrong captcha answer", state["message"], re.IGNORECASE)
+        ):
+            opportunities_return_attempts += 1
+            returned_to_opportunities = await try_return_to_opportunities(page)
+            if returned_to_opportunities:
+                print(
+                    f"[botright] Browser check returned 'Wrong captcha answer'. Retrying via Opportunities "
+                    f"({opportunities_return_attempts}/{max_opportunities_return_attempts}).",
+                    file=sys.stderr,
+                )
+                await page.wait_for_timeout(1000)
+                continue
 
         if state["hasCaptcha"] and not attempted_solver and hasattr(page, "solve_recaptcha"):
             attempted_solver = True
@@ -534,6 +608,7 @@ async def wait_for_browser_check(page: Any, run_dir: Path, timeout_ms: int = 300
                 await page.solve_recaptcha()
             except Exception as error:
                 print(f"[botright] solve_recaptcha failed: {error}", file=sys.stderr)
+            deadline = max(deadline, time.monotonic() + (timeout_ms / 1000))
 
         if time.monotonic() > deadline:
             await capture_page_artifacts(page, run_dir, "browser-check")
@@ -547,8 +622,12 @@ async def wait_for_browser_check(page: Any, run_dir: Path, timeout_ms: int = 300
 
 async def wait_for_search_page(page: Any, config: Dict[str, Any], run_dir: Path) -> None:
     throw_if_stopped()
-    await page.goto(f"{config['baseUrl']}{SEARCH_PATH}", wait_until="domcontentloaded")
-    await wait_for_browser_check(page, run_dir, 30000)
+    await page.goto(
+        f"{config['baseUrl']}{SEARCH_PATH}",
+        wait_until="domcontentloaded",
+        timeout=config["browser"]["browserCheckTimeoutMs"],
+    )
+    await wait_for_browser_check(page, run_dir, config["browser"]["browserCheckTimeoutMs"])
     await page.wait_for_selector("#mainForm", timeout=30000)
 
 
@@ -882,7 +961,7 @@ async def run_scrape() -> None:
         counts["addendaCount"] = sum(len(item["addenda"]) for item in records)
         counts["attachmentCount"] = sum(len(item["attachments"]) for item in records)
 
-        batches = chunk(records, 25)
+        batches = chunk(records, config["ingestBatchSize"])
         await progress_reporter.update(
             {
                 "phase": "ingesting",

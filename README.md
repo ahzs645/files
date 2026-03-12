@@ -159,6 +159,13 @@ Notes:
 - If you want a clean browser session, delete `services/scraper/.runtime/profile` or point `SCRAPER_USER_DATA_DIR` at a different directory.
 - The dashboard and Convex admin pages will still show live progress while this manual headed run is active.
 - The internal `POST /internal/scrape` endpoint remains useful for unattended runs, but it can still fail when BC Bid challenges headless traffic.
+- BC Bid usually does not hinge on a single reusable token. The useful thing to transfer is the full browser profile directory, including cookies and other challenge state.
+- Use a dedicated automation profile, not your everyday default Chrome profile.
+- Close Chrome before copying that profile into another runtime. Copying a live profile tends to produce corrupt state or locked files.
+- The Botright worker now reuses `SCRAPER_USER_DATA_DIR`, so Docker runs use `/data/profile` by default and local runs use `services/scraper/.runtime/profile` by default.
+- One practical flow is: solve the BC Bid check once with `SCRAPER_ENGINE=botright npm run scrape:live`, then copy the resulting profile into the running scraper container with `docker compose cp services/scraper/.runtime/profile/. scraper:/data/profile/`, and rerun the scrape.
+- Profile reuse is more reliable when the source and destination browsers are close. A local Chrome profile copied into container Chromium may still be challenged again.
+- The browser-check wait is configurable through `SCRAPER_BROWSER_CHECK_TIMEOUT_MS` and now defaults to `90000`.
 - For local unattended runs, prefer the installed Chrome channel over bundled Chromium:
 
 ```bash

@@ -121,18 +121,64 @@ async function waitForResultsGrid(page: Page) {
   await page.waitForFunction(
     () =>
       Boolean(document.querySelector("#body_x_grid_grd")) ||
-      /no record/i.test(document.body.textContent ?? ""),
+      /no record/i.test(document.body?.textContent ?? ""),
     { timeout: 30_000 }
   );
 }
 
+async function tryReturnToOpportunities(page: Page) {
+  const opportunitiesLink = page.locator(
+    'a[href*="/page.aspx/en/rfp/request_browse_public"], a:has-text("Opportunities"), button:has-text("Opportunities")'
+  );
+
+  if ((await opportunitiesLink.count()) === 0) {
+    return false;
+  }
+
+  await Promise.allSettled([
+    page.waitForLoadState("domcontentloaded", { timeout: 10_000 }),
+    opportunitiesLink.first().click()
+  ]);
+
+  return true;
+}
+
 async function waitForBrowserCheck(page: Page, runDir: string, timeoutMs = 30_000, control?: ScrapeExecutionControl) {
   const deadline = Date.now() + timeoutMs;
+  let opportunitiesReturnAttempts = 0;
+  const maxOpportunitiesReturnAttempts = 5;
   while (page.url().includes("/page.aspx/en/bas/browser_check")) {
     throwIfStopped(control);
+    let html: string;
+    try {
+      html = await page.content();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/page is navigating|changing the content/i.test(message)) {
+        await page.waitForLoadState("domcontentloaded", { timeout: 5_000 }).catch(() => {});
+        await page.waitForTimeout(250);
+        continue;
+      }
+      throw error;
+    }
+    const state = parseBrowserCheckPage(html);
+
+    if (
+      opportunitiesReturnAttempts < maxOpportunitiesReturnAttempts
+      && /wrong captcha answer/i.test(state.message ?? "")
+    ) {
+      opportunitiesReturnAttempts += 1;
+      const returnedToOpportunities = await tryReturnToOpportunities(page);
+      if (returnedToOpportunities) {
+        console.log(
+          `[scraper] Browser check returned "Wrong captcha answer". Retrying via Opportunities (${opportunitiesReturnAttempts}/${maxOpportunitiesReturnAttempts}).`
+        );
+        await page.waitForTimeout(1_000);
+        continue;
+      }
+    }
+
     if (Date.now() > deadline) {
-      const html = await page.content();
-      const state = parseBrowserCheckPage(html);
       await capturePageArtifacts(page, runDir, "browser-check");
       throw new Error(
         `BC Bid browser check did not complete after ${timeoutMs / 1000}s. hasCaptcha=${state.hasCaptcha} message=${state.message ?? "n/a"}`
@@ -144,9 +190,12 @@ async function waitForBrowserCheck(page: Page, runDir: string, timeoutMs = 30_00
 
 async function waitForSearchPage(page: Page, config: ScraperConfig, runDir: string, control?: ScrapeExecutionControl) {
   throwIfStopped(control);
-  await page.goto(`${config.baseUrl}${SEARCH_PATH}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${config.baseUrl}${SEARCH_PATH}`, {
+    waitUntil: "domcontentloaded",
+    timeout: config.browser.browserCheckTimeoutMs
+  });
 
-  await waitForBrowserCheck(page, runDir, 30_000, control);
+  await waitForBrowserCheck(page, runDir, config.browser.browserCheckTimeoutMs, control);
 
   await page.waitForSelector("#mainForm", { timeout: 30_000 });
 }
@@ -524,7 +573,7 @@ export async function runScrapeJob(
     counts.addendaCount = records.reduce((sum, item) => sum + item.addenda.length, 0);
     counts.attachmentCount = records.reduce((sum, item) => sum + item.attachments.length, 0);
 
-    const batches = chunk(records, 25);
+    const batches = chunk(records, config.ingestBatchSize);
     await progressReporter.update({
       phase: "ingesting",
       message: batches.length > 0 ? `Persisting ${batches.length} opportunity batches.` : "No records to persist.",

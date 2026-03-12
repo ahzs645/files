@@ -9,6 +9,7 @@ async function main() {
     browser: {
       headless: false,
       channel: config.browser.channel || "chrome",
+      browserCheckTimeoutMs: config.browser.browserCheckTimeoutMs,
       launchArgs: Array.from(
         new Set([
           "--disable-blink-features=AutomationControlled",

@@ -81,9 +81,17 @@ function readFieldRows($: cheerio.CheerioAPI): OpportunityField[] {
 
 function readAddenda($: cheerio.CheerioAPI, baseUrl: string): OpportunityAddendum[] {
   const addenda: OpportunityAddendum[] = [];
+  const seen = new Set<string>();
   $("table").each((_, element) => {
-    const tableText = normalizeWhitespace($(element).text());
-    if (!/addend|amend/i.test(tableText)) {
+    const headers = $(element)
+      .find("thead th, thead td, tr:first-child th")
+      .map((__, header) => normalizeWhitespace($(header).text()))
+      .get()
+      .filter(Boolean);
+
+    const firstHeader = headers[0] ?? "";
+    const secondHeader = headers[1] ?? "";
+    if (!/^(addend(?:a|um)?|amendments?)$/i.test(firstHeader) || !/\bdate\b/i.test(secondHeader)) {
       return;
     }
 
@@ -100,10 +108,18 @@ function readAddenda($: cheerio.CheerioAPI, baseUrl: string): OpportunityAddendu
           return;
         }
 
+        const date = parseDateToIso(normalizeWhitespace($(cells[1]).text())) ?? null;
+        const link = toAbsoluteUrl(baseUrl, $(cells[0]).find("a[href]").attr("href"));
+        const key = `${title}::${date ?? ""}::${link ?? ""}`;
+        if (seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+
         addenda.push({
           title,
-          date: parseDateToIso(normalizeWhitespace($(cells[1]).text())) ?? null,
-          link: toAbsoluteUrl(baseUrl, $(cells[0]).find("a[href]").attr("href"))
+          date,
+          link
         });
       });
   });

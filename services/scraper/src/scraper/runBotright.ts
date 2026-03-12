@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -54,6 +56,23 @@ function relayOutput(
   }
 }
 
+async function readRunnerError(runId: string, artifactDir: string) {
+  const artifactPath = path.join(artifactDir, runId);
+  const errorPath = path.join(artifactPath, "error.json");
+
+  try {
+    const raw = await fs.readFile(errorPath, "utf8");
+    const parsed = JSON.parse(raw) as { error?: string; counts?: ScrapeRunCounts };
+    return {
+      artifactPath,
+      errorMessage: parsed.error ?? null,
+      counts: parsed.counts ?? emptyCounts()
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function runBotrightJob(
   runId: string,
   trigger: ScrapeTrigger,
@@ -66,7 +85,8 @@ export async function runBotrightJob(
     PYTHONUNBUFFERED: "1",
     BOTRIGHT_RUN_ID: runId,
     BOTRIGHT_TRIGGER: trigger,
-    BOTRIGHT_CONFIG_JSON: JSON.stringify(config)
+    BOTRIGHT_CONFIG_JSON: JSON.stringify(config),
+    BOTRIGHT_USER_DATA_DIR: config.userDataDir
   };
 
   const child = spawn(config.pythonBin, [scriptPath], {
@@ -136,11 +156,12 @@ export async function runBotrightJob(
     };
   }
 
-  const counts = emptyCounts();
+  const persistedFailure = await readRunnerError(runId, config.artifactDir);
+  const counts = persistedFailure?.counts ?? emptyCounts();
   const cancelled = control?.isStopRequested() || exit.signal === "SIGTERM";
   const errorMessage = cancelled
     ? "Botright scrape cancelled by operator."
-    : `Botright runner exited unexpectedly with code=${exit.code ?? "null"} signal=${exit.signal ?? "null"}.`;
+    : persistedFailure?.errorMessage ?? `Botright runner exited unexpectedly with code=${exit.code ?? "null"} signal=${exit.signal ?? "null"}.`;
 
   await ingestClient.finishRun(runId, {
     status: cancelled ? "cancelled" : "failed",
@@ -148,7 +169,7 @@ export async function runBotrightJob(
     counts,
     errorCode: cancelled ? "SCRAPE_CANCELLED" : "BOTRIGHT_RUNNER_FAILED",
     errorMessage,
-    artifactPath: null
+    artifactPath: persistedFailure?.artifactPath ?? null
   });
 
   if (!cancelled) {
