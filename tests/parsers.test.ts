@@ -19,6 +19,30 @@ describe("shared BC Bid parsers", () => {
     expect(result.message).toContain("checking your browser");
   });
 
+  it("prefers the visible browser-check error over unrelated header modal text", () => {
+    const html = `
+      <html>
+        <head><title>Browser check: BC Bid</title></head>
+        <body>
+          <div class="header">
+            <h1>Accessibility settings</h1>
+          </div>
+          <h1 class="maintitle">Browser check</h1>
+          <div class="page-message-container visible">
+            <span class="iv-message-details">Wrong captcha answer. Please try again.</span>
+          </div>
+          <input type="hidden" name="captcha_response" />
+        </body>
+      </html>
+    `;
+
+    const result = parseBrowserCheckPage(html);
+
+    expect(result.isBrowserCheck).toBe(true);
+    expect(result.hasCaptcha).toBe(true);
+    expect(result.message).toBe("Wrong captcha answer. Please try again.");
+  });
+
   it("parses listing rows and pagination", async () => {
     const html = await readFixture("listing", "page1.html");
     const result = parseListingPage(html, "https://www.bcbid.gov.bc.ca");

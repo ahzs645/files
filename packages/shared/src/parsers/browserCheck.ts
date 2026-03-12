@@ -6,7 +6,16 @@ import { normalizeWhitespace } from "./utils";
 export function parseBrowserCheckPage(html: string): BrowserCheckPageState {
   const $ = cheerio.load(html);
   const title = normalizeWhitespace($("title").first().text());
-  const message = normalizeWhitespace($("#body_x_lblMessage, .maintitle, h1").first().text()) || null;
+  const message =
+    [
+      ".page-message-container.visible .iv-message-details",
+      ".page-message-container .iv-message-details",
+      "#body_x_lblMessage",
+      ".maintitle",
+      "h1"
+    ]
+      .map((selector) => normalizeWhitespace($(selector).first().text()))
+      .find(Boolean) || null;
 
   return {
     isBrowserCheck: /browser check/i.test(title) || /browser check/i.test(message ?? ""),

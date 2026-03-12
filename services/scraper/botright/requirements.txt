@@ -1,0 +1,13 @@
+async_class==0.5.0
+beautifulsoup4==4.12.3
+botright==0.5.1
+chrome-fingerprints==1.1
+hcaptcha-challenger>=0.10.1.post2
+httpx==0.27.0
+loguru==0.7.2
+numpy==1.26.4
+playwright==1.40.0
+pybrowsers==0.5.2
+recognizer==1.4
+setuptools~=69.5.1
+undetected-playwright-patch==1.40.0.post1700587210000

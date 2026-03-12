@@ -69,6 +69,8 @@ services:
       CONVEX_SITE_URL: ${SCRAPER_CONVEX_SITE_URL:-http://backend:3211}
       BCBID_BASE_URL: ${BCBID_BASE_URL:-https://www.bcbid.gov.bc.ca}
       SCRAPE_CRON: ${SCRAPE_CRON:-0 */6 * * *}
+      SCRAPER_ENGINE: ${SCRAPER_ENGINE:-playwright}
+      SCRAPER_PYTHON_BIN: ${SCRAPER_PYTHON_BIN:-python3}
       SCRAPER_RUN_ON_STARTUP: ${SCRAPER_RUN_ON_STARTUP:-false}
       SCRAPER_USER_DATA_DIR: /data/profile
       SCRAPER_ARTIFACT_DIR: /data/artifacts

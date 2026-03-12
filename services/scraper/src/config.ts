@@ -12,6 +12,8 @@ const envSchema = z.object({
   INGEST_SHARED_SECRET: z.string().min(1).default("replace-me"),
   BCBID_BASE_URL: z.url().default("https://www.bcbid.gov.bc.ca"),
   SCRAPE_CRON: z.string().min(1).default("0 */6 * * *"),
+  SCRAPER_ENGINE: z.enum(["playwright", "botright"]).default("playwright"),
+  SCRAPER_PYTHON_BIN: z.string().min(1).default("python3"),
   SCRAPER_RUN_ON_STARTUP: z
     .union([z.literal("true"), z.literal("false"), z.boolean()])
     .transform((value) => value === true || value === "true")
@@ -50,6 +52,8 @@ export function loadConfig() {
     ingestSharedSecret: env.INGEST_SHARED_SECRET,
     baseUrl: env.BCBID_BASE_URL.replace(/\/$/, ""),
     scrapeCron: env.SCRAPE_CRON,
+    engine: env.SCRAPER_ENGINE,
+    pythonBin: env.SCRAPER_PYTHON_BIN,
     runOnStartup: env.SCRAPER_RUN_ON_STARTUP,
     browser: {
       headless: env.SCRAPER_HEADLESS,

@@ -4,7 +4,7 @@ Self-hosted BC Bid monitoring stack built with:
 
 - Convex self-hosted backend and admin dashboard
 - Vite + React dashboard
-- Playwright scraper worker
+- Playwright or Botright scraper worker
 - Shared TypeScript types and HTML parsers
 
 ## Workspace layout
@@ -29,6 +29,12 @@ tests/            Parser, scraper, and dashboard tests
 npm install
 npm run install:browsers
 npm run convex:codegen
+```
+
+Optional local Botright dependencies:
+
+```bash
+pip3 install -r services/scraper/botright/requirements.txt
 ```
 
 ## Self-hosted Convex bootstrap
@@ -83,6 +89,37 @@ The scraper exposes:
 - `POST /internal/scrape`
 - `POST /internal/stop`
 
+## Botright engine
+
+The scraper supports two engines:
+
+- `SCRAPER_ENGINE=playwright` keeps the existing TypeScript Playwright worker.
+- `SCRAPER_ENGINE=botright` launches a Python Botright worker under the same start/stop/progress flow.
+
+Local example:
+
+```bash
+SCRAPER_ENGINE=botright npm run dev:scraper
+```
+
+Local headed example:
+
+```bash
+SCRAPER_ENGINE=botright npm run scrape:live
+```
+
+Docker example:
+
+```bash
+SCRAPER_ENGINE=botright docker compose up --build
+```
+
+If your existing `scraper-data` volume was created by an older root-owned scraper container, recreate it before switching engines:
+
+```bash
+docker compose down -v
+```
+
 ## Passing the BC Bid browser check
 
 The containerized scraper path is still vulnerable to BC Bid's `/page.aspx/en/bas/browser_check` gate. When that page shows a captcha or the run fails with `Accessibility settings`, use the headed local Chrome flow instead of the container endpoint.
@@ -104,7 +141,7 @@ npm run scrape:live
 What this does:
 
 1. Opens a visible Chrome session instead of headless Chromium.
-2. Reuses a persistent profile at `services/scraper/.runtime/live-profile`.
+2. Reuses the normal scraper profile at `services/scraper/.runtime/profile` by default, unless `SCRAPER_USER_DATA_DIR` is set.
 3. Writes artifacts under `services/scraper/.runtime/artifacts/<runId>`.
 4. Pushes progress and final results into the same Convex `scrapeRuns` records used by the dashboard.
 
@@ -118,10 +155,27 @@ Operator steps when the browser check appears:
 Notes:
 
 - `npm run scrape:live` uses the local `chrome` browser channel by default, so Google Chrome needs to be installed on the machine running the command.
-- Future live runs reuse the same profile, so the browser check may be skipped until BC Bid challenges that profile again.
-- If you want a clean browser session, delete `services/scraper/.runtime/live-profile` or point `SCRAPER_USER_DATA_DIR` at a different directory.
+- Future headless runs can reuse the same profile, so a browser check solved once in the headed flow may also unblock later local headless runs until BC Bid challenges that profile again.
+- If you want a clean browser session, delete `services/scraper/.runtime/profile` or point `SCRAPER_USER_DATA_DIR` at a different directory.
 - The dashboard and Convex admin pages will still show live progress while this manual headed run is active.
 - The internal `POST /internal/scrape` endpoint remains useful for unattended runs, but it can still fail when BC Bid challenges headless traffic.
+- For local unattended runs, prefer the installed Chrome channel over bundled Chromium:
+
+```bash
+SCRAPER_BROWSER_CHANNEL=chrome npm run dev:scraper
+```
+
+If BC Bid challenges that local headless run, complete the check once with the same shared profile:
+
+```bash
+SCRAPER_BROWSER_CHANNEL=chrome npm run scrape:live
+```
+
+If you want to try Botright instead of the default Playwright path:
+
+```bash
+SCRAPER_ENGINE=botright npm run scrape:live
+```
 
 ## Full Docker stack
 
@@ -167,6 +221,12 @@ If that run fails at the BC Bid browser check, use the headed local fallback ins
 
 ```bash
 npm run scrape:live
+```
+
+To exercise the Botright worker in Docker instead of Playwright:
+
+```bash
+SCRAPER_ENGINE=botright docker compose up --build
 ```
 
 4. Confirm the dashboard shows a live phase, progress bar, heartbeat, and page/detail counters while the run is active.

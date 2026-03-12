@@ -1,11 +1,6 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { loadConfig } from "../config";
 import { ConvexIngestClient } from "../ingest/client";
-import { runScrapeJob } from "../scraper/runScrape";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../");
+import { runConfiguredScrapeJob } from "../scraper/runEngine";
 
 async function main() {
   const config = loadConfig();
@@ -21,12 +16,8 @@ async function main() {
         ])
       )
     },
-    userDataDir:
-      process.env.SCRAPER_USER_DATA_DIR ??
-      path.join(repoRoot, "services/scraper/.runtime/live-profile"),
-    artifactDir:
-      process.env.SCRAPER_ARTIFACT_DIR ??
-      path.join(repoRoot, "services/scraper/.runtime/artifacts")
+    userDataDir: process.env.SCRAPER_USER_DATA_DIR ?? config.userDataDir,
+    artifactDir: process.env.SCRAPER_ARTIFACT_DIR ?? config.artifactDir
   };
 
   const ingestClient = new ConvexIngestClient(
@@ -63,7 +54,7 @@ async function main() {
     return;
   }
 
-  const result = await runScrapeJob(start.runId, "manual", liveConfig, ingestClient);
+  const result = await runConfiguredScrapeJob(start.runId, "manual", liveConfig, ingestClient);
   console.log(
     JSON.stringify(
       {

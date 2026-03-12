@@ -1,9 +1,11 @@
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+
 import type { ScrapeTrigger } from "@bcbid/shared";
 import type { BrowserContext } from "playwright";
 
 import type { ScraperConfig } from "../config";
 import { ConvexIngestClient } from "../ingest/client";
-import { runScrapeJob, type ScrapeExecutionControl } from "./runScrape";
+import { runConfiguredScrapeJob, type EngineExecutionControl } from "./runEngine";
 
 export interface ScrapeCoordinator {
   getState(): { activeRunId: string | null; running: boolean; stopRequested: boolean };
@@ -15,10 +17,12 @@ export function createScrapeCoordinator(
   config: ScraperConfig,
   ingestClient: ConvexIngestClient
 ): ScrapeCoordinator {
-  type ActiveControl = ScrapeExecutionControl & {
+  type ActiveControl = EngineExecutionControl & {
     stopRequested: boolean;
     context: BrowserContext | null;
+    child: ChildProcessWithoutNullStreams | null;
     markStopRequested(): void;
+    setChild(child: ChildProcessWithoutNullStreams | null): void;
   };
 
   let activeRunId: string | null = null;
@@ -29,6 +33,7 @@ export function createScrapeCoordinator(
     return {
       stopRequested: false,
       context: null,
+      child: null,
       isStopRequested() {
         return this.stopRequested;
       },
@@ -37,6 +42,9 @@ export function createScrapeCoordinator(
       },
       setContext(context) {
         this.context = context;
+      },
+      setChild(child) {
+        this.child = child;
       }
     };
   }
@@ -63,7 +71,7 @@ export function createScrapeCoordinator(
 
       activeRunId = start.runId;
       activeControl = createControl();
-      activeJob = runScrapeJob(start.runId, trigger, config, ingestClient, activeControl)
+      activeJob = runConfiguredScrapeJob(start.runId, trigger, config, ingestClient, activeControl)
         .then(() => undefined)
         .catch((error: unknown) => {
           console.error("[scraper] Run failed:", error);
@@ -88,6 +96,7 @@ export function createScrapeCoordinator(
 
       activeControl.markStopRequested();
       await ingestClient.requestStop(activeRunId);
+      activeControl.child?.kill("SIGTERM");
       await activeControl.context?.close().catch(() => undefined);
 
       return { accepted: true, alreadyStopping: false, runId: activeRunId };
