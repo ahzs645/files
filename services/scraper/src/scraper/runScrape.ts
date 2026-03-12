@@ -143,12 +143,32 @@ async function waitForBrowserCheck(page: Page, runDir: string, timeoutMs = 30_00
 }
 
 async function waitForSearchPage(page: Page, config: ScraperConfig, runDir: string, control?: ScrapeExecutionControl) {
-  throwIfStopped(control);
-  await page.goto(`${config.baseUrl}${SEARCH_PATH}`, { waitUntil: "domcontentloaded" });
+  const maxAttempts = 3;
 
-  await waitForBrowserCheck(page, runDir, 30_000, control);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    throwIfStopped(control);
+    await page.goto(`${config.baseUrl}${SEARCH_PATH}`, { waitUntil: "domcontentloaded" });
 
-  await page.waitForSelector("#mainForm", { timeout: 30_000 });
+    try {
+      await waitForBrowserCheck(page, runDir, 30_000, control);
+      await page.waitForSelector("#mainForm", { timeout: 30_000 });
+      return;
+    } catch (error) {
+      if (control?.isStopRequested()) {
+        throw new ScrapeCancelledError();
+      }
+
+      // Only retry on browser-check failures, not other navigation errors
+      const isBrowserCheckError = error instanceof Error && error.message.includes("browser check");
+      if (!isBrowserCheckError || attempt >= maxAttempts) {
+        throw error;
+      }
+
+      // Exponential back-off: 5s, 15s before retrying
+      const delayMs = attempt * 5_000 + Math.random() * 2_000;
+      await page.waitForTimeout(delayMs);
+    }
+  }
 }
 
 async function applyFilters(page: Page, config: ScraperConfig, control?: ScrapeExecutionControl) {
@@ -356,6 +376,10 @@ async function scrapeDetail(
   const page = await context.newPage();
   try {
     await page.goto(listing.detailUrl, { waitUntil: "domcontentloaded" });
+
+    // Detail navigations can also trigger the browser check / captcha gate
+    await waitForBrowserCheck(page, runDir, 30_000, control);
+
     await page.waitForSelector("body", { timeout: 20_000 });
     await openDetailTabs(page, control);
     throwIfStopped(control);
@@ -472,7 +496,12 @@ export async function runScrapeJob(
       "--disable-blink-features=AutomationControlled",
       "--disable-features=IsolateOrigins,site-per-process",
       "--no-first-run",
-      "--no-default-browser-check"
+      "--no-default-browser-check",
+      "--disable-dev-shm-usage",
+      "--disable-infobars",
+      "--window-size=1440,960",
+      "--disable-component-update",
+      "--disable-background-networking"
     ];
 
     context = await chromium.launchPersistentContext(config.userDataDir, {
@@ -484,10 +513,46 @@ export async function runScrapeJob(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
     });
 
-    // Remove navigator.webdriver flag to reduce bot detection
-    const page0 = context.pages()[0] ?? (await context.newPage());
-    await page0.addInitScript(() => {
+    // Apply stealth patches to all pages (including detail tabs) via context-level init script
+    await context.addInitScript(() => {
+      // Hide navigator.webdriver flag
       Object.defineProperty(navigator, "webdriver", { get: () => false });
+
+      // Provide a believable Chrome runtime object
+      if (!(window as unknown as Record<string, unknown>).chrome) {
+        const chrome = {
+          runtime: {
+            onConnect: { addListener: () => {}, removeListener: () => {} },
+            onMessage: { addListener: () => {}, removeListener: () => {} },
+            sendMessage: () => {},
+            connect: () => ({ onMessage: { addListener: () => {} }, postMessage: () => {} })
+          }
+        };
+        Object.defineProperty(window, "chrome", { get: () => chrome, configurable: true });
+      }
+
+      // Return a realistic plugins array
+      Object.defineProperty(navigator, "plugins", {
+        get: () => [
+          { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+          { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai", description: "" },
+          { name: "Native Client", filename: "internal-nacl-plugin", description: "" }
+        ]
+      });
+
+      // Return a realistic languages array
+      Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+
+      // Override permissions query to report "prompt" for notifications (like a real browser)
+      const originalQuery = window.Permissions?.prototype?.query;
+      if (originalQuery) {
+        window.Permissions.prototype.query = function (parameters: PermissionDescriptor) {
+          if (parameters.name === "notifications") {
+            return Promise.resolve({ state: "prompt", onchange: null } as PermissionStatus);
+          }
+          return originalQuery.call(this, parameters);
+        };
+      }
     });
     control?.setContext(context);
 
