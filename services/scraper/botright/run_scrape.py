@@ -1131,6 +1131,12 @@ def emit_terminal_message(run_id: str, status: str, counts: Dict[str, int], arti
     )
 
 
+def limit_listings(listings: List[Dict[str, Any]], max_listings: Optional[int]) -> List[Dict[str, Any]]:
+    if not max_listings or len(listings) <= max_listings:
+        return listings
+    return listings[:max_listings]
+
+
 async def run_scrape() -> None:
     global ACTIVE_BROWSER
 
@@ -1167,9 +1173,22 @@ async def run_scrape() -> None:
 
         await progress_reporter.update({"phase": "listing", "message": "Collecting listing pages.", "percent": 18})
         listing_result = await collect_listings(page, config, run_dir, counts, progress_reporter)
-        listings = listing_result["listings"]
+        discovered_listings = listing_result["listings"]
+        listings = limit_listings(discovered_listings, config.get("maxListings"))
         counts["pageCount"] = listing_result["pageCount"]
         counts["listingCount"] = len(listings)
+
+        if len(discovered_listings) != len(listings):
+            await progress_reporter.update(
+                {
+                    "phase": "listing",
+                    "message": f"Collected {len(discovered_listings)} listings. Limiting detail scrape to first {len(listings)}.",
+                    "percent": 38,
+                    "current": len(listings),
+                    "total": len(discovered_listings),
+                    "listingsDiscovered": len(discovered_listings),
+                }
+            )
 
         detail_result = await scrape_details(browser_context, listings, config, run_dir, counts, progress_reporter)
         records = [merge_opportunity_record(listing, detail_result["detailMap"].get(listing["sourceKey"])) for listing in listings]

@@ -494,6 +494,14 @@ function mergeRecords(
   return listings.map((listing) => mergeOpportunityRecord(listing, detailMap.get(listing.sourceKey) ?? null));
 }
 
+function limitListings(listings: OpportunityListing[], maxListings: number | null): OpportunityListing[] {
+  if (!maxListings || listings.length <= maxListings) {
+    return listings;
+  }
+
+  return listings.slice(0, maxListings);
+}
+
 export async function runScrapeJob(
   runId: string,
   trigger: ScrapeTrigger,
@@ -562,9 +570,21 @@ export async function runScrapeJob(
       percent: 18
     });
 
-    const { listings, pageCount } = await collectListings(page, config, runDir, counts, progressReporter, control);
+    const { listings: discoveredListings, pageCount } = await collectListings(page, config, runDir, counts, progressReporter, control);
+    const listings = limitListings(discoveredListings, config.maxListings);
     counts.pageCount = pageCount;
     counts.listingCount = listings.length;
+
+    if (discoveredListings.length !== listings.length) {
+      await progressReporter.update({
+        phase: "listing",
+        message: `Collected ${discoveredListings.length} listings. Limiting detail scrape to first ${listings.length}.`,
+        percent: 38,
+        current: listings.length,
+        total: discoveredListings.length,
+        listingsDiscovered: discoveredListings.length
+      });
+    }
 
     const { detailMap } = await scrapeDetails(context, listings, config, runDir, counts, progressReporter, control);
     const records = mergeRecords(listings, detailMap);

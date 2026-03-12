@@ -49,3 +49,70 @@ export function formatClosingCountdown(endsIn: string | null | undefined): {
   const urgent = /^\d+\s*day/i.test(endsIn) || /^[0-9]+$/i.test(endsIn);
   return { text: endsIn, urgent };
 }
+
+export function formatCurrency(
+  value: number | null | undefined,
+  options?: {
+    compact?: boolean;
+    maximumFractionDigits?: number;
+  },
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "N/A";
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "CAD",
+    notation: options?.compact ? "compact" : "standard",
+    maximumFractionDigits: options?.maximumFractionDigits ?? (options?.compact ? 1 : 0),
+  }).format(value);
+}
+
+export function formatPercentage(
+  value: number | null | undefined,
+  maximumFractionDigits = 0,
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "N/A";
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    style: "percent",
+    maximumFractionDigits,
+  }).format(value);
+}
+
+export function formatCount(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat().format(value);
+}
+
+export function formatCompactNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+export function formatDateLabel(value: string | null | undefined): string {
+  if (!value) {
+    return "N/A";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(parsed);
+}

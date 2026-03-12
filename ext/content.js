@@ -40,14 +40,15 @@ async function runScrape(resumeFromPage) {
       if (match) totalRecords = parseInt(match[1].replace(/,/g, ""), 10);
     }
 
-    // Extract headers
-    const headerRow = table.querySelector("thead tr, tr:first-child");
+    // Extract headers using the label spans inside <th> for reliable text
     const headers = [];
-    if (headerRow) {
-      for (const th of headerRow.querySelectorAll("th, td")) {
-        const text = th.innerText.trim();
-        if (text) headers.push(text);
-      }
+    const thElements = table.querySelectorAll("thead th");
+    for (const th of thElements) {
+      const labelSpan = th.querySelector('[data-iv-role="label"]');
+      const text = labelSpan
+        ? labelSpan.innerText.trim()
+        : th.innerText.trim();
+      if (text) headers.push(text);
     }
     if (headers.length === 0) {
       chrome.runtime.sendMessage({
@@ -186,13 +187,21 @@ async function navigateToPage(targetPage) {
 
 function scrapeCurrentPage(table, colCount) {
   const rows = [];
-  const dataRows = table.querySelectorAll("tbody tr, tr:not(:first-child)");
+  // Use data-object-type to identify data rows (e.g. "contract")
+  let dataRows = table.querySelectorAll("tbody tr[data-object-type]");
+  // Fallback: if no data-object-type rows, use all tbody tr
+  if (dataRows.length === 0) {
+    dataRows = table.querySelectorAll("tbody tr");
+  }
   for (const tr of dataRows) {
     if (tr.querySelector("th")) continue;
-    if (tr.querySelector('[id*="Pager"]')) continue;
-    if (tr.id && tr.id.toLowerCase().includes("pager")) continue;
 
-    const cells = tr.querySelectorAll("td");
+    // Prefer cells marked with data-iv-role="cell"
+    let cells = tr.querySelectorAll('td[data-iv-role="cell"]');
+    // Fallback to all td
+    if (cells.length === 0) {
+      cells = tr.querySelectorAll("td");
+    }
     if (cells.length === 0) continue;
 
     const row = [];
@@ -272,8 +281,12 @@ function getCurrentPageIndex() {
 function getFirstRowText() {
   const table = document.getElementById("body_x_grid_grd");
   if (!table) return "";
-  const firstDataRow = table.querySelector("tbody tr:first-child, tr:nth-child(2)");
+  const firstDataRow =
+    table.querySelector("tbody tr[data-object-type]") ||
+    table.querySelector("tbody tr:first-child");
   if (!firstDataRow) return "";
-  const firstCell = firstDataRow.querySelector("td");
+  const firstCell =
+    firstDataRow.querySelector('td[data-iv-role="cell"]') ||
+    firstDataRow.querySelector("td");
   return firstCell ? firstCell.innerText.trim() : "";
 }

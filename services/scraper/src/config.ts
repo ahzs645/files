@@ -29,6 +29,7 @@ const envSchema = z.object({
   SCRAPER_ARTIFACT_DIR: z.string().default(path.resolve(process.cwd(), "services/scraper/.runtime/artifacts")),
   SCRAPER_INGEST_BATCH_SIZE: z.coerce.number().int().positive().default(1),
   DETAIL_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  SCRAPE_MAX_LISTINGS: z.coerce.number().int().positive().optional(),
   SCRAPE_STATUS: z.string().default("val"),
   SCRAPE_KEYWORD: z.string().optional(),
   SCRAPE_OPPORTUNITY_TYPE: z.string().optional(),
@@ -69,6 +70,7 @@ export function loadConfig() {
     artifactDir: env.SCRAPER_ARTIFACT_DIR,
     ingestBatchSize: env.SCRAPER_INGEST_BATCH_SIZE,
     detailConcurrency: env.DETAIL_CONCURRENCY,
+    maxListings: env.SCRAPE_MAX_LISTINGS ?? null,
     filters: {
       status: env.SCRAPE_STATUS,
       keyword: env.SCRAPE_KEYWORD,

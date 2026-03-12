@@ -13,8 +13,12 @@ import { Route as ContractAwardsRouteImport } from './routes/contract-awards'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ScraperIndexRouteImport } from './routes/scraper/index'
 import { Route as OpportunitiesIndexRouteImport } from './routes/opportunities/index'
+import { Route as ContractAwardsIndexRouteImport } from './routes/contract-awards/index'
 import { Route as ScraperHistoryRouteImport } from './routes/scraper/history'
 import { Route as OpportunitiesProcessIdRouteImport } from './routes/opportunities/$processId'
+import { Route as ContractAwardsAnalysisRouteImport } from './routes/contract-awards/analysis'
+import { Route as ContractAwardsAnalysisSuppliersSupplierKeyRouteImport } from './routes/contract-awards/analysis/suppliers/$supplierKey'
+import { Route as ContractAwardsAnalysisOrganizationsOrganizationKeyRouteImport } from './routes/contract-awards/analysis/organizations/$organizationKey'
 
 const ContractAwardsRoute = ContractAwardsRouteImport.update({
   id: '/contract-awards',
@@ -36,6 +40,11 @@ const OpportunitiesIndexRoute = OpportunitiesIndexRouteImport.update({
   path: '/opportunities/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContractAwardsIndexRoute = ContractAwardsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ContractAwardsRoute,
+} as any)
 const ScraperHistoryRoute = ScraperHistoryRouteImport.update({
   id: '/scraper/history',
   path: '/scraper/history',
@@ -46,62 +55,101 @@ const OpportunitiesProcessIdRoute = OpportunitiesProcessIdRouteImport.update({
   path: '/opportunities/$processId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContractAwardsAnalysisRoute = ContractAwardsAnalysisRouteImport.update({
+  id: '/analysis',
+  path: '/analysis',
+  getParentRoute: () => ContractAwardsRoute,
+} as any)
+const ContractAwardsAnalysisSuppliersSupplierKeyRoute =
+  ContractAwardsAnalysisSuppliersSupplierKeyRouteImport.update({
+    id: '/suppliers/$supplierKey',
+    path: '/suppliers/$supplierKey',
+    getParentRoute: () => ContractAwardsAnalysisRoute,
+  } as any)
+const ContractAwardsAnalysisOrganizationsOrganizationKeyRoute =
+  ContractAwardsAnalysisOrganizationsOrganizationKeyRouteImport.update({
+    id: '/organizations/$organizationKey',
+    path: '/organizations/$organizationKey',
+    getParentRoute: () => ContractAwardsAnalysisRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/contract-awards': typeof ContractAwardsRoute
+  '/contract-awards': typeof ContractAwardsRouteWithChildren
+  '/contract-awards/analysis': typeof ContractAwardsAnalysisRouteWithChildren
   '/opportunities/$processId': typeof OpportunitiesProcessIdRoute
   '/scraper/history': typeof ScraperHistoryRoute
+  '/contract-awards/': typeof ContractAwardsIndexRoute
   '/opportunities/': typeof OpportunitiesIndexRoute
   '/scraper/': typeof ScraperIndexRoute
+  '/contract-awards/analysis/organizations/$organizationKey': typeof ContractAwardsAnalysisOrganizationsOrganizationKeyRoute
+  '/contract-awards/analysis/suppliers/$supplierKey': typeof ContractAwardsAnalysisSuppliersSupplierKeyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/contract-awards': typeof ContractAwardsRoute
+  '/contract-awards/analysis': typeof ContractAwardsAnalysisRouteWithChildren
   '/opportunities/$processId': typeof OpportunitiesProcessIdRoute
   '/scraper/history': typeof ScraperHistoryRoute
+  '/contract-awards': typeof ContractAwardsIndexRoute
   '/opportunities': typeof OpportunitiesIndexRoute
   '/scraper': typeof ScraperIndexRoute
+  '/contract-awards/analysis/organizations/$organizationKey': typeof ContractAwardsAnalysisOrganizationsOrganizationKeyRoute
+  '/contract-awards/analysis/suppliers/$supplierKey': typeof ContractAwardsAnalysisSuppliersSupplierKeyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/contract-awards': typeof ContractAwardsRoute
+  '/contract-awards': typeof ContractAwardsRouteWithChildren
+  '/contract-awards/analysis': typeof ContractAwardsAnalysisRouteWithChildren
   '/opportunities/$processId': typeof OpportunitiesProcessIdRoute
   '/scraper/history': typeof ScraperHistoryRoute
+  '/contract-awards/': typeof ContractAwardsIndexRoute
   '/opportunities/': typeof OpportunitiesIndexRoute
   '/scraper/': typeof ScraperIndexRoute
+  '/contract-awards/analysis/organizations/$organizationKey': typeof ContractAwardsAnalysisOrganizationsOrganizationKeyRoute
+  '/contract-awards/analysis/suppliers/$supplierKey': typeof ContractAwardsAnalysisSuppliersSupplierKeyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/contract-awards'
+    | '/contract-awards/analysis'
     | '/opportunities/$processId'
     | '/scraper/history'
+    | '/contract-awards/'
     | '/opportunities/'
     | '/scraper/'
+    | '/contract-awards/analysis/organizations/$organizationKey'
+    | '/contract-awards/analysis/suppliers/$supplierKey'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/contract-awards'
+    | '/contract-awards/analysis'
     | '/opportunities/$processId'
     | '/scraper/history'
+    | '/contract-awards'
     | '/opportunities'
     | '/scraper'
+    | '/contract-awards/analysis/organizations/$organizationKey'
+    | '/contract-awards/analysis/suppliers/$supplierKey'
   id:
     | '__root__'
     | '/'
     | '/contract-awards'
+    | '/contract-awards/analysis'
     | '/opportunities/$processId'
     | '/scraper/history'
+    | '/contract-awards/'
     | '/opportunities/'
     | '/scraper/'
+    | '/contract-awards/analysis/organizations/$organizationKey'
+    | '/contract-awards/analysis/suppliers/$supplierKey'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ContractAwardsRoute: typeof ContractAwardsRoute
+  ContractAwardsRoute: typeof ContractAwardsRouteWithChildren
   OpportunitiesProcessIdRoute: typeof OpportunitiesProcessIdRoute
   ScraperHistoryRoute: typeof ScraperHistoryRoute
   OpportunitiesIndexRoute: typeof OpportunitiesIndexRoute
@@ -138,6 +186,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OpportunitiesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/contract-awards/': {
+      id: '/contract-awards/'
+      path: '/'
+      fullPath: '/contract-awards/'
+      preLoaderRoute: typeof ContractAwardsIndexRouteImport
+      parentRoute: typeof ContractAwardsRoute
+    }
     '/scraper/history': {
       id: '/scraper/history'
       path: '/scraper/history'
@@ -152,12 +207,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OpportunitiesProcessIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/contract-awards/analysis': {
+      id: '/contract-awards/analysis'
+      path: '/analysis'
+      fullPath: '/contract-awards/analysis'
+      preLoaderRoute: typeof ContractAwardsAnalysisRouteImport
+      parentRoute: typeof ContractAwardsRoute
+    }
+    '/contract-awards/analysis/suppliers/$supplierKey': {
+      id: '/contract-awards/analysis/suppliers/$supplierKey'
+      path: '/suppliers/$supplierKey'
+      fullPath: '/contract-awards/analysis/suppliers/$supplierKey'
+      preLoaderRoute: typeof ContractAwardsAnalysisSuppliersSupplierKeyRouteImport
+      parentRoute: typeof ContractAwardsAnalysisRoute
+    }
+    '/contract-awards/analysis/organizations/$organizationKey': {
+      id: '/contract-awards/analysis/organizations/$organizationKey'
+      path: '/organizations/$organizationKey'
+      fullPath: '/contract-awards/analysis/organizations/$organizationKey'
+      preLoaderRoute: typeof ContractAwardsAnalysisOrganizationsOrganizationKeyRouteImport
+      parentRoute: typeof ContractAwardsAnalysisRoute
+    }
   }
 }
 
+interface ContractAwardsAnalysisRouteChildren {
+  ContractAwardsAnalysisOrganizationsOrganizationKeyRoute: typeof ContractAwardsAnalysisOrganizationsOrganizationKeyRoute
+  ContractAwardsAnalysisSuppliersSupplierKeyRoute: typeof ContractAwardsAnalysisSuppliersSupplierKeyRoute
+}
+
+const ContractAwardsAnalysisRouteChildren: ContractAwardsAnalysisRouteChildren =
+  {
+    ContractAwardsAnalysisOrganizationsOrganizationKeyRoute:
+      ContractAwardsAnalysisOrganizationsOrganizationKeyRoute,
+    ContractAwardsAnalysisSuppliersSupplierKeyRoute:
+      ContractAwardsAnalysisSuppliersSupplierKeyRoute,
+  }
+
+const ContractAwardsAnalysisRouteWithChildren =
+  ContractAwardsAnalysisRoute._addFileChildren(
+    ContractAwardsAnalysisRouteChildren,
+  )
+
+interface ContractAwardsRouteChildren {
+  ContractAwardsAnalysisRoute: typeof ContractAwardsAnalysisRouteWithChildren
+  ContractAwardsIndexRoute: typeof ContractAwardsIndexRoute
+}
+
+const ContractAwardsRouteChildren: ContractAwardsRouteChildren = {
+  ContractAwardsAnalysisRoute: ContractAwardsAnalysisRouteWithChildren,
+  ContractAwardsIndexRoute: ContractAwardsIndexRoute,
+}
+
+const ContractAwardsRouteWithChildren = ContractAwardsRoute._addFileChildren(
+  ContractAwardsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ContractAwardsRoute: ContractAwardsRoute,
+  ContractAwardsRoute: ContractAwardsRouteWithChildren,
   OpportunitiesProcessIdRoute: OpportunitiesProcessIdRoute,
   ScraperHistoryRoute: ScraperHistoryRoute,
   OpportunitiesIndexRoute: OpportunitiesIndexRoute,

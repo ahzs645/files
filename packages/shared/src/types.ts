@@ -139,6 +139,158 @@ export interface ContractAwardsSummary {
   latestImportFile: string | null;
 }
 
+export type ContractAwardAnalysisEntityKind = "supplier" | "organization";
+export type ContractAwardAnalysisDatePreset = "all" | "1y" | "3y" | "custom";
+export type ContractAwardFindingSeverity = "info" | "warning" | "critical";
+
+export interface ContractAwardAnalysisFilters {
+  datePreset?: ContractAwardAnalysisDatePreset;
+  fromDate?: string | null;
+  toDate?: string | null;
+  opportunityType?: string | null;
+  includePlaceholderSuppliers?: boolean;
+  minimumAwardValue?: number | null;
+}
+
+export interface ContractAwardAppliedAnalysisFilters {
+  datePreset: ContractAwardAnalysisDatePreset;
+  fromDate: string | null;
+  toDate: string | null;
+  opportunityType: string | null;
+  includePlaceholderSuppliers: boolean;
+  minimumAwardValue: number | null;
+}
+
+export interface ContractAwardSummaryMetrics {
+  totalAwards: number;
+  totalAwardValue: number;
+  uniqueSuppliers: number;
+  uniqueIssuingOrganizations: number;
+  averageAwardValue: number | null;
+  medianAwardValue: number | null;
+  contractNumberCoverage: number;
+  justificationCoverage: number;
+  placeholderSupplierShare: number;
+}
+
+export interface ContractAwardTrendPoint {
+  label: string;
+  periodStart: string;
+  periodEnd: string;
+  awardCount: number;
+  totalValue: number;
+}
+
+export interface ContractAwardBreakdownRow {
+  key: string;
+  label: string;
+  awardCount: number;
+  totalValue: number;
+  shareOfAwards: number;
+  shareOfValue: number;
+}
+
+export interface ContractAwardRankingRow extends ContractAwardBreakdownRow {
+  averageValue: number | null;
+  secondaryLabel: string | null;
+  placeholder: boolean;
+}
+
+export interface ContractAwardTypeMixRow {
+  key: string;
+  label: string;
+  breakdown: ContractAwardBreakdownRow[];
+}
+
+export interface ContractAwardDataQualitySummary {
+  totalRows: number;
+  placeholderSupplierCount: number;
+  placeholderSupplierRate: number;
+  missingContractNumberCount: number;
+  missingContractNumberRate: number;
+  missingSupplierAddressCount: number;
+  missingSupplierAddressRate: number;
+  missingContactEmailCount: number;
+  missingContactEmailRate: number;
+  missingJustificationCount: number;
+  missingJustificationRate: number;
+  futureDatedAwardCount: number;
+  futureDatedAwardRate: number;
+}
+
+export interface ContractAwardBenchmark {
+  entityMedianAwardValue: number | null;
+  peerMedianAwardValue: number | null;
+  entityAverageAwardValue: number | null;
+  peerAverageAwardValue: number | null;
+  entityConcentration: number | null;
+  peerMedianConcentration: number | null;
+  entityAwardCount: number;
+  peerMedianAwardCount: number | null;
+}
+
+export interface ContractAwardFinding {
+  code: string;
+  title: string;
+  description: string;
+  severity: ContractAwardFindingSeverity;
+}
+
+export interface ContractAwardEntityOption {
+  kind: ContractAwardAnalysisEntityKind;
+  key: string;
+  label: string;
+  awardCount: number;
+  totalValue: number;
+  placeholder: boolean;
+}
+
+export interface ContractAwardAnalysisOverview {
+  appliedFilters: ContractAwardAppliedAnalysisFilters;
+  typeOptions: string[];
+  summary: ContractAwardSummaryMetrics;
+  trends: ContractAwardTrendPoint[];
+  supplierRankings: {
+    byValue: ContractAwardRankingRow[];
+    byAwardCount: ContractAwardRankingRow[];
+    concentration: ContractAwardBreakdownRow[];
+    diversityDistribution: ContractAwardBreakdownRow[];
+  };
+  organizationRankings: {
+    byValue: ContractAwardRankingRow[];
+    byAwardCount: ContractAwardRankingRow[];
+    topSupplierConcentration: ContractAwardRankingRow[];
+    opportunityTypeMix: ContractAwardTypeMixRow[];
+  };
+  dataQuality: ContractAwardDataQualitySummary;
+  findings: ContractAwardFinding[];
+}
+
+export interface ContractAwardEntityProfile {
+  entityKind: ContractAwardAnalysisEntityKind;
+  counterpartyKind: ContractAwardAnalysisEntityKind;
+  entityKey: string;
+  label: string;
+  appliedFilters: ContractAwardAppliedAnalysisFilters;
+  typeOptions: string[];
+  summary: ContractAwardSummaryMetrics & {
+    uniqueCounterparties: number;
+    uniqueOpportunityTypes: number;
+    firstAwardDate: string | null;
+    latestAwardDate: string | null;
+    concentrationToTopCounterparty: number | null;
+    topCounterpartyLabel: string | null;
+  };
+  trends: ContractAwardTrendPoint[];
+  counterpartyRankings: ContractAwardRankingRow[];
+  opportunityTypeMix: ContractAwardBreakdownRow[];
+  awardSizeDistribution: ContractAwardBreakdownRow[];
+  benchmark: ContractAwardBenchmark;
+  findings: ContractAwardFinding[];
+  dataQuality: ContractAwardDataQualitySummary;
+  awards: ContractAwardListItem[];
+}
+
 export interface ScrapeRunCounts {
   listingCount: number;
   detailCount: number;

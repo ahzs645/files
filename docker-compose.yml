@@ -75,6 +75,7 @@ services:
       SCRAPER_USER_DATA_DIR: /data/profile
       SCRAPER_ARTIFACT_DIR: /data/artifacts
       DETAIL_CONCURRENCY: ${DETAIL_CONCURRENCY:-2}
+      SCRAPE_MAX_LISTINGS: ${SCRAPE_MAX_LISTINGS:-}
       SCRAPE_STATUS: ${SCRAPE_STATUS:-val}
     volumes:
       - scraper-data:/data

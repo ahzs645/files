@@ -61,6 +61,27 @@ export const contractAwardImportValidator = v.object({
   justification: nullableString
 });
 
+export const contractAwardAnalysisDatePresetValidator = v.union(
+  v.literal("all"),
+  v.literal("1y"),
+  v.literal("3y"),
+  v.literal("custom")
+);
+
+export const contractAwardEntityKindValidator = v.union(
+  v.literal("supplier"),
+  v.literal("organization")
+);
+
+export const contractAwardAnalysisFiltersValidator = v.object({
+  datePreset: v.optional(contractAwardAnalysisDatePresetValidator),
+  fromDate: v.optional(nullableString),
+  toDate: v.optional(nullableString),
+  opportunityType: v.optional(nullableString),
+  includePlaceholderSuppliers: v.optional(v.boolean()),
+  minimumAwardValue: v.optional(nullableNumber)
+});
+
 export const runCountsValidator = v.object({
   listingCount: v.number(),
   detailCount: v.number(),
