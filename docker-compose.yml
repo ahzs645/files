@@ -67,6 +67,7 @@ services:
       SCRAPER_INTERNAL_TOKEN: ${SCRAPER_INTERNAL_TOKEN:-replace-me}
       INGEST_SHARED_SECRET: ${INGEST_SHARED_SECRET:-replace-me}
       CONVEX_SITE_URL: ${SCRAPER_CONVEX_SITE_URL:-http://backend:3211}
+      CONVEX_SELF_HOSTED_URL: ${CONVEX_SELF_HOSTED_URL:-http://backend:3210}
       BCBID_BASE_URL: ${BCBID_BASE_URL:-https://www.bcbid.gov.bc.ca}
       SCRAPE_CRON: ${SCRAPE_CRON:-0 */6 * * *}
       SCRAPER_ENGINE: ${SCRAPER_ENGINE:-playwright}
@@ -77,8 +78,11 @@ services:
       DETAIL_CONCURRENCY: ${DETAIL_CONCURRENCY:-2}
       SCRAPE_MAX_LISTINGS: ${SCRAPE_MAX_LISTINGS:-}
       SCRAPE_STATUS: ${SCRAPE_STATUS:-val}
+      CONTRACT_AWARDS_IMPORT_ROOT: ${CONTRACT_AWARDS_IMPORT_ROOT:-/Users/ahmadjalil/Downloads}
+      CONTRACT_AWARDS_IMPORT_STATE_DIR: /data/imports
     volumes:
       - scraper-data:/data
+      - ${CONTRACT_AWARDS_IMPORT_ROOT:-/Users/ahmadjalil/Downloads}:/Users/ahmadjalil/Downloads:ro
 
 volumes:
   convex-data:

@@ -1,6 +1,7 @@
 import { createServer } from "./server/app";
 import { loadConfig } from "./config";
 import { ConvexIngestClient } from "./ingest/client";
+import { createContractAwardsImportManager } from "./import/contractAwardsImportManager";
 import { startScheduler } from "./scheduler";
 import { createScrapeCoordinator } from "./scraper/coordinator";
 
@@ -9,7 +10,8 @@ async function main() {
   const ingestClient = new ConvexIngestClient(config.convexSiteUrl, config.ingestSharedSecret);
   const coordinator = createScrapeCoordinator(config, ingestClient);
   const scheduler = startScheduler(config.scrapeCron, coordinator);
-  const app = createServer(config.internalToken, coordinator);
+  const contractAwardsImportManager = createContractAwardsImportManager(config);
+  const app = createServer(config.internalToken, coordinator, contractAwardsImportManager);
 
   app.listen(config.port, () => {
     console.log(`[scraper] Listening on port ${config.port}`);

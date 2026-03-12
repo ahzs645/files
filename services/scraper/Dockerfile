@@ -21,6 +21,8 @@ RUN python3 -m pip install -r services/scraper/botright/requirements.txt && \
 RUN npx playwright install --with-deps chromium
 
 COPY packages/shared ./packages/shared
+COPY scripts ./scripts
+COPY convex/_generated ./convex/_generated
 COPY services/scraper ./services/scraper
 
 RUN mkdir -p /data && chown -R node:node /app /data /ms-playwright

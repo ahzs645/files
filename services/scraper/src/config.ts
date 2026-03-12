@@ -5,10 +5,19 @@ import { z } from "zod";
 
 loadEnv();
 
+function emptyStringToUndefined(value: unknown) {
+  if (typeof value === "string" && value.trim() === "") {
+    return undefined;
+  }
+
+  return value;
+}
+
 const envSchema = z.object({
   SCRAPER_PORT: z.coerce.number().int().positive().default(3001),
   SCRAPER_INTERNAL_TOKEN: z.string().min(1).default("replace-me"),
   CONVEX_SITE_URL: z.url().default("http://127.0.0.1:3211"),
+  CONVEX_SELF_HOSTED_URL: z.url().default("http://127.0.0.1:3210"),
   INGEST_SHARED_SECRET: z.string().min(1).default("replace-me"),
   BCBID_BASE_URL: z.url().default("https://www.bcbid.gov.bc.ca"),
   SCRAPE_CRON: z.string().min(1).default("0 */6 * * *"),
@@ -29,7 +38,10 @@ const envSchema = z.object({
   SCRAPER_ARTIFACT_DIR: z.string().default(path.resolve(process.cwd(), "services/scraper/.runtime/artifacts")),
   SCRAPER_INGEST_BATCH_SIZE: z.coerce.number().int().positive().default(1),
   DETAIL_CONCURRENCY: z.coerce.number().int().positive().default(2),
-  SCRAPE_MAX_LISTINGS: z.coerce.number().int().positive().optional(),
+  SCRAPE_MAX_LISTINGS: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().optional(),
+  ),
   SCRAPE_STATUS: z.string().default("val"),
   SCRAPE_KEYWORD: z.string().optional(),
   SCRAPE_OPPORTUNITY_TYPE: z.string().optional(),
@@ -40,7 +52,9 @@ const envSchema = z.object({
   SCRAPE_ISSUE_DATE_MIN: z.string().optional(),
   SCRAPE_ISSUE_DATE_MAX: z.string().optional(),
   SCRAPE_CLOSING_DATE_MIN: z.string().optional(),
-  SCRAPE_CLOSING_DATE_MAX: z.string().optional()
+  SCRAPE_CLOSING_DATE_MAX: z.string().optional(),
+  CONTRACT_AWARDS_IMPORT_ROOT: z.string().default("/Users/ahmadjalil/Downloads"),
+  CONTRACT_AWARDS_IMPORT_STATE_DIR: z.string().default("/data/imports"),
 });
 
 export type ScraperConfig = ReturnType<typeof loadConfig>;
@@ -52,6 +66,7 @@ export function loadConfig() {
     port: env.SCRAPER_PORT,
     internalToken: env.SCRAPER_INTERNAL_TOKEN,
     convexSiteUrl: env.CONVEX_SITE_URL.replace(/\/$/, ""),
+    convexUrl: env.CONVEX_SELF_HOSTED_URL.replace(/\/$/, ""),
     ingestSharedSecret: env.INGEST_SHARED_SECRET,
     baseUrl: env.BCBID_BASE_URL.replace(/\/$/, ""),
     scrapeCron: env.SCRAPE_CRON,
@@ -71,6 +86,8 @@ export function loadConfig() {
     ingestBatchSize: env.SCRAPER_INGEST_BATCH_SIZE,
     detailConcurrency: env.DETAIL_CONCURRENCY,
     maxListings: env.SCRAPE_MAX_LISTINGS ?? null,
+    contractAwardImportRoot: path.resolve(env.CONTRACT_AWARDS_IMPORT_ROOT),
+    contractAwardImportStateDir: path.resolve(env.CONTRACT_AWARDS_IMPORT_STATE_DIR),
     filters: {
       status: env.SCRAPE_STATUS,
       keyword: env.SCRAPE_KEYWORD,
