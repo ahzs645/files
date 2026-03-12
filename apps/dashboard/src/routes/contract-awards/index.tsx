@@ -97,6 +97,7 @@ function ContractAwardsBrowsePage() {
     undefined,
   );
   const [listError, setListError] = useState<string | null>(null);
+  const [listLoading, setListLoading] = useState(true);
   const [backgroundImportPath, setBackgroundImportPath] = useState(
     DEFAULT_BACKGROUND_IMPORT_PATH,
   );
@@ -149,7 +150,7 @@ function ContractAwardsBrowsePage() {
     let cancelled = false;
 
     setListError(null);
-    setListResponse(undefined);
+    setListLoading(true);
 
     void runList({
       search: deferredSearch || undefined,
@@ -158,6 +159,7 @@ function ContractAwardsBrowsePage() {
       .then((result) => {
         if (!cancelled) {
           setListResponse(result as ContractAwardListResponse);
+          setListLoading(false);
         }
       })
       .catch((error) => {
@@ -165,6 +167,7 @@ function ContractAwardsBrowsePage() {
           setListError(
             error instanceof Error ? error.message : "Could not load contract awards.",
           );
+          setListLoading(false);
         }
       });
 
@@ -602,7 +605,7 @@ function ContractAwardsBrowsePage() {
       <Card>
         <CardHeader eyebrow="Browse" title="Imported Awards" icon={Database} />
         <div className="space-y-4">
-          {listError ? (
+          {listError && !listResponse ? (
             <Banner variant="error">{listError}</Banner>
           ) : !listResponse ? (
             <div className="flex items-center justify-center py-16">
@@ -610,6 +613,8 @@ function ContractAwardsBrowsePage() {
             </div>
           ) : (
             <>
+              {listError ? <Banner variant="error">{listError}</Banner> : null}
+
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <SearchInput
                   value={search}
@@ -617,17 +622,19 @@ function ContractAwardsBrowsePage() {
                   placeholder="Search by opportunity, supplier, organization, email, or contract number"
                 />
                 <div className="text-sm text-text-secondary">
-                  {listResponse.items.length === 0
-                    ? hasActiveSearch
-                      ? "No matching awards."
-                      : "No imported awards yet."
-                    : !hasActiveSearch && summary
-                      ? `Showing ${listResponse.items.length} of ${summary.total} imported awards`
-                      : listResponse.total === null
-                      ? listResponse.hasMore
-                        ? `Showing first ${listResponse.items.length} matching awards`
-                        : `Showing ${listResponse.items.length} matching awards`
-                      : `Showing ${listResponse.items.length} of ${listResponse.total} imported awards`}
+                  {listLoading
+                    ? "Updating results..."
+                    : listResponse.items.length === 0
+                      ? hasActiveSearch
+                        ? "No matching awards."
+                        : "No imported awards yet."
+                      : !hasActiveSearch && summary
+                        ? `Showing ${listResponse.items.length} of ${summary.total} imported awards`
+                        : listResponse.total === null
+                          ? listResponse.hasMore
+                            ? `Showing first ${listResponse.items.length} matching awards`
+                            : `Showing ${listResponse.items.length} matching awards`
+                          : `Showing ${listResponse.items.length} of ${listResponse.total} imported awards`}
                 </div>
               </div>
 

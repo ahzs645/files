@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAction } from "convex/react";
 import {
@@ -42,6 +42,18 @@ export const Route = createFileRoute("/contract-awards/analysis")({
 });
 
 function ContractAwardsAnalysisPage() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+
+  if (pathname !== "/contract-awards/analysis") {
+    return <Outlet />;
+  }
+
+  return <ContractAwardsAnalysisHub />;
+}
+
+function ContractAwardsAnalysisHub() {
   const [filters, setFilters] = useState<ContractAwardAnalysisFilters>(
     DEFAULT_ANALYSIS_FILTERS,
   );
