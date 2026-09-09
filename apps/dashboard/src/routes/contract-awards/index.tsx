@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { BidPreferences } from '../../components/preferences/BidPreferences';
 import { useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useAction, useMutation } from "convex/react";
@@ -86,6 +88,10 @@ type ContractAwardBackgroundImportStatus = {
 };
 
 function ContractAwardsBrowsePage() {
+  const { awardsView } = useContext(BidPreferences);
+  return awardsView ?? <StandaloneContractAwardsBrowsePage />;
+}
+function StandaloneContractAwardsBrowsePage() {
   const [search, setSearch] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -485,7 +491,7 @@ function ContractAwardsBrowsePage() {
         </div>
       </Card>
 
-      <Card>
+      {!import.meta.env.VITE_ZOER_PLUGIN && <Card>
         <CardHeader
           eyebrow="Background Import"
           title="Bulk Import From Folder"
@@ -566,7 +572,7 @@ function ContractAwardsBrowsePage() {
                 />
               ) : null}
 
-              <div className="grid gap-3 text-xs text-text-secondary md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid min-w-0 grid-cols-1 gap-3 text-xs text-text-secondary md:grid-cols-2 xl:grid-cols-4">
                 <div>
                   Files completed: {backgroundImportStatus.totals.filesCompleted} /{" "}
                   {backgroundImportStatus.totalFiles}
@@ -600,7 +606,7 @@ function ContractAwardsBrowsePage() {
             </Banner>
           ) : null}
         </div>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader eyebrow="Browse" title="Imported Awards" icon={Database} />

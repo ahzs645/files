@@ -51,10 +51,17 @@ export function parseListingPage(html: string, baseUrl: string): ListingPagePars
   const $ = cheerio.load(html);
   const opportunities: OpportunityListing[] = [];
 
-  $("#body_x_grid_grd tbody tr").each((_, row) => {
-    const cells = $(row).find("td");
-    if (cells.length < 13) {
+  $("#body_x_grid_grd > tbody > tr").each((_, row) => {
+    const cells = $(row).children("td");
+    if (!cells.length) return;
+
+    // Empty grids can contain a single spanning message instead of data rows.
+    const rowText = normalizeWhitespace($(row).text());
+    if (cells.length === 1 && (!rowText || /^no (?:results?|records?|data|opportunities)(?: (?:found|available|to display))?[.!]?$/i.test(rowText))) {
       return;
+    }
+    if (cells.length < 13) {
+      throw new Error("BC Bid's opportunities grid contains rows that could not be read. The page may still be loading or its layout may have changed. Retry the capture.");
     }
 
     const getText = (index: number) => normalizeWhitespace($(cells[index]).text());
@@ -67,8 +74,13 @@ export function parseListingPage(html: string, baseUrl: string): ListingPagePars
     const opportunityId = getText(1);
 
     if (!opportunityId) {
-      return;
+      throw new Error("BC Bid's opportunities grid contains a row without an opportunity ID. Retry the capture after the grid finishes loading.");
     }
+
+    const commodityItems = $(cells[3]).find("li");
+    const commodities = commodityItems.length
+      ? commodityItems.map((_, item) => normalizeWhitespace($(item).text())).get()
+      : getText(3).split(/[,;]+/);
 
     opportunities.push({
       sourceKey: processId ?? opportunityId,
@@ -78,7 +90,7 @@ export function parseListingPage(html: string, baseUrl: string): ListingPagePars
       description: getText(2),
       listingUrl: null,
       detailUrl,
-      commodities: dedupeStrings(getText(3).split(/[,;]+/)),
+      commodities: dedupeStrings(commodities),
       type: getText(4),
       issueDate: parseDateToIso(getText(5)),
       closingDate: parseDateToIso(getText(6)),
@@ -93,5 +105,8 @@ export function parseListingPage(html: string, baseUrl: string): ListingPagePars
   });
 
   const { currentPage, totalPages } = parsePagerValue($);
+  if (!opportunities.length && totalPages > 1) {
+    throw new Error("BC Bid's opportunities grid shows more result pages but no readable records. Wait for the grid to finish loading, then retry the capture.");
+  }
   return { opportunities, currentPage, totalPages };
 }

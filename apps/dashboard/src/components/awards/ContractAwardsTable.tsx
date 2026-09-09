@@ -1,3 +1,4 @@
+import { StarButton } from '../preferences/BidPreferences';
 import { useEffect, useRef, useState } from "react";
 import type { ContractAwardListItem } from "@bcbid/shared";
 import { Button } from "../ui/Button";
@@ -132,6 +133,7 @@ export function ContractAwardsTable({
                 className="border-b border-border-subtle align-top transition-colors hover:bg-bg-hover/50"
               >
                 <td className="px-3 py-3 text-text-secondary whitespace-nowrap">
+                  <StarButton entity="award" recordKey={item.importKey} label={item.opportunityDescription} />
                   {fallbackText(item.awardDate)}
                 </td>
                 <td className="px-3 py-3 min-w-[280px]">
@@ -187,7 +189,7 @@ export function ContractAwardsTable({
       >
         {selectedItem ? (
           <div className="space-y-5">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
               <DetailField label="Opportunity ID" value={selectedItem.opportunityId} />
               <DetailField label="Opportunity Type" value={selectedItem.opportunityType} />
               <DetailField label="Issuing Organization" value={selectedItem.issuingOrganization} />
@@ -198,7 +200,7 @@ export function ContractAwardsTable({
               <DetailField label="Source File" value={selectedItem.sourceFileName} />
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
               <DetailField
                 label="Contract Value"
                 value={formatAwardValue(selectedItem)}

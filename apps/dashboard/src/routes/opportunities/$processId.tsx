@@ -1,3 +1,4 @@
+import { StarButton } from '../../components/preferences/BidPreferences';
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { ArrowLeft } from "lucide-react";
@@ -45,9 +46,10 @@ function OpportunityDetailPage() {
           </div>
         </Card>
       ) : (
-        <Card>
-          <OpportunityDetailView detail={detail} />
-        </Card>
+        <OpportunityDetailView
+          detail={detail}
+          actions={<StarButton entity="opportunity" recordKey={detail.sourceKey} label={detail.description} />}
+        />
       )}
     </div>
   );

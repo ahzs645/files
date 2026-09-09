@@ -22,7 +22,10 @@
     "scrape:live": "npm run scrape:live --workspace @bcbid/scraper",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "npm run typecheck --workspace @bcbid/shared && npm run typecheck --workspace @bcbid/web && npm run typecheck --workspace @bcbid/scraper && tsc -p convex/tsconfig.json --noEmit"
+    "typecheck": "npm run typecheck --workspace @bcbid/shared && npm run typecheck --workspace @bcbid/web && npm run typecheck --workspace @bcbid/scraper && tsc -p convex/tsconfig.json --noEmit",
+    "zoer:build": "bun zoer/build.ts",
+    "zoer:test": "vitest run tests/zoer-capture.test.ts tests/zoer-pipeline.test.ts tests/zoer-full.test.ts tests/zoer-history.test.ts tests/zoer-database.test.ts",
+    "zoer:test:worker": "bun run zoer:build && bun zoer/test-database-worker.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

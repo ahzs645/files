@@ -1,0 +1,913 @@
+{
+  "id": "bc-bid-monitor",
+  "name": "BC Bid Monitor",
+  "version": "0.12.2",
+  "description": "BC Bid catalog, attachment downloads, saved review prompts, AI labels and manual tags on Zoer.",
+  "type": "integration",
+  "integration": {
+    "apiVersion": "1",
+    "networkAllowlist": [
+      "bcbid.gov.bc.ca"
+    ],
+    "permissions": [
+      "browser:page:read",
+      "artifacts:write",
+      "workspace:sandbox",
+      "browser:pages:capture",
+      "browser:search",
+      "workspace:downloads",
+      "workspace:catalog"
+    ],
+    "workspace": {
+      "title": "BC Bid",
+      "icon": "puzzle",
+      "surfaceIds": [
+        "opportunities",
+        "details"
+      ],
+      "entrypoint": "dashboard/index.html"
+    },
+    "actions": [
+      {
+        "id": "browser.open",
+        "title": "Open BC Bid opportunities",
+        "description": "Navigate the selected Zoer browser to public opportunities. Browser checks remain manual.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "browser-session",
+          "handler": "browser.navigate.v1"
+        },
+        "requiredCapabilities": [
+          "browser-session"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "enum": [
+                "https://bcbid.gov.bc.ca/page.aspx/en/rfp/request_browse_public"
+              ],
+              "default": "https://bcbid.gov.bc.ca/page.aspx/en/rfp/request_browse_public"
+            }
+          },
+          "required": [
+            "url"
+          ]
+        },
+        "resourceLimits": {
+          "timeoutMs": 45000,
+          "maxOutputBytes": 65536
+        },
+        "idempotent": true
+      },
+      {
+        "id": "listing.capture",
+        "title": "Capture current listing page",
+        "description": "Parse only the current BC Bid public page and save records in the database. Complete browser checks manually. This does not crawl other pages.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {},
+          "required": []
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rows": {
+              "type": "array",
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "opportunity_id": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "status": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "type": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "closing_date": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "issued_by": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "detail_url": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "opportunity_id",
+                  "description",
+                  "status",
+                  "type",
+                  "closing_date",
+                  "issued_by",
+                  "detail_url"
+                ]
+              }
+            },
+            "artifactId": {
+              "type": "string"
+            },
+            "sourceUrl": {
+              "type": "string"
+            },
+            "capturedAt": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "current-page"
+              ]
+            }
+          },
+          "required": [
+            "rows",
+            "artifactId",
+            "sourceUrl",
+            "capturedAt",
+            "scope"
+          ]
+        },
+        "resourceLimits": {
+          "timeoutMs": 90000,
+          "maxMemoryMb": 256,
+          "maxOutputBytes": 2097152
+        },
+        "idempotent": false
+      },
+      {
+        "id": "detail.capture",
+        "title": "Capture current detail page",
+        "description": "Parse only the current BC Bid public page and save records in the database. Complete browser checks manually. This does not crawl other pages.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {},
+          "required": []
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rows": {
+              "type": "array",
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "field",
+                  "value"
+                ]
+              }
+            },
+            "artifactId": {
+              "type": "string"
+            },
+            "sourceUrl": {
+              "type": "string"
+            },
+            "capturedAt": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "current-page"
+              ]
+            }
+          },
+          "required": [
+            "rows",
+            "artifactId",
+            "sourceUrl",
+            "capturedAt",
+            "scope"
+          ]
+        },
+        "resourceLimits": {
+          "timeoutMs": 90000,
+          "maxMemoryMb": 256,
+          "maxOutputBytes": 2097152
+        },
+        "idempotent": false
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxMemoryMb": 256,
+          "maxOutputBytes": 2097152,
+          "maxBrowserPages": 4
+        },
+        "idempotent": false,
+        "id": "scrape.sample",
+        "title": "Scrape a listing page and details",
+        "description": "Capture the first public listing page and up to three opportunity details. Saves checkpoints in Zoer; browser checks require manual completion. Additional listing pages are not crawled.",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "detailLimit": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3,
+              "default": 3
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "listingCount": {
+              "type": "integer"
+            },
+            "detailCount": {
+              "type": "integer"
+            },
+            "pageCount": {
+              "type": "integer"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "limited": {
+              "type": "boolean"
+            },
+            "totalPages": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "artifactId",
+            "listingCount",
+            "detailCount",
+            "pageCount",
+            "scope",
+            "limited",
+            "totalPages"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxMemoryMb": 256,
+          "maxOutputBytes": 2097152
+        },
+        "idempotent": false,
+        "id": "awards.import",
+        "title": "Import contract award batch",
+        "description": "Validate and save up to 200 uploaded award records into this plugin\u2019s database.",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fileName": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "records": {
+              "type": "array",
+              "maxItems": 200,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "opportunityId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "opportunityDescription": {
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "opportunityType": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "issuingOrganization": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "issuingLocation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "contractNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "contactEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "contractValueText": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "successfulSupplier": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "supplierAddress": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "awardDate": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  },
+                  "justification": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "opportunityId",
+                  "opportunityDescription",
+                  "opportunityType",
+                  "issuingOrganization",
+                  "issuingLocation",
+                  "contractNumber",
+                  "contactEmail",
+                  "contractValueText",
+                  "currency",
+                  "successfulSupplier",
+                  "supplierAddress",
+                  "awardDate",
+                  "justification"
+                ]
+              }
+            }
+          },
+          "required": [
+            "records",
+            "fileName"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "artifactId",
+            "count"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 7200000,
+          "maxMemoryMb": 512,
+          "maxOutputBytes": 67108864,
+          "maxBrowserPages": 8192
+        },
+        "idempotent": false,
+        "id": "scrape.full",
+        "title": "Scrape all current public opportunities",
+        "description": "Crawl all current listing pages and opportunity details, saving attachment links and resumable checkpoints. Up to 200 listing pages, 3000 opportunities, two hours. Browser checks require manual completion.",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "resume": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "listingCount": {
+              "type": "integer"
+            },
+            "detailCount": {
+              "type": "integer"
+            },
+            "pageCount": {
+              "type": "integer"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "limited": {
+              "type": "boolean"
+            },
+            "totalPages": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "artifactId",
+            "listingCount",
+            "detailCount",
+            "pageCount",
+            "scope",
+            "limited",
+            "totalPages"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "idempotent": false,
+        "id": "awards.history",
+        "title": "Download public award history",
+        "description": "Search all available public contract awards from 1900 onward, save every page, and resume interrupted searches. Six hours and 3500 pages per run; records only.",
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxMemoryMb": 512,
+          "maxOutputBytes": 67108864,
+          "maxBrowserPages": 8192
+        },
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "resume": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "idempotent": false,
+        "id": "stars.set",
+        "title": "Save bid star",
+        "description": "Save or remove a star on an opportunity or award in Zoer.",
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxMemoryMb": 256,
+          "maxOutputBytes": 262144
+        },
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "entity": {
+              "type": "string",
+              "enum": [
+                "opportunity",
+                "award"
+              ]
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100000
+            },
+            "starred": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "entity",
+            "key",
+            "starred"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "documents.download.v1"
+        },
+        "idempotent": false,
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "id": "documents.download",
+        "title": "Download selected bid documents",
+        "description": "Process 1\u201350 saved database records in a resumable batch. Existing successful results are reused unless forced.",
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "maxLength": 100000
+              }
+            },
+            "force": {
+              "type": "boolean"
+            },
+            "resumeRunId": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "recordIds"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "records.review.v1"
+        },
+        "idempotent": false,
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "id": "records.review",
+        "title": "Review selected bids with AI",
+        "description": "Process 1\u201350 saved database records in a resumable batch. Existing successful results are reused unless forced.",
+        "requiredCapabilities": [
+          "model-runtime",
+          "artifact-store"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "maxLength": 100000
+              }
+            },
+            "force": {
+              "type": "boolean"
+            },
+            "promptId": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "includeDocuments": {
+              "type": "boolean"
+            },
+            "resumeRunId": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "recordIds",
+            "promptId"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "idempotent": true,
+        "id": "catalog.migrate",
+        "title": "Unify saved bid database",
+        "description": "Migrate existing records and history into database storage while retaining source files.",
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 1800000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 67108864
+        },
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "idempotent": true,
+        "id": "opportunities.import",
+        "title": "Import opportunity JSON",
+        "description": "Validate and merge opportunity JSON directly into the database.",
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 1800000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 67108864
+        },
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "records": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "fileName": {
+              "type": "string",
+              "maxLength": 250
+            }
+          },
+          "required": [
+            "records"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "records.review.cli.v1"
+        },
+        "idempotent": false,
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "id": "records.review.cli",
+        "title": "Review selected bids with installed Codex",
+        "description": "Use the selected running computer\u2019s signed-in Codex CLI at low reasoning. Reviews use saved evidence with shell and web tools disabled.",
+        "requiredCapabilities": [
+          "runtime-resources",
+          "artifact-store"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "maxLength": 100000
+              }
+            },
+            "force": {
+              "type": "boolean"
+            },
+            "promptId": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "includeDocuments": {
+              "type": "boolean"
+            },
+            "resumeRunId": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "computerId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 150
+            }
+          },
+          "required": [
+            "recordIds",
+            "promptId",
+            "computerId"
+          ]
+        }
+      }
+    ],
+    "ui": [
+      {
+        "id": "opportunities",
+        "title": "Captured opportunities \u00b7 current page",
+        "placement": "dashboard",
+        "renderer": "table",
+        "actionId": "listing.capture",
+        "columns": [
+          {
+            "key": "opportunity_id",
+            "label": "ID"
+          },
+          {
+            "key": "description",
+            "label": "Opportunity"
+          },
+          {
+            "key": "status",
+            "label": "Status"
+          },
+          {
+            "key": "type",
+            "label": "Type"
+          },
+          {
+            "key": "closing_date",
+            "label": "Closes"
+          },
+          {
+            "key": "issued_by",
+            "label": "Buyer"
+          },
+          {
+            "key": "detail_url",
+            "label": "Source"
+          }
+        ]
+      },
+      {
+        "id": "details",
+        "title": "Captured opportunity details",
+        "placement": "dashboard",
+        "renderer": "table",
+        "actionId": "detail.capture",
+        "columns": [
+          {
+            "key": "field",
+            "label": "Field"
+          },
+          {
+            "key": "value",
+            "label": "Value"
+          }
+        ]
+      }
+    ]
+  },
+  "config": {
+    "browser_session_id": {
+      "type": "string",
+      "description": "Zoer browser session used by this workspace. Empty selects the only ready browser.",
+      "required": false,
+      "default": ""
+    }
+  }
+}

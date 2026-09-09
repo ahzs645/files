@@ -1,23 +1,26 @@
 import { ChevronDown } from "lucide-react";
 
 export function Select({
+  label,
   value,
   onChange,
   options,
   icon: Icon,
 }: {
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   icon?: React.ComponentType<{ size?: number; className?: string }>;
 }) {
   return (
-    <div className="relative flex items-center gap-2 rounded-xl border border-border-default bg-bg-subtle px-3 min-h-[44px]">
+    <div className="relative flex min-w-0 items-center gap-2 rounded-xl border border-border-default bg-bg-subtle px-3 min-h-[44px]">
       {Icon ? <Icon size={14} className="text-text-tertiary shrink-0" /> : null}
       <select
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none bg-transparent outline-none text-sm text-text-primary pr-6 cursor-pointer"
+        className="min-w-0 w-full flex-1 appearance-none bg-transparent outline-none text-sm text-text-primary pr-6 cursor-pointer"
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>

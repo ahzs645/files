@@ -64,7 +64,7 @@ export function TrendChartCard({
       ) : (
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data}>
+            <AreaChart data={data} aria-label={title}>
               <defs>
                 <linearGradient id={`gradient-${title}`} x1="0" x2="0" y1="0" y2="1">
                   <stop offset="0%" stopColor={color} stopOpacity={0.38} />
@@ -133,7 +133,7 @@ export function BreakdownBarChartCard({
       ) : (
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rows} layout="vertical" margin={{ left: 10, right: 10 }}>
+            <BarChart data={rows} aria-label={title} layout="vertical" margin={{ left: 10, right: 10 }}>
               <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
               <XAxis
                 type="number"
@@ -218,7 +218,7 @@ export function TypeMixStackedBarCard({
     <AnalysisChartCard title={title} description={description}>
       <div className="h-[320px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ left: 10, right: 10 }}>
+          <BarChart data={chartData} aria-label={title} margin={{ left: 10, right: 10 }}>
             <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
             <XAxis
               dataKey="label"

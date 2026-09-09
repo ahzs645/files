@@ -11,7 +11,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-border-default bg-bg-surface backdrop-blur-xl ${padding ? "p-5" : ""} ${className}`}
+      className={`min-w-0 rounded-2xl border border-border-default bg-bg-surface backdrop-blur-xl ${padding ? "p-5" : ""} ${className}`}
     >
       {children}
     </div>
@@ -30,7 +30,7 @@ export function CardHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 mb-5">
+    <div className="flex min-w-0 flex-wrap items-start justify-between gap-4 mb-5">
       <div>
         <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-accent mb-2">
           {Icon ? <Icon size={13} /> : null}

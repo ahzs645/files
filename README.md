@@ -283,3 +283,7 @@ docker compose exec -T scraper sh -lc \
 - The dashboard is an operator console with manual start/stop controls and reactive scrape progress.
 - Public file downloads are stored as metadata only in phase 1.
 - The existing root JS files were a prototype and are not part of the new runtime.
+
+## Zoer plugin (partial)
+
+This repository also builds a separate loadable Zoer plugin. It reuses Zoer browser sessions, isolated workers and storage for resumable current-public-opportunity and historical-award crawls, persistent stars and CSV/JSON exports, without another browser or Convex deployment. See [zoer/README.md](zoer/README.md) for packaging, installation, supported actions and the remaining migration. The standalone application above continues to work independently.

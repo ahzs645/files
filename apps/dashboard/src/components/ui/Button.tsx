@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, type ButtonHTMLAttributes } from "react";
 import { LoaderCircle } from "lucide-react";
 
 const variants = {
@@ -19,7 +19,8 @@ export function Button({
   disabled = false,
   onClick,
   className = "",
-}: {
+  ...buttonProps
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode;
   variant?: keyof typeof variants;
   loading?: boolean;
@@ -29,6 +30,7 @@ export function Button({
 }) {
   return (
     <button
+      {...buttonProps}
       type="button"
       disabled={disabled || loading}
       onClick={onClick}

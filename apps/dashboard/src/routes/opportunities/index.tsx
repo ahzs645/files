@@ -1,5 +1,7 @@
+import { BidPreferences } from '../../components/preferences/BidPreferences';
+import { Button } from '../../components/ui/Button';
 import { createFileRoute } from "@tanstack/react-router";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useContext, useEffect, useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { LayoutGrid, List } from "lucide-react";
 import { api } from "@convex/_generated/api";
@@ -32,6 +34,10 @@ function compareValues(
 }
 
 function OpportunitiesPage() {
+  const { opportunitiesView } = useContext(BidPreferences);
+  return opportunitiesView ?? <StandaloneOpportunitiesPage />;
+}
+function StandaloneOpportunitiesPage() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState("All");
@@ -40,13 +46,16 @@ function OpportunitiesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 
+  const [cursor, setCursor] = useState<string | null>(null);
+  const { onlyStarred } = useContext(BidPreferences);
+  useEffect(() => setCursor(null), [deferredSearch, status, type, onlyStarred]);
   const summary = useQuery(api.dashboard.summary, {});
   const listResponse = useQuery(api.opportunities.list, {
     search: deferredSearch || undefined,
     status: status === "All" ? undefined : status,
     type: type === "All" ? undefined : type,
     limit: 200,
-    cursor: null,
+    cursor,
   });
 
   const sortedItems = useMemo(() => {
@@ -113,6 +122,7 @@ function OpportunitiesPage() {
         typeOptions={summary?.typeOptions ?? []}
       />
 
+      {listResponse && <div className="zoer-record-tools"><Button variant="ghost" disabled={!cursor} onClick={() => setCursor(String(Math.max(0, Number(cursor) - 200)))}>Previous</Button><span>Page {Math.floor(Number(cursor) / 200) + 1}</span><Button variant="ghost" disabled={!listResponse.nextCursor} onClick={() => setCursor(listResponse.nextCursor)}>Next</Button></div>}
       {/* Results */}
       {!listResponse ? (
         <div className="flex items-center justify-center py-16">
@@ -127,7 +137,7 @@ function OpportunitiesPage() {
           </div>
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {sortedItems.map((item) => (
             <OpportunityCard key={item.sourceKey} item={item} />
           ))}

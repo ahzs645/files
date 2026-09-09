@@ -49,10 +49,11 @@ export function AnalysisFilterBar({
           </p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-4">
           <div>
             <FieldLabel>Date Window</FieldLabel>
             <Select
+              label="Date window"
               value={datePreset}
               onChange={(value) =>
                 onChange({
@@ -70,6 +71,7 @@ export function AnalysisFilterBar({
           <div>
             <FieldLabel>Opportunity Type</FieldLabel>
             <Select
+              label="Opportunity type"
               value={filters.opportunityType ?? "__all__"}
               onChange={(value) =>
                 onChange({
@@ -91,6 +93,7 @@ export function AnalysisFilterBar({
               <span className="text-sm text-text-tertiary">$</span>
               <input
                 type="number"
+                aria-label="Minimum award value"
                 min="0"
                 step="5000"
                 value={filters.minimumAwardValue ?? ""}
@@ -130,12 +133,13 @@ export function AnalysisFilterBar({
         </div>
 
         {datePreset === "custom" ? (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <FieldLabel>From Date</FieldLabel>
               <label className="flex min-h-[44px] items-center rounded-xl border border-border-default bg-bg-subtle px-3.5 focus-within:border-accent/30 transition-colors">
                 <input
                   type="date"
+                  aria-label="From date"
                   value={filters.fromDate ?? ""}
                   onChange={(event) =>
                     onChange({
@@ -152,6 +156,7 @@ export function AnalysisFilterBar({
               <label className="flex min-h-[44px] items-center rounded-xl border border-border-default bg-bg-subtle px-3.5 focus-within:border-accent/30 transition-colors">
                 <input
                   type="date"
+                  aria-label="To date"
                   value={filters.toDate ?? ""}
                   onChange={(event) =>
                     onChange({

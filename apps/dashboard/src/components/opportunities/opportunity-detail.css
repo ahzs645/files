@@ -1,0 +1,58 @@
+/* Explicit scoped layout works in both the source dashboard and Zoer's plugin skin. */
+.bid-opportunity-detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: var(--color-text-primary); }
+.bid-opportunity-detail * { min-width: 0; }
+.bid-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.bid-detail-heading { flex: 1; }
+.bid-detail-heading h1 { margin-top: 10px; font-size: 22px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.bid-detail-heading > p { margin-top: 6px; font-size: 14px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.bid-detail-badges { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--color-text-secondary); }
+.bid-detail-status { padding: 4px 9px; border-radius: 20px; font-weight: 600; }
+.bid-detail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.bid-detail-source { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--color-border-default); border-radius: 6px; font-size: 13px; color: var(--color-accent); }
+.bid-detail-source:hover { background: var(--color-bg-hover); }
+.bid-detail-section { padding: 16px; border: 1px solid var(--color-border-default); border-radius: 8px; background: var(--color-bg-surface); }
+.bid-detail-section h2 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.bid-detail-section h2 > svg { flex-shrink: 0; color: var(--color-accent); }
+.bid-detail-columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); align-items: start; gap: 16px; }
+.bid-detail-main, .bid-detail-sidebar { display: flex; flex-direction: column; gap: 16px; }
+.bid-detail-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.bid-detail-fields > div { padding: 0; }
+.bid-detail-fields dt { color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; margin-bottom: 3px; }
+.bid-detail-fields dd { margin: 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.bid-detail-fields a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
+.bid-detail-fields-compact { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.bid-detail-key-facts .bid-detail-fields dd { font-weight: 550; }
+.bid-detail-prose { max-width: 80ch; font-size: 14px; line-height: 1.8; }
+.bid-detail-prose p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.bid-detail-prose > div + div { margin-top: 16px; }
+.bid-detail-prose h3 { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.bid-detail-muted { color: var(--color-text-secondary); font-size: 13px; line-height: 1.6; }
+.bid-detail-documents { list-style: none; padding: 0; margin: 0; }
+.bid-detail-documents > li + li { border-top: 1px solid var(--color-border-default); }
+.bid-detail-documents a, .bid-detail-addendum { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 0; font-size: 14px; }
+.bid-detail-documents a { color: var(--color-accent); }
+.bid-detail-documents a:hover { text-decoration: underline; }
+.bid-detail-documents a > span, .bid-detail-addendum > div { flex: 1; overflow-wrap: anywhere; }
+.bid-detail-documents svg { flex-shrink: 0; }
+.bid-detail-addendum { justify-content: space-between; }
+.bid-detail-addendum > a { justify-content: center; min-width: 44px; }
+.bid-detail-commodities { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.bid-detail-commodities li { font-size: 12px; padding: 5px 9px; background: var(--color-bg-subtle); border: 1px solid var(--color-border-default); border-radius: 6px; overflow-wrap: anywhere; }
+.bid-detail-count { color: var(--color-text-secondary); font-size: 12px; font-weight: 400; }
+.bid-detail-source-fields > summary { cursor: pointer; min-height: 28px; font-size: 14px; font-weight: 550; }
+.bid-detail-source-fields > .bid-detail-muted { margin: 8px 0 16px; }
+.bid-detail-source-fields .bid-detail-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bid-detail-source-fields .bid-detail-fields > div { padding-bottom: 12px; border-bottom: 1px solid var(--color-border-default); }
+@media (max-width: 800px) {
+  .bid-detail-columns { grid-template-columns: minmax(0, 1fr); }
+  .bid-detail-header { flex-wrap: wrap; }
+  .bid-detail-heading { flex-basis: 100%; }
+}
+@media (max-width: 480px) {
+  .bid-opportunity-detail, .bid-detail-main, .bid-detail-sidebar, .bid-detail-columns { gap: 12px; }
+  .bid-detail-section { padding: 12px; }
+  .bid-detail-fields-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .bid-detail-source-fields .bid-detail-fields { grid-template-columns: minmax(0, 1fr); }
+  .bid-detail-source, .bid-detail-source-fields > summary, .bid-detail-actions .bid-star { min-height: 44px; }
+  .bid-detail-source-fields > summary { align-content: center; }
+}

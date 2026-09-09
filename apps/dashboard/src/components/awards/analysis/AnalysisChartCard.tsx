@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Card } from "../../ui/Card";
+import "./AnalysisCharts.css";
 
 export function AnalysisChartCard({
   title,
@@ -13,7 +14,7 @@ export function AnalysisChartCard({
   action?: ReactNode;
 }) {
   return (
-    <Card>
+    <Card className="analysis-chart-card">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-accent">

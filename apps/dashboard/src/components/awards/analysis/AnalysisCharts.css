@@ -1,0 +1,10 @@
+/* Recharts keeps the plot focusable for arrow-key exploration. Pointer clicks
+   should not draw the browser's focus rectangle around the entire plot. */
+.analysis-chart-card .recharts-surface:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.analysis-chart-card .recharts-surface:focus-visible {
+  outline: 2px solid var(--color-accent, #72bfff);
+  outline-offset: 2px;
+}

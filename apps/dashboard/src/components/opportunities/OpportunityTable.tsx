@@ -1,3 +1,4 @@
+import { StarButton } from '../preferences/BidPreferences';
 import { Link } from "@tanstack/react-router";
 import { AlertCircle, ArrowUpRight } from "lucide-react";
 import type { OpportunityListItem } from "@bcbid/shared";
@@ -30,16 +31,17 @@ export function OpportunityTable({ items }: { items: OpportunityListItem[] }) {
                   </span>
                 </td>
                 <td className="py-3.5 pr-4">
+                  <div className="flex min-w-0 items-center gap-2"><StarButton entity="opportunity" recordKey={item.sourceKey} label={item.description} />
                   <Link
                     to="/opportunities/$processId"
                     params={{ processId: item.processId ?? item.sourceKey }}
-                    className="block"
+                    className="block min-w-0 flex-1"
                   >
                     <div className="font-medium text-text-primary group-hover:text-accent transition-colors line-clamp-1">
                       {item.description}
                     </div>
                     <div className="text-xs text-text-tertiary mt-0.5">{item.opportunityId}</div>
-                  </Link>
+                  </Link></div>
                 </td>
                 <td className="py-3.5 pr-4 text-text-secondary text-xs hidden md:table-cell">
                   <span className="line-clamp-1">{item.issuedBy ?? "Unknown"}</span>

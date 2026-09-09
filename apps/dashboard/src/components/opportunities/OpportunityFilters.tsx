@@ -37,6 +37,7 @@ export function OpportunityFilters({
         placeholder="Search IDs, descriptions, organizations..."
       />
       <Select
+        label="Status"
         value={status}
         onChange={onStatusChange}
         icon={Filter}
@@ -46,6 +47,7 @@ export function OpportunityFilters({
         ]}
       />
       <Select
+        label="Opportunity type"
         value={type}
         onChange={onTypeChange}
         icon={Filter}
@@ -55,6 +57,7 @@ export function OpportunityFilters({
         ]}
       />
       <Select
+        label="Sort opportunities"
         value={sortValue}
         onChange={onSortChange}
         icon={ArrowUpDown}

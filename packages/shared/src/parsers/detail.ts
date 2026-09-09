@@ -29,7 +29,7 @@ const REMOVABLE_TEXT_SELECTORS = [
   "button"
 ].join(", ");
 
-const FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field']";
+const FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field'], .field.readonly";
 
 /**
  * Extract clean visible text from a Cheerio element, stripping out script tags,
@@ -148,13 +148,9 @@ function fileNameFromUrl(url: string): string | null {
 }
 
 function extractFieldLabel(el: ReturnType<cheerio.CheerioAPI>): string {
-  return normalizeWhitespace(
-    el
-      .find(".label-field, label")
-      .first()
-      .text()
-      .replace(/[:*]$/, "")
-  );
+  const label = (el.find(".label-field").first().length ? el.find(".label-field").first() : el.find("label").first()).clone();
+  label.find(".tooltip-field, .sr-only").remove();
+  return normalizeWhitespace(label.text().replace(/[:*]$/, ""));
 }
 
 function extractFieldValue($: cheerio.CheerioAPI, field: ReturnType<cheerio.CheerioAPI>): string {

@@ -14,7 +14,7 @@ const REMOVABLE_TEXT_SELECTORS = [
     ".tooltip-field",
     "button"
 ].join(", ");
-const FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field']";
+const FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field'], .field.readonly";
 /**
  * Extract clean visible text from a Cheerio element, stripping out script tags,
  * style tags, select/option dropdowns, hidden inputs, and grid-view JS noise
@@ -120,12 +120,11 @@ function fileNameFromUrl(url) {
     }
 }
 function extractFieldLabel(el) {
-    return normalizeWhitespace(el
-        .find(".label-field, label")
-        .first()
-        .text()
-        .replace(/[:*]$/, ""));
+    const label = (el.find(".label-field").first().length ? el.find(".label-field").first() : el.find("label").first()).clone();
+    label.find(".tooltip-field, .sr-only").remove();
+    return normalizeWhitespace(label.text().replace(/[:*]$/, ""));
 }
+
 function extractFieldValue($, field) {
     const scopes = [
         field.find("[data-iv-role='controlWrapper']").first(),

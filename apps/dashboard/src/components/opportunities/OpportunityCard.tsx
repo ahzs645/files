@@ -1,3 +1,4 @@
+import { StarButton } from '../preferences/BidPreferences';
 import { Link } from "@tanstack/react-router";
 import { AlertCircle, Calendar, Building2, ArrowRight } from "lucide-react";
 import type { OpportunityListItem } from "@bcbid/shared";
@@ -8,12 +9,14 @@ export function OpportunityCard({ item }: { item: OpportunityListItem }) {
   const isUrgent = item.endsIn && /^\d+\s*day/i.test(item.endsIn);
 
   return (
+    <div className="relative">
+    <div className="absolute right-2 top-2 z-10"><StarButton entity="opportunity" recordKey={item.sourceKey} label={item.description} /></div>
     <Link
       to="/opportunities/$processId"
       params={{ processId: item.processId ?? item.sourceKey }}
       className="group block rounded-xl border border-border-default bg-bg-subtle p-4 hover:border-border-strong hover:bg-bg-hover transition-all duration-150"
     >
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex items-start justify-between gap-3 mb-3 pr-9">
         <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}>
           {item.status}
         </span>
@@ -66,5 +69,6 @@ export function OpportunityCard({ item }: { item: OpportunityListItem }) {
         <ArrowRight size={14} className="text-text-tertiary group-hover:text-accent transition-colors" />
       </div>
     </Link>
+    </div>
   );
 }

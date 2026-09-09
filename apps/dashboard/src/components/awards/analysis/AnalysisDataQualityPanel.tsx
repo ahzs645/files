@@ -53,7 +53,7 @@ export function AnalysisDataQualityPanel({
       title="Data Quality"
       description="Quality caveats stay visible, especially where placeholder suppliers and missing fields can distort rankings."
     >
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.map((row) => {
           const Icon = row.icon;
           const rate = summary[row.key];

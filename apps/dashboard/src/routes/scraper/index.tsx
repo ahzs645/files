@@ -45,7 +45,7 @@ function ScraperPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-5">
         {/* Main control panel */}
         <div className="lg:col-span-3">
           <Card>

@@ -46,7 +46,7 @@ export function BenchmarkCallout({
         {rows.map((row) => (
           <div
             key={row.label}
-            className="grid gap-3 rounded-xl border border-border-subtle bg-bg-subtle px-4 py-3 md:grid-cols-[1.4fr_1fr_1fr]"
+            className="grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-border-subtle bg-bg-subtle px-4 py-3 md:grid-cols-[1.4fr_1fr_1fr]"
           >
             <div className="text-sm font-medium text-text-primary">{row.label}</div>
             <div className="text-sm text-text-secondary">

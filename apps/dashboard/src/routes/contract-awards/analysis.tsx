@@ -125,7 +125,7 @@ function ContractAwardsAnalysisHub() {
         onReset={() => setFilters(DEFAULT_ANALYSIS_FILTERS)}
       />
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <AnalysisMetricCard
           label="Total Award Value"
           value={formatCurrency(overview.summary.totalAwardValue, { compact: true })}
@@ -197,7 +197,7 @@ function ContractAwardsAnalysisHub() {
         </div>
       ) : (
         <>
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <TrendChartCard
               title="Award Value Trend"
               description="Use the date preset to switch the time grain from yearly to quarterly or monthly."
@@ -216,7 +216,7 @@ function ContractAwardsAnalysisHub() {
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <AnalysisRankingCard
               title="Top Suppliers by Award Value"
               description="Suppliers ranked by total award value after current filters are applied."
@@ -232,7 +232,7 @@ function ContractAwardsAnalysisHub() {
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <BreakdownBarChartCard
               title="Supplier Concentration"
               description="How much of the filtered award value sits in the leading supplier cohorts."
@@ -247,7 +247,7 @@ function ContractAwardsAnalysisHub() {
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <AnalysisRankingCard
               title="Top Issuing Organizations by Value"
               description="Issuers ranked by total award value."
@@ -263,7 +263,7 @@ function ContractAwardsAnalysisHub() {
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <AnalysisRankingCard
               title="Issuers with Highest Top-Supplier Dependence"
               description="Organizations sorted by the value share held by their top supplier."
@@ -278,7 +278,7 @@ function ContractAwardsAnalysisHub() {
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <AnalysisFindingsPanel findings={overview.findings} />
             <AnalysisDataQualityPanel summary={overview.dataQuality} />
           </div>

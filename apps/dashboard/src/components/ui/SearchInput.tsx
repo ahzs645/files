@@ -14,6 +14,7 @@ export function SearchInput({
       <Search size={15} className="text-text-tertiary shrink-0" />
       <input
         type="text"
+        aria-label={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -22,6 +23,7 @@ export function SearchInput({
       {value ? (
         <button
           type="button"
+          aria-label="Clear search"
           onClick={() => onChange("")}
           className="text-text-tertiary hover:text-text-primary transition-colors"
         >

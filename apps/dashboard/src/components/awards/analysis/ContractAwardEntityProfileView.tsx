@@ -60,7 +60,7 @@ export function ContractAwardEntityProfileView({
         onReset={onResetFilters}
       />
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <AnalysisMetricCard
           label="Award Value"
           value={formatCurrency(profile.summary.totalAwardValue, { compact: true })}
@@ -97,7 +97,7 @@ export function ContractAwardEntityProfileView({
         </div>
       ) : (
         <>
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <TrendChartCard
               title="Award Value Trend"
               description="Award value over time for the current entity."
@@ -116,7 +116,7 @@ export function ContractAwardEntityProfileView({
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <AnalysisRankingCard
               title={`${counterpartyLabel} by Value`}
               description={`The strongest counterparties for this ${profile.entityKind}.`}
@@ -131,7 +131,7 @@ export function ContractAwardEntityProfileView({
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <BreakdownBarChartCard
               title="Award Size Distribution"
               description="Award count by contract value band."
@@ -144,7 +144,7 @@ export function ContractAwardEntityProfileView({
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
             <AnalysisFindingsPanel findings={profile.findings} />
             <AnalysisDataQualityPanel summary={profile.dataQuality} />
           </div>
