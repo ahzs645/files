@@ -1,7 +1,8 @@
 const awardFields = ['opportunityId','opportunityDescription','opportunityType','issuingOrganization','issuingLocation','contractNumber','contactEmail','contractValueText','currency','successfulSupplier','supplierAddress','awardDate','justification','sourceUrl','starred'];
+const analysisFields = ['buyer','buyerAggregation','buyerOriginal','buyerClean','buyerOrganization','buyerGroup','buyerRegion','buyerType','buyerParticipants','buyerMappingStatus','buyerMappingVersion'];
 const opportunityFields = ['processId','opportunityId','sourceKey','description','status','type','issuedBy','closingDate','detailUrl','descriptionText','detailFields','attachments','addenda','starred'];
 export function exportRecords(records: any[], entity: 'award' | 'opportunity', format: 'csv' | 'json') {
-  const fields = entity === 'award' ? awardFields : opportunityFields;
+  const fields = [...(entity === 'award' ? awardFields : opportunityFields), ...(records.some(row => row.buyerMappingVersion) ? analysisFields : [])];
   const rows = records.map(row => Object.fromEntries(fields.map(field => [field, row[field] ?? null])));
   if (format === 'json') return JSON.stringify(rows, null, 2);
   const cell = (value: unknown) => {

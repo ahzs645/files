@@ -1,5 +1,6 @@
 import { migrateCatalog, saveCatalogDocument } from './catalog';
-import { scrapeAwardHistory, AWARDS_URL } from './award-history';
+import { scrapeAwardRanges, newAwardRanges } from './award-ranges';
+import { awardRangeCapture, AWARD_DATE_FIELDS } from './award-range-capture';
 import { scrapeFull } from './full-scrape';
 import { scrapeSample } from './scrape';
 import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
@@ -59,7 +60,22 @@ try {
     write({ protocolVersion: '1', runId, ok: true, output: { artifactId } });
   } else if (request.action.id === 'awards.history') {
     if (!browserTicket) throw new Error('Select a running Zoer browser session.');
-    const output = await scrapeAwardHistory(options => call('browser.capture-url', { ticket: browserTicket, url: AWARDS_URL, ...options }), save, request.input?.resume);
+    const recent = request.input?.mode === 'recent';
+    const checkpointKey = recent ? 'checkpoint:awards:recent' : 'checkpoint:awards';
+    const state = await catalogCall('catalog.workspace', { keys: [checkpointKey] });
+    const previous = state.entries.find((entry: any) => entry.key === checkpointKey)?.value;
+    const supplied = request.input?.resume;
+    const today = new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10);
+    // Old page-number checkpoints cannot prove coverage of any date range.
+    // Retain them for reference, and merge records from the bounded backfill.
+    const resume = supplied?.version === 2 ? supplied : !recent && previous?.version === 2 ? previous : recent ? newAwardRanges(from, today) : newAwardRanges();
+    let archiveLegacy = !recent && previous && previous.version !== 2 ? previous : undefined;
+    const output = await scrapeAwardRanges(awardRangeCapture(options => call('browser.capture-url', { ...options, ticket: browserTicket }), AWARD_DATE_FIELDS), async document => {
+      const id = await save({ ...document, checkpointKey, ...(archiveLegacy ? { legacyCheckpoint: archiveLegacy } : {}) });
+      archiveLegacy = undefined;
+      return id;
+    }, resume);
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'awards.import') {
     if (!Array.isArray(request.input?.records) || request.input.records.length > 200) throw new Error('Import at most 200 award rows per batch.');

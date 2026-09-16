@@ -1,3 +1,4 @@
+import { BuyerName } from '../ui/BuyerName';
 import { StarButton } from '../preferences/BidPreferences';
 import { useEffect, useRef, useState } from "react";
 import type { ContractAwardListItem } from "@bcbid/shared";
@@ -148,7 +149,7 @@ export function ContractAwardsTable({
                   </div>
                 </td>
                 <td className="px-3 py-3 min-w-[220px] text-text-secondary">
-                  {fallbackText(item.issuingOrganization)}
+                  <BuyerName record={item} />
                 </td>
                 <td className="px-3 py-3 min-w-[220px]">
                   <div className="text-text-primary">
@@ -192,7 +193,7 @@ export function ContractAwardsTable({
             <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
               <DetailField label="Opportunity ID" value={selectedItem.opportunityId} />
               <DetailField label="Opportunity Type" value={selectedItem.opportunityType} />
-              <DetailField label="Issuing Organization" value={selectedItem.issuingOrganization} />
+              <div><span className="text-xs text-text-secondary">Buyer</span><BuyerName record={selectedItem}/></div>
               <DetailField label="Issuing Location" value={selectedItem.issuingLocation} />
               <DetailField label="Contact Email" value={selectedItem.contactEmail} />
               <DetailField label="Contract Number" value={selectedItem.contractNumber} />

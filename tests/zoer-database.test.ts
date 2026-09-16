@@ -40,6 +40,20 @@ describe('unified database transport',()=>{
     await saveCatalogDocument(db.call,{kind:'awards',records:[{...row,starred:false}]},'next-run');expect(db.records.size).toBe(1);expect([...db.records.values()][0].data.starred).toBe(true);
     const restored=database();await migrateCatalog(restored.call);await saveCatalogDocument(restored.call,{kind:'awards',records:JSON.parse(exportRecords([saved.data],'award','json'))},'import');expect([...restored.records.values()][0].data.starred).toBe(true);
   });
+  it('skips unchanged award writes while saving progress and preserves stars on a real change',async()=>{
+    const db=database();await migrateCatalog(db.call);
+    const row={opportunityId:'A-1',opportunityDescription:'Award',issuingOrganization:'Buyer',successfulSupplier:'Supplier',contractNumber:'C-1',awardDate:'2026-01-01',starred:true};
+    await saveCatalogDocument(db.call,{kind:'awards',records:[row]},'first');
+    // Real SQLite serializes JSON; mirror that boundary for equality checks.
+    for(const [id,record] of db.records) db.records.set(id,JSON.parse(JSON.stringify(record)));
+    const before=[...db.records.values()][0].data.updatedAt;
+    const writes:any[]=[];
+    const call=async(method:string,input:any)=>{if(method==='catalog.commit')writes.push(input.records);return db.call(method,input);};
+    await saveCatalogDocument(call,{kind:'awards',records:[{...row,starred:false}],checkpoint:{page:2,count:2,complete:false}},'second');
+    expect(writes[0]).toEqual([]);expect(db.state.get('checkpoint:awards').page).toBe(2);expect([...db.records.values()][0].data.updatedAt).toBe(before);
+    await saveCatalogDocument(call,{kind:'awards',records:[{...row,supplierAddress:'Changed address',starred:false}]},'third');
+    expect(writes[1]).toHaveLength(1);expect([...db.records.values()][0].data.starred).toBe(true);
+  });
   it('rejects a concurrent stale merge instead of overwriting a newer edit',async()=>{
     const db=database();await migrateCatalog(db.call);let injected=false;
     const call=async(method:string,input:any)=>{if(method==='catalog.commit'&&!injected){injected=true;await db.call(method,{revision:input.revision,records:[]});}return db.call(method,input);};

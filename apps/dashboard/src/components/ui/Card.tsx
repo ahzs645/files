@@ -1,5 +1,7 @@
 import { type ReactNode } from "react";
 
+const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
+
 export function Card({
   children,
   className = "",
@@ -11,7 +13,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`min-w-0 rounded-2xl border border-border-default bg-bg-surface backdrop-blur-xl ${padding ? "p-5" : ""} ${className}`}
+      className={`min-w-0 rounded-2xl border border-border-default bg-bg-surface backdrop-blur-xl ${padding ? (plugin ? "p-4" : "p-5") : ""} ${className}`}
     >
       {children}
     </div>
@@ -29,6 +31,14 @@ export function CardHeader({
   icon?: React.ComponentType<{ size?: number }>;
   action?: ReactNode;
 }) {
+  if (plugin) {
+    return (
+      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <h2 className="text-[15px] font-semibold text-text-primary">{title}</h2>
+        {action}
+      </div>
+    );
+  }
   return (
     <div className="flex min-w-0 flex-wrap items-start justify-between gap-4 mb-5">
       <div>

@@ -1,3 +1,5 @@
+import { useContext } from "react";
+import { BidPreferences } from "../../components/preferences/BidPreferences";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { ArrowLeft } from "lucide-react";
@@ -12,31 +14,35 @@ export const Route = createFileRoute("/scraper/history")({
 });
 
 type RunRecord = ScrapeRun & { _id: string };
+const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 
 function HistoryPage() {
+  const { historyExtras } = useContext(BidPreferences);
   const recentRuns = useQuery(api.scrapeRuns.listRecent, { limit: 25 }) as
     | RunRecord[]
     | undefined;
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <Link
+      {/* Breadcrumb and title: the plugin host already shows the section tabs. */}
+      {!plugin && <Link
         to="/scraper"
         className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
       >
         <ArrowLeft size={14} />
         Back to Scraper
-      </Link>
+      </Link>}
 
-      <div>
+      {!plugin && <div>
         <h1 className="text-2xl font-bold text-text-primary">Run History</h1>
         <p className="text-sm text-text-secondary mt-1">
           {recentRuns
             ? `${recentRuns.length} most recent scrape runs`
             : "Loading..."}
         </p>
-      </div>
+      </div>}
+
+      {historyExtras}
 
       {!recentRuns ? (
         <div className="flex items-center justify-center py-16">

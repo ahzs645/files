@@ -1,3 +1,4 @@
+import { BuyerName } from '../ui/BuyerName';
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
@@ -35,10 +36,13 @@ type RunOpportunityRecord = {
 };
 
 const RUN_OPPORTUNITY_LIMIT = 50;
+const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 
 export function RunHistoryCard({ run }: { run: RunRecord }) {
   const [expanded, setExpanded] = useState(false);
   const runtime = (run.completedAt ?? Date.now()) - run.startedAt;
+  // A finished, failed or interrupted run has nothing left to measure; only live runs show progress.
+  const inProgress = run.status === "running" || run.status === "stopping";
   const hasScrapedOpportunities =
     run.counts.opportunityCount > 0 || run.counts.detailCount > 0 || run.counts.listingCount > 0;
   const scrapedOpportunities = useQuery(
@@ -54,37 +58,48 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-subtle p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <StatusPill status={run.status} />
-        <span className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-          {run.trigger}
-        </span>
+        <StatusPill status={run.status} interrupted={run.errorCode === "scrape_interrupted"} />
+        <span className="text-xs text-text-tertiary">{formatTimestamp(run.startedAt)}</span>
       </div>
 
-      <div>
-        <div className="text-sm font-medium text-text-primary line-clamp-1">
-          {run.progress.message}
-        </div>
-        <div className="text-xs text-text-tertiary mt-0.5">{formatTimestamp(run.startedAt)}</div>
+      <div className="text-sm font-medium text-text-primary">
+        {run.progress.message}
       </div>
 
-      <ProgressBar
-        percent={Math.round(run.progress.percent)}
-        label={formatPhase(run.progress.phase)}
-        showPercent={false}
-      />
+      {inProgress ? (
+        <ProgressBar
+          percent={Math.round(run.progress.percent)}
+          label={formatPhase(run.progress.phase)}
+          showPercent={false}
+        />
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
         <span>Listings {run.counts.listingCount}</span>
         <span>Details {run.counts.detailCount || run.progress.detailsCompleted}</span>
         <span>Opportunities {run.counts.opportunityCount}</span>
         <span>{formatRuntime(runtime)}</span>
+        <span className="capitalize text-text-tertiary">{run.trigger}</span>
       </div>
 
-      {run.errorMessage ? (
+      {run.errorMessage && run.errorMessage !== run.progress.message ? (
         <div className="rounded-lg bg-red-muted px-3 py-2 text-xs text-red">{run.errorMessage}</div>
       ) : null}
 
-      {hasScrapedOpportunities ? (
+      {hasScrapedOpportunities && plugin ? (
+        <div>
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((current) => !current)}
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-medium text-accent hover:text-accent-strong transition-colors"
+          >
+            {expanded ? "Hide scraped opportunities" : "See scraped opportunities"}
+            {expanded ? <ChevronUp size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
+          </button>
+          {expanded ? <ScrapedOpportunities run={run} scrapedOpportunities={scrapedOpportunities} /> : null}
+        </div>
+      ) : hasScrapedOpportunities ? (
         <div className="border-t border-border-subtle pt-3">
           <button
             type="button"
@@ -95,9 +110,9 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
               <div className="text-sm font-medium text-text-primary">
                 {expanded ? "Hide scraped opportunities" : "See scraped opportunities"}
               </div>
-              <div className="text-xs text-text-tertiary">
+              {!plugin && <div className="text-xs text-text-tertiary">
                 Open the matching opportunity page for items touched in this run.
-              </div>
+              </div>}
             </div>
             {expanded ? (
               <ChevronUp size={16} className="shrink-0 text-text-tertiary" />
@@ -106,7 +121,15 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
             )}
           </button>
 
-          {expanded ? (
+          {expanded ? <ScrapedOpportunities run={run} scrapedOpportunities={scrapedOpportunities} /> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ScrapedOpportunities({ run, scrapedOpportunities }: { run: RunRecord; scrapedOpportunities: RunOpportunityRecord[] | undefined }) {
+  return (
             <div className="mt-3 space-y-3">
               {!scrapedOpportunities ? (
                 <div className="flex items-center justify-center rounded-lg border border-border-subtle bg-bg-surface/60 px-3 py-6">
@@ -136,10 +159,6 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
                 </>
               )}
             </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -164,7 +183,7 @@ function RunOpportunityRow({ item }: { item: RunOpportunityRecord }) {
             {item.description}
           </div>
           <div className="mt-1 text-xs text-text-secondary">
-            {item.issuedBy ?? "Unknown issuer"}
+            <BuyerName record={item} />
           </div>
         </div>
       </div>

@@ -56,14 +56,20 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-button, input, select, textarea {
-  font: inherit;
-  color: inherit;
+/* Kept in the base layer so text-size and color utilities on controls still win,
+   matching Tailwind's own preflight reset. */
+@layer base {
+  button, input, select, textarea {
+    font: inherit;
+    color: inherit;
+  }
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 /* Scrollbar styling */

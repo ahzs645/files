@@ -1,31 +1,50 @@
+import { usePluginLocation, navigatePlugin, pluginHref } from "./navigation";
 import { Research } from './Research';
-import { ScraperSetup } from './ScraperSetup';
+import { SettingsPage } from './Settings';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button } from '../../apps/dashboard/src/components/ui/Button';
-import { useWorkspace, resumableCheckpoint, resumeFullScrape } from './backend';
 import { Link, useRouterState } from '@tanstack/react-router';
 const items = [
-  ['/', 'Dashboard'], ['/opportunities', 'Opportunities'], ['/contract-awards', 'Contract awards'], ['/scraper', 'Scraper'], ['/scraper/history', 'Run history'],
+  ['/', 'Dashboard'], ['/opportunities', 'Opportunities'], ['/contract-awards', 'Contract awards'], ['/contract-awards/analysis', 'Analysis'], ['/scraper', 'Scraper'], ['/scraper/history', 'Run history'],
 ] as const;
+// Zoer-only sections rendered by the shell instead of the source router.
+const extras = [['/settings', 'Settings']] as const;
+function isActive(to: string, path: string) {
+  if (to === '/' || to === '/scraper') return path === to;
+  if (to === '/contract-awards') return path.startsWith(to) && !path.startsWith('/contract-awards/analysis');
+  return path.startsWith(to);
+}
 export function AppShell({ children }: { children: ReactNode }) {
-  const { model } = useWorkspace();
-  const [research,setResearch]=useState(false);
-  const [resuming, setResuming] = useState(false);
-  const [error, setError] = useState<string>();
+  const location = usePluginLocation();
+  const section = location.split("?")[0];
+  const research = section === "/documents", settings = section === "/settings", special = research || settings;
+  const analysis = !special && section.startsWith("/analysis");
+  // Catalog pages size their table to the remaining height instead of scrolling the whole page.
+  const catalog = !special && (section === '/opportunities' || section === '/contract-awards');
   const navigation = useRef<HTMLElement>(null);
-  const resume = model ? resumableCheckpoint() : null;
   const path = useRouterState({ select: state => state.location.pathname });
   useEffect(() => {
     navigation.current?.querySelector<HTMLElement>('[data-active=true]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [path, research]);
+  }, [path, section]);
+  // Phones clip the tab strip; flag which edge hides more sections so the CSS can fade it.
+  useEffect(() => {
+    const nav = navigation.current; if (!nav) return;
+    const update = () => { nav.toggleAttribute('data-overflow-start', nav.scrollLeft > 2); nav.toggleAttribute('data-overflow-end', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2); };
+    update();
+    nav.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update); observer.observe(nav);
+    return () => { nav.removeEventListener('scroll', update); observer.disconnect(); };
+  }, []);
   return <div className="flex h-full min-h-0 flex-col">
-    <nav ref={navigation} aria-label="BC Bid sections" className="zoer-tabs flex shrink-0 flex-wrap gap-1 border-b border-border-default px-3 py-2 sm:px-4">
+    <nav ref={navigation} aria-label="BC Bid sections" className="zoer-tabs relative flex min-w-0 shrink-0 gap-1 overflow-x-auto border-b border-border-default px-3 sm:px-4">
+      <a href={pluginHref('/documents')} target="_top" data-active={research} aria-current={research?'page':undefined} onClick={event=>{if(!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();navigatePlugin('/documents');}}} className={`flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium ${research?'border-accent bg-accent/5 text-text-primary':'border-transparent text-text-secondary'}`}>Documents & AI</a>
       {items.map(([to, label]) => {
-        const active = !research && (to === '/' || to === '/scraper' ? path === to : path.startsWith(to));
-        return <Link key={to} to={to} data-active={active} activeProps={{ 'aria-current': research ? false : 'page' }} onClick={()=>setResearch(false)} aria-current={active ? 'page' : undefined} className={`flex min-h-11 items-center rounded-md px-3 text-[13px] font-medium sm:min-h-9 ${active ? 'bg-accent-muted text-accent' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'}`}>{label}</Link>;
+        const active = !special && isActive(to, path);
+        const target = to === "/contract-awards/analysis" ? "/analysis/overview" : to;
+        return <a key={to} href={pluginHref(target)} target="_top" data-active={active} onClick={event=>{ if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); navigatePlugin(target); } }} aria-current={active ? 'page' : undefined} className={`flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors ${active ? 'border-accent bg-accent/5 text-text-primary' : 'border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary'}`}>{label}</a>;
       })}
-      <button type="button" data-active={research} aria-current={research?"page":undefined} onClick={()=>setResearch(true)} className={`flex min-h-11 items-center rounded-md px-3 text-[13px] font-medium sm:min-h-9 ${research?"bg-accent-muted text-accent":"text-text-secondary"}`}>Documents & AI</button>
+      {extras.map(([to, label]) => { const active = section === to; return <a key={to} href={pluginHref(to)} target="_top" data-active={active} aria-current={active ? 'page' : undefined} onClick={event=>{ if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); navigatePlugin(to); } }} className={`flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors ${active ? 'border-accent bg-accent/5 text-text-primary' : 'border-transparent text-text-secondary hover:bg-bg-hover hover:text-text-primary'}`}>{label}</a>; })}
     </nav>
-    <main className="zoer-content min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-[1400px] p-3 sm:p-4">{!research && path === '/scraper' && <ScraperSetup />}{!research && path.startsWith('/scraper') && resume && <div className="zoer-scope"><Button loading={resuming} onClick={async () => { setResuming(true); setError(undefined); try { await resumeFullScrape(); } catch (e) { setError(String(e)); } finally { setResuming(false); } }}>{resuming ? 'Resuming…' : `Resume saved scrape (${resume.detailsCompleted} details saved)`}</Button>{error && <p role="alert">{error}</p>}</div>}{research?<Research />:children}</div></main>
+    {/* Analysis owns a full-height rail, so its wrapper fills the scroll area with flex rather than a percentage that would collapse while a view loads. */}
+    <main className={`zoer-content min-h-0 flex-1 overflow-y-auto${analysis || catalog ? ' flex flex-col' : ''}`}><div className={analysis ? 'flex flex-1 flex-col' : catalog ? 'zoer-catalog mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col p-3 sm:p-4' : 'mx-auto max-w-[1400px] p-3 sm:p-4'}>{research?<Research />:settings?<SettingsPage />:children}</div></main>
   </div>;
 }

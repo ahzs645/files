@@ -7,6 +7,7 @@ import { ProgressBar } from "./ProgressBar";
 import { ActiveRunCard } from "./ActiveRunCard";
 
 type RunRecord = ScrapeRun & { _id: string };
+const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 
 export function ScrapeControlPanel({
   activeRun,
@@ -76,6 +77,8 @@ export function ScrapeControlPanel({
       {/* Active run card */}
       {hasActiveRun && activeRun ? (
         <ActiveRunCard run={activeRun} />
+      ) : plugin ? (
+        <p className="rounded-lg border border-border-subtle bg-bg-subtle px-3 py-2 text-xs text-text-secondary">No active scrape. Start Scrape launches a manual run.</p>
       ) : (
         <div className="rounded-xl border border-border-subtle bg-bg-subtle p-6 text-center">
           <Radio size={24} className="mx-auto mb-3 text-text-tertiary" />

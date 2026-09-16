@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { Star } from 'lucide-react';
 export type BidEntity = 'opportunity' | 'award';
-export const BidPreferences = createContext<{ isStarred?: (entity: BidEntity, key: string) => boolean; isStarPending?: (entity: BidEntity, key: string) => boolean; setStar?: (entity: BidEntity, key: string, starred: boolean) => Promise<void>; onlyStarred?: boolean; setOnlyStarred?: (value: boolean) => void; awardsView?: ReactNode; opportunitiesView?: ReactNode }>({});
+export const BidPreferences = createContext<{ isStarred?: (entity: BidEntity, key: string) => boolean; isStarPending?: (entity: BidEntity, key: string) => boolean; setStar?: (entity: BidEntity, key: string, starred: boolean) => Promise<void>; onlyStarred?: boolean; setOnlyStarred?: (value: boolean) => void; analysisView?: ReactNode; awardsView?: ReactNode; opportunitiesView?: ReactNode; scraperSetup?: ReactNode; historyExtras?: ReactNode; /** Zoer build: return to the catalog list with its last filters and position instead of a plain link. */ backToCatalog?: (entity: BidEntity) => void }>({});
 export function StarButton({ entity, recordKey, label }: { entity: BidEntity; recordKey: string; label: string }) {
   const preferences = useContext(BidPreferences);
   const [pending, setPending] = useState(false), [error, setError] = useState('');

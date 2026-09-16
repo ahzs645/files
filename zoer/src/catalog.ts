@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { buildModel, type SavedDocument } from '../dashboard/model';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
 
@@ -61,9 +62,15 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     const previous = new Map((await call('catalog.read', { ids })).records.map((row: any) => [row.id, row.data]));
     records = doc.records.map((row: any) => {
       const importKey = buildContractAwardImportKey(row), old: any = previous.get('award:' + importKey);
-      return catalogRow('award', { ...old, ...row, _id: importKey, _creationTime: old?._creationTime ?? time, importKey, contractValue: parseContractAwardValue(row.contractValueText), searchText: buildContractAwardSearchText(row), sourceFileName: doc.fileName ?? old?.sourceFileName, sourceUrl: doc.sourceUrl ?? row.sourceUrl ?? old?.sourceUrl ?? null, createdAt: old?.createdAt ?? time, updatedAt: time, starred: old?.starred ?? row.starred === true });
-    });
-    if (doc.checkpoint) entries.push({ key: 'checkpoint:awards', value: { ...doc.checkpoint, runId } });
+      const candidate = catalogRow('award', { ...old, ...row, _id: importKey, _creationTime: old?._creationTime ?? time, importKey, contractValue: parseContractAwardValue(row.contractValueText), searchText: buildContractAwardSearchText(row), sourceFileName: doc.fileName ?? old?.sourceFileName, sourceUrl: doc.sourceUrl ?? row.sourceUrl ?? old?.sourceUrl ?? null, createdAt: old?.createdAt ?? time, updatedAt: old?.updatedAt ?? time, starred: old?.starred ?? row.starred === true });
+      // Do not manufacture a change by replacing updatedAt on every backfill.
+      // Canonical JSON also omits undefined properties absent from SQLite JSON.
+      if (old && isDeepStrictEqual(JSON.parse(JSON.stringify(candidate.data)), old)) return null;
+      candidate.data.updatedAt = time;
+      return candidate;
+    }).filter(Boolean);
+    if (doc.checkpoint) entries.push({ key: doc.checkpointKey === 'checkpoint:awards:recent' ? doc.checkpointKey : 'checkpoint:awards', value: { ...doc.checkpoint, runId } });
+    if (doc.legacyCheckpoint) entries.push({ key: 'checkpoint:awards:legacy', value: doc.legacyCheckpoint });
   } else if (doc.kind === 'detail') {
     const found = (await call('catalog.read', { match: { kind: 'opportunity', field: 'processId', value: doc.record.processId }, limit: 2 })).records;
     if (found.length !== 1) throw new Error('Detail does not match exactly one saved opportunity.');

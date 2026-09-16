@@ -21,9 +21,9 @@ import {
   type ContractAwardTypeMixRow,
 } from "@bcbid/shared";
 
-import type { Doc } from "./_generated/dataModel";
-
-type AwardDoc = Doc<"contractAwards">;
+// Analysis is pure data logic shared with the standalone Zoer package.
+// Convex document metadata is optional; calculations use the public award shape.
+type AwardDoc = ContractAwardListItem & { _id?: string; _creationTime?: number; searchText?: string };
 type TrendBucket = "month" | "quarter" | "year";
 
 const TOP_LIST_LIMIT = 10;

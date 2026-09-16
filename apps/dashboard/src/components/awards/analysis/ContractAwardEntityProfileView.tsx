@@ -53,6 +53,8 @@ export function ContractAwardEntityProfileView({
         </p>
       </div>
 
+      {'buyerMappingVersion' in profile && <p className="text-sm text-text-secondary">Buyers are grouped by organization using proposed mapping {String(profile.buyerMappingVersion)}. Joint and ambiguous buyers stay separate. Original issuers are shown in the award table. {'buyerScopeChanged' in profile && profile.buyerScopeChanged ? 'This older buyer link now resolves to its mapped organization, including its offices.' : ''}</p>}
+
       <AnalysisFilterBar
         filters={filters}
         typeOptions={profile.typeOptions}
@@ -103,7 +105,7 @@ export function ContractAwardEntityProfileView({
               description="Award value over time for the current entity."
               data={profile.trends}
               dataKey="totalValue"
-              color="#72bfff"
+              color="var(--color-accent)"
               mode="currency"
             />
             <TrendChartCard
@@ -111,7 +113,7 @@ export function ContractAwardEntityProfileView({
               description="Award count over time for the current entity."
               data={profile.trends}
               dataKey="awardCount"
-              color="#2fd89f"
+              color="var(--color-green)"
               mode="count"
             />
           </div>

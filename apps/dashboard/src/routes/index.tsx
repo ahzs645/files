@@ -1,3 +1,4 @@
+import { BuyerName } from '../components/ui/BuyerName';
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/")({
 });
 
 type RunRecord = ScrapeRun & { _id: string };
+const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 
 function DashboardPage() {
   const summary = useQuery(api.dashboard.summary, {});
@@ -46,13 +48,13 @@ function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
-      <div>
+      {/* Page header: the plugin host already shows the section tabs. */}
+      {!plugin && <div>
         <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
         <p className="text-sm text-text-secondary mt-1">
           BC Bid procurement monitoring overview
         </p>
-      </div>
+      </div>}
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -82,13 +84,33 @@ function DashboardPage() {
         />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-5">
-        {/* Scraper status */}
+      <div className={plugin ? "space-y-3" : "grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-5"}>
+        {/* Scraper status: one row in the plugin, where the host tabs already link to Scraper. */}
+        {plugin ? (
+          <Card>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} />
+              {hasActiveRun && activeRun ? (
+                <span className="order-last w-full text-sm text-text-primary sm:order-none sm:w-auto sm:flex-1">{activeRun.progress.message}</span>
+              ) : (
+                <span className="order-last w-full text-sm text-text-secondary sm:order-none sm:w-auto sm:flex-1">
+                  Scraper idle · last successful run {formatTimestamp(summary.latestSuccessfulRun?.completedAt ?? null)}
+                </span>
+              )}
+              <Link to="/scraper" className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-strong transition-colors">
+                Scraper <ArrowRight size={12} />
+              </Link>
+            </div>
+            {hasActiveRun && activeRun ? (
+              <div className="mt-3"><ProgressBar percent={Math.round(activeRun.progress.percent)} /></div>
+            ) : null}
+          </Card>
+        ) : (
         <div className="lg:col-span-2">
           <Card>
             <CardHeader
               eyebrow="Scraper Status"
-              title="Operations"
+              title={plugin ? "Scraper status" : "Operations"}
               icon={Radio}
               action={
                 <Link
@@ -130,13 +152,14 @@ function DashboardPage() {
             </div>
           </Card>
         </div>
+        )}
 
         {/* Closing soon */}
-        <div className="lg:col-span-3">
+        <div className={plugin ? "" : "lg:col-span-3"}>
           <Card>
             <CardHeader
               eyebrow="Closing Soon"
-              title="Upcoming Deadlines"
+              title={plugin ? "Closing soon" : "Upcoming Deadlines"}
               icon={Calendar}
               action={
                 <Link
@@ -176,7 +199,7 @@ function DashboardPage() {
                             {item.description}
                           </div>
                           <div className="text-xs text-text-tertiary">
-                            {item.issuedBy ?? "Unknown org"}
+                            <BuyerName record={item} />
                           </div>
                         </div>
                         <div className="text-right shrink-0">

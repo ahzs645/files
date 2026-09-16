@@ -1,3 +1,4 @@
+import { BuyerName } from '../ui/BuyerName';
 import type { ReactNode } from "react";
 import { ExternalLink, FileText, Tag, Paperclip, BookOpen, Contact, CalendarDays } from "lucide-react";
 import type { OpportunityDetail as OpportunityDetailType, OpportunityField } from "@bcbid/shared";
@@ -46,7 +47,7 @@ export function OpportunityDetailView({ detail, actions }: { detail: Opportunity
           <span>ID {detail.opportunityId}</span>
         </div>
         <h1>{detail.description}</h1>
-        {detail.issuedBy && <p>{detail.issuedBy}</p>}
+        {detail.issuedBy && <p><BuyerName record={detail} /></p>}
       </div>
       <div className="bid-detail-actions">
         {actions}

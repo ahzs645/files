@@ -1,3 +1,4 @@
+import { BuyerName } from '../ui/BuyerName';
 import { StarButton } from '../preferences/BidPreferences';
 import { Link } from "@tanstack/react-router";
 import { AlertCircle, Calendar, Building2, ArrowRight } from "lucide-react";
@@ -38,7 +39,7 @@ export function OpportunityCard({ item }: { item: OpportunityListItem }) {
         {item.issuedBy ? (
           <div className="flex items-center gap-1.5">
             <Building2 size={12} className="text-text-tertiary shrink-0" />
-            <span className="truncate">{item.issuedBy}</span>
+            <span className="truncate"><BuyerName record={item} /></span>
           </div>
         ) : null}
         <div className="flex items-center gap-1.5">

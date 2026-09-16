@@ -10,3 +10,6 @@ services/scraper/.runtime/
 services/scraper/artifacts/
 playwright-report/
 test-results/
+.DS_Store
+output/
+__pycache__/

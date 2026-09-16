@@ -8,3 +8,13 @@
   outline: 2px solid var(--color-accent, #72bfff);
   outline-offset: 2px;
 }
+
+/* Keep long legends outside the fixed plot so they cannot collapse its height. */
+.analysis-type-legend { margin-top: 12px; color: var(--color-text-secondary); font-size: 12px; }
+.analysis-type-legend summary { cursor: pointer; padding-block: 10px; }
+.analysis-type-legend ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 8px 16px; padding-top: 8px; }
+.analysis-type-legend li { display: flex; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
+.analysis-type-legend li > span { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 2px; }
+.analysis-mix-tooltip { padding: 12px; max-width: min(360px, 75vw); font-size: 12px; overflow-wrap: anywhere; }
+.analysis-mix-tooltip-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-top: 6px; }
+.analysis-mix-tooltip-row > span:last-child { flex-shrink: 0; }

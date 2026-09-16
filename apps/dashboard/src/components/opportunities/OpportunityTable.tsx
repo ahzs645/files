@@ -1,3 +1,4 @@
+import { BuyerName } from '../ui/BuyerName';
 import { StarButton } from '../preferences/BidPreferences';
 import { Link } from "@tanstack/react-router";
 import { AlertCircle, ArrowUpRight } from "lucide-react";
@@ -44,7 +45,7 @@ export function OpportunityTable({ items }: { items: OpportunityListItem[] }) {
                   </Link></div>
                 </td>
                 <td className="py-3.5 pr-4 text-text-secondary text-xs hidden md:table-cell">
-                  <span className="line-clamp-1">{item.issuedBy ?? "Unknown"}</span>
+                  <span className="line-clamp-1"><BuyerName record={item} /></span>
                 </td>
                 <td className="py-3.5 pr-4 hidden lg:table-cell">
                   <span className="inline-flex items-center rounded-full bg-bg-subtle px-2 py-0.5 text-[10px] text-text-secondary">

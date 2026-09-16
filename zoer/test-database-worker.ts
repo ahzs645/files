@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
+import { newAwardRanges } from './src/award-ranges';
 import { LISTING_URL } from './src/scrape';
 const records=new Map<string,any>(),state=new Map<string,any>();let revision=0,primary=false;
 async function run(actionId:string,input:any={}) {
@@ -28,8 +29,8 @@ async function run(actionId:string,input:any={}) {
       } else {
         assert.ok(message.method.startsWith('browser.'),'No JSON artifact writes are allowed');assert.equal(value.ticket,browser);nextTicket=browser='browser-'+(++pages);
         if(actionId==='awards.history') {
-          assert.equal(value.searchFields[0].value,'1900-01-01');
-          result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:pages===1,visiblePages:[1]},html:`<table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>2015-01-01</td><td>100</td></tr></tbody></table>`};
+          assert.equal(value.searchFields[0].value,'2015-01-01');assert.equal(value.searchFields[1].value,'2015-01-31');
+          result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:pages===1,visiblePages:[1]},html:`<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">${value.searchFields[0].value}</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">${value.searchFields[1].value}</li></ul></div><table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>2015-01-01</td><td>100</td></tr></tbody></table>`};
         } else {
           const file=!value.url||value.url===LISTING_URL?'listing/page1.html':'detail/with-addenda.html';
           result={url:value.url??LISTING_URL,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:1,hasNext:false,visiblePages:[1]},html:readFileSync(resolve(import.meta.dir,'../tests/fixtures',file),'utf8')};
@@ -46,7 +47,7 @@ const full=await run('scrape.full');assert.equal(full.detailCount,2);assert.equa
 const sample=await run('scrape.sample',{detailLimit:1});assert.equal(sample.detailCount,1);
 const opportunity=[...records.values()][0];await run('stars.set',{entity:'opportunity',key:opportunity.data.sourceKey,starred:true});assert.equal(records.get(opportunity.id).data.starred,true);
 await run('opportunities.import',{records:[opportunity.data],fileName:'roundtrip.json'});assert.equal(records.size,2);
-const awards=await run('awards.history');assert.equal(awards.count,2);assert.equal(state.get('checkpoint:awards').complete,true);
+const awards=await run('awards.history',{resume:newAwardRanges('2015-01-01','2015-01-31')});assert.equal(awards.count,2);assert.equal(state.get('checkpoint:awards').complete,true);
 await run('awards.import',{records:[{opportunityDescription:'Imported award',successfulSupplier:'Supplier',starred:true}],fileName:'awards.json'});
 assert.ok([...records.values()].some(row=>row.kind==='award'&&row.data.starred));
 console.log('Bundled worker passed: migration, listing, full/sample scrape, stars, both imports, award history; rotating catalog/browser tickets; zero artifact writes.');

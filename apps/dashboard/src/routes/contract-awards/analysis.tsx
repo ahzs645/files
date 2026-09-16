@@ -1,5 +1,6 @@
+import { BidPreferences } from '../../components/preferences/BidPreferences';
 import { Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useAction } from "convex/react";
 import {
   AlertTriangle,
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/contract-awards/analysis")({
 });
 
 function ContractAwardsAnalysisPage() {
+  const { analysisView } = useContext(BidPreferences);
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -50,7 +52,7 @@ function ContractAwardsAnalysisPage() {
     return <Outlet />;
   }
 
-  return <ContractAwardsAnalysisHub />;
+  return analysisView ?? <ContractAwardsAnalysisHub />;
 }
 
 function ContractAwardsAnalysisHub() {
@@ -62,12 +64,14 @@ function ContractAwardsAnalysisHub() {
     undefined,
   );
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     setError(null);
-    setOverview(undefined);
+    setLoading(true);
 
     void runOverview(filters)
       .then((result) => {
@@ -79,17 +83,19 @@ function ContractAwardsAnalysisHub() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load analysis.");
         }
-      });
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => {
       cancelled = true;
     };
-  }, [filters, runOverview]);
+  }, [filters, runOverview, attempt]);
 
   if (!overview && !error) {
     return (
-      <div className="flex items-center justify-center py-32">
+      <div role="status" className="flex flex-col items-center justify-center gap-3 py-32 text-sm text-text-secondary">
         <Spinner size={24} />
+        <span>Loading saved award analysis…</span>
       </div>
     );
   }
@@ -98,17 +104,23 @@ function ContractAwardsAnalysisHub() {
     return (
       <div className="rounded-2xl border border-dashed border-border-default px-6 py-16 text-center text-sm text-text-tertiary">
         {error ?? "Could not load analysis."}
+        <button type="button" className="mx-auto mt-4 block text-accent underline" onClick={() => setAttempt(value => value + 1)}>Retry analysis</button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading}>
+      {loading && <p role="status" className="text-sm text-text-secondary">Updating analysis…</p>}
+      {error && <div role="alert" className="text-sm text-red">
+        {error} Showing the previous results.
+        <button type="button" className="ml-2 text-accent underline" onClick={() => setAttempt(value => value + 1)}>Retry analysis</button>
+      </div>}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-text-primary">Analysis Hub</h2>
+          <h2 className="text-xl font-semibold text-text-primary">{import.meta.env.VITE_ZOER_PLUGIN ? "Award analysis" : "Analysis Hub"}</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Executive KPIs, analyst drilldowns, concentration views, and quality caveats generated from the imported awards dataset only.
+            {import.meta.env.VITE_ZOER_PLUGIN ? "Calculated from saved awards only." : "Executive KPIs, analyst drilldowns, concentration views, and quality caveats generated from the imported awards dataset only."}
           </p>
         </div>
         <div className="text-sm text-text-secondary">
@@ -203,7 +215,7 @@ function ContractAwardsAnalysisHub() {
               description="Use the date preset to switch the time grain from yearly to quarterly or monthly."
               data={overview.trends}
               dataKey="totalValue"
-              color="#72bfff"
+              color="var(--color-accent)"
               mode="currency"
             />
             <TrendChartCard
@@ -211,7 +223,7 @@ function ContractAwardsAnalysisHub() {
               description="Award counts respond to the same filters as the value trend."
               data={overview.trends}
               dataKey="awardCount"
-              color="#2fd89f"
+              color="var(--color-green)"
               mode="count"
             />
           </div>

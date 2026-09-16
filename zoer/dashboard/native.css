@@ -3,22 +3,35 @@
 html, body { min-width: 0; background: var(--color-bg-base); }
 .zoer-dashboard-body > div { height: 100%; min-height: 0; }
 h1 { font-size: 1.125rem !important; line-height: 1.5 !important; }
-.rounded-2xl, .rounded-xl { border-radius: .5rem; }
+.zoer-content .rounded-2xl, .zoer-content .rounded-xl { border-radius: .5rem; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 @media (max-width: 639px) { button, select, input:not([type=checkbox]), textarea { min-height: 44px; } input, select, textarea { font-size: 16px; } }
 
-.zoer-tabs { display: flex; flex-wrap: wrap; flex-shrink: 0; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--color-border-default); }
-.zoer-tabs a, .zoer-tabs button { display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; }
-.zoer-tabs [data-active=true] { color: var(--color-accent); background: var(--color-accent-muted); }
+ /* Section tabs mirror the host PageTabs: underline, 44px targets, horizontal scroll with no visible scrollbar. */
+.zoer-tabs { display: flex; flex-shrink: 0; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--color-border-default); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.zoer-tabs::-webkit-scrollbar { display: none; }
+.zoer-tabs a, .zoer-tabs button { display: flex; align-items: center; min-height: 44px; padding: 10px 12px; border-bottom: 2px solid transparent; font-size: 13px; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+.zoer-tabs [data-active=true] { color: var(--color-text-primary); border-bottom-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 5%, transparent); }
 .zoer-content { min-height: 0; flex: 1; overflow-y: auto; }
 .zoer-scope { margin-bottom: 16px; padding: 8px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
-@media (max-width: 639px) { .zoer-tabs { padding: 8px 12px; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scroll-padding-inline: 12px; } .zoer-tabs a, .zoer-tabs button { min-height: 44px; flex-shrink: 0; white-space: nowrap; } }
+@media (max-width: 639px) { .zoer-tabs { padding: 0 12px; scroll-padding-inline: 12px; } }
+/* Progress fills use the flat accent color in Zoer; the standalone gradient stays in the source app. */
+.zoer-content .progress-fill-gradient { background: var(--color-accent); box-shadow: none; }
 
 .zoer-record-tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; font-size:13px; color:var(--color-text-secondary); }
-.zoer-history { padding:16px; margin:16px 0; border:1px solid var(--color-border-default); border-radius:8px; background:var(--color-bg-surface); }
+.zoer-history { padding:12px 14px; margin:12px 0; border:1px solid var(--color-border-default); border-radius:8px; background:var(--color-bg-surface); }
 .zoer-history h2 { font-size:14px; font-weight:600; color:var(--color-text-primary); }
-.zoer-history p { margin-top:8px; font-size:13px; line-height:1.6; color:var(--color-text-secondary); }
+.zoer-history p { margin-top:6px; font-size:13px; line-height:1.5; color:var(--color-text-secondary); }
+.zoer-history details > summary { cursor:pointer; margin-top:8px; font-size:12px; color:var(--color-text-secondary); }
+.zoer-history details > p { margin-top:6px; }
+.zoer-history > .zoer-record-tools { margin:10px 0 0; }
+.zoer-history > .zoer-record-tools + p { margin-top:8px; }
+/* Setup sections: heading and one-line description on the left, primary control on the right. */
+.zoer-setup-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; }
+.zoer-setup-row > div:first-child { flex:1 1 280px; min-width:0; }
+.zoer-setup-row > .zoer-setup-actions { margin:0; }
+.zoer-setup > p[role] { margin-top:8px; }
 .zoer-history [role=alert], .bid-star-control [role=alert] { color:var(--color-red); }
 .bid-star { display:inline-flex; align-items:center; justify-content:center; min-width:36px; min-height:36px; border-radius:6px; color:var(--color-text-tertiary); vertical-align:middle; }
 .bid-star:hover { background:var(--color-bg-hover); }
@@ -27,8 +40,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .bid-star-control [role=alert] { display:block; font-size:12px; max-width:260px; white-space:normal; }
 .zoer-awards > table { width:100%; }
 
-.research {min-width:0;display:grid;gap:16px}.research h1{font-size:22px;font-weight:600}.research h2{font-size:18px;font-weight:600}.research h3{margin-top:18px;font-size:16px;font-weight:600}.research p{font-size:13px;line-height:1.6;color:var(--color-text-secondary)}.research-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.research-grid>section{min-width:0}.research-label{display:grid;gap:6px;margin:12px 0;font-size:13px}.research-label input,.research-label textarea{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--color-border-default);background:var(--color-bg-subtle);color:var(--color-text-primary);border-radius:8px;padding:10px;font-size:16px}.research-check{display:flex;align-items:center;gap:10px;min-height:44px;font-size:14px}.research input[type=checkbox]{width:20px;height:20px;flex-shrink:0}.research-records{max-height:560px;overflow:auto;margin:10px 0}.research-records article{border-bottom:1px solid var(--color-border-default);padding:10px 0}.research-records label{display:flex;align-items:flex-start;gap:12px;min-height:44px}.research-records strong{display:block;font-size:14px;overflow-wrap:anywhere}.research-records small{display:block;font-size:12px;color:var(--color-text-secondary);margin-top:5px}.research-choice{margin:12px 0;border:1px solid var(--color-border-default);border-radius:8px;font-size:14px}.research-choice summary{padding:12px;cursor:pointer;overflow-wrap:anywhere}.research-choice button{display:block;text-align:left;width:100%;min-height:44px;padding:10px 12px}.research-choice button[aria-pressed=true]{background:var(--color-accent-muted)}.research-batch{padding:12px 0;border-bottom:1px solid var(--color-border-default);font-size:14px;overflow-wrap:anywhere}.research-dialog{position:fixed;inset:12px;width:calc(100% - 24px);max-width:900px;height:calc(100% - 24px);max-height:none;margin:auto;border:1px solid var(--color-border-default);border-radius:12px;background:var(--color-bg-base);color:var(--color-text-primary);padding:0}.research-dialog::backdrop{background:#0009}.research-dialog-body{height:100%;overflow:auto;padding:16px;box-sizing:border-box}.research-dialog h2{flex:1;min-width:0;overflow-wrap:anywhere}.research-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:400px;overflow:auto}.research-dialog dl>div{margin:8px 0}.research-dialog dt{font-weight:600}.research-dialog dd{overflow-wrap:anywhere}.research-tag{border-radius:20px;padding:4px 10px;background:var(--color-accent-muted);font-size:12px}.research [role=alert]{color:var(--color-red)}
-@media(max-width:767px){.research-grid{grid-template-columns:minmax(0,1fr)}.research-records{max-height:360px}.research-dialog{inset:4px;width:calc(100% - 8px);height:calc(100% - 8px)}.research button{min-height:44px}.research .zoer-record-tools{flex-wrap:wrap}}
+.research {min-width:0;display:grid;gap:12px}.research .zoer-history,.bid-opportunities-page .zoer-history{margin:0}.research h1{font-size:22px;font-weight:600}.research h2{font-size:18px;font-weight:600}.research h3{margin-top:18px;font-size:16px;font-weight:600}.research p{font-size:13px;line-height:1.6;color:var(--color-text-secondary)}.research-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}.research-grid>section{min-width:0}.research-label{display:grid;gap:4px;margin:10px 0;font-size:12px;color:var(--color-text-secondary)}.research-label input,.research-label textarea{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--color-border-default);background:var(--color-bg-subtle);color:var(--color-text-primary);border-radius:6px;padding:8px 10px;font-size:13px}.research-check{display:flex;align-items:center;gap:8px;min-height:36px;font-size:13px}.research input[type=checkbox]{width:18px;height:18px;flex-shrink:0}.research-records{max-height:480px;overflow:auto;margin:8px 0}.research-records article{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--color-border-default);padding:6px 0}.research-records label{display:flex;flex:1;min-width:0;align-items:center;gap:10px;min-height:36px}.research-records strong{display:block;font-size:13px;font-weight:500;overflow-wrap:anywhere}.research-records small{display:block;font-size:12px;color:var(--color-text-secondary);margin-top:2px}.research-choice{margin:12px 0;border:1px solid var(--color-border-default);border-radius:8px;font-size:14px}.research-choice summary{padding:12px;cursor:pointer;overflow-wrap:anywhere}.research-choice button{display:block;text-align:left;width:100%;min-height:44px;padding:10px 12px}.research-choice button[aria-pressed=true]{background:var(--color-accent-muted)}.research-batch{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;padding:8px 0;border-bottom:1px solid var(--color-border-default);font-size:13px;overflow-wrap:anywhere}.research-batch>div{min-width:0;flex:1}.research-batch strong{font-weight:500}.research-batch p{margin-top:2px;font-size:12px}.research-batch p [role=alert]{color:var(--color-red)}.research-review{padding:10px 0;border-bottom:1px solid var(--color-border-default);font-size:13px;overflow-wrap:anywhere}.research-record-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:400px;overflow:auto}.research-record-detail dl>div{margin:8px 0}.research-record-detail dt{font-weight:600}.research-record-detail dd{overflow-wrap:anywhere}.research-tag{border-radius:20px;padding:4px 10px;background:var(--color-accent-muted);font-size:12px}.research [role=alert]{color:var(--color-red)}
+@media(max-width:767px){.research-grid{grid-template-columns:minmax(0,1fr)}.research-records{max-height:360px}.research-records article{flex-wrap:wrap}.research-records article>button{margin-left:28px}.research-label input,.research-label textarea{font-size:16px}.research button{min-height:44px}.research .zoer-record-tools{flex-wrap:wrap}}
 
 /* File controls have a browser-defined intrinsic width; contain them in narrow
    plugin workspaces without clipping the upload button or selected filename. */
@@ -36,19 +49,104 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .zoer-record-tools input[type="file"], .zoer-history input[type="file"] { display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; }
 
 /* Shared Zoer grid owns its own scroll area and pagination footer. */
-.bid-database-grid{height:620px;min-height:0;font-size:12px}
+/* Catalog pages: the page column fills the content area; the table takes the remaining height and scrolls inside itself, while the phone list scrolls the page. */
+.zoer-catalog>.bid-opportunities-page{flex:1;min-height:0;overflow-y:auto}
+.bid-database-grid{flex:1;min-height:280px;font-size:12px}
+.bid-database-grid.db-workspace{min-height:280px}
 .bid-database-grid .db-grid-workspace{min-height:0;flex:1}
 .bid-database-grid .bid-star{min-width:44px}
-@media(max-width:767px){.bid-database-grid{height:620px;min-height:0}.db-footer-summary{flex-wrap:wrap}.db-row-drawer{font-size:12px}}
+/* Star is the first data column: its header shows a star glyph and the sort arrow only. */
+/* Opportunity columns without row numbers: selection, star, ID, title, status. The status chip is centred in its 90px column. */
+.bid-database-grid[data-kind=opportunity] td:nth-child(5) .db-cell{text-align:center}
+.bid-database-grid thead th:nth-child(2) button{padding:0 6px;gap:4px}.bid-database-grid thead th:nth-child(2) button>svg:first-child{display:none}.bid-database-grid thead th:nth-child(2) button>span{font-size:0}.bid-database-grid thead th:nth-child(2) button>span::before{content:'\2605';font-size:12px}
+@media(max-width:767px){.db-footer-summary{flex-wrap:wrap}.db-row-drawer{font-size:12px}}
 
-.bid-opportunities-page{display:flex;flex-direction:column;gap:14px;min-width:0}
-.bid-page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-.bid-page-header p{font-size:13px;color:var(--color-text-secondary);margin-top:4px}
-.bid-data-tools{min-width:0;max-width:440px}.bid-data-tools>summary,.bid-more-filters>summary{cursor:pointer;font-size:13px;padding:8px 10px;border:1px solid var(--color-border-default);border-radius:6px;min-height:36px;list-style:revert}
-.bid-data-tools[open]{flex:1}.bid-data-tools .zoer-record-tools{padding:12px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-surface)}
+.bid-opportunities-page{display:flex;flex-direction:column;gap:12px;min-width:0}
+.bid-page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px 16px}
+.bid-page-header>div:first-child{min-width:0}
+.bid-page-header p{font-size:13px;color:var(--color-text-secondary);margin-top:2px}
 .bid-scope-bar{display:flex;gap:4px;border-bottom:1px solid var(--color-border-default)}.bid-scope-bar button{padding:8px 12px;font-size:13px;min-height:36px;border-bottom:2px solid transparent;color:var(--color-text-secondary)}.bid-scope-bar [aria-pressed=true]{border-color:var(--color-accent);color:var(--color-accent)}
 .bid-filter-bar{padding:12px;border:1px solid var(--color-border-default);border-radius:8px;background:var(--color-bg-surface);min-width:0;margin-bottom:0}
-.bid-filter-primary{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:12px}
-.bid-filter-primary>label,.bid-filter-advanced>label{display:block;min-width:0;font-size:12px}.bid-search-label{min-width:0}.bid-field-label{display:block;margin-bottom:6px;font-size:12px;color:var(--color-text-secondary)}.bid-filter-primary>label>button{height:44px}.bid-filter-bar label>span{display:block;margin-bottom:6px;color:var(--color-text-secondary)}
-.bid-filter-secondary{display:flex;gap:8px;align-items:flex-start;margin-top:10px}.bid-more-filters{flex:1;min-width:0}.bid-more-filters>summary{width:fit-content}.bid-filter-advanced{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding-top:12px}.bid-filter-bar input{min-width:0}
-@media(max-width:767px){.bid-page-header{flex-wrap:wrap;gap:8px}.bid-page-header h1{font-size:18px}.bid-data-tools{max-width:100%}.bid-data-tools[open]{flex-basis:100%}.bid-filter-primary,.bid-filter-advanced{grid-template-columns:minmax(0,1fr)}.bid-data-tools>summary,.bid-more-filters>summary,.bid-scope-bar button{min-height:44px}.bid-filter-bar{padding:10px}.bid-opportunities-page{gap:10px}}
+.bid-filter-primary{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.5fr) auto;gap:12px;align-items:end}
+.bid-filter-primary>label,.bid-filter-fields>label{display:block;min-width:0;font-size:12px}.bid-search-label{min-width:0}.bid-field-label{display:block;margin-bottom:6px;font-size:12px;color:var(--color-text-secondary)}.bid-filter-primary>label>button{height:44px}.bid-filter-primary label>span,.bid-filter-fields label>span{display:block;margin-bottom:6px;color:var(--color-text-secondary)}
+/* Filter icon sits at the end of the search row; a red dot marks panel-only filters that still narrow the closed panel's results. */
+.bid-filter-toggle{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex-shrink:0;border:1px solid var(--color-border-default);border-radius:8px;background:var(--color-bg-subtle);color:var(--color-text-secondary)}
+/* Phones: the 44px input rule makes the bordered search box 46px tall; match it. */
+@media(max-width:639px){.bid-filter-toggle{width:46px;height:46px}}
+.bid-filter-toggle:hover{background:var(--color-bg-hover);color:var(--color-text-primary)}
+.bid-filter-toggle[aria-expanded=true]{border-color:var(--color-accent);color:var(--color-text-primary)}
+.bid-filter-dot{position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:50%;background:var(--color-red);box-shadow:0 0 0 2px var(--color-bg-subtle)}
+.bid-filter-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.bid-filter-bar .bid-filter-fields{padding-top:12px}.bid-filter-fields>p,.bid-filter-actions{grid-column:1/-1;margin:0}.bid-filter-bar input{min-width:0}
+/* Inside the shared grid's filter rail/sheet the plugin fields stack in one column. */
+.db-filter-extra .bid-filter-fields{grid-template-columns:minmax(0,1fr)}
+@media(max-width:767px){.bid-page-header{flex-wrap:wrap;gap:8px}.bid-page-header h1{font-size:18px}.bid-filter-primary{grid-template-columns:minmax(0,1fr) auto}.bid-filter-fields{grid-template-columns:minmax(0,1fr)}.bid-scope-bar button{min-height:44px}.bid-filter-bar{padding:10px}.bid-opportunities-page{gap:10px}}
+
+/* The standalone reset uses unlayered color:inherit on buttons. Restore the
+   shared variants explicitly so their foreground keeps its intended contrast. */
+.bid-native-button[data-variant=primary]{color:var(--accent-text)}
+.bid-native-button[data-variant=secondary]{color:var(--text-secondary)}
+.bid-native-button[data-variant=danger]{background:var(--status-error);color:var(--danger-text,#fff)}
+
+/* Compact plugin skin. The host header and section tabs already carry page context,
+   so the source app's page-level stacks, card padding and eyebrow labels are tightened here. */
+.zoer-content .space-y-6 > :not(:last-child) { margin-block-end: 12px; }
+.zoer-content .space-y-4 > :not(:last-child) { margin-block-end: 10px; }
+.zoer-content .gap-6 { gap: 12px; }
+.zoer-content .p-5 { padding: 14px; }
+.zoer-content .p-6 { padding: 16px; }
+.zoer-content .mb-5 { margin-bottom: 10px; }
+.zoer-content h2.text-lg, .zoer-content h2.text-xl { font-size: 15px; line-height: 1.4; }
+.zoer-content .text-2xl { font-size: 20px; line-height: 1.2; }
+.zoer-content .py-32 { padding-block: 48px; }
+.zoer-content .rounded-2xl, .zoer-content .rounded-xl { border-radius: .5rem; }
+
+/* Tab strip: fade whichever edge still hides sections so phones can tell the row scrolls. */
+.zoer-tabs[data-overflow-end]{mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent)}
+.zoer-tabs[data-overflow-start]{mask-image:linear-gradient(to right,transparent,#000 48px)}
+.zoer-tabs[data-overflow-start][data-overflow-end]{mask-image:linear-gradient(to right,transparent,#000 48px,#000 calc(100% - 48px),transparent)}
+
+/* Compact filters (phones): the search box leads; grouping, buyer and the mapping note sit under More filters. */
+/* Phones: the search row sits directly on the page, without the card holder. */
+.bid-filter-bar[data-compact]{padding:0;border:0;border-radius:0;background:transparent}
+.bid-filter-bar[data-compact] .bid-field-label{display:none}
+
+/* Phone catalog: List/Table toggle and the stacked record list. */
+.bid-layout-toggle{display:inline-flex;align-self:center;flex-shrink:0;border:1px solid var(--color-border-default);border-radius:6px;overflow:hidden}
+.bid-layout-toggle button{min-height:36px;padding:0 14px;font-size:13px;color:var(--color-text-secondary)}
+.bid-layout-toggle button[aria-pressed=true]{background:var(--color-accent-muted);color:var(--color-text-primary)}
+.bid-layout-toggle button+button{border-left:1px solid var(--color-border-default)}
+.bid-list{display:flex;flex-direction:column;gap:8px;min-width:0}
+.bid-list-count,.bid-list-empty{font-size:12px;color:var(--color-text-secondary)}
+.bid-list [role=alert]{font-size:13px;color:var(--color-red)}
+.bid-list-rows{display:flex;flex-direction:column;border-top:1px solid var(--color-border-default)}
+.bid-list-row{display:flex;align-items:flex-start;gap:6px;padding:10px 0;border-bottom:1px solid var(--color-border-default)}
+.bid-list-row>.bid-star-control{flex-shrink:0;margin-top:2px}
+.bid-list-link,.bid-list-award{display:block;flex:1;min-width:0}
+.bid-list-link{color:inherit;text-decoration:none;text-align:left;padding:0;min-height:0}
+.bid-sheet{display:grid;gap:12px}.bid-sheet .bid-list-meta .bid-star-control{margin-left:auto}.bid-sheet .bid-list-fields{margin:0;font-size:13px}
+.bid-list-award>summary{list-style:none;cursor:pointer}
+.bid-list-award>summary::-webkit-details-marker{display:none}
+.bid-list-award>summary::after{content:'Show details';display:block;margin-top:6px;font-size:12px;color:var(--color-accent)}
+.bid-list-award[open]>summary::after{content:'Hide details'}
+.bid-list-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:12px;color:var(--color-text-tertiary)}
+.bid-list-status{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.bid-list-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:4px;font-size:14px;font-weight:600;line-height:1.35;color:var(--color-text-primary);overflow-wrap:anywhere}
+.bid-list-buyer{display:block;margin-top:4px;font-size:13px;color:var(--color-text-secondary)}
+.bid-list-buyer small{font-size:12px}
+.bid-list-detail{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;margin-top:4px;font-size:12px;color:var(--color-text-secondary)}
+.bid-list-supplier{min-width:0;flex:1 1 160px;overflow-wrap:anywhere}
+.bid-list-value{font-weight:600;color:var(--color-text-primary);white-space:nowrap}
+.bid-list-fields{display:grid;gap:8px;margin:10px 0 4px;font-size:12px}
+.bid-list-fields dt{color:var(--color-text-tertiary)}
+.bid-list-fields dd{margin-top:2px;color:var(--color-text-primary);overflow-wrap:anywhere;white-space:pre-wrap}
+.bid-list-fields a{color:var(--color-accent);text-decoration:underline}
+.bid-list-more{display:flex;justify-content:center;padding:4px 0}
+
+/* Dashboard on phones: 44px card links and two-line titles instead of one clipped line. */
+@media (max-width:639px){
+  .zoer-content a.inline-flex.text-accent{min-height:44px}
+  .zoer-content .text-sm.truncate{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+}
+
+/* Settings section: export/import cards for both catalogs. */
+.bid-settings{display:grid;gap:12px}.bid-settings .zoer-history{margin:0}

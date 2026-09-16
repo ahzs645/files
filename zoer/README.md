@@ -1,6 +1,6 @@
 # BC Bid Monitor for Zoer
 
-Version 0.12 packages the existing `apps/dashboard` React experience and shared parsers as a separately loadable plugin. Zoer provides browsers, isolated worker execution, durable workflows, a primary SQLite database, document extraction and configured model APIs. The original standalone app and Convex deployment remain available independently.
+Version 0.20 packages the existing `apps/dashboard` React experience and shared parsers as a separately loadable plugin. Zoer provides browsers, isolated worker execution, durable workflows, a primary SQLite database, document extraction and configured model APIs. The original standalone app and Convex deployment remain available independently.
 
 ## Build
 
@@ -24,10 +24,20 @@ bun run plugin pack /absolute/path/to/files/dist/zoer-bcbid --output /absolute/p
 
 Stage the ZIP in Extensions, review/install or upgrade, enable, then Open BC Bid. Keep this Git repository separate. Future dashboard releases are plugin package upgrades; only changes to generic host capabilities require a Zoer release.
 
+## Local development
+
+Iterate on the dashboard against a live Zoer without rebuilding or reinstalling the package:
+
+1. Here: `bun run zoer:dev` (the Zoer checkout also lists it as `bcbid-plugin-dev` in `.claude/launch.json`). It serves `zoer/dashboard/main.tsx` on port 5175 under `/plugin-dev/bc-bid-monitor/` with the packaged build's aliases, source substitutions and HMR. `BCBID_DEV_PORT` and `BCBID_DEV_BASE` override the defaults.
+2. In the Zoer checkout: `cd frontend && BACKEND_URL=https://<your-zoer> VITE_PLUGIN_WORKSPACE_DEV_URLS=bc-bid-monitor=http://localhost:5175/ bun run dev -- --port 5180 --strictPort`. The host dev server proxies `/plugin-dev/bc-bid-monitor/` (including the HMR WebSocket) to step 1.
+3. Open `http://localhost:5180/#/plugins/bc-bid-monitor`. The workspace iframe loads the dev server; state, catalog queries, actions and workers still come from the plugin installed on that backend, which must be active.
+
+The iframe keeps its sandbox attribute, so the dev document still has an opaque origin and only reaches the host through the bridge, but it has no HTTP CSP; use it for local work only. Production host builds ignore the variable. Package and install as before to ship changes. Worker (`zoer/src`) and manifest changes still need a package upgrade.
+
 ## Use and current coverage
 
 - **Dashboard/Opportunities:** source statistics, search, filters, list/cards, pagination of saved results and detail views. Data merges by source key; later listing-only captures preserve earlier details.
-- **Contract Awards:** Download award history searches public awards from 1900 onward, follows every Next page, and saves each page atomically. Stop/Resume retain saved records; if the browser search changes, start a fresh search (records deduplicate). Each run allows six hours, 3500 pages and 8192 browser loads. Includes JSON file upload, validation, deduplication, paginated browsing, analysis and supplier/organization profiles. Upload batches become durable worker actions and atomic database transactions. Analysis runs on this plugin's saved data.
+- **Contract Awards:** Download history backfills dated public awards from 1900 through 9999 in checkpointed date ranges. Completed ranges are skipped; a range above 40 pages is subdivided. Resume rechecks only the unfinished range so shifting page positions cannot skip records. Identical records are not rewritten; changes preserve stars and associated documents/reviews. Old page-number checkpoints are retained under `checkpoint:awards:legacy`; their records are preserved but do not prove date coverage. Refresh recent awards checks the last 30 days, keeping its checkpoint separate from history. Undated awards are not verified. Each run allows six hours, 3500 pages and 8192 browser loads. Includes JSON file upload, validation, deduplication, paginated browsing, analysis and supplier/organization profiles. Upload batches become durable worker actions and atomic database transactions. Analysis runs on this plugin's saved data.
 - **Scraper:** save a running Zoer browser in Settings, then Start Scrape to crawl all current public listing pages and their details. Listing and detail deltas persist immediately, with compact recovery checkpoints. Resume saved scrape retries pending work and skips durable completed details. Each run is bounded to 200 listing pages, 3000 opportunities, two hours and 8192 browser navigations/tab reads. Browser checks require manual completion and resumed agent control.
 - **Stars and exports:** star/unstar opportunities or awards in the same database, use Starred only, and download all saved (or starred) records as CSV/JSON. Exports include every saved record, independent of search and page size; CSV neutralizes spreadsheet formulas. Opportunity exports include captured attachment links. Historical award collection does not download attachment files.
 - **Run History:** durable run status, error messages, counts and per-run captured opportunities. Stop Active requests cancellation. The worker continues if the dashboard closes. The most recent 100 plugin workflow runs plus active older runs are returned, with a visible truncation notice.
@@ -53,7 +63,7 @@ A live capture uses a temporary tab in the selected browser and closes it after 
 
 ### Documents & AI
 
-Select up to 50 saved opportunities or awards (including Starred only), retrieve up to 20 attachments per record at 8 MiB each, and save versioned review prompts. The selected Zoer browser handles downloads. Exact, unique opportunity-ID matches can associate award attachment links; absent links remain explicit. Downloads are separate from listing/history scraping.
+Select up to 50 saved opportunities or awards (including Starred only), retrieve up to 100 attachments per record at 8 MiB each, and save versioned review prompts. The selected Zoer browser handles downloads. Exact, unique opportunity-ID matches can associate award attachment links; absent links remain explicit. Downloads are separate from listing/history scraping.
 
 Review records alone or optionally include downloaded text. PDF extraction covers up to 100 pages, DOCX/TXT/CSV/Markdown are supported, and extracted text is capped at 240,000 characters. Scanned PDFs need OCR; unsupported originals are retained. Reviews process document chunks then the contract, retaining detailed evidence and coverage. The final pass uses bounded record/document summaries. Choose a reachable model API or a running computer with Codex signed in. Installed Codex uses low reasoning and a four-minute bound per call, with ephemeral sessions, inherited configuration and shell/browser/app tools disabled. Stop discards an in-flight response and prevents further calls; the command can take up to four minutes to finish. Each batch has a 250-model-call/six-hour limit, with Stop and Retry/resume. Unchanged successful reviews and saved files are reused unless forced.
 
@@ -74,7 +84,7 @@ Zoer 0.7 host support adds persisted interval schedules in plugin Settings for c
 
 Contract awards → Analysis retains the source overview, trends, procurement mix, rankings, findings, data quality and supplier/organization profiles. These calculations use saved awards and do not depend on AI availability.
 
-Version 0.8 loads dashboard aggregates and visible rows first. Award pages, individual details and research selections query the catalog on demand; analysis and CSV/JSON exports read full revision-checked snapshots only when opened/requested. Idle polling is 30 seconds, active polling 2.5 seconds, and hidden documents pause it. The existing JSON import/export format and separate plugin packaging are retained. Run `bun test zoer/dashboard/queries.test.ts` alongside `bun run zoer:test` to check query pagination, literal searches and complete exports.
+Version 0.8 loads dashboard aggregates and visible rows first. Award pages, individual details and research selections query the catalog on demand; analysis reads revision-checked snapshots only when opened. CSV/JSON exports use a finite keyset of saved records without blocking collection; concurrent changes may appear in a later export, so these downloads are not transaction snapshots. Idle polling is 30 seconds, active progress polling is 10 seconds, and hidden documents pause it. Stable TanStack Query keys retain counts and facets during 30-second refreshes; scrape revisions no longer clear table data. The sandbox queues at most four host requests at once. The existing JSON import/export format and separate plugin packaging are retained. Run `bun test zoer/dashboard/queries.test.ts` alongside `bun run zoer:test` to check query pagination, literal searches and complete exports.
 
 ### Shared database table (0.9)
 
@@ -91,3 +101,78 @@ Phone navigation uses one horizontally scrollable row. Source grids use an expli
 ### Listing capture validation (0.12.2)
 
 The listing parser rejects unreadable rows, missing opportunity IDs and empty extraction from a grid reporting multiple pages. Distinct commodity entries remain separate. The host's visibility-based capture must wait for full document load before removing hidden content. On September 8, 2026, a live Camoufox sample saved 15 opportunities and one detail record; Cloak, Patchright, Steel and Kasm returned BC Bid verification errors. These observations do not guarantee future verification or complete-crawl success.
+
+### Shared controls (0.12.3)
+
+The Zoer package uses the host button styles throughout the source dashboard, preserving disabled, loading and pressed states. Documents & AI uses Zoer's searchable picker. Scraper setup appears below the section heading. The shared database grid has an iframe-local QueryClientProvider, with its query dependency resolved from the same Zoer frontend checkout as the grid.
+
+### Compact workspace layout (0.12.14)
+
+The plugin dashboard no longer repeats page titles and descriptions that the Zoer header and section tabs already provide. Analysis is a top-level section instead of a card inside Contract awards. Cards use a single title, tighter padding and gaps. The Scraper tab shows a one-line saved-scrape resume row and a short browser-check row; the resume row no longer appears on Run history. Award history, Documents & AI and batch history use one-line rows with actions on the right, and longer guidance moved into disclosures. The standalone dashboard layout is unchanged.
+
+Section tabs use the host underline tab style. Progress fills are the flat accent color in Zoer. Run cards show a progress bar only while a run is running or stopping; finished, failed, cancelled and interrupted runs show status, message, counts and runtime only.
+The source stylesheet’s control font reset and link color reset now live in the Tailwind base layer, so text size and color utilities on buttons and links apply in both the standalone and Zoer builds; previously every plugin button rendered at 16px.
+Contract awards is a data page: its header disclosure holds award history download/resume/stop together with CSV/JSON export and JSON import. The award history status row lives on the Scraper tab and award history runs are listed on Run history above opportunity scrape runs.
+
+### Market analysis (0.13)
+
+The Zoer Analysis tab provides Overview, Trends, Buyers, Suppliers, Award sizes, Compare, Procurement mix, Relationships, and Data quality. Shared date, buyer, supplier, procurement-type, currency and minimum-value filters apply across views. Charts and participant rows open their matching saved awards, with CSV download; comparisons offer separate period A/B drilldowns. Heatmaps show bounded top groups with explicit coverage and optional within-row shares.
+
+This describes saved awards, not a complete market census or actual spend. CAD is the default; unspecified currencies remain separate, with no conversion. Future dates and placeholder suppliers are excluded by default. Numeric zero/negative amounts remain in net totals and size statistics, while concentration uses positive amounts. Quality flags inspect the full catalog independently of filters. Names are whitespace-normalized but legal entities are not reconciled. Comparisons do not infer bidder counts, win rates or verified market growth.
+
+A revision-checked, compact catalog snapshot is shared across analysis views, with bounded in-memory calculation caching. Navigation reuses it; changed catalog revisions invalidate it. Refresh checks the catalog head. Full browser reloads still need the initial catalog read. Filters and the selected view live in the parent URL and survive refresh, copied links and browser Back/Forward. All chart colors, hover highlights and tooltip text use Zoer theme tokens.
+
+Validate with `bun run zoer:typecheck:market`, `bun run zoer:test`, `bun test zoer/dashboard/queries.test.ts`, and `bun run zoer:build`. The standalone source dashboard keeps its existing analysis route; the market workspace is injected only into the Zoer package.
+
+### Shared plugin popups (0.13.2)
+
+Documents & AI record details, source award dialogs and market drilldowns use the host Modal with the same mobile sheet, persistent Done action, keyboard focus containment and dismissal. Resource filters and saved-prompt/model pickers keep search available even for short lists. Rebuild the plugin to incorporate shared host-control updates; installed sandbox bundles are independent of the host frontend release.
+
+
+### Shareable navigation (0.14)
+
+The public root is `#/plugins/bc-bid-monitor`. Source sections, Documents & AI, nine analysis views, analysis filters and award inspections synchronize with the host address bar. Example: `#/plugins/bc-bid-monitor/analysis/suppliers?currency=CAD`. Filters use the query string; unsaved prompts and action approvals remain local. Top-level and analysis tab links point to the full host app URL. Back/Forward keeps the same iframe and cached award snapshot. A full reload restores the route and refetches the snapshot. Older hosts fall back to local navigation.
+
+## Buyer hierarchy (0.17)
+
+Analysis groups buyers by type, organization group, organization, region/program, clean buyer/office or original source name. Use Explore in the buyer directory, breadcrumbs and Up one level to move through the hierarchy. Grouping and parent scopes travel in the URL, including evidence inspections; older source-name bookmarks retain their original meaning.
+
+Buyer mapping lists all 557 reviewed source labels, plus newly encountered award labels, with applied grouping, proposed hierarchy, review status and references. Names and parent relationships are proposals, not a verified historical legal register. Ambiguous names keep their own organization; joint buyers count once, with searchable participants and no invented allocation. Supplier identities remain unchanged. Current sources do not establish historical effective dates. The registry ships with the plugin; editing/approval persistence is not implemented.
+
+All market views and analysis exports use the same grouping. CSV/JSON analysis exports include original source, clean name, organization/group, buyer type, participants, aggregation level and mapping version. Ordinary source exports and import keys remain unchanged. Mapping version participates in the existing bounded analysis cache, with no new storage or per-record network calls.
+
+
+### Buyer mapping across the catalog (0.18)
+
+The same proposed buyer register now supplies Dashboard organization counts, opportunity and award tables, buyer filters, details, recent bids, run-history rows, Documents & AI record labels, and older organization/supplier profiles. Catalog tables default to organization and expose all six grouping levels in URL state. Choosing a ministry includes its mapped offices before pagination; mapped columns also sort and filter the entire catalog. Older list links with an organization but no grouping retain original-source filtering. Older office-profile links resolve to the mapped organization with an explicit scope notice. Searching for an office in profile choices returns the full organization's totals.
+
+CSV/JSON catalog exports include mapped names, hierarchy, status and version alongside original issuer fields. Imported records, stable keys, source documents, historical AI review text and the raw database viewer retain their original content. No stored records are renamed. Grouping remains a proposal; ambiguous and joint buyers stay separate. The catalog lists include all saved dates and currencies, so their counts can differ from Analysis with its eligibility filters.
+
+A revision-keyed cache holds only the distinct buyer source names for list queries. A bounded JSON parameter supplies mapping filter flags and sort ranks to the existing read-only catalog SQL before pagination. Calculated Analysis snapshots keep their separate revision-aware cache. No new datastore or host deployment is required.
+
+
+### Compact analysis choices and direct buyer awards (0.19)
+
+Analysis enumerations (year, metric, grouping, comparison dimension, currency and mapping status) use content-sized desktop dropdowns without automatic search. Buyers, suppliers and procurement-type inventories keep search and a wider reading surface. Mobile controls retain the shared sheet.
+
+Buyer Explore actions jump to the next level with distinct organizations, regions or offices under the current filters. Singleton levels and raw-name aliases no longer produce repeated directories. Leaf rows offer View awards; a scope containing one leaf buyer displays its filtered awards directly, including original issuer names and matching CSV export. Joint buyers remain unallocated, and genuine subdivisions remain available. Scope URLs, breadcrumbs and Up preserve navigation through skipped levels.
+
+### Award range recovery (0.20)
+
+Each captured page and its range checkpoint are committed in the existing catalog transaction. Identical adjacent pages are reread without clicking Next twice; a repeating page number still fails, and sustained duplicates subdivide the range. A single-day range above the safe page limit stops for inspection rather than claiming completion. Empty results require an explicit zero-record indicator and confirmed minimum/maximum date filters. Browser verification, cancellation, source-filter mismatches and malformed captures stop immediately, retaining completed ranges. Processed-row totals include overlap/replay; the database count is the unique saved total. The plugin remains separately installable and requires no new datastore or host rollout.
+
+### Phone catalog list (0.21)
+
+Below 768px, Opportunities and Contract awards render as a stacked list instead of the shared grid: status, ID and type, a two-line title, the mapped buyer with its original issuer, and the closing date or supplier and value, with the star control on the left. Opportunities open their detail page; awards expand in place with contract number, location, original value, justification and source link. Load more appends 25 rows. Search, buyer grouping, buyer, status, type and Starred apply unchanged, and a List/Table toggle restores the shared grid for column filters, sorting and loaded-row export. Export and import for both catalogs (with the award history controls) moved from the page headers to a new **Settings** section; the header slot now holds the phone List/Table toggle. The filter card shows Search (plus grouping and buyer on wider screens) with a filter icon inline; the icon opens status/type (and, on phones, grouping, buyer and the mapping note), and shows a red dot while a panel-only filter is narrowing results. In table mode the same icon is the grid's only filter trigger: it opens the shared grid's filter rail (desktop) or sheet (phones) with the plugin fields above the column filters, and the dot also counts active column filters. The table starts in the grid's Load more mode, so rows append as you scroll (up to the grid's 1,000-row cap) instead of paging, and the grid's toolbar (loaded count, refresh, live, view, schema) and footer summary (range, timing, loaded-row export) are hidden; complete exports live in Settings. On the catalog pages the table fills the height left below the filters and scrolls inside itself, so the page no longer scrolls in table mode; the phone list still scrolls the page. The Star column is star-sized, the row-number column is hidden, Opportunity ID is 135px, Status is a centred 90px chip and Closing date is 125px. On desktop, pressing an opportunity row opens its detail page directly; phones and awards open a record sheet with the key facts, where opportunities offer Open fully and awards offer Open on BC Bid. The detail page's Back link returns to the catalog with the same filters, the rows already loaded and the same scroll position (table offsets and phone-list pages are remembered per catalog for the session). On phones the table's filter sheet shows only the plugin fields; the grid's column-filter form and facets remain in the desktop rail. Status and Type are multi-select pickers (the URL carries `|`-separated values and the catalog query uses `IN`), and the buyer-mapping note no longer appears in the filters. While a shared dialog is open, the host reports the panel's former offsets in its `overlay` event and the dashboard pads its layout by them, so the content stays put while the dialog covers the Zoer header and bottom bar. The section tab strip fades whichever edge still hides tabs, dashboard card links are 44px tall and closing-soon titles wrap to two lines. Desktop layouts are unchanged.
+
+### Phone analysis header (0.21)
+
+On phones the Analysis header is a single row: the view picker plus icon-only Filters (with its active count), Refresh and Matching awards buttons, each keeping its accessible name. The buyer hierarchy card drops its guidance paragraph and tightens its spacing, and metric tiles use less padding. Desktop layouts are unchanged.
+
+### Evidence-based feasibility review (0.22)
+
+Documents & AI defaults to including downloaded documents and provides a review prompt for disclosed budget/funding, mandatory versus preferred designations, practical scope, equipment responsibility, eligibility, procurement route and next steps. Missing evidence must stay unknown. Saved prompts remain versioned and are not overwritten. The host research update raises attachment coverage to 100 files per record (8 MiB each), includes every document chunk in bounded hierarchical synthesis, and reports missing/unreadable files and extraction warnings. This requires the matching Zoer host update; source completeness still requires a successful live scrape and inspection of external document portals. Installed Codex uses the selected computer’s BC Bid workload model preference.
+
+### Bulk opportunity documents (0.23)
+
+Documents & AI is the first visible section tab. Its **Download all attachments** control processes every saved page in one durable batch (up to 3,000 opportunities), independent of row selection. Current opportunities means saved status Open and a closing date that has not passed, including unknown dates with an explicit count; All saved opportunities also includes closed/past records. Preview counts distinguish attachment links from opportunities with no saved links. The latter are skipped and require detail capture; neither scope proves live completeness. Original files remain in Zoer for AI review, unchanged downloads are reused, and Stop/Retry retain progress. The generic host must support 3,000-record document batches; AI review stays limited to 50 selected records. Existing per-file, per-record and six-hour limits still apply.

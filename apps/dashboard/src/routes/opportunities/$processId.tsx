@@ -1,5 +1,8 @@
+import type React from "react";
 import { StarButton } from '../../components/preferences/BidPreferences';
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useContext } from "react";
+import { BidPreferences } from "../../components/preferences/BidPreferences";
 import { useQuery } from "convex/react";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@convex/_generated/api";
@@ -14,12 +17,15 @@ export const Route = createFileRoute("/opportunities/$processId")({
 function OpportunityDetailPage() {
   const { processId } = Route.useParams();
   const detail = useQuery(api.opportunities.getByProcessId, { processId });
+  const { backToCatalog } = useContext(BidPreferences);
+  const back = backToCatalog ? (event: React.MouseEvent) => { event.preventDefault(); backToCatalog('opportunity'); } : undefined;
 
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
       <Link
         to="/opportunities"
+        onClick={back}
         className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
       >
         <ArrowLeft size={14} />
@@ -38,6 +44,7 @@ function OpportunityDetailPage() {
             </p>
             <Link
               to="/opportunities"
+              onClick={back}
               className="mt-4 inline-flex items-center gap-2 text-sm text-accent hover:text-accent-strong transition-colors"
             >
               <ArrowLeft size={14} />

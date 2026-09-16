@@ -1,3 +1,5 @@
+import { useQuery as useCachedQuery } from '@tanstack/react-query';
+import { queryClient } from './query-client';
 import { BidPreferences } from '../../apps/dashboard/src/components/preferences/BidPreferences';
 import { compactCheckpoint } from '../src/checkpoint';
 import { useCallback, useContext, useEffect, useSyncExternalStore } from 'react';
@@ -9,6 +11,7 @@ export { readAll } from './queries';
 let snapshot: { model?: Model; error?: string; notice?: string } = {};
 const listeners = new Set<() => void>();
 let databaseRevision = -1;
+export function analysisRevision() { return databaseRevision; }
 
 let savedEntries: any[] = [];
 let fullCheckpoint: any = null;
@@ -21,7 +24,6 @@ export function refresh() {
   if (pending) return pending;
   pending = (async () => {
     try {
-      for (const [key, entry] of queryCache) if (entry.failed) queryCache.delete(key);
       const state = await host('state', { summary: true }) as WorkspaceState;
       rawState = state;
       const head = await host('catalog.read', { ids: [] });
@@ -35,14 +37,18 @@ export function refresh() {
       }
       if (head.revision !== databaseRevision) {
         const entries: any[] = [];
-        let after: string | null = '';
-        do { const page=await host('catalog.workspace',{after,revision:head.revision}); entries.push(...page.entries); after=page.next; } while(after);
-        savedEntries=entries;databaseRevision=head.revision;loadedHistory.clear(); queryCache.clear();
+        const keys = ['checkpoint:awards', 'checkpoint:awards:recent', 'checkpoint:full', ...state.runs.map(run => 'run:' + run.id)];
+        for (let i = 0; i < keys.length; i += 20) {
+          const page = await host('catalog.workspace', { keys: keys.slice(i, i + 20) });
+          entries.push(...page.entries);
+        }
+        savedEntries=entries;databaseRevision=head.revision;
       }
       const metadata=savedEntries.filter(entry=>entry.key.startsWith('run:')).map(entry=>entry.value).map(item=>item.document.kind==='listing'?{...item,document:{...item.document,kind:'scrape'}}:item);
       const model=buildModel(state,metadata);
       model.stars=new Map(snapshot.model?.stars);
       model.awardCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:awards')?.value??null;
+      model.awardRecentCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:awards:recent')?.value??null;
       fullCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:full')?.value??null;
       if(snapshot.model && databaseRevision===head.revision) for(const id of loadedHistory) model.history.set(id,snapshot.model.history.get(id)??new Map());
       snapshot = { model };
@@ -51,18 +57,24 @@ export function refresh() {
   })();
   return pending;
 }
-const queryCache = new Map<string, { value?: any; pending?: Promise<void>; failed?: boolean }>();
+
 void refresh();
 let lastPoll = Date.now();
 setInterval(() => {
   if (document.hidden) return;
-  const active = rawState.runs.some(run => !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status));
-  if (Date.now() - lastPoll < (active ? 2500 : 30000)) return;
+  // Before the first successful read (or with no host at all) there is no state yet; keep polling at the idle rate.
+  const active = rawState?.runs.some(run => !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status)) ?? false;
+  if (Date.now() - lastPoll < (active ? 10000 : 30000)) return;
   lastPoll = Date.now(); void refresh();
 }, 2500);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastPoll = Date.now(); void refresh(); } });
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-export function catalogRevision() { return databaseRevision; }
+let visibleRevision = 0;
+export function catalogRevision() { return visibleRevision; }
+function invalidateCatalog() {
+  visibleRevision++;
+  void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+}
 export async function queryVisibleCatalog(args:any) {
   if(!snapshot.model) await refresh();
   if(!snapshot.model) throw new Error(snapshot.error || 'Catalog is loading.');
@@ -83,29 +95,26 @@ export function useQuery(name: string, args: any) {
       if(alive&&snapshot.model){loadedHistory.add(runId);const history=new Map(snapshot.model.history);history.set(runId,new Map(rows.map(row=>[row.id,row.data])));snapshot={...snapshot,model:{...snapshot.model,history}};emit();}
     })().catch(error=>{if(alive){snapshot={...snapshot,error:error.message};emit();}});
     return()=>{alive=false;};
-  },[runId,databaseRevision]);
+  },[runId]);
   const queryArgs = { ...args, starredOnly: args?.starredOnly ?? onlyStarred };
   const remote = name === 'dashboard.summary' || name.startsWith('catalog.') || name.startsWith('contractAwardsAnalysis.') || ['opportunities.list','opportunities.getByProcessId','contractAwards.list','contractAwards.summary'].includes(name);
-  const key = JSON.stringify([databaseRevision, name, queryArgs]);
-  useEffect(() => {
-    if (!model || args === 'skip' || !remote || queryCache.has(key)) return;
-    const entry: { value?: any; pending?: Promise<void>; failed?: boolean } = {};
-    queryCache.set(key, entry);
-    entry.pending = queryCatalog(name, queryArgs, model, databaseRevision).then(value => {
-      if (queryCache.get(key) !== entry) return;
-      entry.value = value;
+  const query = useCachedQuery({
+    queryKey: ['catalog', name, queryArgs],
+    enabled: !!model && args !== 'skip' && remote,
+    queryFn: async () => {
+      const value = await queryCatalog(name, queryArgs, snapshot.model!, databaseRevision);
       const rows = value?.items ?? (name === 'opportunities.getByProcessId' && value ? [value] : []);
       if (snapshot.model) for (const row of rows) snapshot.model.stars.set(row.catalogId ?? 'opportunity:' + row.sourceKey, row.starred === true);
-      snapshot = { ...snapshot }; emit();
-    }).catch(error => {
-      if (queryCache.get(key) !== entry) return;
-      entry.failed = true; snapshot = { ...snapshot, error: error.message }; emit();
-    });
-  }, [key, model, args === 'skip']);
+      return value;
+    },
+    // Analysis/export reads are explicit snapshots, not part of progress polling.
+    refetchInterval: name.startsWith('contractAwardsAnalysis.') ? false : 30_000,
+  });
   if (!model || args === 'skip') return undefined;
   if (!remote) return queryModel(model, name, queryArgs);
-  const value = queryCache.get(key)?.value;
+  const value = query.data;
   return name === 'dashboard.summary' && value ? { ...value, latestRun: model.runs[0] ?? null, latestSuccessfulRun: model.runs.find(run => run.status === 'succeeded') ?? null } : value;
+
 }
 async function invoke(name: string, args: any) {
   await refresh();
@@ -132,7 +141,7 @@ async function invoke(name: string, args: any) {
     while (Date.now() < deadline) {
       await new Promise(resolve => setTimeout(resolve, 1200)); await refresh();
       const current = rawState.runs.find(item => item.id === run.id);
-      if (current?.status === 'succeeded') return { inserted: unique.size - updated, updated, deduped: args.records.length - unique.size };
+      if (current?.status === 'succeeded') { invalidateCatalog(); return { inserted: unique.size - updated, updated, deduped: args.records.length - unique.size }; }
       if (current && ['failed', 'cancelled', 'outcome_unknown'].includes(current.status)) throw new Error(current.error || 'Award import did not complete.');
     }
     throw new Error('Import is still running in Zoer. Check run history before retrying.');
@@ -177,7 +186,7 @@ export function setStar(entity: 'opportunity' | 'award', key: string, starred: b
     while (Date.now() < deadline) {
       await new Promise(resolve => setTimeout(resolve, 1000)); await refresh();
       const current = rawState.runs.find(item => item.id === run.id);
-      if (current?.status === 'succeeded') { if (snapshot.error) throw new Error(snapshot.error); return; }
+      if (current?.status === 'succeeded') { invalidateCatalog(); if (snapshot.error) throw new Error(snapshot.error); return; }
       if (current && ['failed', 'cancelled', 'outcome_unknown'].includes(current.status)) throw new Error(current.error || 'Could not save star.');
     }
     throw new Error('Star is still saving. Check again before retrying.');
@@ -185,12 +194,12 @@ export function setStar(entity: 'opportunity' | 'award', key: string, starred: b
   starPending.set(id, promise); snapshot = { ...snapshot }; emit(); return promise;
 }
 export function activeAwardRun(model: Model) { return model.awardRuns.find(run => !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status)); }
-export async function startAwardHistory(resume = false) {
+export async function startAwardHistory(resume = false, recent = false) {
   await refresh(); if (snapshot.error) throw new Error(snapshot.error);
   if (activeAwardRun(snapshot.model!)) return;
   const checkpoint = snapshot.model!.awardCheckpoint;
   if (resume && (!checkpoint || checkpoint.complete)) throw new Error('No incomplete history to resume.');
-  await host('action', { actionId: 'awards.history', input: resume ? { resume: { page: checkpoint.page, count: checkpoint.count, fingerprint: checkpoint.fingerprint, complete: false } } : {} }); await refresh();
+  await host('action', { actionId: 'awards.history', input: recent ? { mode: 'recent' } : resume && checkpoint?.version === 2 ? { resume: checkpoint } : {} }); await refresh();
 }
 export async function stopAwardHistory() {
   const active = snapshot.model && activeAwardRun(snapshot.model);

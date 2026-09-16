@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { BidPreferences } from '../../components/preferences/BidPreferences';
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Radio, History, ArrowRight } from "lucide-react";
@@ -14,8 +16,10 @@ export const Route = createFileRoute("/scraper/")({
 });
 
 type RunRecord = ScrapeRun & { _id: string };
+const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 
 function ScraperPage() {
+  const { scraperSetup } = useContext(BidPreferences);
   const activeRun = useQuery(api.scrapeRuns.active, {}) as
     | RunRecord
     | null
@@ -35,23 +39,25 @@ function ScraperPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
-      <div>
+      {/* Page header: the plugin host already shows the section tabs. */}
+      {!plugin && <div>
         <h1 className="text-2xl font-bold text-text-primary">
           Scraper Operations
         </h1>
         <p className="text-sm text-text-secondary mt-1">
           Control the BC Bid scraper and monitor progress
         </p>
-      </div>
+      </div>}
 
-      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-5">
+      {scraperSetup}
+
+      <div className={plugin ? "space-y-3" : "grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-5"}>
         {/* Main control panel */}
-        <div className="lg:col-span-3">
+        <div className={plugin ? "" : "lg:col-span-3"}>
           <Card>
             <CardHeader
               eyebrow="Mission Control"
-              title="Scrape Operations"
+              title={plugin ? "Scrape controls" : "Scrape Operations"}
               icon={Radio}
             />
             <ScrapeControlPanel
@@ -68,12 +74,12 @@ function ScraperPage() {
           </Card>
         </div>
 
-        {/* Run history sidebar */}
-        <div className="lg:col-span-2">
+        {/* Run history sidebar; stacked and shortened in the plugin, which has a Run history tab. */}
+        <div className={plugin ? "" : "lg:col-span-2"}>
           <Card>
             <CardHeader
               eyebrow="Run History"
-              title="Recent Scrapes"
+              title={plugin ? "Recent runs" : "Recent Scrapes"}
               icon={History}
               action={
                 <Link
@@ -84,8 +90,8 @@ function ScraperPage() {
                 </Link>
               }
             />
-            <div className="max-h-[700px] overflow-y-auto -mr-2 pr-2">
-              <RunHistoryList runs={recentRuns ?? []} />
+            <div className={plugin ? "" : "max-h-[700px] overflow-y-auto -mr-2 pr-2"}>
+              <RunHistoryList runs={plugin ? (recentRuns ?? []).slice(0, 4) : (recentRuns ?? [])} />
             </div>
           </Card>
         </div>

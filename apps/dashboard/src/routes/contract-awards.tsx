@@ -7,7 +7,9 @@ import { Card } from "../components/ui/Card";
 export const Route = createFileRoute("/contract-awards")({
   component: ContractAwardsLayout,
 });
+const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 function ContractAwardsLayout() {
+  if (plugin) return <Outlet />;
   return (
     <div className="space-y-6">
       <div>

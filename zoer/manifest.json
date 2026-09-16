@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "BC Bid Monitor",
-  "version": "0.12.2",
+  "version": "0.23.0",
   "description": "BC Bid catalog, attachment downloads, saved review prompts, AI labels and manual tags on Zoer.",
   "type": "integration",
   "integration": {
@@ -553,7 +553,7 @@
         "idempotent": false,
         "id": "awards.history",
         "title": "Download public award history",
-        "description": "Search all available public contract awards from 1900 onward, save every page, and resume interrupted searches. Six hours and 3500 pages per run; records only.",
+        "description": "Backfill public awards in resumable date ranges, skipping completed ranges and unchanged records. Optionally refresh the last 30 days. Undated records are not verified; attachments are separate.",
         "requiredCapabilities": [
           "browser-session",
           "artifact-store"
@@ -571,6 +571,13 @@
             "resume": {
               "type": "object",
               "additionalProperties": true
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "history",
+                "recent"
+              ]
             }
           }
         }
@@ -648,6 +655,51 @@
               "type": "array",
               "minItems": 1,
               "maxItems": 50,
+              "items": {
+                "type": "string",
+                "maxLength": 100000
+              }
+            },
+            "force": {
+              "type": "boolean"
+            },
+            "resumeRunId": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "recordIds"
+          ]
+        }
+      },
+      {
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "documents.download.v1"
+        },
+        "idempotent": false,
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "id": "documents.download.all",
+        "title": "Download all opportunity attachments",
+        "description": "Download saved attachment links for up to 3,000 opportunities in one durable, resumable batch. Saved files are reused.",
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3000,
               "items": {
                 "type": "string",
                 "maxLength": 100000

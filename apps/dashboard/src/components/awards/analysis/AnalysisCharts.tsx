@@ -10,7 +10,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -26,6 +25,14 @@ import {
 } from "../../../lib/formatting";
 
 const palette = ["#72bfff", "#2fd89f", "#ff9f66", "#f6d56a", "#ff6b6b", "#94a3b8"];
+const tooltipStyle = {
+  backgroundColor: "var(--color-bg-surface-strong)",
+  border: "1px solid var(--color-border-default)",
+  borderRadius: 8,
+  color: "var(--color-text-primary)",
+};
+const tooltipTextStyle = { color: "var(--color-text-primary)" };
+const metricLabels = { totalValue: "Award value", awardCount: "Award count", shareOfValue: "Share of value" };
 
 function coerceChartValue(value: string | number | readonly (string | number)[] | undefined) {
   if (Array.isArray(value)) {
@@ -71,15 +78,15 @@ export function TrendChartCard({
                   <stop offset="100%" stopColor={color} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+              <CartesianGrid stroke="var(--color-border-default)" vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fill: "#8fa6b2", fontSize: 12 }}
+                tick={{ fill: "var(--color-text-secondary)", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fill: "#8fa6b2", fontSize: 12 }}
+                tick={{ fill: "var(--color-text-secondary)", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(value) =>
@@ -89,11 +96,10 @@ export function TrendChartCard({
                 }
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(9,13,18,0.95)",
-                  border: "1px solid rgba(189,216,227,0.12)",
-                  borderRadius: 16,
-                }}
+                cursor={{ stroke: "var(--color-border-strong)" }}
+                contentStyle={tooltipStyle}
+                labelStyle={tooltipTextStyle}
+                itemStyle={tooltipTextStyle}
                 formatter={(value) =>
                   mode === "currency"
                     ? formatCurrency(coerceChartValue(value))
@@ -103,6 +109,7 @@ export function TrendChartCard({
               <Area
                 type="monotone"
                 dataKey={dataKey}
+                name={metricLabels[dataKey]}
                 stroke={color}
                 fill={`url(#gradient-${title})`}
                 strokeWidth={2.2}
@@ -134,10 +141,10 @@ export function BreakdownBarChartCard({
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows} aria-label={title} layout="vertical" margin={{ left: 10, right: 10 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+              <CartesianGrid stroke="var(--color-border-default)" horizontal={false} />
               <XAxis
                 type="number"
-                tick={{ fill: "#8fa6b2", fontSize: 12 }}
+                tick={{ fill: "var(--color-text-secondary)", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(value) =>
@@ -152,16 +159,15 @@ export function BreakdownBarChartCard({
                 type="category"
                 dataKey="label"
                 width={120}
-                tick={{ fill: "#8fa6b2", fontSize: 12 }}
+                tick={{ fill: "var(--color-text-secondary)", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(9,13,18,0.95)",
-                  border: "1px solid rgba(189,216,227,0.12)",
-                  borderRadius: 16,
-                }}
+                cursor={{ fill: "var(--color-bg-hover)" }}
+                contentStyle={tooltipStyle}
+                labelStyle={tooltipTextStyle}
+                itemStyle={tooltipTextStyle}
                 formatter={(value) =>
                   metric === "totalValue"
                     ? formatCurrency(coerceChartValue(value))
@@ -170,7 +176,7 @@ export function BreakdownBarChartCard({
                       : formatCount(coerceChartValue(value))
                 }
               />
-              <Bar dataKey={metric} radius={[10, 10, 10, 10]}>
+              <Bar name={metricLabels[metric]} dataKey={metric} radius={[10, 10, 10, 10]}>
                 {rows.map((row, index) => (
                   <Cell
                     key={row.key}
@@ -204,11 +210,12 @@ export function TypeMixStackedBarCard({
   }
 
   const typeKeys = [...new Set(rows.flatMap((row) => row.breakdown.map((item) => item.label)))];
+  const colors = [...palette, "#c4a7e7", "#5eead4", "#f9a8d4", "#a3e635", "#38bdf8", "#fb7185", "#fbbf24", "#818cf8", "#34d399", "#e879f9", "#f97316", "#a8a29e", "#22d3ee", "#bef264"];
   const chartData = rows.map((row) =>
     Object.fromEntries([
       ["label", row.label],
-      ...typeKeys.map((typeKey) => [
-        typeKey,
+      ...typeKeys.map((typeKey, index) => [
+        `type${index}`,
         row.breakdown.find((item) => item.label === typeKey)?.totalValue ?? 0,
       ]),
     ]),
@@ -216,47 +223,64 @@ export function TypeMixStackedBarCard({
 
   return (
     <AnalysisChartCard title={title} description={description}>
-      <div className="h-[320px]">
+      <div style={{ height: Math.max(240, rows.length * 48 + 40) }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} aria-label={title} margin={{ left: 10, right: 10 }}>
-            <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+          <BarChart data={chartData} aria-label={title} layout="vertical" margin={{ left: 0, right: 12 }}>
+            <CartesianGrid stroke="var(--color-border-default)" horizontal={false} />
             <XAxis
-              dataKey="label"
-              tick={{ fill: "#8fa6b2", fontSize: 12 }}
-              axisLine={false}
-              tickLine={false}
-              interval={0}
-              angle={-18}
-              textAnchor="end"
-              height={60}
-            />
-            <YAxis
-              tick={{ fill: "#8fa6b2", fontSize: 12 }}
+              type="number"
+              tick={{ fill: "var(--color-text-secondary)", fontSize: 12 }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(value) => formatCompactNumber(Number(value))}
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "rgba(9,13,18,0.95)",
-                border: "1px solid rgba(189,216,227,0.12)",
-                borderRadius: 16,
-              }}
-              formatter={(value) => formatCurrency(coerceChartValue(value))}
+            <YAxis
+              type="category"
+              dataKey="label"
+              width={130}
+              tick={{ fill: "var(--color-text-secondary)", fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+              tickFormatter={(value) => String(value).length > 20 ? String(value).slice(0, 19) + "…" : String(value)}
             />
-            <Legend wrapperStyle={{ color: "#8fa6b2" }} />
+            <Tooltip
+              cursor={{ fill: "var(--color-bg-hover)" }}
+              content={({ active, payload, label }) => active && payload?.length ? (
+                <div className="analysis-mix-tooltip" style={tooltipStyle}>
+                  <p className="font-medium">{label}</p>
+                  {payload.filter(item => coerceChartValue(item.value) !== 0).map(item => (
+                    <div key={String(item.dataKey)} className="analysis-mix-tooltip-row">
+                      <span>{item.name}</span>
+                      <span>{formatCurrency(coerceChartValue(item.value))}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            />
             {typeKeys.map((typeKey, index) => (
               <Bar
                 key={typeKey}
-                dataKey={typeKey}
+                name={typeKey}
+                dataKey={`type${index}`}
                 stackId="mix"
-                fill={palette[index % palette.length]}
-                radius={index === typeKeys.length - 1 ? [8, 8, 0, 0] : [0, 0, 0, 0]}
+                fill={colors[index % colors.length]}
               />
             ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
+      <details className="analysis-type-legend">
+        <summary>Procurement types ({typeKeys.length})</summary>
+        <ul>
+          {typeKeys.map((typeKey, index) => (
+            <li key={typeKey}>
+              <span aria-hidden="true" style={{ backgroundColor: colors[index % colors.length] }} />
+              {typeKey}
+            </li>
+          ))}
+        </ul>
+      </details>
     </AnalysisChartCard>
   );
 }

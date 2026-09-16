@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@bcbid/shared": ["packages/shared/src/index.ts"],
+      "@bcbid/shared/*": ["packages/shared/src/*"],
+      "@convex/_generated/api": ["zoer/dashboard/api.ts"],
+      "@convex/*": ["convex/*"],
+      "@zoer/plugin-ui/controls": ["../zoer/frontend/src/plugin-ui/controls.ts"],
+      "@zoer/plugin-ui/analysis": ["../zoer/frontend/src/plugin-ui/analysis.ts"],
+      "@zoer/plugin-ui/database": ["../zoer/frontend/src/plugin-ui/database.ts"],
+      "@zoer/api-types": ["../zoer/packages/api-types/src/index.ts"],
+      "@tanstack/react-query": ["../zoer/frontend/node_modules/@tanstack/react-query"]
+    }
+  },
+  "include": ["dashboard/market/**/*.ts", "dashboard/market/**/*.tsx"]
+}
