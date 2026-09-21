@@ -16,3 +16,10 @@ Existing scrape/review jobs must finish before deployment. Failed or stale revie
 
 The current recipe supports BC Bid on an operator-configured Zoer server-dev host. Native frontend
 updates require that host's compatible reviewed Zoer source. Other plugin recipes are not yet available.
+
+## Agent workflow (chat-attached development computer)
+
+- The agent can edit and commit locally on the branch.
+- Committed source is built/reviewed through Zoer; only the exact reviewed update is applied.
+- Updates preserve the existing catalog and attachments.
+- GitHub publishing remains separate.
