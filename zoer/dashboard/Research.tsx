@@ -34,8 +34,8 @@ export function Research() {
   const run=async(fn:()=>Promise<void>)=>{setBusy(true);setError('');setMessage('');try{await fn();}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
   const start=async(actionId:string,input:any={})=>{
     if(!model)throw new Error('Wait for the saved catalog to load.');
-    const cli=actionId==='records.review'&&modelId.startsWith('codex:');
-    const response=await host('action',{actionId:cli?'records.review.cli':actionId,input:{recordIds:[...selection],force,...(cli?{computerId:modelId.slice(6)}:{}),...(actionId==='records.review'?{promptId,includeDocuments:documents}:{}),...input},modelProfileId:modelId});
+    const cli=actionId==='records.review'&&/^(codex|opencode):/.test(modelId);
+    const response=await host('action',{actionId:cli?'records.review.cli':actionId,input:{recordIds:[...selection],force,...(cli?{computerId:modelId.slice(modelId.indexOf(':')+1)}:{}),...(actionId==='records.review'?{promptId,includeDocuments:documents}:{}),...input},modelProfileId:modelId});
     setMessage('Batch started.');await refresh();return response;
   };
   const close=()=>{setRecordId('');setDetail(undefined);};
@@ -53,7 +53,7 @@ export function Research() {
       <h3>Review prompt</h3><Choice label="Saved prompt" value={promptId} options={state.prompts} onChange={id=>{setPromptId(id);const p=state.prompts.find((p:any)=>p.id===id);if(p){setName(p.name);setPrompt(p.prompt);}}} />
       <label className="research-label">Prompt name<input value={name} maxLength={100} onChange={e=>setName(e.target.value)} /></label><label className="research-label">Review instructions<textarea value={prompt} maxLength={12000} rows={5} onChange={e=>setPrompt(e.target.value)} /></label>
       <div className="zoer-record-tools"><Button variant="ghost" disabled={busy||!name.trim()||!prompt.trim()} onClick={()=>void run(async()=>{const saved=await host('catalog.prompts',{id:promptId||undefined,name,prompt});setPromptId(saved.id);await refresh();setMessage(`Saved prompt version ${saved.version}.`);})}>Save prompt</Button><Button variant="ghost" onClick={()=>{setPromptId('');setName('New review');setPrompt(defaultPrompt);}}>New prompt</Button></div>
-      <Choice label="Model" value={modelId} options={models} onChange={setModelId} />{!models.length&&<p>Configure a model profile or start a signed-in Codex computer before reviewing.</p>}
+      <Choice label="Model" value={modelId} options={models} onChange={setModelId} />{!models.length&&<p>Configure a model profile or start a Codex or OpenCode computer before reviewing.</p>}
       <label className="research-check"><input type="checkbox" checked={documents} onChange={e=>setDocuments(e.target.checked)} />Include downloaded documents</label>
       <label className="research-check"><input type="checkbox" checked={force} onChange={e=>setForce(e.target.checked)} />Re-run unchanged records</label>
       <div className="zoer-record-tools"><Button disabled={busy||!selection.size||!promptId||!modelId} onClick={()=>void run(async()=>{await start('records.review');})}>Review selected bids</Button></div>

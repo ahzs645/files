@@ -1,9 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import type { RouterHistory } from '@tanstack/history';
-import { host } from './bridge';
+import { host, subscribeHost } from './bridge';
 let location = '/', ready = false;
 let baseUrl = window.location.origin + '/';
 let history: RouterHistory | undefined, syncing = false;
+let disconnect = () => {};
+let connection = 0;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach(listener => listener());
 export function usePluginLocation() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => location); }
@@ -41,16 +43,24 @@ export function usePluginQuery(key: string, fallback = ''): [string, (value: str
   return [new URLSearchParams(current.split('?')[1]).get(key) ?? fallback, value => patchPluginQuery({ [key]: value })];
 }
 export async function connectNavigation(routerHistory: RouterHistory) {
+  disconnect();
+  const current = ++connection;
+  ready = false; location = '/'; catalogReturn.clear();
   history = routerHistory;
-  const onMessage = (event: MessageEvent) => {
-    if (event.source === window.parent && event.data?.channel === 'zoer-workspace-v1' && event.data.event === 'navigation' && typeof event.data.result?.location === 'string') receive(event.data.result.location);
-  };
-  window.addEventListener('message', onMessage);
-  try { const state = await host('navigation.read'); if (typeof state.baseUrl === 'string') baseUrl = state.baseUrl; receive(state.location); } catch { /* Backwards-compatible host. */ }
-  history.subscribe(({ location: next, action }) => {
+  const unsubscribe = subscribeHost((event, result) => {
+    if (event === 'navigation' && typeof result?.location === 'string') receive(result.location);
+  });
+  let unsubscribeHistory = () => {};
+  disconnect = () => { unsubscribe(); unsubscribeHistory(); };
+  try { const state = await host('navigation.read'); if (current !== connection) return; if (typeof state.baseUrl === 'string') baseUrl = state.baseUrl; receive(state.location); } catch { /* Backwards-compatible host. */ }
+  if (current !== connection) return;
+  unsubscribeHistory = routerHistory.subscribe(({ location: next, action }) => {
     if (syncing) return;
     const target = next.pathname === '/contract-awards/analysis' ? '/analysis/overview' + next.search : next.href;
     if (internal(location) !== next.href) navigatePlugin(target, action.type === 'REPLACE' ? 'replace' : 'push');
   });
   ready = true; emit();
+}
+export function disconnectNavigation() {
+  connection++; disconnect(); history = undefined; ready = false; location = '/'; catalogReturn.clear(); emit();
 }

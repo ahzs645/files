@@ -21,23 +21,24 @@ export function BulkDocuments({running,onStarted}:{running:boolean;onStarted:()=
       const selected=documentScope(fresh,scope);
       if(!selected.ids.length)throw new Error('No saved attachment links in this scope. Capture opportunity details in Scraper first.');
       await host('action',{actionId:'documents.download.all',input:{recordIds:selected.ids,force:false}});
-      setMessage(`Download started for ${selected.ids.length} opportunities. Follow Batch history below; you can leave this page.`);
+      setMessage(`Download started for ${selected.ids.length.toLocaleString()} opportunities. Progress appears in Batch history below; you can leave this page.`);
       await onStarted();
     }catch(e){setError((e as Error).message);}finally{pending.current=false;setBusy(false);}
   };
+  const noun=scope==='current'?'current':'saved';
   return <section className="zoer-history" aria-label="Bulk attachment download">
-    <h2>All opportunity attachments</h2>
+    <h2>Bulk attachment download</h2>
     <div className="zoer-record-tools">
       <label className="research-label">Download scope<Select aria-label="Download scope" value={scope} onChange={e=>setScope(e.target.value as 'current'|'all')} disabled={busy}><option value="current">Current opportunities</option><option value="all">All saved opportunities</option></Select></label>
       <Button disabled={loading||busy||running||!preview?.ids.length} onClick={()=>void start()}>{busy?'Starting download…':'Download all attachments'}</Button>
       <Button variant="ghost" disabled={loading||busy} onClick={()=>void load()}>Refresh counts</Button>
     </div>
-    {loading?<p role="status">Counting saved opportunities and attachment links…</p>:preview&&<p>{preview.total.toLocaleString()} opportunities · {preview.ids.length.toLocaleString()} with {preview.links.toLocaleString()} saved attachment links · {preview.missing.toLocaleString()} without saved links.</p>}
-    <p>{scope==='current'?'Current means saved status Open with a closing date that has not passed, or no usable closing date.':'Includes closed and past opportunities in the saved catalog.'} This uses all saved pages, independent of the selection below. Live source completeness has not been verified.</p>
-    {!!preview?.missing&&<p>{preview.missing} opportunities have no saved links and will be skipped. <Button variant="ghost" onClick={()=>navigatePlugin('/scraper')}>Capture missing details</Button></p>}
-    {!!preview?.unknownDates&&<p>{preview.unknownDates} opportunities in this scope have an unknown closing date.</p>}
-    <p>Files are saved in Zoer for AI review. Existing files are reused. Up to 100 files per opportunity, 8 MiB each; six hours per run. Stop and Retry in Batch history retain saved files.</p>
-    {running&&<p role="status">A document download is already running. Follow Batch history below.</p>}
+    {loading?<p role="status">Counting saved opportunities and attachment links…</p>:preview&&<p><strong>{preview.total.toLocaleString()} {noun} opportunities.</strong> {preview.ids.length.toLocaleString()} have {preview.links.toLocaleString()} saved attachment links; {preview.missing.toLocaleString()} have none.</p>}
+    <p>{scope==='current'?'Current means the saved status is Open and the closing date is either still ahead or unknown.':'All includes closed and past opportunities in the saved catalog.'} This covers every saved opportunity, not only the records selected below. Counts come from saved data and may differ from the live site.</p>
+    {!!preview?.unknownDates&&scope==='current'&&<p>{preview.unknownDates.toLocaleString()} of these have no usable closing date and are treated as current.</p>}
+    {!!preview?.missing&&<div className="zoer-record-tools"><span>{preview.missing.toLocaleString()} opportunities have no saved attachment links and will be skipped.</span><Button variant="ghost" onClick={()=>navigatePlugin('/scraper')}>Capture missing details</Button></div>}
+    <details><summary>Limits and storage</summary><p>Files are stored in Zoer for AI review, and files already downloaded are reused rather than fetched again. Each run takes up to 100 files per opportunity at 8 MiB per file and stops after six hours. Stop and Retry in Batch history keep the files already saved.</p></details>
+    {running&&<p role="status">A download is already running. See Batch history below.</p>}
     {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}
   </section>;
 }

@@ -24,10 +24,11 @@
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspace @bcbid/shared && npm run typecheck --workspace @bcbid/web && npm run typecheck --workspace @bcbid/scraper && tsc -p convex/tsconfig.json --noEmit",
     "zoer:build": "bun zoer/build.ts",
-    "zoer:test": "vitest run tests/zoer-capture.test.ts tests/zoer-pipeline.test.ts tests/zoer-full.test.ts tests/zoer-history.test.ts tests/zoer-database.test.ts tests/zoer-resume-ui.test.ts tests/zoer-request-queue.test.ts tests/zoer-market-analysis.test.ts tests/zoer-buyer-mapping.test.ts tests/zoer-award-ranges.test.ts tests/zoer-mobile-list.test.ts tests/zoer-document-scope.test.ts",
+    "zoer:test": "vitest run tests/zoer-native-bridge.test.ts tests/zoer-capture.test.ts tests/zoer-pipeline.test.ts tests/zoer-full.test.ts tests/zoer-history.test.ts tests/zoer-database.test.ts tests/zoer-resume-ui.test.ts tests/zoer-request-queue.test.ts tests/zoer-market-analysis.test.ts tests/zoer-buyer-mapping.test.ts tests/zoer-award-ranges.test.ts tests/zoer-mobile-list.test.ts tests/zoer-document-scope.test.ts",
     "zoer:test:worker": "bun run zoer:build && bun zoer/test-database-worker.ts",
     "zoer:typecheck:market": "tsc -p zoer/tsconfig.market.json --noEmit",
-    "zoer:dev": "bun zoer/dev-dashboard.ts"
+    "zoer:dev": "bun zoer/dev-dashboard.ts",
+    "zoer:build:native": "bun zoer/build-native.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

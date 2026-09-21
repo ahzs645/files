@@ -27,7 +27,7 @@ import { Spinner } from "../../components/ui/Spinner";
 import { formatTimestamp } from "../../lib/formatting";
 
 const IMPORT_BATCH_SIZE = 100;
-const DEFAULT_BACKGROUND_IMPORT_PATH = "/Users/ahmadjalil/Downloads/contrscts";
+const DEFAULT_BACKGROUND_IMPORT_PATH = import.meta.env.VITE_ZOER_PLUGIN ? "" : "/Users/ahmadjalil/Downloads/contrscts";
 
 export const Route = createFileRoute("/contract-awards/")({
   component: ContractAwardsBrowsePage,

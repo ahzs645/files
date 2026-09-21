@@ -1,4 +1,4 @@
-import { buyerLevels, isBuyerLevel, nextBuyerLevel, parseBuyerTrail, BUYER_MAPPING_VERSION, type BuyerLevel } from './buyers';
+import { buyerLevels, isBuyerLevel, nextBuyerLevel, parseBuyerTrail, type BuyerLevel } from './buyers';
 import { navigatePlugin, usePluginLocation, pluginHref, patchPluginQuery } from "../navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Btn, Select, type IntrospectionTable } from '@zoer/plugin-ui/database';
@@ -241,10 +241,9 @@ export function MarketAnalysis() {
     {filtersOpen && <FiltersDialog value={filters} meta={meta.data} apply={next => { update({ ...state, filters: next }); setFiltersOpen(false); }} close={() => setFiltersOpen(false)} />}
     {view !== 'quality' && view !== 'mapping' && <section className="market-buyer-controls" aria-label="Buyer hierarchy">
       <Choice label="Group buyers by" value={filters.buyerLevel} values={[...buyerLevels]} onChange={value => update({ ...state, filters: { ...filters, buyerLevel: value as BuyerLevel, buyer: '' } }, 'push')} />
-      <div className="market-stack"><nav className="market-breadcrumbs" aria-label="Buyer scope"><Btn size="sm" variant="ghost" onClick={resetScope}>All buyers</Btn>{trail.map((scope, i) => <span key={i}> / <Btn size="sm" variant="ghost" onClick={() => update({ ...state, filters: { ...filters, buyer: '', buyerLevel: trail[i + 1]?.level ?? filters.buyerLevel, buyerTrail: JSON.stringify(trail.slice(0, i + 1)) } }, 'push')}>{scope.name}</Btn></span>)}{filters.buyer && <span> / {filters.buyer}</span>}</nav>
-      <p className="market-caption">Grouping: {buyerLevels.find(l => l.value === filters.buyerLevel)?.label}. Proposed mapping {BUYER_MAPPING_VERSION}; ambiguous buyers stay separate. Explore opens the next distinct subdivision; buyers without subdivisions open their awards.</p>
-      {!!filters.buyerTrail && <Btn size="sm" variant="secondary" onClick={() => { const previous = trail.at(-1); update({ ...state, filters: { ...filters, buyer: '', buyerLevel: previous?.level ?? defaultFilters.buyerLevel, buyerTrail: trail.length > 1 ? JSON.stringify(trail.slice(0, -1)) : '' } }, 'push'); }}>Up one level</Btn>}
-      </div></section>}
+      <div className="market-field market-buyer-scope"><span>Buyer scope</span><nav className="market-breadcrumbs" aria-label="Buyer scope"><Btn size="sm" variant="ghost" onClick={resetScope}>All buyers</Btn>{trail.map((scope, i) => <span key={i}> / <Btn size="sm" variant="ghost" onClick={() => update({ ...state, filters: { ...filters, buyer: '', buyerLevel: trail[i + 1]?.level ?? filters.buyerLevel, buyerTrail: JSON.stringify(trail.slice(0, i + 1)) } }, 'push')}>{scope.name}</Btn></span>)}{filters.buyer && <span> / {filters.buyer}</span>}
+      {!!filters.buyerTrail && <Btn size="sm" variant="secondary" className="market-buyer-up" onClick={() => { const previous = trail.at(-1); update({ ...state, filters: { ...filters, buyer: '', buyerLevel: previous?.level ?? defaultFilters.buyerLevel, buyerTrail: trail.length > 1 ? JSON.stringify(trail.slice(0, -1)) : '' } }, 'push'); }}>Up one level</Btn>}</nav></div>
+    </section>}
     {view === 'compare' && <ComparisonControls options={options} change={setOptions} />}
     {(query.error || meta.error) && <div role="alert" className="market-error">{query.error ?? meta.error}<button type="button" onClick={() => { meta.retry(); query.retry(); }}>Retry analysis</button></div>}
     <section id="market-analysis-panel" aria-labelledby={`market-analysis-tab-${view}`} className="market-stack">

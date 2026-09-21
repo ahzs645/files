@@ -212,3 +212,5 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   }
   return queryModel(model, name, args);
 }
+
+export function resetCatalogCache() { buyerInventories.clear(); analysis = undefined; }
