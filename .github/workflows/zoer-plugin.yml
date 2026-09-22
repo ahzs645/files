@@ -1,0 +1,74 @@
+name: Zoer plugin
+
+on:
+  push:
+    branches: [main]
+    paths: ["zoer/**", "apps/dashboard/**", "packages/shared/**", "tests/zoer-*", "package.json", "package-lock.json", ".github/workflows/zoer-plugin.yml"]
+  pull_request:
+    paths: ["zoer/**", "apps/dashboard/**", "packages/shared/**", "tests/zoer-*", "package.json", "package-lock.json", ".github/workflows/zoer-plugin.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+      - run: npm ci --ignore-scripts
+      - run: npm run zoer:test
+      - run: bun test zoer/dashboard/queries.test.ts
+
+  # Builds against the private Zoer checkout. Add a ZOER_CHECKOUT_TOKEN secret (fine-grained, read-only
+  # contents on ahzs645/zoer and its submodules) to enable it; without the secret the job is skipped.
+  package:
+    runs-on: ubuntu-latest
+    env:
+      ZOER_CHECKOUT_TOKEN: ${{ secrets.ZOER_CHECKOUT_TOKEN }}
+    steps:
+      - if: env.ZOER_CHECKOUT_TOKEN == ''
+        run: echo "::notice::ZOER_CHECKOUT_TOKEN is not set; skipping the package build."
+      - if: env.ZOER_CHECKOUT_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          path: files
+      - if: env.ZOER_CHECKOUT_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ahzs645/zoer
+          token: ${{ env.ZOER_CHECKOUT_TOKEN }}
+          submodules: recursive
+          path: zoer
+      - if: env.ZOER_CHECKOUT_TOKEN != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: files/package-lock.json
+      - if: env.ZOER_CHECKOUT_TOKEN != ''
+        uses: oven-sh/setup-bun@v2
+      - if: env.ZOER_CHECKOUT_TOKEN != ''
+        name: Install dependencies
+        run: |
+          (cd zoer && bun install --frozen-lockfile)
+          (cd zoer/frontend && bun install --frozen-lockfile)
+          (cd zoer/backend && bun install --frozen-lockfile)
+          (cd files && npm ci --ignore-scripts)
+      - if: env.ZOER_CHECKOUT_TOKEN != ''
+        working-directory: files
+        run: |
+          npm run zoer:typecheck:market
+          bun run zoer:package
+          bun zoer/test-database-worker.ts
+      - if: env.ZOER_CHECKOUT_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoer-bcbid
+          path: files/dist/zoer-bcbid-*.zip

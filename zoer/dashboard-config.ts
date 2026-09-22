@@ -1,13 +1,20 @@
 import type { InlineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export const root = resolve(import.meta.dir, '..');
 export const zoerRoot = resolve(process.env.ZOER_UI_ROOT || resolve(root, '../zoer'));
 
+/** Fails early with setup guidance instead of a git or module-resolution error deep in the build. */
+export function assertZoerCheckout() {
+  if (!existsSync(resolve(zoerRoot, 'frontend/src/plugin-ui/database.ts'))) throw new Error(`No Zoer checkout at ${zoerRoot}. Clone Zoer next to this repository or set ZOER_UI_ROOT; \`bun zoer/package.ts --check\` lists the remaining setup.`);
+}
+
 /** Vite configuration shared by the packaged build (`build-dashboard.ts`) and the local dev server (`dev-dashboard.ts`). */
 export function dashboardConfig(): InlineConfig {
+  assertZoerCheckout();
   return {
     configFile: false, root: resolve(root, 'apps/dashboard'), plugins: [{
       name: 'zoer-source-select', enforce: 'pre',

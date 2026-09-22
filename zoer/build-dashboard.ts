@@ -2,7 +2,8 @@ import { build } from 'vite';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dashboardConfig, root, zoerRoot } from './dashboard-config';
+import { assertZoerCheckout, dashboardConfig, root, zoerRoot } from './dashboard-config';
+assertZoerCheckout();
 export const sharedUiSource = { repository:'https://github.com/ahzs645/zoer.git', commit:execFileSync('git',['rev-parse','HEAD'],{cwd:zoerRoot,encoding:'utf8'}).trim(), dirty:!!execFileSync('git',['status','--porcelain'],{cwd:zoerRoot,encoding:'utf8'}).trim(), entrypoint:'frontend/src/plugin-ui/database.ts' };
 const result = await build({
   ...dashboardConfig(),

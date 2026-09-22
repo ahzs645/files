@@ -4,25 +4,21 @@ Version 0.20 packages the existing `apps/dashboard` React experience and shared 
 
 ## Build
 
-Use Bun and a Zoer checkout with its frontend dependencies installed. Keep the checkouts next to each other, or set `ZOER_UI_ROOT=/absolute/path/to/zoer`. The build imports Zoer's shared database controls from `frontend/src/plugin-ui/database.ts` and `database.css`; the host checkout must include those entry points. From this repository:
+Use Bun and a Zoer checkout with its dependencies installed. Keep the checkouts next to each other, or set `ZOER_UI_ROOT=/absolute/path/to/zoer`. The build imports Zoer's shared database controls from `frontend/src/plugin-ui/database.ts` and `database.css`, and packs with Zoer's plugin CLI. From this repository:
 
 ```sh
 npm ci --ignore-scripts
+npm run zoer:doctor        # lists any missing Zoer checkout or dependency install, with the command to fix it
 npm run zoer:test
-npm run zoer:test:worker
-npm run zoer:build
+npm run zoer:package       # build, Zoer package conformance test, dist/zoer-bcbid-<version>.zip
+bun zoer/test-database-worker.ts
 ```
 
-Output: `dist/zoer-bcbid`. The Vite build embeds the source dashboard JS/CSS in one HTML file. Installing the built package needs no source checkout, local web server, new Convex instance or CDP credential. The source dashboard's `convex/react` transport is replaced only for this build with `zoer/dashboard/backend.tsx`. Source query names, routes, components, styles, parsers, normalization and award-analysis calculations are reused directly.
+`zoer:package` prints the ZIP path, its SHA-256 and both source commits, flagging uncommitted changes. The Vite build embeds the source dashboard JS/CSS in one HTML file (`dist/zoer-bcbid`). Installing the built package needs no source checkout, local web server, new Convex instance or CDP credential. The source dashboard's `convex/react` transport is replaced only for this build with `zoer/dashboard/backend.tsx`. Source query names, routes, components, styles, parsers, normalization and award-analysis calculations are reused directly.
 
-From a Zoer checkout:
+Stage the ZIP in Extensions, review/install or upgrade, enable, then Open BC Bid. Zoer rejects re-uploading an installed version, so bump `zoer/manifest.json` before each upgrade. Keep this Git repository separate. Future dashboard releases are plugin package upgrades; only changes to generic host capabilities require a Zoer release.
 
-```sh
-bun run plugin test /absolute/path/to/files/dist/zoer-bcbid
-bun run plugin pack /absolute/path/to/files/dist/zoer-bcbid --output /absolute/path/to/files/dist/zoer-bcbid.zip
-```
-
-Stage the ZIP in Extensions, review/install or upgrade, enable, then Open BC Bid. Keep this Git repository separate. Future dashboard releases are plugin package upgrades; only changes to generic host capabilities require a Zoer release.
+The `Zoer plugin` GitHub workflow runs the unit and query tests on every change. Its package job also type-checks the market workspace, builds the ZIP, runs the bundled worker test and uploads the ZIP as a build artifact; it needs a `ZOER_CHECKOUT_TOKEN` secret with read access to the private Zoer repository and its submodules, and is skipped without one.
 
 ## Local development
 
