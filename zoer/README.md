@@ -180,3 +180,9 @@ Documents & AI is the first visible section tab. Its **Download all attachments*
 ## Native Zoer workspace
 
 `bun run zoer:build:native` exports `dist/zoer-native` as a reviewed React UI dependency. In the Zoer checkout, run `bun scripts/sync-bc-bid-native.ts /path/to/files` to build/copy it with source receipts and hashes, then build and deploy Zoer. The source remains here; no database or worker migration is needed. Native mounting uses an explicit scoped host transport, lifecycle cleanup and scoped styles. The standalone/sandbox entrypoint remains available for hosts without the native registry. New native behavior is covered by `tests/zoer-native-bridge.test.ts`; run `npm run zoer:test` and the host's `scripts/native-plugins-ui.js` browser regression.
+
+### Analysis context actions
+
+In Relationships, Procurement mix and the buyer spending calendar, right-click a cell or use its ellipsis button for matching awards, focus, and buyer/supplier/procurement-type exclusions. Click or tap a row/column heading for the same scoped actions; keyboard users can use Shift+F10 and the popup’s arrow, Home/End and Escape keys. Buyer and supplier directories also offer exclusion through row actions.
+
+Exclusions live in the analysis URL and recalculate totals, rankings and matching awards before selecting the top ten. They never delete saved bids or attachments. Buyer exclusions retain their selected grouping when the view’s grouping changes and match that exact grouped label, not every participant mentioned in a joint buyer label. Remove individual chips, Undo last exclusion, Clear exclusions, browser Back, or Filters → Reset to restore the view. Data quality and buyer mapping remain explicitly based on all saved records.

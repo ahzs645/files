@@ -2,10 +2,31 @@ import { BUYER_MAPPING_VERSION, buyerRegistry, isBuyerLevel, parseBuyerTrail, re
 import { isPlaceholderContractAwardSupplier, normalizeContractAwardEntityLabel } from '../../../packages/shared/src/contractAwardsAnalysis';
 
 export interface MarketFilters {
-  buyerLevel: BuyerLevel; buyerTrail: string; buyerSearch: string; from: string; to: string; buyer: string; supplier: string; type: string;
+  exclusions: string; buyerLevel: BuyerLevel; buyerTrail: string; buyerSearch: string; from: string; to: string; buyer: string; supplier: string; type: string;
   currency: string; includePlaceholders: boolean; includeFuture: boolean; minValue: string;
 }
-export const defaultFilters: MarketFilters = { buyerLevel: 'organization', buyerTrail: '', buyerSearch: '', from: '', to: '', buyer: '', supplier: '', type: '', currency: 'CAD', includePlaceholders: false, includeFuture: false, minValue: '' };
+export const defaultFilters: MarketFilters = { exclusions: '', buyerLevel: 'organization', buyerTrail: '', buyerSearch: '', from: '', to: '', buyer: '', supplier: '', type: '', currency: 'CAD', includePlaceholders: false, includeFuture: false, minValue: '' };
+/** URL-only analytical exclusions: buyer identity is pinned to the grouping at selection. */
+export interface MarketExclusion { kind: 'buyer' | 'supplier' | 'type'; name: string; level?: BuyerLevel }
+export function parseExclusions(value: string): MarketExclusion[] {
+  if (!value) return [];
+  try {
+    const entries = JSON.parse(value);
+    if (!Array.isArray(entries) || entries.length > 100 || entries.some(e => !e || !['buyer','supplier','type'].includes(e.kind) || typeof e.name !== 'string' || !e.name || e.name.length > 3000 || e.kind === 'buyer' && !isBuyerLevel(e.level))) throw Error();
+    return entries.map(e => ({ kind: e.kind, name: e.name, ...(e.kind === 'buyer' ? { level: e.level } : {}) }));
+  } catch { throw new Error('The exclusion filter is invalid. Clear exclusions or reset filters.'); }
+}
+export function addExclusion(filters: MarketFilters, kind: MarketExclusion['kind'], name: string): MarketFilters {
+  const entries = parseExclusions(filters.exclusions);
+  const entry: MarketExclusion = { kind, name, ...(kind === 'buyer' ? { level: filters.buyerLevel } : {}) };
+  if (!entries.some(e => JSON.stringify(e) === JSON.stringify(entry))) entries.push(entry);
+  if (entries.length > 100) throw new Error('Restore an excluded item before excluding more than 100 items.');
+  return { ...filters, [kind]: filters[kind] === name ? '' : filters[kind], exclusions: JSON.stringify(entries) };
+}
+export function removeExclusion(filters: MarketFilters, index: number): MarketFilters {
+  const entries = parseExclusions(filters.exclusions).filter((_, i) => i !== index);
+  return { ...filters, exclusions: entries.length ? JSON.stringify(entries) : '' };
+}
 export type QualityFlag = 'future' | 'undated' | 'currency' | 'placeholder' | 'value' | 'negative' | 'zero' | 'contract' | 'justification';
 export interface Slice { buyer?: string; supplier?: string; type?: string; month?: string; from?: string; to?: string; min?: number; max?: number; exact?: number; quality?: QualityFlag }
 export interface MarketOptions { year?: string; dimension?: 'buyer' | 'supplier' | 'type'; metric?: 'value' | 'count'; aFrom?: string; aTo?: string; bFrom?: string; bTo?: string; slice?: Slice }
@@ -37,6 +58,7 @@ export function validateFilters(input: Partial<MarketFilters>): MarketFilters {
   const f = { ...defaultFilters, ...input };
   if (!isBuyerLevel(f.buyerLevel)) throw new Error('Choose a valid buyer grouping.');
   parseBuyerTrail(f.buyerTrail);
+  parseExclusions(f.exclusions);
   if ((f.from && !isoDate(f.from)) || (f.to && !isoDate(f.to))) throw new Error('Choose valid start and end dates.');
   if (f.from && f.to && f.from > f.to) throw new Error('Start date must be on or before end date.');
   if (f.minValue && (!Number.isFinite(Number(f.minValue)) || Number(f.minValue) < 0)) throw new Error('Minimum award value must be zero or a positive number.');
@@ -49,7 +71,8 @@ export function inspectionFilters(input: Partial<MarketFilters>): MarketFilters 
 export function filterAwards(rows: Award[], input: Partial<MarketFilters>, today: string): Award[] {
   const f = validateFilters(input);
   const trail = parseBuyerTrail(f.buyerTrail);
-  return projectBuyers(rows, f.buyerLevel).filter(r => withinBuyerScope(r.buyerIdentity, trail) && (!f.buyerSearch || buyerSearchMatches(r.buyerIdentity, f.buyerSearch)) && (!f.buyer || r.buyer === f.buyer) && (!f.supplier || r.supplier === f.supplier) && (!f.type || r.type === f.type)
+  const excluded = parseExclusions(f.exclusions);
+  return projectBuyers(rows, f.buyerLevel).filter(r => !excluded.some(e => (e.kind === 'buyer' ? r.buyerIdentity.dimensions[e.level!] : r[e.kind]) === e.name) && withinBuyerScope(r.buyerIdentity, trail) && (!f.buyerSearch || buyerSearchMatches(r.buyerIdentity, f.buyerSearch)) && (!f.buyer || r.buyer === f.buyer) && (!f.supplier || r.supplier === f.supplier) && (!f.type || r.type === f.type)
     && r.currencyCode === f.currency && (f.includePlaceholders || !r.placeholder) && (f.includeFuture || !r.date || r.date <= today)
     && (!f.from || !!r.date && r.date >= f.from) && (!f.to || !!r.date && r.date <= f.to)
     && (!f.minValue || r.value !== null && r.value >= Number(f.minValue)));

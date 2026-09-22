@@ -43,3 +43,13 @@
 .market-buyer-cell{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}.market-buyer-cell>button:first-child{text-align:left;overflow-wrap:anywhere;white-space:normal;min-width:0}.market-buyer-cell>button:last-child{flex-shrink:0}
 /* Phones: one header row (view picker + icon actions), a compact buyer card without the guidance paragraph, tighter tiles. */
 @media(max-width:767px){.market-header{flex-wrap:nowrap;align-items:flex-start;gap:8px}.market-header>div:first-child{flex:1;min-width:0}.market-view-picker{min-width:0;max-width:none}.market-actions{flex-shrink:0;flex-wrap:nowrap;gap:6px}.market-header .market-action-label{display:none}.market-header .market-actions button{width:44px;min-width:44px;padding:0}.market-header .market-actions button svg{width:16px;height:16px}.market-buyer-controls{gap:8px;padding:10px}.market-metrics{gap:8px}.market-metrics>div{padding:12px}}
+
+.market-heatmap .market-heat-heading{display:flex;flex-direction:column;gap:6px;align-items:center;width:100%;min-height:44px;white-space:normal;overflow-wrap:anywhere;text-align:inherit;padding:6px;border-radius:4px}
+.market-heatmap th:first-child .market-heat-heading{align-items:flex-start}
+.market-heat-cell{display:flex;align-items:stretch;border-radius:4px}
+.market-heatmap td .market-heat-value{flex:1;width:auto;min-width:62px}
+.market-heatmap td .market-heat-more{display:flex;align-items:center;justify-content:center;width:32px;min-width:32px;padding:4px;color:var(--color-text-secondary)}
+.market-exclusions{border:1px solid var(--color-border-default);border-radius:8px;padding:12px;display:grid;gap:8px;font-size:13px;color:var(--color-text-secondary);min-width:0}
+.market-exclusion-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.market-exclusion-chips button{height:auto;white-space:normal;overflow-wrap:anywhere;text-align:left;max-width:100%;padding-top:6px;padding-bottom:6px}
+@media(max-width:767px){.market-heatmap td .market-heat-more{width:44px;min-width:44px}}

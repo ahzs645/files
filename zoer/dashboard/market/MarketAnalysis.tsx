@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Btn, Select, type IntrospectionTable } from '@zoer/plugin-ui/database';
 import { Modal, DatePicker, InMemoryResourceGrid, CountBadge } from '@zoer/plugin-ui/analysis';
 import { List, RefreshCw, SlidersHorizontal } from 'lucide-react';
-import { defaultFilters, inspectionFilters, type Award, type MarketFilters, type MarketOptions, type Slice, type Overview, type Metadata, type Trends, type Distribution, type Comparison, type Matrix, type QualityFlag, type MappingOverview } from './model';
+import { parseExclusions, addExclusion, removeExclusion, defaultFilters, inspectionFilters, type Award, type MarketFilters, type MarketOptions, type Slice, type Overview, type Metadata, type Trends, type Distribution, type Comparison, type Matrix, type QualityFlag, type MappingOverview } from './model';
 import { useMarket } from './useMarket';
 import { ComparisonPlot, DependencePlot, Heatmap, LinePlot, Metrics, Panel, compact, count, money, percent } from './charts';
+import type { AnalysisAction } from './HeatmapActions';
 import { downloadRecords } from '../export';
 import './market.css';
 
@@ -32,6 +33,8 @@ const activeFilters = (value: MarketFilters) => filterKeys.filter(key => value[k
 /** Filters live behind a toolbar button; edits are a draft until Apply, and the button carries the active count. */
 function FiltersDialog({ value, meta, apply, close }: { value: MarketFilters; meta?: Metadata; apply: (f: MarketFilters) => void; close: () => void }) {
   const [draft, setDraft] = useState(value);
+  let excluded: ReturnType<typeof parseExclusions> = [];
+  try { excluded = parseExclusions(draft.exclusions); } catch { /* Reset remains available. */ }
   const set = <K extends keyof MarketFilters>(key: K, v: MarketFilters[K]) => setDraft({ ...draft, [key]: v });
   const options = (values: string[], all: string) => [{ value: '', label: all }, ...values.map(v => ({ value: v, label: v }))];
   return <Modal mobileSheet title="Filters" onClose={close} footer={<>
@@ -49,6 +52,7 @@ function FiltersDialog({ value, meta, apply, close }: { value: MarketFilters; me
       <Choice label="Currency" value={draft.currency} values={(meta?.currencies.length ? meta.currencies : ['CAD']).map(v => ({ value: v, label: v === 'UNSPECIFIED' ? 'Unspecified (not converted)' : v }))} onChange={v => set('currency', v)} />
       <Field label="Minimum award value"><input className="market-input" type="number" min="0" step="any" aria-label="Minimum award value" placeholder="No minimum" value={draft.minValue} onChange={e => set('minValue', e.target.value)} /></Field>
     </div>
+    {!!draft.exclusions && <div className="market-stack"><strong>Excluded from analysis</strong>{excluded.map((item, i) => <Btn key={i} variant="secondary" onClick={() => setDraft(removeExclusion(draft, i))}>Restore {item.kind}: {item.name}</Btn>)}<Btn variant="ghost" onClick={() => set('exclusions', '')}>Clear exclusions</Btn></div>}
     <div className="market-checks"><label><input type="checkbox" checked={draft.includePlaceholders} onChange={e => set('includePlaceholders', e.target.checked)} />Include placeholder suppliers</label><label><input type="checkbox" checked={draft.includeFuture} onChange={e => set('includeFuture', e.target.checked)} />Include future-dated awards</label></div>
   </Modal>;
 }
@@ -95,7 +99,7 @@ function OverviewView({ data, currency, inspect }: { data: Overview; currency: s
     <div className="market-columns"><Panel title="Leading buyers" description={`Top ${Math.min(8, data.buyerCount)} of ${count(data.buyerCount)}. Select one for its awards.`}><RankedList rows={data.buyers} currency={currency} dimension="buyer" inspect={inspect} /></Panel><Panel title="Leading procurement types" description="By recorded value."><RankedList rows={data.types} currency={currency} dimension="type" inspect={inspect} /></Panel></div>
   </div>;
 }
-function EntityView({ data, kind, currency, inspect, focus, explore, filters }: { filters: MarketFilters; data: Overview; kind: 'buyer' | 'supplier'; currency: string; inspect: Inspect; focus: (name: string) => void; explore?: (name: string, level: BuyerLevel) => void }) {
+function EntityView({ data, kind, currency, inspect, focus, explore, filters, exclude }: { exclude: AnalysisAction; filters: MarketFilters; data: Overview; kind: 'buyer' | 'supplier'; currency: string; inspect: Inspect; focus: (name: string) => void; explore?: (name: string, level: BuyerLevel) => void }) {
   const [search, setSearch] = useState('');
   const all = kind === 'buyer' ? data.buyers : data.suppliers;
   const rows = useMemo(() => all.filter(r => r.name.toLowerCase().includes(search.trim().toLowerCase())), [all, search]);
@@ -107,16 +111,16 @@ function EntityView({ data, kind, currency, inspect, focus, explore, filters }: 
       <p className="market-caption">{count(rows.length)} of {count(all.length)} participants.</p>
       <InMemoryResourceGrid resourceKey={`bcbid:market:${kind}`} rows={rows} table={entityTable} columnLabels={{ ...entityLabels, name: kind === 'buyer' ? 'Buyer' : 'Supplier', counterparties: kind === 'buyer' ? 'Suppliers' : 'Buyers' }} className="market-grid"
         renderCell={(column, row) => column === 'name' && kind === 'buyer' ? <div className="market-buyer-cell"><button type="button" onClick={() => inspect({ buyer: row.name }, row.name)}>{row.name}</button>{explore && row.nextLevel ? <Btn size="sm" variant="secondary" aria-label={`Explore buyers within ${row.name}`} onClick={() => explore(row.name, row.nextLevel as BuyerLevel)}>Explore</Btn> : <Btn size="sm" variant="secondary" aria-label={`View awards for ${row.name}`} onClick={() => inspect({buyer:row.name},row.name)}>View awards</Btn>}</div> : column === 'value' || column === 'median' ? money(row[column], currency) : column === 'share' || column === 'dependence' ? percent(row[column]) : undefined}
-        onOpenRow={row => inspect({ [kind]: row.name }, row.name)} rowActions={row => [...(explore && row.nextLevel ? [{ id: 'explore', label: 'Explore buyers within', onSelect: () => explore(row.name, row.nextLevel as BuyerLevel) }] : []), { id: 'focus', label: 'Focus in analysis', onSelect: () => focus(row.name) }]} />
+        onOpenRow={row => inspect({ [kind]: row.name }, row.name)} rowActions={row => [...(explore && row.nextLevel ? [{ id: 'explore', label: 'Explore buyers within', onSelect: () => explore(row.name, row.nextLevel as BuyerLevel) }] : []), { id: 'focus', label: 'Focus in analysis', onSelect: () => focus(row.name) }, { id: 'exclude', label: `Exclude this ${kind}`, onSelect: () => exclude(kind, row.name) }]} />
     </Panel>
   </div>;
 }
-function TrendsView({ data, currency, options, change, meta, inspect }: { data: Trends; currency: string; options: MarketOptions; change: (o: MarketOptions) => void; meta: Metadata; inspect: Inspect }) {
+function TrendsView({ data, currency, options, change, meta, inspect, exclude, focus }: { exclude: AnalysisAction; focus: AnalysisAction; data: Trends; currency: string; options: MarketOptions; change: (o: MarketOptions) => void; meta: Metadata; inspect: Inspect }) {
   const [normalized, setNormalized] = useState(false), metric = options.metric ?? 'value';
   return <div className="market-stack"><Panel title="Awards over time" description={data.undated ? `${count(data.undated)} undated records excluded.` : undefined} action={<Choice label="Trend metric" value={metric} values={[{ value: 'value', label: 'Award value' }, { value: 'count', label: 'Award count' }]} onChange={value => change({ ...options, metric: value as 'value' | 'count' })} />}><LinePlot data={data.series} metric={metric} currency={currency} /><details><summary>Monthly values and awards</summary><div className="market-rank-list">{data.series.map(row => <button key={row.month} onClick={() => inspect({ month: row.month }, row.month)}><span className="market-rank-line"><span>{row.month}</span><span>{money(row.value, currency, true)} · {count(row.count)} awards</span></span></button>)}</div></details></Panel>
       <Panel title="Buyer spending calendar" description={`Top ${data.buyers.length} buyers in ${data.year}; ${count(data.shownCount)} of ${count(data.yearCount)} awards that year.`} action={<Choice label="Heatmap year" value={data.year} values={[...new Set([data.year, ...meta.years])].sort().reverse().map(y => ({ value: y, label: y }))} onChange={year => change({ ...options, year })} />}>
         <label className="market-checks"><input type="checkbox" checked={normalized} onChange={e => setNormalized(e.target.checked)} />Share within each displayed buyer row</label>
-        <Heatmap rows={data.buyers.map(r => r.name)} columns={data.months} cells={data.cells} metric={metric} currency={currency} normalized={normalized} inspect={inspect} months />
+        <Heatmap rows={data.buyers.map(r => r.name)} columns={data.months} cells={data.cells} metric={metric} currency={currency} normalized={normalized} inspect={inspect} months exclude={exclude} focus={focus} />
       </Panel>
   </div>;
 }
@@ -150,11 +154,11 @@ function ComparisonControls({ options, change }: { options: MarketOptions; chang
     <Choice label="Comparison metric" value={options.metric ?? 'value'} values={[{ value: 'value', label: 'Award value' }, { value: 'count', label: 'Award count' }]} onChange={metric => change({ ...options, metric: metric as 'value' | 'count' })} />
   </div></section>;
 }
-function MatrixView({ data, kind, currency, inspect }: { data: Matrix; kind: 'mix' | 'relationships'; currency: string; inspect: Inspect }) {
+function MatrixView({ data, kind, currency, inspect, exclude, focus }: { exclude: AnalysisAction; focus: AnalysisAction; data: Matrix; kind: 'mix' | 'relationships'; currency: string; inspect: Inspect }) {
   const [metric, setMetric] = useState<'value' | 'count'>('value'), [normalized, setNormalized] = useState(false);
   return <Panel title={kind === 'mix' ? 'Buyer × procurement type' : 'Buyer × supplier relationships'} description={`Top ${data.rows.length} of ${count(data.buyerCount)} buyers × top ${data.columns.length} of ${count(data.columnCount)} ${kind === 'mix' ? 'types' : 'suppliers'}; ${count(data.shownCount)} of ${count(data.totalCount)} awards.`} action={<Choice label="Matrix metric" value={metric} values={[{ value: 'value', label: 'Award value' }, { value: 'count', label: 'Award count' }]} onChange={v => setMetric(v as 'value' | 'count')} />}>
     <label className="market-checks"><input type="checkbox" checked={normalized} onChange={e => setNormalized(e.target.checked)} />Share within displayed rows</label>
-    <Heatmap rows={data.rows} columns={data.columns} cells={data.cells} metric={metric} currency={currency} normalized={normalized} inspect={inspect} />
+    <Heatmap rows={data.rows} columns={data.columns} cells={data.cells} metric={metric} currency={currency} normalized={normalized} inspect={inspect} columnKind={kind === 'mix' ? 'type' : 'supplier'} exclude={exclude} focus={focus} />
   </Panel>;
 }
 function QualityView({ data, inspect }: { data: Metadata; inspect: Inspect }) {
@@ -216,7 +220,16 @@ export function MarketAnalysis() {
   const data = query.current ? query.data : undefined;
   const inspect: Inspect = (slice, title, override) => setSelection({ slice, title, filters: override ?? filters });
   const setOptions = (next: MarketOptions) => update({ ...state, options: next });
-  const focus = (kind: 'buyer' | 'supplier', name: string) => update({ ...state, view: 'overview', filters: { ...filters, [kind]: name } });
+  const focus: AnalysisAction = (kind, name) => update({ ...state, filters: { ...filters, [kind]: name } }, 'push');
+  let excluded: ReturnType<typeof parseExclusions> = [];
+  try { excluded = parseExclusions(filters.exclusions); } catch { /* Query reports invalid URL; clear remains available. */ }
+  const [actionError, setActionError] = useState('');
+  const exclude: AnalysisAction = (kind, name) => {
+    try { update({ ...state, filters: addExclusion(filters, kind, name) }, 'push'); setActionError(''); }
+    catch (error) { setActionError(error instanceof Error ? error.message : 'Could not exclude this item.'); }
+  };
+  const restore = (index: number) => { update({ ...state, filters: removeExclusion(filters, index) }, 'push'); setActionError(''); };
+
   const explore = trail.length < 6 && nextBuyerLevel(filters.buyerLevel) ? (name: string, level: BuyerLevel) => update({ ...state, view: 'buyers', filters: { ...filters, buyer: '', buyerLevel: level, buyerTrail: JSON.stringify([...trail, { level: filters.buyerLevel, name }]) } }, 'push') : undefined;
   const resetScope = () => update({ ...state, filters: { ...filters, buyer: '', buyerTrail: '', buyerSearch: '' } }, 'push');
   const label = tabs.find(t => t.id === view)?.label ?? 'Overview';
@@ -244,17 +257,23 @@ export function MarketAnalysis() {
       <div className="market-field market-buyer-scope"><span>Buyer scope</span><nav className="market-breadcrumbs" aria-label="Buyer scope"><Btn size="sm" variant="ghost" onClick={resetScope}>All buyers</Btn>{trail.map((scope, i) => <span key={i}> / <Btn size="sm" variant="ghost" onClick={() => update({ ...state, filters: { ...filters, buyer: '', buyerLevel: trail[i + 1]?.level ?? filters.buyerLevel, buyerTrail: JSON.stringify(trail.slice(0, i + 1)) } }, 'push')}>{scope.name}</Btn></span>)}{filters.buyer && <span> / {filters.buyer}</span>}
       {!!filters.buyerTrail && <Btn size="sm" variant="secondary" className="market-buyer-up" onClick={() => { const previous = trail.at(-1); update({ ...state, filters: { ...filters, buyer: '', buyerLevel: previous?.level ?? defaultFilters.buyerLevel, buyerTrail: trail.length > 1 ? JSON.stringify(trail.slice(0, -1)) : '' } }, 'push'); }}>Up one level</Btn>}</nav></div>
     </section>}
+    {!!filters.exclusions && <section className="market-exclusions" aria-label="Excluded from analysis">
+      <div><strong>Excluded from analysis</strong><span> Saved awards are unchanged. Rankings and totals recalculate.</span></div>
+      <div className="market-exclusion-chips">{excluded.map((item, i) => <Btn key={`${item.kind}:${item.level}:${item.name}`} size="sm" variant="secondary" aria-label={`Restore ${item.kind}: ${item.name}`} onClick={() => restore(i)}>{item.kind === 'buyer' ? `Buyer (${buyerLevels.find(l => l.value === item.level)?.label})` : item.kind === 'type' ? 'Procurement type' : 'Supplier'}: {item.name} ×</Btn>)}</div>
+      <div className="market-actions">{!!excluded.length && <Btn size="sm" variant="ghost" onClick={() => restore(excluded.length - 1)}>Undo last exclusion</Btn>}<Btn size="sm" variant="ghost" onClick={() => { update({ ...state, filters: { ...filters, exclusions: '' } }, 'push'); setActionError(''); }}>Clear exclusions</Btn></div>
+    </section>}
+    {actionError && <p role="alert">{actionError}</p>}
     {view === 'compare' && <ComparisonControls options={options} change={setOptions} />}
     {(query.error || meta.error) && <div role="alert" className="market-error">{query.error ?? meta.error}<button type="button" onClick={() => { meta.retry(); query.retry(); }}>Retry analysis</button></div>}
     <section id="market-analysis-panel" aria-labelledby={`market-analysis-tab-${view}`} className="market-stack">
       {!data && !query.error && <p role="status" className="market-loading">Loading {label.toLowerCase()}…</p>}
       {data && <>
         {view === 'overview' && <OverviewView data={data as Overview} currency={filters.currency} inspect={inspect} />}
-        {(view === 'buyers' || view === 'suppliers') && <EntityView key={view} filters={filters} data={data as Overview} kind={view === 'buyers' ? 'buyer' : 'supplier'} currency={filters.currency} inspect={inspect} focus={name => focus(view === 'buyers' ? 'buyer' : 'supplier', name)} explore={view === 'buyers' ? explore : undefined} />}
-        {view === 'trends' && meta.data && <TrendsView data={data as Trends} currency={filters.currency} options={options} change={setOptions} meta={meta.data} inspect={inspect} />}
+        {(view === 'buyers' || view === 'suppliers') && <EntityView key={view} exclude={exclude} filters={filters} data={data as Overview} kind={view === 'buyers' ? 'buyer' : 'supplier'} currency={filters.currency} inspect={inspect} focus={name => focus(view === 'buyers' ? 'buyer' : 'supplier', name)} explore={view === 'buyers' ? explore : undefined} />}
+        {view === 'trends' && meta.data && <TrendsView exclude={exclude} focus={focus} data={data as Trends} currency={filters.currency} options={options} change={setOptions} meta={meta.data} inspect={inspect} />}
         {view === 'sizes' && <SizesView data={data as Distribution} currency={filters.currency} inspect={inspect} />}
         {view === 'compare' && <CompareView data={data as Comparison} options={options} change={setOptions} filters={filters} inspect={inspect} />}
-        {(view === 'mix' || view === 'relationships') && <MatrixView key={view} data={data as Matrix} kind={view} currency={filters.currency} inspect={inspect} />}
+        {(view === 'mix' || view === 'relationships') && <MatrixView exclude={exclude} focus={focus} key={view} data={data as Matrix} kind={view} currency={filters.currency} inspect={inspect} />}
         {view === 'mapping' && <MappingView data={data as MappingOverview} />}
         {view === 'quality' && <QualityView data={data as Metadata} inspect={inspect} />}
       </>}

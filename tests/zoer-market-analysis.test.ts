@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMarketView, normalizeAwards, filterAwards, defaultFilters, overview, distribution, comparison, trends, matrix, sliceAwards, type Award, type Overview, type Metadata } from '../zoer/dashboard/market/model';
+import { addExclusion, removeExclusion, parseExclusions, buildMarketView, normalizeAwards, filterAwards, defaultFilters, overview, distribution, comparison, trends, matrix, sliceAwards, type Award, type Overview, type Metadata } from '../zoer/dashboard/market/model';
 const today = '2026-09-12';
 function raw(id: string, value: number | null = 100, extra: Record<string, unknown> = {}) {
   return { importKey: id, opportunityDescription: `Contract ${id}`, successfulSupplier: 'Supplier A', issuingOrganization: 'Buyer A', opportunityType: 'RFP', awardDate: '2025-06-01', contractValue: value, currency: 'CAD', ...extra };
@@ -92,4 +92,48 @@ it('keeps concentration within 100% and retains its exact 80% threshold when sam
   expect(result.pareto.every(p => p.share >= 0 && p.share <= 100)).toBe(true);
   expect(result.pareto.some(p => p.rank === result.suppliersFor80)).toBe(true);
   expect(result.pareto.at(-1)?.share).toBeCloseTo(100);
+});
+
+describe('reversible analysis exclusions', () => {
+  it('recalculates all views before ranking, preserves source rows and uses exact names', () => {
+    const source = [raw('a', 100, {issuingOrganization:'Buyer A',successfulSupplier:'Supplier A'}), raw('b', 300,{issuingOrganization:'Buyer B',successfulSupplier:'Supplier B'}), raw('c',50,{issuingOrganization:'Buyer C',successfulSupplier:'supplier a'})];
+    const before = JSON.stringify(source);
+    const filters = {...defaultFilters, exclusions: JSON.stringify([{kind:'supplier',name:'Supplier A'}])};
+    const totals = buildMarketView(source,'overview',filters,{},today) as Overview;
+    expect(totals.count).toBe(2); expect(totals.value).toBe(350);
+    expect(totals.suppliers.map(r=>r.name)).toEqual(['Supplier B','supplier a']);
+    const grid = buildMarketView(source,'relationships',filters,{},today) as ReturnType<typeof matrix>;
+    expect(grid.columns).not.toContain('Supplier A'); expect(grid.totalCount).toBe(2);
+    expect(grid.cells.reduce((n,c)=>n+c.count,0)).toBe(2);
+    expect(buildMarketView(source,'records',filters,{slice:{supplier:'Supplier A'}},today)).toHaveLength(0);
+    const restored = buildMarketView(source,'overview',{...filters,exclusions:''},{},today) as Overview;
+    expect(restored.count).toBe(3); expect(restored.value).toBe(450); expect(JSON.stringify(source)).toBe(before);
+  });
+  it('pins buyer exclusions to their selected grouping when the view changes', () => {
+    const source = [raw('a',100,{issuingOrganization:'BC Hydro'}),raw('b',50,{issuingOrganization:'Buyer B'})];
+    const identity=normalizeAwards(source)[0].buyerIdentity;
+    const f={...defaultFilters,exclusions:JSON.stringify([{kind:'buyer',name:identity.dimensions.organization,level:'organization'}]),buyerLevel:'source' as const};
+    expect(filterAwards(normalizeAwards(source),f,today).map(r=>r.id)).toEqual(['b']);
+  });
+  it('combines exclusions, handles empty results and rejects malformed bookmark data', () => {
+    const rows=normalizeAwards([raw('a',100),raw('b',200,{successfulSupplier:'Supplier B'}),raw('c',300,{opportunityType:'RFT'})]);
+    const f={...defaultFilters,exclusions:JSON.stringify([{kind:'supplier',name:'Supplier B'},{kind:'type',name:'RFP'}])};
+    expect(filterAwards(rows,f,today).map(r=>r.id)).toEqual(['c']);
+    expect(filterAwards(rows,{...f,exclusions:JSON.stringify([{kind:'buyer',name:'Buyer A',level:'source'}])},today)).toHaveLength(0);
+    for(const exclusions of ['bad','{}',JSON.stringify([{kind:'buyer',name:'Buyer A'}]),JSON.stringify([{kind:'other',name:'x'}])]) expect(()=>filterAwards(rows,{exclusions},today)).toThrow('exclusion');
+    expect(buildMarketView(records,'quality',{exclusions:JSON.stringify([{kind:'type',name:'RFP'}])},{},today)).toMatchObject({count:records.length});
+  });
+});
+
+it('deduplicates, restores and round-trips exclusions without clearing other filters', () => {
+  const initial={...defaultFilters,from:'2025-01-01',supplier:'Supplier A'};
+  const once=addExclusion(initial,'supplier','Supplier A');
+  expect(once.supplier).toBe('');expect(once.from).toBe(initial.from);
+  expect(addExclusion(once,'supplier','Supplier A')).toEqual(once);
+  const twice=addExclusion(once,'buyer','BC Hydro');
+  expect(parseExclusions(twice.exclusions)).toHaveLength(2);
+  expect(removeExclusion(twice,1)).toEqual(once);
+  expect(removeExclusion(once,0).exclusions).toBe('');
+  const url=new URLSearchParams({exclusions:twice.exclusions});
+  expect(parseExclusions(new URLSearchParams(url.toString()).get('exclusions')!)).toEqual(parseExclusions(twice.exclusions));
 });
