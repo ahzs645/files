@@ -21,12 +21,18 @@ let pending: Promise<void> | undefined;
 let generation = 0;
 let rawState: WorkspaceState = { runs: [], artifacts: [] };
 const emit = () => { for (const listener of listeners) listener(); };
+async function readHistory(runId: string) {
+  const rows: any[] = []; let after: string | null = '';
+  do { const page = await host('catalog.history', { runId, after }); rows.push(...page.rows); after = page.next; } while (after);
+  return new Map(rows.map(row => [row.id, row.data]));
+}
 export function refresh() {
   if (pending) return pending;
   const current = generation;
   pending = (async () => {
     try {
       const state = await host('state', { summary: true }) as WorkspaceState;
+      const previousRuns = rawState.runs;
       rawState = state;
       const head = await host('catalog.read', { ids: [] });
       if (!head.primary) {
@@ -38,7 +44,8 @@ export function refresh() {
         else throw new Error('Database migration did not finish. Reload to retry; existing files are retained.');
         snapshot = { notice: 'Moving saved bids into the database… Existing data is retained.' }; return;
       }
-      if (head.revision !== databaseRevision) {
+      const revisionChanged = head.revision !== databaseRevision;
+      if (revisionChanged) {
         const entries: any[] = [];
         const keys = ['checkpoint:awards', 'checkpoint:awards:recent', 'checkpoint:full', ...state.runs.map(run => 'run:' + run.id)];
         for (let i = 0; i < keys.length; i += 20) {
@@ -54,7 +61,11 @@ export function refresh() {
       model.awardCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:awards')?.value??null;
       model.awardRecentCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:awards:recent')?.value??null;
       fullCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:full')?.value??null;
-      if(snapshot.model && databaseRevision===head.revision) for(const id of loadedHistory) model.history.set(id,snapshot.model.history.get(id)??new Map());
+      if(snapshot.model) for(const id of loadedHistory) model.history.set(id,snapshot.model.history.get(id)??new Map());
+      // Opened runs that are still capturing gain rows with each catalog commit; reload them when the revision moves.
+      const capturing = (runs: WorkspaceState['runs'], id: string) => runs.some(run => run.id === id && !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status));
+      if(revisionChanged) for(const id of loadedHistory) if(capturing(state.runs,id) || capturing(previousRuns,id)) model.history.set(id,await readHistory(id));
+      if (current !== generation) return;
       snapshot = { model };
     } catch (error) { if (current !== generation) return; snapshot = { ...snapshot, error: error instanceof Error ? error.message : 'Unable to read Zoer data.' }; }
     finally { if (current === generation) { pending = undefined; emit(); } }
@@ -105,8 +116,8 @@ export function useQuery(name: string, args: any) {
   useEffect(()=>{
     if(!runId || loadedHistory.has(runId))return;
     let alive=true;
-    void (async()=>{const rows:any[]=[];let after:string|null='';do{const page=await host('catalog.history',{runId,after});rows.push(...page.rows);after=page.next;}while(after);
-      if(alive&&snapshot.model){loadedHistory.add(runId);const history=new Map(snapshot.model.history);history.set(runId,new Map(rows.map(row=>[row.id,row.data])));snapshot={...snapshot,model:{...snapshot.model,history}};emit();}
+    void (async()=>{const rows=await readHistory(runId);
+      if(alive&&snapshot.model){loadedHistory.add(runId);const history=new Map(snapshot.model.history);history.set(runId,rows);snapshot={...snapshot,model:{...snapshot.model,history}};emit();}
     })().catch(error=>{if(alive){snapshot={...snapshot,error:error.message};emit();}});
     return()=>{alive=false;};
   },[runId]);

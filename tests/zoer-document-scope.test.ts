@@ -7,6 +7,11 @@ describe('bulk attachment scope',()=>{
     expect(documentScope(records,'current',Date.parse('2026-09-16'))).toEqual({ids:['open','unknown'],total:3,links:2,missing:1,unknownDates:1});
     expect(documentScope(records,'all').ids).toEqual(['open','past','closed','unknown']);
   });
+  it('keeps a date-only closing date current through its whole day in BC',()=>{
+    const evening=Date.parse('2026-09-22T00:30:00Z'); // 17:30 PDT on September 21
+    const records=[row('today','Open','2026-09-21'),row('tomorrow','Open','2026-09-22'),row('yesterday','Open','2026-09-20')];
+    expect(documentScope(records,'current',evening).ids).toEqual(['today','tomorrow']);
+  });
   it('reads every page with one revision and checks the revision again before publishing',async()=>{
     const calls:any[]=[];
     const records=await readDocumentCandidates(async(method,input:any)=>{calls.push(input);if(input.ids)return {revision:9};return input.after?{records:[row('last')],next:null}:{records:Array.from({length:200},(_,i)=>row(String(i))),next:'200'};});

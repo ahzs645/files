@@ -173,6 +173,15 @@ Documents & AI defaults to including downloaded documents and provides a review 
 
 Documents & AI is the first visible section tab. Its **Download all attachments** control processes every saved page in one durable batch (up to 3,000 opportunities), independent of row selection. Current opportunities means saved status Open and a closing date that has not passed, including unknown dates with an explicit count; All saved opportunities also includes closed/past records. Preview counts distinguish attachment links from opportunities with no saved links. The latter are skipped and require detail capture; neither scope proves live completeness. Original files remain in Zoer for AI review, unchanged downloads are reused, and Stop/Retry retain progress. The generic host must support 3,000-record document batches; AI review stays limited to 50 selected records. Existing per-file, per-record and six-hour limits still apply.
 
+### Fixes (0.23.1)
+
+- Closing dates are compared as BC calendar days. A date-only closing date previously counted as passed from 4–5 pm Pacific the day before, so bids closing today or tomorrow could drop out of **Current opportunities** bulk downloads and the Dashboard closing-soon count.
+- Search and buyer filters send only the matching buyer names to the catalog query. Previously every distinct issuer name was sent, and searches failed once the inventory grew past roughly 1,300 names. Sorting by a mapped buyer column still needs the full inventory and keeps its bound.
+- An opportunity listed twice on one listing page no longer produces an invalid full-scrape checkpoint that could not be resumed. After a failed detail, the checkpoint is saved when a failure is added rather than after every later detail, and a failing checkpoint save no longer hides the original error (browser check, cancellation).
+- Award JSON imports accept the `starred` and `sourceUrl` fields that award exports contain; Zoer's strict input schema previously rejected re-importing an exported file.
+- Run history keeps refreshing the captured opportunities of an opened run while it is still capturing.
+- Browser budget: Zoer charges each detail capture as one navigation plus one per named tab (four in total), and deep listing pages cost more, so one Start Scrape run covers roughly 1,000–2,000 details within the 8192-load budget. The run stops with a budget error and **Resume saved scrape** continues from the checkpoint.
+
 ## Native Zoer workspace
 
 `bun run zoer:build:native` exports `dist/zoer-native` as a reviewed React UI dependency. In the Zoer checkout, run `bun scripts/sync-bc-bid-native.ts /path/to/files` to build/copy it with source receipts and hashes, then build and deploy Zoer. The source remains here; no database or worker migration is needed. Native mounting uses an explicit scoped host transport, lifecycle cleanup and scoped styles. The standalone/sandbox entrypoint remains available for hosts without the native registry. New native behavior is covered by `tests/zoer-native-bridge.test.ts`; run `npm run zoer:test` and the host's `scripts/native-plugins-ui.js` browser regression.

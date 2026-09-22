@@ -1,6 +1,7 @@
+import { closingNotPassed } from './bc-date';
 export type DocumentCandidate = { id: string; data: { status?: string; closingDate?: string; attachments?: unknown[] } };
 export function documentScope(records: DocumentCandidate[], scope: 'current' | 'all', now = Date.now()) {
-  const included = records.filter(({data}) => scope === 'all' || (/^open$/i.test(data.status?.trim() ?? '') && (!Number.isFinite(Date.parse(data.closingDate ?? '')) || Date.parse(data.closingDate!) >= now)));
+  const included = records.filter(({data}) => scope === 'all' || (/^open$/i.test(data.status?.trim() ?? '') && closingNotPassed(data.closingDate, now) !== false));
   const linked = included.filter(row => Array.isArray(row.data.attachments) && row.data.attachments.length > 0);
   return {
     ids: linked.map(row => row.id), total: included.length,

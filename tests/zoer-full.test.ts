@@ -19,6 +19,14 @@ describe('full current public crawl', () => {
     expect(saved.filter(doc => doc.kind === 'detail')).toHaveLength(18);
     expect(saved.at(-1)).toMatchObject({ complete: true, pending: [], failures: [] });
   });
+  it('keeps a valid checkpoint when a listing page shows the same opportunity twice', async () => {
+    const saved: any[] = [];
+    const doubled = (number: number) => { const page = listing(number, 1); const row = page.html.match(/<tr>[\s\S]*?<\/tr>/g)!.at(-1)!; return { ...page, html: page.html.replace(row, row + row) }; };
+    const result = await scrapeFull({ captureUrl: async (url, number) => url === LISTING_URL ? doubled(number!) : detail(url) }, async doc => { saved.push(structuredClone(doc)); return String(saved.length); });
+    expect(result).toMatchObject({ listingCount: 2, detailCount: 2 });
+    const listingCheckpoint = saved.find(doc => doc.kind === 'scrape' && doc.phase === 'detail');
+    expect(() => validateCheckpoint(listingCheckpoint)).not.toThrow();
+  });
   it('stops repeated pagination without claiming completeness and saves a checkpoint', async () => {
     const saved: any[] = [];
     await expect(scrapeFull({ captureUrl: async (_, number) => ({ ...listing(1), pagination: { currentPage: number!, hasNext: true, visiblePages: [1] } }) }, async doc => { saved.push(structuredClone(doc)); return 'a'; })).rejects.toThrow('repeated');

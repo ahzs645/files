@@ -1,5 +1,6 @@
 import { buyerSearchMatches, annotateBuyerRecord, resolveBuyer, BUYER_MAPPING_VERSION } from './market/buyers';
 import { queryBuyerProfiles } from './buyer-profiles';
+import { closesWithin } from './bc-date';
 import { buildMarketView } from './market/model';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
 import { buildContractAwardAnalysisOverview, buildContractAwardEntityProfile, buildContractAwardEntityOptions } from '../../convex/contractAwardsAnalysisHelpers';
@@ -72,7 +73,7 @@ export type Model = ReturnType<typeof buildModel>;
 export function queryModel(model: Model, name: string, args: any = {}): any {
   const { opportunities, runs, awards } = model;
   if (name === 'dashboard.summary') return { total: opportunities.length, open: opportunities.filter(row => /open/i.test(row.status)).length,
-    closingSoon: opportunities.filter(row => { const time = Date.parse(row.closingDate); return time >= Date.now() && time <= Date.now() + 7 * 86400000; }).length,
+    closingSoon: opportunities.filter(row => closesWithin(row.closingDate, 7)).length,
     organizations: new Set(opportunities.map(row => resolveBuyer(row.issuedBy).organization)).size, buyerMappingVersion: BUYER_MAPPING_VERSION,
     statusOptions: [...new Set(opportunities.map(row => row.status).filter(Boolean))].sort(), typeOptions: [...new Set(opportunities.map(row => row.type).filter(Boolean))].sort(),
     latestRun: runs[0] ?? null, latestSuccessfulRun: runs.find(run => run.status === 'succeeded') ?? null };

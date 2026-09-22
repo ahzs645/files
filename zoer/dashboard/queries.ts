@@ -1,4 +1,5 @@
 import { buyerQuery, isBuyerColumn } from './buyer-query';
+import { bcDate } from './bc-date';
 import { BUYER_MAPPING_VERSION, annotateBuyerRecord, resolveBuyer, isBuyerLevel } from './market/buyers';
 import { host } from './bridge';
 import { queryModel, type Model } from './model';
@@ -123,7 +124,7 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   }
   if (name === 'dashboard.summary') {
     const [counts, statuses, types] = await Promise.all([
-      sql(`SELECT count(*) AS total, sum(CASE WHEN lower(${field('status')}) LIKE '%open%' THEN 1 ELSE 0 END) AS open, sum(CASE WHEN julianday(${field('closingDate')}) BETWEEN julianday(?) AND julianday(?) THEN 1 ELSE 0 END) AS closingSoon, count(DISTINCT CASE WHEN ${field('issuedBy')} <> '' THEN ${field('issuedBy')} END) AS organizations FROM records WHERE kind='opportunity'`, [new Date().toISOString(), new Date(Date.now()+7*86400000).toISOString()]),
+      sql(`SELECT count(*) AS total, sum(CASE WHEN lower(${field('status')}) LIKE '%open%' THEN 1 ELSE 0 END) AS open, sum(CASE WHEN julianday(${field('closingDate')}) BETWEEN julianday(?) AND julianday(?) THEN 1 ELSE 0 END) AS closingSoon, count(DISTINCT CASE WHEN ${field('issuedBy')} <> '' THEN ${field('issuedBy')} END) AS organizations FROM records WHERE kind='opportunity'`, [bcDate(), bcDate(Date.now(), 7)]),
       sql(`SELECT DISTINCT ${field('status')} AS value FROM records WHERE kind='opportunity' AND ${field('status')} <> '' ORDER BY value`),
       sql(`SELECT DISTINCT ${field('type')} AS value FROM records WHERE kind='opportunity' AND ${field('type')} <> '' ORDER BY value`),
     ]);

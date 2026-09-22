@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "BC Bid Monitor",
-  "version": "0.23.0",
+  "version": "0.23.1",
   "description": "BC Bid catalog, attachment downloads, saved review prompts, AI labels and manual tags on Zoer.",
   "type": "integration",
   "integration": {
@@ -432,6 +432,13 @@
                       "string",
                       "null"
                     ],
+                    "maxLength": 20000
+                  },
+                  "starred": {
+                    "type": "boolean"
+                  },
+                  "sourceUrl": {
+                    "type": "string",
                     "maxLength": 20000
                   }
                 },
