@@ -1,0 +1,85 @@
+# Publishes the Procurement (BC Bid) Zoer plugin as a GitHub Release that Zoer
+# installs with Extensions → Stage package → GitHub release (ahzs645/files).
+#
+# Push a tag named zoer-v<manifest version>, e.g. zoer-v0.25.0.
+#
+# Repository secrets:
+#   ZOER_SOURCE_TOKEN        read access to ahzs645/zoer; the sandbox dashboard
+#                            builds against Zoer's shared UI source
+#   ZOER_PLUGIN_SIGNING_KEY  Ed25519 private key (PEM) whose public key is trusted in Zoer
+#   ZOER_PLUGIN_KEY_ID       key ID registered with that public key in Zoer
+name: Zoer plugin release
+
+on:
+  push:
+    tags: ["zoer-v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zoer-plugin-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ZOER_UI_ROOT: ${{ github.workspace }}/.zoer-host
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Zoer shared UI source
+        uses: actions/checkout@v4
+        with:
+          repository: ahzs645/zoer
+          token: ${{ secrets.ZOER_SOURCE_TOKEN }}
+          path: .zoer-host
+          sparse-checkout: |
+            frontend
+            packages/api-types
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Check the tag matches the manifest version
+        run: |
+          version=$(jq -r .version zoer/manifest.json)
+          if [ "$GITHUB_REF_NAME" != "zoer-v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match zoer/manifest.json version $version (expected zoer-v$version)."
+            exit 1
+          fi
+          echo "PLUGIN_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts
+          (cd .zoer-host/frontend && bun install --frozen-lockfile)
+
+      - name: Test
+        run: bun run zoer:test
+
+      - name: Build the package
+        run: bun run zoer:build
+
+      - name: Package and sign
+        env:
+          ZOER_PLUGIN_SIGNING_KEY: ${{ secrets.ZOER_PLUGIN_SIGNING_KEY }}
+          ZOER_PLUGIN_KEY_ID: ${{ secrets.ZOER_PLUGIN_KEY_ID }}
+        run: |
+          if [ -z "$ZOER_PLUGIN_SIGNING_KEY" ]; then
+            echo "::error::ZOER_PLUGIN_SIGNING_KEY is not set; Zoer loads native UI only from signed releases."
+            exit 1
+          fi
+          bun zoer/tools/zoer-plugin.mjs release dist/zoer-bcbid --output release
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          digest=$(jq -r .digestSha256 release/zoer-plugin.json)
+          gh release create "$GITHUB_REF_NAME" release/* --verify-tag \
+            --title "Procurement plugin $PLUGIN_VERSION" \
+            --notes "Install in Zoer: Extensions → Stage package → GitHub release → ahzs645/files (tag $GITHUB_REF_NAME). Package digest $digest."
