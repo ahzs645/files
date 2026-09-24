@@ -9,6 +9,10 @@ const outdir = resolve(root, '../dist/zoer-bcbid');
 await mkdir(join(outdir, 'worker'), { recursive: true });
 const result = await Bun.build({ entrypoints: [join(root, 'src/worker.ts')], outdir: join(outdir, 'worker'), target: 'bun', minify: true });
 if (!result.success) throw new AggregateError(result.logs, 'BC Bid plugin build failed');
+// Native workspace UI ships inside the package; Zoer loads it at runtime.
+await import('./build-native');
+await mkdir(join(outdir, 'native'), { recursive: true });
+for (const name of ['index.js', 'style.css']) await copyFile(resolve(root, '../dist/zoer-native', name), join(outdir, 'native', name));
 await copyFile(join(root, 'manifest.json'), join(outdir, 'manifest.json'));
 await copyFile(join(root, 'README.md'), join(outdir, 'README.md'));
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
