@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode, type MouseEvent, type KeyboardEvent } from 'react';
+import { MoreHorizontal } from 'lucide-react';
+import { HeatmapActions, type HeatmapTarget, type AnalysisAction } from './HeatmapActions';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, ScatterChart, Scatter, ZAxis, ReferenceLine, BarChart, Bar } from 'recharts';
 import type { Overview, Slice, Matrix, Trends, Comparison } from './model';
 
@@ -53,22 +55,36 @@ export function ComparisonPlot({ data, currency }: { data: Comparison; currency:
     <Bar name="Period B" dataKey="b" fill="var(--color-accent)" isAnimationActive={false} />
   </BarChart></ResponsiveContainer></div>;
 }
-export function Heatmap({ rows, columns, cells, metric, currency, normalized, inspect, months = false }: {
+export function Heatmap({ rows, columns, cells, metric, currency, normalized, inspect, months = false, columnKind = 'supplier', exclude, focus }: {
+  exclude: AnalysisAction; focus: AnalysisAction; columnKind?: 'supplier' | 'type';
   rows: string[]; columns: string[]; cells: Matrix['cells'] | Trends['cells']; metric: 'value' | 'count'; currency: string; normalized: boolean; months?: boolean;
   inspect: (slice: Slice, title: string) => void;
 }) {
+  const [target, setTarget] = useState<HeatmapTarget | null>(null);
+  const open = (anchor: HTMLButtonElement, slice: Slice, title: string) => { anchor.focus(); setTarget({ anchor, slice, title }); };
+  const actions = (slice: Slice, title: string) => ({
+    onContextMenu: (event: MouseEvent<HTMLButtonElement>) => { event.preventDefault(); open(event.currentTarget, slice, title); },
+    onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') { event.preventDefault(); open(event.currentTarget, slice, title); } },
+  });
+  const columnSlice = (column: string): Slice => months ? { month: column } : { [columnKind]: column };
   const index = new Map(cells.map(c => [JSON.stringify([c.row, c.column]), c]));
   const maximum = Math.max(1, ...cells.map(c => Math.max(0, c[metric])));
   const totals = new Map(rows.map(row => [row, cells.filter(c => c.row === row).reduce((n, c) => n + Math.max(0, c[metric]), 0)]));
   if (!rows.length || !columns.length) return <p className="market-empty">No recorded awards match this view.</p>;
   return <>
-    <p className="market-caption">Select a cell for its awards.{normalized ? ' Values are each row’s share.' : ''}</p>
-    <div className="market-heat-scroll" tabIndex={0} aria-label="Scrollable award heatmap"><table className="market-heatmap"><thead><tr><th scope="col">Buyer</th>{columns.map(column => <th scope="col" key={column} title={column}>{months ? new Date(column + '-01T00:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : column}</th>)}</tr></thead>
-      <tbody>{rows.map(row => <tr key={row}><th scope="row">{row}</th>{columns.map(column => {
+    <p className="market-caption">Select a value for its awards. Right-click a cell, or use its actions button. Select a heading for buyer or column actions.{normalized ? ' Values are each row’s share.' : ''}</p>
+    <div className="market-heat-scroll" tabIndex={0} aria-label="Scrollable award heatmap"><table className="market-heatmap"><thead><tr><th scope="col">Buyer</th>{columns.map(column => <th scope="col" key={column}><button type="button" className="market-heat-heading" aria-label={`Actions for ${months ? 'month' : columnKind} ${column}`} aria-haspopup="dialog" {...actions(columnSlice(column), column)} onClick={e => open(e.currentTarget, columnSlice(column), column)}>{months ? new Date(column + '-01T00:00:00Z').toLocaleDateString('en-CA', { month: 'short', timeZone: 'UTC' }) : column}<MoreHorizontal aria-hidden="true" size={14}/></button></th>)}</tr></thead>
+      <tbody>{rows.map(row => <tr key={row}><th scope="row"><button type="button" className="market-heat-heading" aria-label={`Actions for buyer ${row}`} aria-haspopup="dialog" {...actions({buyer:row}, row)} onClick={e => open(e.currentTarget, {buyer:row}, row)}>{row}<MoreHorizontal aria-hidden="true" size={14}/></button></th>{columns.map(column => {
         const cell = index.get(JSON.stringify([row, column]))!;
         const ratio = Math.max(0, cell[metric]) / (normalized ? totals.get(row) || 1 : maximum);
         const raw = metric === 'value' ? money(cell.value, currency) : `${count(cell.count)} awards`;
-        return <td key={column}><button type="button" style={{ backgroundColor: `color-mix(in srgb, var(--color-accent) ${cell.count ? 12 + ratio * 68 : 0}%, var(--color-bg-surface))` }} aria-label={`${row}, ${column}: ${raw}; ${count(cell.count)} saved awards`} title={`${row} · ${column}\n${raw} · ${count(cell.count)} saved awards`} onClick={() => inspect(cell.slice, `${row} · ${column}`)}><span>{normalized ? percent(ratio) : metric === 'value' ? compact(cell.value) : count(cell.count)}</span></button></td>;
+        const title = `${row} · ${column}`;
+        return <td key={column}><div className="market-heat-cell" style={{ backgroundColor: `color-mix(in srgb, var(--color-accent) ${cell.count ? 12 + ratio * 68 : 0}%, var(--color-bg-surface))` }}>
+          <button type="button" className="market-heat-value" aria-label={`${row}, ${column}: ${raw}; ${count(cell.count)} saved awards`} {...actions(cell.slice, title)} onClick={() => inspect(cell.slice, title)}><span>{normalized ? percent(ratio) : metric === 'value' ? compact(cell.value) : count(cell.count)}</span></button>
+          <button type="button" className="market-heat-more" aria-label={`Actions for ${row}, ${column}`} aria-haspopup="dialog" {...actions(cell.slice, title)} onClick={e => open(e.currentTarget, cell.slice, title)}><MoreHorizontal aria-hidden="true" size={14}/></button>
+        </div></td>;
       })}</tr>)}</tbody></table></div>
+    {target && <HeatmapActions key={target.title} target={target} close={() => setTarget(null)} inspect={inspect} exclude={exclude} focus={focus}/>}
+
   </>;
 }
