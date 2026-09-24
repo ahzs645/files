@@ -6,8 +6,10 @@
 # Repository secrets:
 #   ZOER_SOURCE_TOKEN        read access to ahzs645/zoer; the sandbox dashboard
 #                            builds against Zoer's shared UI source
-#   ZOER_PLUGIN_SIGNING_KEY  Ed25519 private key (PEM) whose public key is trusted in Zoer
-#   ZOER_PLUGIN_KEY_ID       key ID registered with that public key in Zoer
+#   ZOER_PLUGIN_SIGNING_KEY  optional: Ed25519 private key (PEM) whose public key is trusted in Zoer
+#   ZOER_PLUGIN_KEY_ID       optional: key ID registered with that public key in Zoer
+# Without both signing secrets the release is published unsigned. Zoer's default
+# native UI policy still trusts GitHub release installs; PLUGIN_NATIVE_UI=signed does not.
 name: Zoer plugin release
 
 on:
@@ -69,9 +71,9 @@ jobs:
           ZOER_PLUGIN_SIGNING_KEY: ${{ secrets.ZOER_PLUGIN_SIGNING_KEY }}
           ZOER_PLUGIN_KEY_ID: ${{ secrets.ZOER_PLUGIN_KEY_ID }}
         run: |
-          if [ -z "$ZOER_PLUGIN_SIGNING_KEY" ]; then
-            echo "::error::ZOER_PLUGIN_SIGNING_KEY is not set; Zoer loads native UI only from signed releases."
-            exit 1
+          if [ -z "$ZOER_PLUGIN_SIGNING_KEY" ] || [ -z "$ZOER_PLUGIN_KEY_ID" ]; then
+            echo "::notice::Signing secrets are not set; publishing an unsigned release."
+            unset ZOER_PLUGIN_SIGNING_KEY ZOER_PLUGIN_KEY_ID
           fi
           bun zoer/tools/zoer-plugin.mjs release dist/zoer-bcbid --output release
 
