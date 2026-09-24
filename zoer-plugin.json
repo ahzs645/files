@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "manifest": "zoer/manifest.json",
+  "package": "dist/zoer-bcbid",
+  "install": ["npm", "ci", "--ignore-scripts"],
+  "test": ["bun", "run", "zoer:test"],
+  "build": ["bun", "run", "zoer:build"],
+  "zoerSource": true
+}
