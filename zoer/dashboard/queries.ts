@@ -2,8 +2,11 @@ import { buyerQuery, isBuyerColumn } from './buyer-query';
 import { BUYER_MAPPING_VERSION, annotateBuyerRecord, resolveBuyer, isBuyerLevel } from './market/buyers';
 import { host } from './bridge';
 import { queryModel, type Model } from './model';
+const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
 const field = (name: string) => `json_extract(data, '$.${name}')`;
 async function sql(statement: string, parameters: (string | number)[] = []) {
+  // Legacy BC Bid views stay scoped when the shared catalog gains other sources.
+  statement = statement.replace(/\bWHERE\b/i, `WHERE CASE WHEN json_extract(data,'$.sourceId') IS NULL OR json_extract(data,'$.sourceId')='' OR json_extract(data,'$.sourceId')='bc-bid' THEN 1 ELSE 0 END=1 AND`);
   return (await host('catalog.query', { statement, parameters })).rows as any[];
 }
 const opportunityFields = ['sourceKey','processId','opportunityId','description','status','type','issuedBy','closingDate','detailUrl','starred','commodities'];
@@ -20,7 +23,7 @@ export async function readAll(kind: 'opportunity' | 'award', starredOnly = false
     while (after < last) {
       const page = await sql('SELECT id, data FROM records WHERE kind=? AND id>? AND id<=? ORDER BY id LIMIT 50', [kind, after, last]);
       if (!page.length) break;
-      for (const row of page) { const data = JSON.parse(row.data); if (!starredOnly || data.starred) rows.push(data); }
+      for (const row of page) { const data = JSON.parse(row.data); if (isBcBid(data) && (!starredOnly || data.starred)) rows.push(data); }
       after = page.at(-1).id;
     }
     return rows;
@@ -30,7 +33,7 @@ export async function readAll(kind: 'opportunity' | 'award', starredOnly = false
   let after: string | null = '';
   do {
     const page = await host('catalog.read', { kind, after, revision: head.revision, limit: 200 });
-    rows.push(...page.records.filter((row: any) => !starredOnly || row.data.starred).map((row: any) => row.data));
+    rows.push(...page.records.filter((row: any) => isBcBid(row.data) && (!starredOnly || row.data.starred)).map((row: any) => row.data));
     after = page.next;
   } while (after);
   // A changing catalog fails explicitly, rather than exporting a mixed snapshot.
@@ -132,9 +135,9 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   }
   if (name === 'opportunities.getByProcessId') {
     const result = await host('catalog.read', { match: { kind: 'opportunity', field: 'processId', value: args.processId }, limit: 1 });
-    if (result.records.length) return annotateBuyerRecord(result.records[0].data, 'opportunity');
+    if (result.records.length && isBcBid(result.records[0].data)) return annotateBuyerRecord(result.records[0].data, 'opportunity');
     const row = (await host('catalog.read', { ids: ['opportunity:' + args.processId] })).records[0]?.data;
-    return row ? annotateBuyerRecord(row, 'opportunity') : null;
+    return row && isBcBid(row) ? annotateBuyerRecord(row, 'opportunity') : null;
   }
   if (name === 'contractAwards.summary') {
     const [counts, latest] = await Promise.all([

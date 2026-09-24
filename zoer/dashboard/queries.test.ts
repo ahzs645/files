@@ -18,6 +18,8 @@ mock.module('./bridge', () => ({ host: async (method: string, input: any) => {
 } }));
 const { queryCatalog, readAll } = await import('./queries');
 const model: any = { awards: [], opportunities: [], stars: new Map(), history: new Map(), runs: [] };
+// Another portal may reuse a buyer/name; it must not leak into the BC Bid view or export.
+db.query('INSERT INTO records VALUES(?,?,?)').run('opportunity:canadabuys:other', 'opportunity', JSON.stringify({sourceId:'canadabuys',sourceKey:'canadabuys:other',description:'Item federal',issuedBy:'Buyer',status:'Open',starred:true}));
 for (const kind of ['award','opportunity']) for (let i=0;i<413;i++) db.query('INSERT INTO records VALUES(?,?,?)').run(`${kind}:${String(i).padStart(4,'0')}`,kind,JSON.stringify({ sourceKey:String(i),importKey:String(i),description:i===410?"100%_unique' DROP;":`Item ${i}`,opportunityDescription:`Award ${i}`,status:'Open',type:'RFP',issuedBy:'Buyer',closingDate:new Date(Date.now()+86400000).toISOString(),awardDate:'2026-09-01',starred:i===410, detailFields:[{large:'detail'}] }));
 test('dashboard only aggregates and pages visible summaries; literal hostile search and stars reach later records', async () => {
   calls.length=0;

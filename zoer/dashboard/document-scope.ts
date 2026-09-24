@@ -1,4 +1,4 @@
-export type DocumentCandidate = { id: string; data: { status?: string; closingDate?: string; attachments?: unknown[] } };
+export type DocumentCandidate = { id: string; data: { sourceId?: string; status?: string; closingDate?: string; attachments?: unknown[] } };
 export function documentScope(records: DocumentCandidate[], scope: 'current' | 'all', now = Date.now()) {
   const included = records.filter(({data}) => scope === 'all' || (/^open$/i.test(data.status?.trim() ?? '') && (!Number.isFinite(Date.parse(data.closingDate ?? '')) || Date.parse(data.closingDate!) >= now)));
   const linked = included.filter(row => Array.isArray(row.data.attachments) && row.data.attachments.length > 0);
@@ -15,7 +15,7 @@ export async function readDocumentCandidates(host: (method: string, input?: unkn
   let after: string | null = '';
   do {
     const page = await host('catalog.read', {kind:'opportunity', after, revision:head.revision, limit:200});
-    records.push(...page.records);
+    records.push(...page.records.filter((row: DocumentCandidate) => !row.data.sourceId || row.data.sourceId === 'bc-bid'));
     if (records.length > 3000) throw new Error('The catalog exceeds the 3,000-opportunity bulk limit. Use selected downloads.');
     if (page.next && page.next === after) throw new Error('Catalog pagination did not advance. Refresh and retry.');
     after = page.next;

@@ -150,8 +150,9 @@ async function invoke(name: string, args: any) {
   if (name === 'contractAwards.importBatch' || name === 'opportunities.importBatch') {
     const opportunity=name==='opportunities.importBatch';
     const unique = new Set(args.records.map((row:any)=>opportunity?(row.sourceKey??row.processId):buildContractAwardImportKey(row)));
-    const existing = await host('catalog.read', { ids: [...unique].map(key => (opportunity ? 'opportunity:' : 'award:') + key) });
-    const updated = existing.records.length;
+    const ids = [...unique].map(key => (opportunity ? 'opportunity:' : 'award:') + key);
+    let updated = 0;
+    for(let i=0;i<ids.length;i+=4) updated += (await host('catalog.read', {ids:ids.slice(i,i+4)})).records.length;
     const { run } = await host('action', { actionId: opportunity?'opportunities.import':'awards.import', input: args });
     const deadline = Date.now() + 150000;
     while (Date.now() < deadline) {

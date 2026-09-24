@@ -1,13 +1,14 @@
 {
   "id": "bc-bid-monitor",
-  "name": "BC Bid Monitor",
-  "version": "0.23.0",
-  "description": "BC Bid catalog, attachment downloads, saved review prompts, AI labels and manual tags on Zoer.",
+  "name": "Procurement",
+  "version": "0.24.1",
+  "description": "Multi-source procurement catalog with BC Bid, CanadaBuys collection, saved searches, pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
     "apiVersion": "1",
     "networkAllowlist": [
-      "bcbid.gov.bc.ca"
+      "bcbid.gov.bc.ca",
+      "canadabuys.canada.ca"
     ],
     "permissions": [
       "browser:page:read",
@@ -19,7 +20,7 @@
       "workspace:catalog"
     ],
     "workspace": {
-      "title": "BC Bid",
+      "title": "Procurement",
       "icon": "puzzle",
       "surfaceIds": [
         "opportunities",
@@ -893,6 +894,469 @@
             "recordIds",
             "promptId",
             "computerId"
+          ]
+        }
+      },
+      {
+        "id": "procurement.collect",
+        "title": "Collect CanadaBuys tenders",
+        "description": "Fetch the official federal open-tender CSV and merge bounded batches into the existing catalog. Resume checks the source checksum; no saved notices are deleted.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "artifact-store",
+          "network-egress"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 600000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 67108864,
+          "maxNetworkRequests": 1,
+          "maxNetworkResponseBytes": 20971520
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sourceId": {
+              "type": "string",
+              "enum": [
+                "canadabuys"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "resume",
+                "restart"
+              ],
+              "default": "resume"
+            },
+            "maxBatches": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 1
+            }
+          },
+          "required": [
+            "sourceId"
+          ]
+        }
+      },
+      {
+        "id": "procurement.alerts",
+        "title": "Check saved procurement searches",
+        "description": "Explicitly check saved searches and add deduplicated new-notice alerts. This does not enable a schedule.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "procurement.alerts.v1"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 67108864
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      {
+        "id": "procurement.state",
+        "title": "Save procurement workflow state",
+        "description": "Version-checked saved search and pursuit changes in the existing workspace catalog.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 67108864
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "pursuit.upsert"
+                  ]
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "recordId": {
+                  "type": "string",
+                  "maxLength": 10000,
+                  "pattern": "^(opportunity|award):"
+                },
+                "sourceId": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                },
+                "stage": {
+                  "type": "string",
+                  "enum": [
+                    "Watching",
+                    "Reviewing",
+                    "Preparing",
+                    "Submitted",
+                    "Awarded",
+                    "Closed"
+                  ]
+                },
+                "notes": {
+                  "type": "string",
+                  "maxLength": 4000
+                }
+              },
+              "required": [
+                "operation",
+                "expectedVersion",
+                "recordId",
+                "sourceId",
+                "stage",
+                "notes"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "search.upsert"
+                  ]
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                "filters": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "all",
+                        "opportunity",
+                        "award"
+                      ]
+                    },
+                    "search": {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    "region": {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "buyer": {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "deadline": {
+                      "type": "string",
+                      "enum": [
+                        "all",
+                        "week"
+                      ]
+                    },
+                    "shortlist": {
+                      "type": "boolean"
+                    },
+                    "supplier": {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "classification": {
+                      "type": "string",
+                      "maxLength": 12000
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "kind",
+                    "search",
+                    "region",
+                    "category",
+                    "buyer",
+                    "deadline",
+                    "shortlist"
+                  ]
+                }
+              },
+              "required": [
+                "operation",
+                "expectedVersion",
+                "id",
+                "name",
+                "filters"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "search.archive"
+                  ]
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
+                }
+              },
+              "required": [
+                "operation",
+                "expectedVersion",
+                "id"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "records.evidence",
+        "title": "Analyze procurement evidence",
+        "description": "Analyze up to three saved notices using available downloaded evidence and retain traceable source references. No bid submission.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "procurement.evidence.v1"
+        },
+        "requiredCapabilities": [
+          "model-runtime",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 600000,
+          "maxOutputBytes": 1048576
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              }
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "requirements",
+                "bid-no-bid",
+                "compare",
+                "amendments"
+              ]
+            },
+            "computerId": {
+              "type": "string",
+              "maxLength": 150
+            }
+          },
+          "required": [
+            "recordIds",
+            "mode"
+          ]
+        }
+      },
+      {
+        "id": "records.evidence.cli",
+        "title": "Analyze procurement evidence with CLI",
+        "description": "Analyze up to three saved notices using available downloaded evidence and retain traceable source references. No bid submission.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "procurement.evidence.cli.v1"
+        },
+        "requiredCapabilities": [
+          "runtime-resources",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 600000,
+          "maxOutputBytes": 1048576
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              }
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "requirements",
+                "bid-no-bid",
+                "compare",
+                "amendments"
+              ]
+            },
+            "computerId": {
+              "type": "string",
+              "maxLength": 150
+            }
+          },
+          "required": [
+            "recordIds",
+            "mode",
+            "computerId"
+          ]
+        }
+      },
+      {
+        "id": "procurement.classifications",
+        "title": "Save procurement classification mapping",
+        "description": "Version-checked source-specific classification labels in the existing catalog. Raw records are retained.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 1048576
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "mapping.upsert",
+                "mapping.archive"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "rawClassification": {
+              "type": "string",
+              "maxLength": 12000
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          },
+          "required": [
+            "operation",
+            "sourceId",
+            "rawClassification",
+            "expectedVersion"
+          ],
+          "anyOf": [
+            {
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "mapping.archive"
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "mapping.upsert"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
           ]
         }
       }

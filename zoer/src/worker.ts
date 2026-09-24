@@ -6,6 +6,9 @@ import { scrapeSample } from './scrape';
 import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
 import { createInterface } from 'node:readline';
 import { parseCapture, type PageCapture } from './capture';
+import { collectCanadaBuys } from './procurement-collection';
+import { updateProcurementState } from './procurement-state';
+import { updateProcurementClassifications } from './procurement-classifications';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -21,6 +24,7 @@ let sequence = 0;
 let browserTicket: string;
 let artifactTicket: string;
 let catalogTicket: string;
+let networkTicket: string;
 async function call(method: string, input: unknown) {
   const requestId = `bcbid-${++sequence}`;
   write({ protocolVersion: '1', kind: 'host-call', requestId, method, input });
@@ -28,6 +32,7 @@ async function call(method: string, input: unknown) {
   if (response.protocolVersion !== '1' || response.kind !== 'host-response' || response.requestId !== requestId) throw new Error('Invalid Zoer host response.');
   if (response.nextTicket && method.startsWith('browser.')) browserTicket = response.nextTicket;
   if (response.nextTicket && method.startsWith('catalog.')) catalogTicket = response.nextTicket;
+  if (response.nextTicket && method === 'network.fetch') networkTicket = response.nextTicket;
   if (response.nextTicket && method === 'artifact.write') artifactTicket = response.nextTicket;
   if (!response.ok) throw new Error(response.error?.message ?? 'Zoer host call failed.');
   return response.result;
@@ -41,6 +46,7 @@ try {
   artifactTicket = artifact.ticket;
   browserTicket = request.grants?.browser?.ticket;
   catalogTicket = request.grants?.catalog?.ticket;
+  networkTicket = request.grants?.network?.ticket;
   const catalogCall = (method: string, input: any) => call(method, { ...input, ticket: catalogTicket });
   const save = async (document: any) => {
     if (!catalogTicket) throw new Error('Update Zoer to use the unified database plugin.');
@@ -50,7 +56,18 @@ try {
     }
     throw new Error('Could not save database transaction.');
   };
-  if (request.action.id === 'catalog.migrate') {
+  if (request.action.id === 'procurement.collect') {
+    if (!catalogTicket || !networkTicket) throw new Error('Procurement collection requires catalog and network grants.');
+    const collectCall = (method: string, input: any) => method === 'network.fetch'
+      ? call(method, { ...input, ticket: networkTicket }) : catalogCall(method, input);
+    write({ protocolVersion: '1', runId, ok: true, output: await collectCanadaBuys(collectCall, request.input ?? {}, runId) });
+  } else if (request.action.id === 'procurement.classifications') {
+    if (!catalogTicket) throw new Error('Procurement classification mapping requires an existing catalog grant.');
+    write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementClassifications(catalogCall, request.input ?? {}, runId) });
+  } else if (request.action.id === 'procurement.state') {
+    if (!catalogTicket) throw new Error('Procurement state requires an existing catalog grant.');
+    write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementState(catalogCall, request.input ?? {}, runId) });
+  } else if (request.action.id === 'catalog.migrate') {
     if (!catalogTicket) throw new Error('Update Zoer before migrating.');
     write({ protocolVersion:'1',runId,ok:true,output:await migrateCatalog(catalogCall) });
   } else if (request.action.id === 'stars.set') {
