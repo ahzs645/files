@@ -12,4 +12,5 @@ playwright-report/
 test-results/
 .DS_Store
 output/
+/chat-inputs/
 __pycache__/
