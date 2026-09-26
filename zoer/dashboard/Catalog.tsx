@@ -90,8 +90,11 @@ export function AwardHistoryPanel() {
 /** Run history tab: award history runs, shown above the opportunity scrape runs. */
 export function AwardRunList({ limit = 5 }: { limit?: number }) {
   const { model } = useWorkspace();
-  if (!model?.awardRuns.length) return null;
+  // Belongs with the run lists rather than above every tab.
+  const truncated = model?.runsTruncated ? <p className="text-xs text-text-secondary">Showing the latest 100 workflow runs.</p> : null;
+  if (!model?.awardRuns.length) return truncated;
   return <section aria-label="Award history runs" className="space-y-3">
+    {truncated}
     <h2 className="text-[15px] font-semibold text-text-primary">Award history runs</h2>
     {model.awardRuns.slice(0, limit).map((run: any) => {
       const interrupted = run.status === 'outcome_unknown';

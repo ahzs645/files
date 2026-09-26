@@ -53,7 +53,6 @@ function App() {
   }, []);
   if (!navigationReady) return <p role="status">Opening BC Bid…</p>;
   return <div className="flex h-screen flex-col" style={{ padding: `${insets.top}px ${insets.right}px ${insets.bottom}px ${insets.left}px` }}>
-    {model?.runsTruncated && <p className="px-4 py-2 text-xs text-text-secondary">Showing the latest 100 workflow runs.</p>}
     {notice && <p role="status" className="px-4 py-3 text-sm text-text-secondary">{notice}</p>}
     {queryError && <div role="status" className="px-5 py-3 text-sm text-text-secondary">Some data could not refresh: {queryError} Previously loaded results are retained. <button onClick={() => void queryClient.invalidateQueries({queryKey:['catalog']})}>Retry</button></div>}
     {error && <div role="alert" className="bg-red-muted px-5 py-3 text-sm text-red">{error}</div>}
