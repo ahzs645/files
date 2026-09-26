@@ -1,6 +1,6 @@
 import { buyerLevels, isBuyerLevel, nextBuyerLevel, parseBuyerTrail, type BuyerLevel } from './buyers';
 import { navigatePlugin, usePluginLocation, pluginHref, patchPluginQuery } from "../navigation";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Btn, Select, type IntrospectionTable } from '@zoer/plugin-ui/database';
 import { Modal, DatePicker, InMemoryResourceGrid, CountBadge } from '@zoer/plugin-ui/analysis';
 import { List, RefreshCw, SlidersHorizontal } from 'lucide-react';
@@ -9,17 +9,18 @@ import { useMarket } from './useMarket';
 import { ComparisonPlot, DependencePlot, Heatmap, LinePlot, Metrics, Panel, compact, count, money, percent } from './charts';
 import type { AnalysisAction } from './HeatmapActions';
 import { downloadRecords } from '../export';
+import { ProcurementMarket } from '../procurement/ProcurementMarket';
 import './market.css';
 
 const tabs = [
-  { id: 'overview', label: 'Overview' }, { id: 'trends', label: 'Trends' }, { id: 'buyers', label: 'Buyers' }, { id: 'suppliers', label: 'Suppliers' },
+  { id: 'sources', label: 'All sources' }, { id: 'overview', label: 'Overview' }, { id: 'trends', label: 'Trends' }, { id: 'buyers', label: 'Buyers' }, { id: 'suppliers', label: 'Suppliers' },
   { id: 'sizes', label: 'Award sizes' }, { id: 'compare', label: 'Compare' }, { id: 'mix', label: 'Procurement mix' }, { id: 'relationships', label: 'Relationships' }, { id: 'quality', label: 'Data quality' }, { id: 'mapping', label: 'Buyer mapping' },
 ] as const;
 type View = typeof tabs[number]['id'];
 /** Desktop: a vertical list beside the content, as in Chats. Mobile: the page title becomes a picker. */
 function ViewNav({ value, href, onChange }: { value: View; href: (view: View) => string; onChange: (view: View) => void }) {
-  return <aside className="market-nav"><nav aria-label="Market analysis views">{tabs.map(tab => <a key={tab.id} id={`market-analysis-tab-${tab.id}`} href={href(tab.id)} aria-current={tab.id === value ? 'page' : undefined}
-    onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onChange(tab.id); }}>{tab.label}</a>)}</nav></aside>;
+  return <aside className="market-nav"><nav aria-label="Market analysis views">{tabs.map(tab => <Fragment key={tab.id}>{tab.id === 'overview' && <span className="market-nav-group">BC Bid awards</span>}<a id={`market-analysis-tab-${tab.id}`} href={href(tab.id)} aria-current={tab.id === value ? 'page' : undefined}
+    onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onChange(tab.id); }}>{tab.label}</a></Fragment>)}</nav></aside>;
 }
 const qualityLabels: Record<QualityFlag, string> = { currency: 'Currency not stated', future: 'Future-dated awards', undated: 'Missing or invalid dates', placeholder: 'Placeholder suppliers', value: 'Missing or invalid values', negative: 'Negative values', zero: 'Zero values', contract: 'Missing contract number', justification: 'Missing justification' };
 const qualityDetails: Record<QualityFlag, string> = { currency: 'Excluded from CAD totals; choose Unspecified to inspect their values separately.', future: 'Excluded by default. Dates may need source verification.', undated: 'Included in all-time totals but absent from dated trends and comparisons.', placeholder: 'Unknown or migrated supplier names; excluded by default.', value: 'Counted as records; omitted from value statistics.', negative: 'Included in net totals; excluded from positive-value concentration.', zero: 'Included in counts and size statistics.', contract: 'Missing identifier; not proof of a duplicate or an invalid award.', justification: 'Missing descriptive text; not evidence of a procurement violation.' };
@@ -216,7 +217,8 @@ export function MarketAnalysis() {
     navigatePlugin('/analysis/' + next.view + (query.size ? '?' + query : ''), history ?? (next.view === view ? 'replace' : 'push'));
   };
   const meta = useMarket<Metadata>('meta', { buyerLevel: filters.buyerLevel, buyerTrail: filters.buyerTrail });
-  const query = useMarket<Overview | Trends | Distribution | Comparison | Matrix | Metadata | MappingOverview>(view, filters, options);
+  // "All sources" reads the cross-source catalog itself; the BC Bid award worker has no such view.
+  const query = useMarket<Overview | Trends | Distribution | Comparison | Matrix | Metadata | MappingOverview>(view, filters, options, view !== 'sources');
   const data = query.current ? query.data : undefined;
   const inspect: Inspect = (slice, title, override) => setSelection({ slice, title, filters: override ?? filters });
   const setOptions = (next: MarketOptions) => update({ ...state, options: next });
@@ -239,6 +241,13 @@ export function MarketAnalysis() {
   useEffect(() => { root.current?.closest('.zoer-content')?.scrollTo({ top: 0 }); }, [view]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const active = activeFilters(filters);
+  if (view === 'sources') return <div ref={root} className="market-workspace">
+    <ViewNav value={view} href={next => pluginHref("/analysis/" + next)} onChange={setView} />
+    <div className="market-main">
+      <div className="market-view-picker"><Select aria-label="Analysis view" value={view} onChange={e => setView(e.target.value as View)}>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</Select></div>
+      <ProcurementMarket onOpenCatalog={scope => navigatePlugin('/procurement?' + new URLSearchParams(Object.entries({ source: scope.source, kind: scope.kind === 'all' ? '' : scope.kind, buyer: scope.buyer, supplier: scope.supplier, classification: scope.classification }).filter(([, value]) => value) as [string, string][]))} />
+    </div>
+  </div>;
   return <div ref={root} className="market-workspace">
     <ViewNav value={view} href={next => pluginHref("/analysis/" + next + (params.size ? "?" + params : ""))} onChange={setView} />
     <div className="market-main">

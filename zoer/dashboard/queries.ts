@@ -126,7 +126,7 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   }
   if (name === 'dashboard.summary') {
     const [counts, statuses, types] = await Promise.all([
-      sql(`SELECT count(*) AS total, sum(CASE WHEN lower(${field('status')}) LIKE '%open%' THEN 1 ELSE 0 END) AS open, sum(CASE WHEN julianday(${field('closingDate')}) BETWEEN julianday(?) AND julianday(?) THEN 1 ELSE 0 END) AS closingSoon, count(DISTINCT CASE WHEN ${field('issuedBy')} <> '' THEN ${field('issuedBy')} END) AS organizations FROM records WHERE kind='opportunity'`, [new Date().toISOString(), new Date(Date.now()+7*86400000).toISOString()]),
+      sql(`SELECT count(*) AS total, sum(CASE WHEN lower(${field('status')}) LIKE '%open%' AND coalesce(julianday(${field('closingDate')}), 9999999) >= julianday('now', 'start of day') THEN 1 ELSE 0 END) AS open, sum(CASE WHEN julianday(${field('closingDate')}) BETWEEN julianday(?) AND julianday(?) THEN 1 ELSE 0 END) AS closingSoon, count(DISTINCT CASE WHEN ${field('issuedBy')} <> '' THEN ${field('issuedBy')} END) AS organizations FROM records WHERE kind='opportunity'`, [new Date().toISOString(), new Date(Date.now()+7*86400000).toISOString()]),
       sql(`SELECT DISTINCT ${field('status')} AS value FROM records WHERE kind='opportunity' AND ${field('status')} <> '' ORDER BY value`),
       sql(`SELECT DISTINCT ${field('type')} AS value FROM records WHERE kind='opportunity' AND ${field('type')} <> '' ORDER BY value`),
     ]);
@@ -160,6 +160,7 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     const column = (key:string) => { if (!fields.includes(key)) throw new Error('Unknown table column.'); return numeric.has(key) ? `CAST(${field(key)} AS REAL)` : field(key); };
     const where = ['kind=?'], params: (string | number)[] = [kind];
     if (args.starredOnly) where.push(`${field('starred')}=1`);
+    if (args.upcoming) where.push(`julianday(${field('closingDate')}) >= julianday('now', 'start of day')`);
     // Status and type accept one value or a list (multi-select); issuedBy stays a single value.
     for (const key of ['status','type','issuedBy']) { const values = (Array.isArray(args[key]) ? args[key] : [args[key]]).filter((value: unknown): value is string => typeof value === 'string' && value !== ''); if (values.length) { where.push(`${field(kind==='award'&&key==='type'?'opportunityType':key)} IN (${values.map(() => '?').join(',')})`); params.push(...values); } }
     if(mapped?.filter) where.push(mapped.filter);

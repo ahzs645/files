@@ -53,6 +53,12 @@ export type ProcurementQueryOptions = {
   deadline?: 'all' | 'week';
   after?: string;
   limit?: number;
+  /**
+   * `id` pages by cursor (`after`); other sorts page by `offset`. `date-asc` lists upcoming
+   * dates soonest first, then passed dates, then undated notices.
+   */
+  sort?: 'id' | 'date-desc' | 'date-asc' | 'updated';
+  offset?: number;
 };
 
 const field = (key: string) => `json_extract(data, '$.${key}')`;
@@ -90,10 +96,16 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
   }
   const where = filters.join(' AND ');
   const parameters = [...countParameters];
-  const cursor = options.after ? ' AND id>?' : '';
-  if (options.after) parameters.push(options.after);
+  const dated = options.sort === 'date-desc' || options.sort === 'date-asc' || options.sort === 'updated';
+  const cursor = options.after && !dated ? ' AND id>?' : '';
+  if (cursor) parameters.push(options.after!);
   const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(50, Math.floor(options.limit!))) : 25;
   parameters.push(limit);
+  const offset = dated && Number.isFinite(options.offset) ? Math.max(0, Math.min(100_000, Math.floor(options.offset!))) : 0;
+  if (dated) parameters.push(offset);
+  const order = options.sort === 'updated' ? 'updated_at DESC, id'
+    : options.sort === 'date-asc' ? `CASE WHEN coalesce(${deadline}, '')='' THEN 2 WHEN julianday(${deadline}) < julianday('now') THEN 1 ELSE 0 END, ${deadline} ASC, id`
+    : dated ? `CASE WHEN coalesce(${deadline}, '')='' THEN 1 ELSE 0 END, coalesce(${deadline}, '') DESC, id` : 'id';
   const projection = [
     'id', 'kind', `${title} AS title`, `${source} AS sourceId`,
     ...['sourceKey', 'importKey', 'externalId'].map(key => `${field(key)} AS ${key}`),
@@ -105,7 +117,7 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
     'updated_at AS catalogUpdatedAt',
   ];
   return {
-    statement: `SELECT ${projection.join(', ')} FROM records WHERE ${where}${cursor} ORDER BY id LIMIT ?`,
+    statement: `SELECT ${projection.join(', ')} FROM records WHERE ${where}${cursor} ORDER BY ${order} LIMIT ?${dated ? ' OFFSET ?' : ''}`,
     parameters,
     countStatement: `SELECT count(*) AS total FROM records WHERE ${where}`,
     countParameters,

@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "Multi-source procurement catalog with BC Bid, CanadaBuys collection, saved searches, pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {

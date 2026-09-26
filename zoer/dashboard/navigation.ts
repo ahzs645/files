@@ -13,7 +13,7 @@ export function useNavigationReady() { return useSyncExternalStore(listener => {
 export const pluginHref = (path: string) => baseUrl + '#/plugins/bc-bid-monitor' + (path === '/' ? '' : path);
 const internal = (value: string) => {
   const [path, query] = value.split('?');
-  return (path === '/documents' || path === '/settings' || path === '/procurement' || path === '/bc-bid-dashboard' ? '/' : path === '/analysis' || path.startsWith('/analysis/') ? '/contract-awards/analysis' : path) + (query ? '?' + query : '');
+  return (path === '/documents' || path === '/settings' || path === '/procurement' || path === '/pursuits' || path === '/sources' || path === '/bc-bid-dashboard' ? '/' : path === '/analysis' || path.startsWith('/analysis/') ? '/contract-awards/analysis' : path) + (query ? '?' + query : '');
 };
 // Last catalog list location (with its query) so a record's Back link returns to the same filters.
 const catalogReturn = new Map<'opportunity' | 'award', string>();

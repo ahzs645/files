@@ -33,6 +33,8 @@ function DashboardPage() {
   const closingSoon = useQuery(api.opportunities.list, {
     limit: 8,
     cursor: null,
+    // The Zoer catalog can skip notices whose closing date has passed.
+    ...(plugin ? { upcoming: true } : {}),
   });
 
   if (!summary) {

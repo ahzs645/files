@@ -36,6 +36,17 @@ The iframe keeps its sandbox attribute, so the dev document still has an opaque 
 
 ## Use and current coverage
 
+### Workspace layout (0.26)
+
+The workspace has five sections: **Search**, **Pursuits**, **Documents & AI**, **Analysis** and **Sources**.
+
+- **Search** lists saved notices from every source in one toolbar row: search, source, notice type, *Closing in 7 days*, *Shortlisted*, more filters and saved searches. Below 1100px the inline filters fold into a Filters sheet. Results sort by recently updated, or by closing date (upcoming first, then passed, then undated). Selecting notices shows Compare, Evidence & AI and Export. A notice's dialog can shortlist it, add it to Pursuits, or open Documents & AI.
+- **Pursuits** is the stage board. Shortlisted notices are offered for adding.
+- **Analysis** starts with *All sources* (the cross-source award values view), followed by the BC Bid award views.
+- **Sources** has a card per source with status, counts and actions. BC Bid's own tools (Overview, Opportunities, Awards, Scraper, Run history, Export & import) sit under Sources in a second tab row.
+
+Old links still work: `/procurement?view=board|market|sources|saved|deadlines` redirect to Pursuits, Analysis → All sources, Sources, the Saved searches dialog and the closing-soon filter. The BC Bid overview counts an opportunity as open only when its closing date has not passed, and its Closing soon list shows upcoming deadlines only.
+
 - **Dashboard/Opportunities:** source statistics, search, filters, list/cards, pagination of saved results and detail views. Data merges by source key; later listing-only captures preserve earlier details.
 - **Contract Awards:** Download history backfills dated public awards from 1900 through 9999 in checkpointed date ranges. Completed ranges are skipped; a range above 40 pages is subdivided. Resume rechecks only the unfinished range so shifting page positions cannot skip records. Identical records are not rewritten; changes preserve stars and associated documents/reviews. Old page-number checkpoints are retained under `checkpoint:awards:legacy`; their records are preserved but do not prove date coverage. Refresh recent awards checks the last 30 days, keeping its checkpoint separate from history. Undated awards are not verified. Each run allows six hours, 3500 pages and 8192 browser loads. Includes JSON file upload, validation, deduplication, paginated browsing, analysis and supplier/organization profiles. Upload batches become durable worker actions and atomic database transactions. Analysis runs on this plugin's saved data.
 - **Scraper:** save a running Zoer browser in Settings, then Start Scrape to crawl all current public listing pages and their details. Listing and detail deltas persist immediately, with compact recovery checkpoints. Resume saved scrape retries pending work and skips durable completed details. Each run is bounded to 200 listing pages, 3000 opportunities, two hours and 8192 browser navigations/tab reads. Browser checks require manual completion and resumed agent control.
@@ -175,7 +186,7 @@ Documents & AI defaults to including downloaded documents and provides a review 
 
 ### Bulk opportunity documents (0.23)
 
-Documents & AI is the first visible section tab. Its **Download all attachments** control processes every saved page in one durable batch (up to 3,000 opportunities), independent of row selection. Current opportunities means saved status Open and a closing date that has not passed, including unknown dates with an explicit count; All saved opportunities also includes closed/past records. Preview counts distinguish attachment links from opportunities with no saved links. The latter are skipped and require detail capture; neither scope proves live completeness. Original files remain in Zoer for AI review, unchanged downloads are reused, and Stop/Retry retain progress. The generic host must support 3,000-record document batches; AI review stays limited to 50 selected records. Existing per-file, per-record and six-hour limits still apply.
+The **Download all attachments** control processes every saved page in one durable batch (up to 3,000 opportunities), independent of row selection. Current opportunities means saved status Open and a closing date that has not passed, including unknown dates with an explicit count; All saved opportunities also includes closed/past records. Preview counts distinguish attachment links from opportunities with no saved links. The latter are skipped and require detail capture; neither scope proves live completeness. Original files remain in Zoer for AI review, unchanged downloads are reused, and Stop/Retry retain progress. The generic host must support 3,000-record document batches; AI review stays limited to 50 selected records. Existing per-file, per-record and six-hour limits still apply.
 
 ## Native Zoer workspace
 

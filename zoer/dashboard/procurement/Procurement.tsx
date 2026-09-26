@@ -1,119 +1,132 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery as useCachedQuery, useQueryClient } from '@tanstack/react-query';
+import { Bookmark, Search, SlidersHorizontal, Star } from 'lucide-react';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
-import { useAction, useWorkspace, setStar } from '../backend';
+import { useWorkspace, setStar } from '../backend';
 import { navigatePlugin, patchPluginQuery, usePluginLocation } from '../navigation';
-import { SOURCES, buildProcurementQuery, deadlineLabel, safeSourceUrl } from './catalog';
-import { PursuitBoard } from './PursuitBoard';
+import { SOURCES, buildProcurementQuery, deadlineLabel } from './catalog';
 import { SavedSearches } from './SavedSearches';
-import { ProcurementMarket } from './ProcurementMarket';
-import { SourceHealth } from './SourceHealth';
 import { AlertSettings } from './AlertSettings';
 import { EvidencePanel } from './EvidencePanel';
+import { NoticeDetail } from './NoticeDetail';
+import { INVENTORY_SQL, shortDate, sourceName, sql } from './display';
 import { type ProcurementFilters } from './state-contract';
-import { nextImportBatch } from './import-batches';
-import { parseCanadaBuysCsv, preserveCanadaBuysEnrichment, verifyCanadaBuysImportReceipt } from './import-canadabuys';
 
-const sourceName = (id: string) => SOURCES.find(source => source.id === id)?.label ?? id;
-async function sql(statement: string, parameters: (string | number)[] = []) {
-  return (await host('catalog.query', { statement, parameters })).rows as any[];
-}
-function LinkOut({ url, children }: { url: unknown; children: React.ReactNode }) {
-  const safe = safeSourceUrl(typeof url === 'string' ? url : '');
-  return safe ? <a className="procurement-link" href={safe} target="_blank" rel="noopener noreferrer">{children} ↗</a> : null;
-}
 function exportSelection(rows: any[]) {
   const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), coverage: 'Selected saved records only; source completeness is not verified.', records: rows }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = url; a.download = 'procurement-shortlist.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+// Views that used to be tabs on this page now live in their own sections.
+const MOVED_VIEWS: Record<string, string> = { board: '/pursuits', market: '/analysis/sources', sources: '/sources' };
+const EXTRA_FILTERS = [['region', 'Region'], ['category', 'Category'], ['buyer', 'Buyer'], ['supplier', 'Supplier']] as const;
 
+/** Search across every saved source. Filters live in the URL so searches can be saved and shared. */
 export function Procurement() {
   const location = usePluginLocation(), params = new URLSearchParams(location.split('?')[1]);
-  const view = params.get('view') || 'browse';
-  const source = params.get('source') ?? '', kind = view === 'deadlines' ? 'opportunity' : params.get('kind') ?? 'all', search = params.get('search') ?? '';
-  const region=params.get('region')||'', category=params.get('category')||'', buyer=params.get('buyer')||'', supplier=params.get('supplier')||'', classification=params.get('classification')||'';
-  const [evidenceIds,setEvidenceIds]=useState<string[]>([]);
-  const starred = params.get('shortlist') === '1', deadline = view === 'deadlines' || params.get('deadline') === 'week' ? 'week' : 'all', after = params.get('after') ?? '';
+  const view = params.get('view') ?? '';
+  const source = params.get('source') ?? '', search = params.get('search') ?? '';
+  const region = params.get('region') || '', category = params.get('category') || '', buyer = params.get('buyer') || '', supplier = params.get('supplier') || '', classification = params.get('classification') || '';
+  const deadline: 'all' | 'week' = view === 'deadlines' || params.get('deadline') === 'week' ? 'week' : 'all';
+  const kind = deadline === 'week' ? 'opportunity' : params.get('kind') ?? 'all';
+  const starred = params.get('shortlist') === '1', page = Math.max(0, Number(params.get('page')) || 0);
+  // Recently updated by default; a deadline filter starts with the soonest deadline.
+  const sort: 'updated' | 'date-asc' = params.get('sort') === 'deadline' || (deadline === 'week' && params.get('sort') !== 'updated') ? 'date-asc' : 'updated';
   const { model } = useWorkspace(), client = useQueryClient();
-  const [importOpen, setImportOpen] = useState(false), [compare, setCompare] = useState(false), [detailId, setDetailId] = useState('');
+  const [panel, setPanel] = useState<'' | 'filters' | 'saved' | 'compare'>(view === 'saved' || params.has('savedSearch') ? 'saved' : '');
+  const [detailId, setDetailId] = useState(''), [evidenceIds, setEvidenceIds] = useState<string[]>([]);
   const [selection, setSelection] = useState<Map<string, any>>(new Map()), [saving, setSaving] = useState(''), [error, setError] = useState('');
-  const filter = (values: Record<string, string>) => { setSelection(new Map()); patchPluginQuery({ ...values, after: '', savedSearch: '' }); };
-  const query = buildProcurementQuery({ source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, after, limit: 26 });
-  const list = useCachedQuery({ queryKey: ['catalog', 'procurement', source, kind, search, starred, deadline, region, category, buyer, supplier, classification, after], enabled: !!model,
+  const [typed, setTyped] = useState(search);
+  useEffect(() => {
+    if (MOVED_VIEWS[view]) navigatePlugin(MOVED_VIEWS[view], 'replace');
+    else if (view === 'deadlines') patchPluginQuery({ view: null, deadline: 'week', kind: 'opportunity' });
+    else if (view === 'saved') patchPluginQuery({ view: null });
+  }, [view]);
+  const filter = (values: Record<string, string>) => { setSelection(new Map()); patchPluginQuery({ ...values, view: '', after: '', page: '', savedSearch: '' }); };
+  // Typing updates the URL after a short pause instead of on every keystroke.
+  useEffect(() => { setTyped(search); }, [search]);
+  useEffect(() => { if (typed === search) return; const timer = setTimeout(() => filter({ search: typed }), 300); return () => clearTimeout(timer); }, [typed]);
+
+  const query = buildProcurementQuery({ source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, sort, offset: page * 25, limit: 26 });
+  const list = useCachedQuery({ queryKey: ['catalog', 'procurement', source, kind, search, starred, deadline, region, category, buyer, supplier, classification, page], enabled: !!model,
     queryFn: async () => { const head = await host('catalog.read', { ids: [] }); const [rows, count] = await Promise.all([sql(query.statement, query.parameters), sql(query.countStatement, query.countParameters)]); await host('catalog.read', { ids: [], revision: head.revision }); return { rows, total: Number(count[0]?.total ?? 0) }; }, refetchInterval: 30000 });
-  const inventory = useCachedQuery({ queryKey: ['catalog', 'procurement-sources'], enabled: !!model, queryFn: () => sql("SELECT CASE WHEN json_extract(data,'$.sourceId') IS NULL OR json_extract(data,'$.sourceId')='' THEN 'bc-bid' ELSE json_extract(data,'$.sourceId') END AS sourceId, count(*) AS count, max(json_extract(data,'$.importedAt')) AS importedAt FROM records WHERE kind IN ('opportunity','award') GROUP BY sourceId"), refetchInterval: 30000 });
-  const detail = useCachedQuery({ queryKey: ['catalog', 'procurement-detail', detailId], enabled: !!detailId, queryFn: () => host('catalog.record', { id: detailId }) });
-  const rows = (list.data?.rows ?? []).slice(0,25), hasMore = (list.data?.rows.length ?? 0) > 25, counts = inventory.data ?? [], selectedSource = SOURCES.find(item => item.id === source);
-  const sources = [...SOURCES, ...counts.filter(row => !SOURCES.some(s => s.id === row.sourceId)).map(row => ({ id: row.sourceId, label: row.sourceId, jurisdiction: 'Unspecified', mode: 'planned', description: 'Imported source', url: '' }))];
+  const inventory = useCachedQuery({ queryKey: ['catalog', 'procurement-inventory'], enabled: !!model, queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60000 });
+  const rows = (list.data?.rows ?? []).slice(0, 25), hasMore = (list.data?.rows.length ?? 0) > 25;
+  const counts = new Map<string, number>();
+  for (const row of inventory.data ?? []) counts.set(row.sourceId, (counts.get(row.sourceId) ?? 0) + Number(row.count));
+  const sources = [...SOURCES.map(item => item.id), ...[...counts.keys()].filter(id => !SOURCES.some(item => item.id === id))];
+  const total = [...counts.values()].reduce((sum, value) => sum + value, 0);
+
   const toggleStar = async (row: any) => {
     setSaving(row.id); setError('');
     try { await setStar(row.kind, row.kind === 'award' ? row.importKey : row.sourceKey, !row.starred); await client.invalidateQueries({ queryKey: ['catalog'] }); }
     catch (e) { setError((e as Error).message); } finally { setSaving(''); }
   };
-  const savedFilters:ProcurementFilters={source,kind:kind==='opportunity'||kind==='award'?kind:'all',search,region,category,buyer,supplier,classification,deadline,shortlist:starred};
-  const applySaved=(filters:ProcurementFilters)=>filter({...filters,shortlist:filters.shortlist?'1':'',view:filters.deadline==='week'?'deadlines':'browse',classification:filters.classification??''});
-  return <section className="procurement-workspace">
-    <header className="procurement-header"><div><h1>{selectedSource?.label ?? (source || 'All procurement')}</h1><p>Discover saved opportunities and awards across procurement sources.</p></div><div className="procurement-actions"><Btn onClick={() => setImportOpen(true)}>Import CanadaBuys CSV</Btn><Btn variant="secondary" onClick={() => navigatePlugin('/documents')}>BC Bid workspace</Btn></div></header>
-    <nav className="procurement-view-links zoer-tabs" aria-label="Procurement views">{[['browse','Browse'],['board','Pursuits'],['saved','Saved searches'],['deadlines','Deadlines'],['market','Market'],['sources','Sources']].map(([id,label])=><a key={id} href={'#/plugins/bc-bid-monitor/procurement?'+new URLSearchParams({...Object.fromEntries(params),view:id,...(id==='deadlines'?{kind:'opportunity'}:{})})} aria-current={view===id?'page':undefined} onClick={event=>{if(!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();filter({view:id,...(id==='deadlines'?{kind:'opportunity'}:{})});}}}>{label}</a>)}</nav>
-    {view==='board'&&<><p className="procurement-coverage">This board includes saved pursuits from all sources. Notices available to add follow the current browse filters.</p><PursuitBoard records={rows} onOpenRecord={setDetailId}/></>}
-    {view==='market'&&<ProcurementMarket source={source} onOpenCatalog={scope=>filter({source:scope.source||'',kind:scope.kind||'all',buyer:scope.buyer||'',supplier:scope.supplier||'',classification:scope.classification||'',region:'',category:'',search:'',shortlist:'',deadline:'',view:'browse'})}/>}
-    {view==='sources'&&<SourceHealth/>}
-    {view==='saved'&&<><SavedSearches filters={savedFilters} onApply={applySaved} onConfigureAlert={()=>document.getElementById('procurement-alerts')?.scrollIntoView({block:'start'})}/><div id="procurement-alerts"><AlertSettings/></div></>}
-    {params.get('savedSearch')&&<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch')!}/>}
-    {['browse','deadlines'].includes(view)&&<>
-    <div className="procurement-sources" aria-label="Procurement sources">
-      <button type="button" className="procurement-source" aria-pressed={!source} onClick={() => filter({ source: '' })}><span className="procurement-source-name">{!source && <span aria-hidden="true">✓ </span>}All sources</span><span>{inventory.isPending ? 'Loading…' : counts.reduce((n, row) => n + Number(row.count), 0).toLocaleString()} saved records</span><small>Your saved catalog, across sources</small></button>
-      {sources.map(item => { const saved = counts.find(row => row.sourceId === item.id); return <button key={item.id} type="button" className="procurement-source" aria-pressed={source === item.id} onClick={() => filter({ source: item.id })}><span className="procurement-source-name">{source === item.id && <span aria-hidden="true">✓ </span>}{item.label}</span><span>{inventory.isPending ? 'Loading…' : Number(saved?.count ?? 0).toLocaleString()} saved · {item.jurisdiction}</span><small>{item.mode === 'scraper' ? 'Browser scraping available' : item.mode === 'csv-import' ? 'Dataset collection · CSV import' : 'Imported records'}{saved?.importedAt ? ` · Imported ${new Date(saved.importedAt).toLocaleDateString()}` : ''}</small></button>; })}
-    </div>
-    <p className="procurement-coverage">Counts describe saved records, not complete portal coverage. Existing records without a source label belong to BC Bid. Closing-soon filters use only deadlines with a known timezone.</p>
-    {selectedSource && <p className="procurement-coverage">{selectedSource.description} <LinkOut url={selectedSource.url}>Visit {selectedSource.label}</LinkOut></p>}
-    <div className="procurement-filters">
-      <label className="procurement-search">Search procurement<input aria-label="Search procurement" placeholder="Title, buyer or notice number" value={search} onChange={event => filter({ search: event.target.value })} /></label>
-      <label>Notice type<Select aria-label="Notice type" value={kind} onChange={event => filter({ kind: event.target.value,...(deadline==='week'&&event.target.value!=='opportunity'?{view:'browse',deadline:'all'}:{}) })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select></label>
-      <label>Deadline<Select aria-label="Deadline" value={deadline} onChange={event => filter({ deadline: event.target.value,...(event.target.value==='week'?{kind:'opportunity'}:view==='deadlines'?{view:'browse'}:{}) })}><option value="all">Any deadline</option><option value="week">Closing in 7 days</option></Select></label>
-      <label className="procurement-check"><input type="checkbox" checked={starred} onChange={event => filter({ shortlist: event.target.checked ? '1' : '' })} />Shortlisted only</label>
-    </div>
-    <details className="procurement-extra-filters"><summary>Region, category, buyer and supplier filters</summary><div className="procurement-filters">{[['region','Region',region],['category','Category',category],['buyer','Buyer',buyer],['supplier','Supplier',supplier]].map(([key,label,value])=><label key={key}>{label}<input aria-label={`Filter ${label}`} value={value} placeholder="Exact source value" onChange={e=>filter({[key]:e.target.value})}/></label>)}</div>{classification&&<p>Raw classification scope: {classification} <Btn variant="ghost" onClick={()=>filter({classification:''})}>Clear classification</Btn></p>}</details>
-    <div className="procurement-actions"><Btn variant="secondary" onClick={()=>filter({view:'saved'})}>Save these filters</Btn><Btn variant="secondary" disabled={!selection.size} onClick={()=>setEvidenceIds([...selection.keys()])}>Evidence & AI</Btn><span role="status">{list.isPending ? 'Loading saved records…' : `${(list.data?.total ?? 0).toLocaleString()} matches`}</span><Btn variant="secondary" disabled={selection.size < 2} onClick={() => setCompare(true)}>Compare ({selection.size}/3)</Btn><Btn variant="secondary" disabled={!selection.size} onClick={() => { void host('catalog.read', {ids:[...selection.keys()]}).then(result => exportSelection(result.records)).catch(e => setError(e.message)); }}>Export selected</Btn>{selection.size > 0 && <Btn variant="ghost" onClick={() => setSelection(new Map())}>Clear selection</Btn>}</div>
-    {(error || list.error || inventory.error) && <p role="alert">{error || list.error?.message || inventory.error?.message} <Btn variant="secondary" onClick={() => void client.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></p>}
-    {!list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching saved notices</h2><p>{source === 'canadabuys' ? 'Import a CanadaBuys tender CSV to add federal notices. An empty catalog does not mean the portal has no opportunities.' : 'Try removing filters, import a source file, or open the BC Bid workspace to collect notices.'}</p><Btn variant="secondary" onClick={() => filter({ search: '', kind: 'all', deadline: 'all', shortlist: '', region:'',category:'',buyer:'',supplier:'',classification:'',view:'browse' })}>Clear filters</Btn></div>}
-    <div className="procurement-results">{rows.map(row => <article className="procurement-result" key={row.id}>
-      <label className="procurement-check"><input aria-label={`Compare ${row.title}`} type="checkbox" checked={selection.has(row.id)} disabled={!selection.has(row.id) && selection.size >= 3} onChange={event => setSelection(current => { const next = new Map(current); event.target.checked ? next.set(row.id, row) : next.delete(row.id); return next; })} /><span className="sr-only">Select for comparison</span></label>
-      <div className="procurement-result-body"><div className="procurement-meta"><span>{sourceName(row.sourceId)}</span><span>{row.kind === 'award' ? 'Award' : 'Opportunity'}</span>{row.status && <span>{row.status}</span>}</div><button type="button" className="procurement-title" onClick={() => setDetailId(row.id)}>{row.title}</button><p>{row.buyer || 'Buyer not provided'}{row.region ? ` · ${row.region}` : ''}</p><small>{row.externalId || ''}{row.externalId ? ' · ' : ''}{row.kind === 'award' ? 'Award date: ' : 'Closes: '}{row.kind === 'award' ? row.deadline || 'Not provided' : deadlineLabel(row.deadline)}</small></div>
-      <Btn variant="secondary" disabled={!!saving} aria-pressed={!!row.starred} aria-label={`${row.starred ? 'Remove from' : 'Add to'} shortlist: ${row.title}`} onClick={() => void toggleStar(row)}>{saving === row.id ? 'Saving…' : row.starred ? '★ Saved' : '☆ Shortlist'}</Btn>
-    </article>)}</div>
-    <div className="procurement-actions"><Btn variant="secondary" disabled={!after} onClick={() => patchPluginQuery({ after: '' })}>First page</Btn><span>{rows.length} shown</span><Btn variant="secondary" disabled={!hasMore || list.isFetching} onClick={() => patchPluginQuery({ after: rows.at(-1)?.id ?? '' }, 'push')}>Next page</Btn></div>
-    </>}
-    {evidenceIds.length>0&&<EvidencePanel recordIds={evidenceIds} onClose={()=>setEvidenceIds([])}/>}
-    {compare && <Modal title="Compare selected notices" mobileSheet onClose={() => setCompare(false)}><div className="procurement-comparison" tabIndex={0} role="region" aria-label="Notice comparison"><table><thead><tr><th>Field</th>{[...selection.values()].map(row => <th key={row.id}>{row.title}</th>)}</tr></thead><tbody>{[['Source','sourceId'],['Type','kind'],['Buyer','buyer'],['Region','region'],['Source status','status'],['Deadline / award date','deadline']].map(([label,key]) => <tr key={key}><th>{label}</th>{[...selection.values()].map(row => <td key={row.id}>{key === 'sourceId' ? sourceName(row[key]) : key === 'deadline' ? row.kind === 'award' ? row[key] || 'Not provided' : deadlineLabel(row[key]) : row[key] || 'Not provided'}</td>)}</tr>)}</tbody></table></div><p>Source status describes the published notice. Shortlisting does not submit a bid.</p></Modal>}
-    {detailId && <Modal title={detail.data?.record?.title ?? 'Notice details'} mobileSheet onClose={() => setDetailId('')}>
-      {detail.isPending && <p role="status">Loading original record…</p>}{detail.error && <p role="alert">{detail.error.message}</p>}
-      {detail.data?.record && <div className="procurement-detail"><p>{sourceName(detail.data.record.data.sourceId || 'bc-bid')} · {detail.data.record.kind}</p><LinkOut url={detail.data.record.data.detailUrl || detail.data.record.data.sourceUrl}>Open source</LinkOut><p className="procurement-description">{detail.data.record.data.sourceDescriptionText || detail.data.record.data.descriptionText || detail.data.record.data.opportunityDescription || 'No additional description saved.'}</p><dl>{[['Buyer',detail.data.record.data.issuedBy || detail.data.record.data.issuingOrganization],['Published status',detail.data.record.data.status],['Original reference',detail.data.record.data.externalId || detail.data.record.data.opportunityId],[detail.data.record.kind === 'award' ? 'Award date' : 'Closing date',detail.data.record.kind === 'award' ? detail.data.record.data.awardDate : deadlineLabel(detail.data.record.data.closingAt ?? detail.data.record.data.closingDate)],['Imported at',detail.data.record.data.importedAt],['Import file',detail.data.record.data.sourceFileName],['Import file SHA-256',detail.data.record.data.sourceFileSha256]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Not recorded'}</dd></div>)}</dl><Btn onClick={()=>setEvidenceIds([detailId])}>Analyze evidence</Btn><p>{detail.data.documents.length} downloaded documents · {detail.data.reviews.length} saved reviews</p>{(!detail.data.record.data.sourceId || detail.data.record.data.sourceId === 'bc-bid') ? <Btn onClick={() => navigatePlugin('/documents?record=' + encodeURIComponent(detailId) + '&kind=' + detail.data.record.kind)}>Documents & AI</Btn> : <p>CanadaBuys attachment retrieval is not connected yet. Its open-tender CSV can be collected from Sources.</p>}</div>}
-    </Modal>}
-    {importOpen && <CanadaBuysImport onClose={() => setImportOpen(false)} onImported={() => { void client.invalidateQueries({ queryKey: ['catalog'] }); }} />}
-  </section>;
-}
+  const savedFilters: ProcurementFilters = { source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred };
+  const applySaved = (filters: ProcurementFilters) => { filter({ ...filters, shortlist: filters.shortlist ? '1' : '', deadline: filters.deadline === 'week' ? 'week' : '', classification: filters.classification ?? '' }); setPanel(''); };
+  const extraCount = [region, category, buyer, supplier, classification].filter(Boolean).length;
+  const activeCount = extraCount + [source, kind !== 'all', deadline === 'week', starred].filter(Boolean).length;
+  const clearAll = () => { setTyped(''); filter({ search: '', source: '', kind: '', deadline: '', shortlist: '', region: '', category: '', buyer: '', supplier: '', classification: '' }); };
 
-function CanadaBuysImport({ onClose, onImported }: { onClose(): void; onImported(): void }) {
-  const importBatch = useAction('opportunities.importBatch');
-  const [preview,setPreview] = useState<ReturnType<typeof parseCanadaBuysCsv>>(), [fileName,setFileName] = useState(''), [error,setError] = useState('');
-  const [reading,setReading] = useState(false), [busy,setBusy] = useState(false), [completed,setCompleted] = useState(0), [message,setMessage] = useState('');
-  const stop = useRef(false), readGeneration = useRef(0);
-  useEffect(() => () => { stop.current = true; readGeneration.current++; }, []);
-  const load = async (file?: File) => {
-    const generation = ++readGeneration.current; setPreview(undefined); setError(''); setCompleted(0); setMessage(''); if (!file) return;
-    setReading(true);
-    try { if (file.size > 20 * 1024 * 1024) throw Error('Choose a CSV smaller than 20 MiB.'); const bytes = await file.arrayBuffer(); const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2,'0')).join(''); const result = parseCanadaBuysCsv(new TextDecoder('utf-8', { fatal: true }).decode(bytes), { fileName: file.name, sha256, importedAt: new Date().toISOString() }); if (generation === readGeneration.current) { setPreview(result); setFileName(file.name); } }
-    catch (e) { if (generation === readGeneration.current) setError((e as Error).message); } finally { if (generation === readGeneration.current) setReading(false); }
-  };
-  const run = async () => {
-    if (!preview) return; stop.current = false; setBusy(true); setError(''); setMessage('');
-    try { let batchSize = 0; for (let offset = completed; offset < preview.records.length && !stop.current; offset += batchSize) { const proposed = nextImportBatch(preview.records,offset); const existing: any[] = []; for(let i=0;i<proposed.length;i+=4) existing.push(...(await host('catalog.read', {ids:proposed.slice(i,i+4).map(row => 'opportunity:'+row.sourceKey)})).records); const batch = nextImportBatch(preserveCanadaBuysEnrichment(proposed,existing),0); batchSize = batch.length; await importBatch({ records: batch, fileName }); const verified: any[] = []; for(let i=0;i<batch.length;i+=4) { const saved = await host('catalog.read', { ids: batch.slice(i,i+4).map(row => 'opportunity:' + row.sourceKey) }); verified.push(...saved.records); } verifyCanadaBuysImportReceipt(batch, verified); setCompleted(offset+batch.length); onImported(); } setMessage(stop.current ? 'Stopped between batches. Confirmed saved records are retained.' : 'Import complete. Saved records verified in the existing catalog.'); }
-    catch(e) { setError((e as Error).message + ' Confirmed batches are retained; retries merge the same source IDs.'); } finally { setBusy(false); }
-  };
-  return <Modal title="Import CanadaBuys tenders" mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="procurement-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Close</Btn>{busy ? <Btn variant="secondary" onClick={() => { stop.current = true; setMessage('Stopping after the current batch is confirmed…'); }}>Stop after this batch</Btn> : <Btn disabled={reading || !preview?.records.length || completed === preview?.records.length} onClick={() => void run()}>{completed ? 'Continue import' : `Import ${preview?.records.length.toLocaleString() ?? ''} notices`}</Btn>}</div>}>
-    <div className="procurement-detail"><p>Choose a CanadaBuys tender CSV. Preview it before merging into the existing procurement catalog. BC Bid records, documents and shortlists are retained.</p><LinkOut url="https://canadabuys.canada.ca/en/procurement-and-contracting-data">CanadaBuys datasets</LinkOut><label>CSV file<input aria-label="CanadaBuys CSV file" type="file" accept=".csv,text/csv" disabled={busy || reading} onChange={event => void load(event.target.files?.[0])} /></label><p>Up to 20 MiB and 10,000 notices. Imports run in batches of up to 100 notices, bounded by file size. Keep this workspace open; leaving stops further batches, while an already-started batch may still finish.</p>{reading && <p role="status">Validating CSV…</p>}{preview && <><p>{preview.records.length.toLocaleString()} unique notices · {preview.duplicateCount} duplicate rows removed</p>{preview.warnings.map((warning,i) => <p key={i}>{warning}</p>)}<ul>{preview.records.slice(0,5).map(row => <li key={row.sourceKey}>{row.description} — {row.externalId}</li>)}</ul><p>Missing timezone information remains unknown. CSVs do not include document files. No portal credentials or automatic scraper are configured by this import.</p></>}{(busy || completed > 0) && <p role="status">{completed} of {preview?.records.length} notices confirmed saved</p>}{message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}</div>
-  </Modal>;
+  const sourceSelect = <Select aria-label="Source" value={source} onChange={event => filter({ source: event.target.value })}><option value="">All sources{inventory.data ? ` · ${total.toLocaleString()}` : ''}</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}{counts.has(id) ? ` · ${counts.get(id)!.toLocaleString()}` : ''}</option>)}</Select>;
+  const typeSelect = <Select aria-label="Notice type" value={kind} onChange={event => filter({ kind: event.target.value, ...(event.target.value !== 'opportunity' ? { deadline: '' } : {}) })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select>;
+  const closingChip = <button type="button" className="pc-chip" aria-pressed={deadline === 'week'} onClick={() => filter(deadline === 'week' ? { deadline: '' } : { deadline: 'week', kind: 'opportunity' })}>Closing in 7 days</button>;
+  const shortlistChip = <button type="button" className="pc-chip" aria-pressed={starred} onClick={() => filter({ shortlist: starred ? '' : '1' })}><Star aria-hidden="true" className="h-3.5 w-3.5" />Shortlisted</button>;
+  const extraFields = <div className="pc-extra-fields">{EXTRA_FILTERS.map(([key, label]) => <label key={key}><span>{label}</span><input aria-label={`Filter ${label}`} value={params.get(key) ?? ''} placeholder="Exact source value" onChange={event => filter({ [key]: event.target.value })} /></label>)}{classification && <p>Classification: {classification} <Btn size="sm" variant="ghost" onClick={() => filter({ classification: '' })}>Clear</Btn></p>}</div>;
+
+  return <section className="procurement-workspace" aria-label="Search procurement">
+    <div className="pc-toolbar">
+      <label className="pc-search"><Search aria-hidden="true" className="h-4 w-4" /><span className="sr-only">Search procurement</span><input type="search" aria-label="Search procurement" placeholder="Search titles, buyers or notice numbers" value={typed} onChange={event => setTyped(event.target.value)} /></label>
+      <div className="pc-inline-filters">{sourceSelect}{typeSelect}{closingChip}{shortlistChip}</div>
+      <Btn variant="secondary" className="pc-more" aria-haspopup="dialog" aria-label={activeCount ? `Filters, ${activeCount} active` : 'Filters'} onClick={() => setPanel('filters')}><SlidersHorizontal aria-hidden="true" className="h-4 w-4" /><span className="pc-label-wide">More filters</span><span className="pc-label-narrow">Filters</span><span className="pc-count pc-count-wide" hidden={!extraCount}>{extraCount}</span><span className="pc-count pc-count-narrow" hidden={!activeCount}>{activeCount}</span></Btn>
+      <Btn variant="secondary" aria-haspopup="dialog" aria-label="Saved searches" tooltip="Saved searches and alerts" onClick={() => setPanel('saved')}><Bookmark aria-hidden="true" className="h-4 w-4" /><span className="pc-label-saved">Saved</span></Btn>
+    </div>
+
+    <div className="pc-resultbar">
+      {selection.size ? <>
+        <span role="status"><strong>{selection.size}</strong> selected<Btn size="sm" variant="ghost" onClick={() => setSelection(new Map())}>Clear</Btn></span>
+        <div className="procurement-actions pc-selection-actions">
+          <Btn size="sm" variant="secondary" disabled={selection.size < 2} onClick={() => setPanel('compare')}>Compare</Btn>
+          <Btn size="sm" variant="secondary" onClick={() => setEvidenceIds([...selection.keys()])}>Evidence & AI</Btn>
+          <Btn size="sm" variant="secondary" onClick={() => { void host('catalog.read', { ids: [...selection.keys()] }).then(result => exportSelection(result.records)).catch(e => setError(e.message)); }}>Export</Btn>
+        </div>
+      </> : <>
+        <span role="status">{list.isPending ? 'Loading…' : `${(list.data?.total ?? 0).toLocaleString()} ${list.data?.total === 1 ? 'result' : 'results'}`}{activeCount > 0 && <Btn size="sm" variant="ghost" onClick={clearAll}>Clear filters</Btn>}</span>
+        <label className="pc-sort"><span className="sr-only">Sort</span><Select aria-label="Sort" presentation="dropdown" searchable={false} value={sort === 'date-asc' ? 'deadline' : 'updated'} onChange={event => patchPluginQuery({ sort: event.target.value, page: '' })}><option value="updated">Recently updated</option><option value="deadline">Closing soonest</option></Select></label>
+      </>}
+    </div>
+
+    {(error || list.error || inventory.error) && <p role="alert">{error || list.error?.message || inventory.error?.message} <Btn size="sm" variant="secondary" onClick={() => void client.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></p>}
+    {!list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching notices</h2><p>{source === 'canadabuys' ? 'Collect or import CanadaBuys notices from Sources.' : 'Try fewer filters, or collect more notices from Sources.'}</p><div className="procurement-actions">{activeCount > 0 && <Btn variant="secondary" onClick={clearAll}>Clear filters</Btn>}<Btn variant="secondary" onClick={() => navigatePlugin('/sources')}>Open Sources</Btn></div></div>}
+
+    <div className="pc-results">{rows.map(row => {
+      const when = shortDate(row.deadline), checked = selection.has(row.id);
+      return <article className="pc-row" key={row.id} data-selected={checked || undefined}>
+        <input type="checkbox" className="pc-row-check" aria-label={`Select ${row.title}`} checked={checked} disabled={!checked && selection.size >= 3} onChange={event => setSelection(current => { const next = new Map(current); event.target.checked ? next.set(row.id, row) : next.delete(row.id); return next; })} />
+        <div className="pc-row-main">
+          <button type="button" className="pc-row-title" onClick={() => setDetailId(row.id)}>{row.title || 'Untitled notice'}</button>
+          <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{row.region ? ` · ${row.region}` : ''}</p>
+          <p className="pc-row-meta"><span className="pc-row-date pc-row-date-inline" data-tone={when.tone || undefined}>{row.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</span><span className="pc-tag">{sourceName(row.sourceId)}</span><span>{row.kind === 'award' ? 'Award' : 'Opportunity'}</span>{row.status && <span>{row.status}</span>}{row.externalId && <span>{row.externalId}</span>}</p>
+        </div>
+        <div className="pc-row-side">
+          <span className="pc-row-date" data-tone={when.tone || undefined} title={row.kind === 'award' ? row.deadline : deadlineLabel(row.deadline)}><span className="sr-only">{row.kind === 'award' ? 'Awarded ' : 'Closes '}</span>{when.tone === 'passed' ? 'Closed ' : ''}{when.text}</span>
+          <button type="button" className="pc-star" disabled={!!saving} aria-pressed={!!row.starred} aria-label={`${row.starred ? 'Remove from' : 'Add to'} shortlist: ${row.title}`} onClick={() => void toggleStar(row)}><Star aria-hidden="true" className="h-4 w-4" fill={row.starred ? 'currentColor' : 'none'} /></button>
+        </div>
+      </article>;
+    })}</div>
+
+    {(page > 0 || hasMore) && <div className="pc-pager"><Btn size="sm" variant="secondary" disabled={!page} onClick={() => patchPluginQuery({ page: page > 1 ? String(page - 1) : '' }, 'push')}>Previous</Btn><span>Page {page + 1} of {Math.max(1, Math.ceil((list.data?.total ?? 0) / 25)).toLocaleString()}</span><Btn size="sm" variant="secondary" disabled={!hasMore || list.isFetching} onClick={() => patchPluginQuery({ page: String(page + 1) }, 'push')}>Next</Btn></div>}
+
+    {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>Show {(list.data?.total ?? 0).toLocaleString()} results</Btn></>}>
+      <div className="pc-filter-sheet">
+        <div className="pc-sheet-only"><label><span>Source</span>{sourceSelect}</label><label><span>Notice type</span>{typeSelect}</label><div className="procurement-actions">{closingChip}{shortlistChip}</div></div>
+        {extraFields}
+      </div>
+    </Modal>}
+    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet"><SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
+    {panel === 'compare' && <Modal title="Compare notices" mobileSheet onClose={() => setPanel('')}><div className="procurement-comparison" tabIndex={0} role="region" aria-label="Notice comparison"><table><thead><tr><th>Field</th>{[...selection.values()].map(row => <th key={row.id}>{row.title}</th>)}</tr></thead><tbody>{[['Source', 'sourceId'], ['Type', 'kind'], ['Buyer', 'buyer'], ['Region', 'region'], ['Status', 'status'], ['Deadline / award date', 'deadline']].map(([label, key]) => <tr key={key}><th>{label}</th>{[...selection.values()].map(row => <td key={row.id}>{key === 'sourceId' ? sourceName(row[key]) : key === 'deadline' ? row.kind === 'award' ? row[key] || 'Not provided' : deadlineLabel(row[key]) : row[key] || 'Not provided'}</td>)}</tr>)}</tbody></table></div></Modal>}
+    {detailId && <NoticeDetail id={detailId} onClose={() => setDetailId('')} onEvidence={ids => setEvidenceIds(ids)} />}
+    {evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
+  </section>;
 }

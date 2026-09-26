@@ -42,7 +42,7 @@ export function Research() {
   };
   const close=()=>{setRecordId('');setDetail(undefined);};
   return <section className="research">
-    <header className="bid-page-header"><div><h1>Documents & AI</h1><p>{opportunityCount && awardCount ? `${(opportunityCount.total + awardCount.total).toLocaleString()} BC Bid records saved`:'Loading saved BC Bid records…'}</p></div><Button variant="ghost" onClick={()=>void host('catalog.open')}>Open database viewer</Button></header>
+    <header className="bid-page-header"><div><h1 className="sr-only">Documents & AI</h1><p>{opportunityCount && awardCount ? `${(opportunityCount.total + awardCount.total).toLocaleString()} BC Bid records saved`:'Loading saved BC Bid records…'}</p></div><Button variant="ghost" onClick={()=>void host('catalog.open')}>Open database viewer</Button></header>
     <BulkDocuments running={state.batches.some((batch:any)=>batch.kind==='download'&&batch.status==='running')} onStarted={refresh} />
     <div className="research-grid"><section className="zoer-history"><h2>Choose records</h2>
       <div className="zoer-record-tools"><Button variant={kind==='opportunity'?'primary':'ghost'} onClick={()=>setKind('opportunity')}>Opportunities</Button><Button variant={kind==='award'?'primary':'ghost'} onClick={()=>setKind('award')}>Contract awards</Button><label className="research-check"><input type="checkbox" checked={starred} onChange={e=>setStarred(e.target.checked)} />Starred only</label></div>

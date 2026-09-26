@@ -66,7 +66,7 @@ export function ProcurementMarket({ source = '', kind = 'award', onOpenCatalog }
   };
   const rowLabel = (row: ProcurementMarketRow) => view === 'classifications' ? classificationLabel(row.label) : view === 'sources' ? name(row.label) : row.label || 'Not stated';
   return <section className="procurement-market" aria-label="Procurement market analysis">
-    <header className="procurement-market-header"><div><h1>Procurement market</h1><p>Explore saved notices and disclosed award values across sources.</p></div><Btn variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{query.isFetching ? 'Refreshing…' : 'Refresh'}</Btn></header>
+    <header className="procurement-market-header"><div><h1>All sources</h1><p>Saved notices and recorded award values, by source.</p></div><Btn variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{query.isFetching ? 'Refreshing…' : 'Refresh'}</Btn></header>
     <div className="procurement-market-filters">
       <label>Source<Select aria-label="Market source" value={scope.source ?? ''} onChange={event => update({ source: event.target.value, kind: scope.kind })}><option value="">All sources</option>{SOURCES.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}{extraSourceIds.map(id => <option key={id} value={id}>{id}</option>)}</Select></label>
       <label>Notice type<Select aria-label="Market notice type" value={scope.kind ?? 'all'} onChange={event => update({ ...scope, kind: event.target.value as ProcurementMarketKind })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select></label>
@@ -74,7 +74,7 @@ export function ProcurementMarket({ source = '', kind = 'award', onOpenCatalog }
       {onOpenCatalog && <Btn variant="secondary" disabled={unknownDrill} onClick={() => onOpenCatalog(scope)}>Open matching notices</Btn>}
     </div>
     {onOpenCatalog && unknownDrill && <p className="procurement-market-note">“Not stated” groups can be analyzed here. Clear the drilldown before opening notices, because the notice filter does not distinguish an empty source value from no filter.</p>}
-    <p className="procurement-market-note">Figures cover saved records only, not complete portal coverage. Values are recorded awards, not actual spend or opportunity budgets. Currency buckets stay separate; no exchange rates or buyer-name crosswalks are applied.</p>
+    <p className="procurement-market-note">Recorded award values from saved notices only. Currencies are never converted or combined.</p>
     {inspected && <div className="procurement-market-scope" role="status"><span>Inspecting {name(scope.source!)}{scope.buyer !== undefined && ` · Buyer: ${scope.buyer || 'Not stated'}`}{scope.supplier !== undefined && ` · Supplier: ${scope.supplier || 'Not stated'}`}{scope.classification !== undefined && ` · Classification: ${classificationLabel(scope.classification)}`}</span><Btn variant="ghost" onClick={() => update({ source: scope.source, kind: scope.kind })}>Clear drilldown</Btn></div>}
     {query.error && <div role="alert" className="procurement-market-error">{query.error.message} <Btn variant="secondary" onClick={() => void query.refetch()}>Retry analysis</Btn></div>}
     <div className="procurement-market-metrics" aria-live="polite">
@@ -85,10 +85,9 @@ export function ProcurementMarket({ source = '', kind = 'award', onOpenCatalog }
     </div>
     <div className="procurement-market-breakdown">
       <div className="procurement-market-heading"><h2>{views.find(item => item.id === view)?.label}</h2><span>{query.isPending ? 'Loading…' : `Page ${page + 1} · ${rows.length} groups`}</span></div>
-      {view === 'classifications' && <><p className="procurement-market-note">Raw classification sets are grouped within their source. All codes are retained; sets may overlap or differ in ordering. Add your own display labels while retaining original codes. No UNSPSC, GSIN or BC commodity equivalence is assumed.</p>{mappings.error && <p role="alert">Classification mappings could not be read: {mappings.error.message} <Btn variant="secondary" onClick={() => void mappings.refetch()}>Retry mappings</Btn></p>}</>}
-      {view === 'suppliers' && <p className="procurement-market-note">Supplier labels describe recorded award recipients. They do not show all bidders, win rates, or supplier performance. Opportunity notices may have no supplier.</p>}
-      {view !== 'currencies' && <p className="procurement-market-note">Choose a group to inspect its source-specific records. The same name in different sources remains separate. Each row is one source, label and currency bucket.</p>}
-      {view === 'currencies' && <p className="procurement-market-note">Totals combine saved awards only within each recorded three-letter currency code. An unrecognized or missing code has no comparable total.</p>}
+      {view === 'classifications' && <><p className="procurement-market-note">Grouped by each source’s own classification codes. You can add display labels; codes aren’t mapped between systems.</p>{mappings.error && <p role="alert">Classification mappings could not be read: {mappings.error.message} <Btn variant="secondary" onClick={() => void mappings.refetch()}>Retry mappings</Btn></p>}</>}
+      {view === 'suppliers' && <p className="procurement-market-note">Recorded award recipients only, not every bidder.</p>}
+      {view !== 'currencies' && <p className="procurement-market-note">Choose a row to drill in. Each row is one source, name and currency.</p>}
       <div className="procurement-market-table-wrap"><table>
         <thead><tr><th>{view === 'currencies' ? 'Currency' : 'Group'}</th>{view !== 'currencies' && <th>Source</th>}<th>Notices</th><th>Disclosed values</th><th>Recorded award value</th></tr></thead>
         <tbody>{rows.map(row => <tr key={JSON.stringify([row.sourceId, row.currency, row.label])}>

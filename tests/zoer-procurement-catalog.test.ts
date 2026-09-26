@@ -11,6 +11,7 @@ function catalog(rows: { id: string; kind?: string; data: Record<string, unknown
       const query = buildProcurementQuery(options);
       return { rows: db.prepare(query.statement).all(...query.parameters), total: db.prepare(query.countStatement).get(...query.countParameters)?.total };
     },
+    touch(id: string, updatedAt: string) { db.prepare('UPDATE records SET updated_at=? WHERE id=?').run(updatedAt, id); },
     close() { db.close(); },
   };
 }
@@ -46,6 +47,32 @@ describe('procurement catalog', () => {
       expect(db.query({ search: '%' }).rows.map(row => row.id)).toEqual(['082']);
       expect(db.query({ search: "' OR 1=1 --" }).total).toBe(0);
       expect(db.query({ starred: true }).rows.map(row => row.id)).toEqual(['082']);
+    } finally { db.close(); }
+  });
+
+  it('sorts by notice date with undated notices last and pages by offset', () => {
+    const db = catalog([
+      { id: 'a', data: { description: 'Old', closingDate: '2020-01-01' } },
+      { id: 'b', data: { description: 'Undated' } },
+      { id: 'c', data: { description: 'New', closingAt: '2026-10-01T12:00:00Z' } },
+      { id: 'd', kind: 'award', data: { opportunityDescription: 'Award', awardDate: '2025-05-05' } },
+    ]);
+    try {
+      expect(db.query({ sort: 'date-desc' }).rows.map(row => row.id)).toEqual(['c', 'd', 'a', 'b']);
+      // Upcoming first, then passed dates (oldest first), then undated.
+      expect(db.query({ sort: 'date-asc' }).rows.map(row => row.id)).toEqual(['c', 'a', 'd', 'b']);
+      expect(db.query({ sort: 'date-desc', limit: 2, offset: 2 }).rows.map(row => row.id)).toEqual(['a', 'b']);
+      expect(db.query({ sort: 'date-desc', after: 'c' }).rows).toHaveLength(4);
+      expect(db.query({ sort: 'date-desc', limit: 2, offset: 2 }).total).toBe(4);
+    } finally { db.close(); }
+  });
+
+  it('sorts recently updated notices first', () => {
+    const db = catalog([{ id: 'a', data: { description: 'A' } }, { id: 'b', data: { description: 'B' } }]);
+    try {
+      db.touch('a', '2026-09-24T00:00:00Z');
+      expect(db.query({ sort: 'updated' }).rows.map(row => row.id)).toEqual(['a', 'b']);
+      expect(db.query({ sort: 'updated', offset: 1 }).rows.map(row => row.id)).toEqual(['b']);
     } finally { db.close(); }
   });
 

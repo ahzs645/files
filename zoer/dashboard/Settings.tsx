@@ -4,13 +4,13 @@ import { CatalogTools } from './Catalog';
 export function SettingsPage() {
   return <div className="bid-settings">
     <section className="zoer-history" aria-labelledby="settings-opportunities">
-      <h2 id="settings-opportunities">Opportunities · export & import</h2>
-      <p>Download every saved opportunity (or only starred ones) as CSV or JSON, or merge an opportunity JSON file into the database. Exports include captured attachment links.</p>
+      <h2 id="settings-opportunities">Opportunities</h2>
+      <p>Download all saved opportunities (or starred ones), or import an opportunity JSON file.</p>
       <CatalogTools entity="opportunity" />
     </section>
     <section className="zoer-history" aria-labelledby="settings-awards">
-      <h2 id="settings-awards">Contract awards · export, import & history</h2>
-      <p>Download saved awards as CSV or JSON, import an award JSON file, or manage the public award history download. Exports are complete record sets, independent of the current page and filters.</p>
+      <h2 id="settings-awards">Awards</h2>
+      <p>Download all saved awards, import an award JSON file, or continue the award history download.</p>
       <CatalogTools entity="award" />
     </section>
   </div>;

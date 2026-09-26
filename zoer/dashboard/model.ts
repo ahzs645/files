@@ -71,7 +71,10 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
 export type Model = ReturnType<typeof buildModel>;
 export function queryModel(model: Model, name: string, args: any = {}): any {
   const { opportunities, runs, awards } = model;
-  if (name === 'dashboard.summary') return { total: opportunities.length, open: opportunities.filter(row => /open/i.test(row.status)).length,
+  // A saved "Open" status goes stale; a passed closing date wins.
+  const today = new Date().toISOString().slice(0, 10);
+  const notClosed = (row: { closingDate?: string }) => !row.closingDate || row.closingDate.slice(0, 10) >= today;
+  if (name === 'dashboard.summary') return { total: opportunities.length, open: opportunities.filter(row => /open/i.test(row.status) && notClosed(row)).length,
     closingSoon: opportunities.filter(row => { const time = Date.parse(row.closingDate); return time >= Date.now() && time <= Date.now() + 7 * 86400000; }).length,
     organizations: new Set(opportunities.map(row => resolveBuyer(row.issuedBy).organization)).size, buyerMappingVersion: BUYER_MAPPING_VERSION,
     statusOptions: [...new Set(opportunities.map(row => row.status).filter(Boolean))].sort(), typeOptions: [...new Set(opportunities.map(row => row.type).filter(Boolean))].sort(),
@@ -83,6 +86,7 @@ export function queryModel(model: Model, name: string, args: any = {}): any {
   if (name === 'opportunities.list') {
     const rows = opportunities.filter(row => (!args.starredOnly || row.starred) && (!args.status || row.status === args.status) && (!args.type || row.type === args.type) && (!args.issuedBy || row.issuedBy === args.issuedBy)
       && (!args.closingBefore || !row.closingDate || row.closingDate <= args.closingBefore)
+      && (!args.upcoming || (!!row.closingDate && notClosed(row)))
       && (!args.organization || annotateBuyerRecord(row, 'opportunity', args.buyerLevel).buyer === args.organization)
       && (!args.search || buyerSearchMatches(resolveBuyer(row.issuedBy), args.search) || [row.description, row.opportunityId, row.issuedBy, row.searchText].join(' ').toLowerCase().includes(args.search.toLowerCase())))
       .sort((a, b) => (a.closingDate ?? '9999').localeCompare(b.closingDate ?? '9999') || a.description.localeCompare(b.description));
