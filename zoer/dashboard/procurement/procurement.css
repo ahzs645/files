@@ -132,3 +132,37 @@
 @media(min-width:1024px){.procurement-workspace .procurement-board-column{flex:1 0 11rem;padding:.625rem}.procurement-workspace .procurement-board-card{padding:.625rem}.procurement-board-card .ui-select-trigger{padding-left:.625rem;padding-right:1.75rem;font-size:13px}}
 @media(max-width:640px){.procurement-board{scroll-snap-type:x mandatory}.procurement-board-column{scroll-snap-align:start}}
 @media(max-width:639px){nav.zoer-tabs[aria-label="Procurement sections"]{gap:0;padding:0 6px}nav.zoer-tabs[aria-label="Procurement sections"] a{padding:10px 9px}}
+
+/* Source page header: breadcrumb and a segmented control on desktop, one picker on phones. */
+.pc-source-header{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;width:100%;max-width:1400px;margin:0 auto;padding:.75rem .75rem 0}
+.pc-source-crumb{display:flex;align-items:center;gap:.375rem;font-size:13px;color:var(--text-secondary);white-space:nowrap}
+.pc-source-crumb a{color:var(--text-secondary)}
+.pc-source-crumb a:hover{color:var(--text-primary);text-decoration:underline}
+.pc-source-crumb strong{color:var(--text-primary);font-weight:600}
+.pc-segmented{display:inline-flex;border:1px solid var(--border-default);border-radius:.5rem;overflow:hidden;background:var(--surface-primary)}
+.pc-segmented a{display:flex;align-items:center;min-height:32px;padding:0 .75rem;font-size:12.5px;color:var(--text-secondary);white-space:nowrap;border-left:1px solid var(--border-default)}
+.pc-segmented a:first-child{border-left:0}
+.pc-segmented a:hover{color:var(--text-primary);background:var(--surface-secondary)}
+.pc-segmented a[aria-current=page]{color:var(--text-primary);background:var(--accent-subtle);font-weight:600}
+.pc-source-picker{display:none}
+@media(min-width:640px){.pc-source-header{padding:1rem 1rem 0}}
+@media(max-width:899px){.pc-segmented{display:none}.pc-source-picker{display:block;flex:1 1 12rem;min-width:0}.pc-source-header{flex-wrap:nowrap}}
+
+/* Search with an open notice; pursuit cards; AI category filters */
+.pc-search-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(26rem,48%);gap:1rem;align-items:start}
+.pc-search-list{display:flex;flex-direction:column;gap:.75rem;min-width:0}
+.pc-row[data-open]{background:var(--accent-subtle);box-shadow:inset 3px 0 0 var(--accent)}
+.pc-row-labels{margin-top:.375rem}
+.pc-active-filters{display:flex;flex-wrap:wrap;gap:.375rem}
+.pc-active-filters .pc-label{font-size:12px;line-height:1.5rem;padding:0 .625rem;cursor:pointer}
+.pc-facets{display:flex;flex-direction:column;gap:.5rem}
+.pc-facets h3{font-size:13px;font-weight:650;color:var(--text-primary)}
+.pc-facets h4{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);margin:.25rem 0}
+.pc-facets .pc-label{font-size:12px;line-height:1.5rem;padding:0 .5625rem}
+.pc-board-date{font-size:12px;color:var(--text-secondary)}
+.pc-board-date[data-tone=soon]{color:var(--status-warning)}
+.pc-board-date[data-tone=passed]{color:var(--text-muted)}
+.pc-board-card-actions{display:flex;align-items:center;gap:.25rem}
+.pc-board-card-actions label{flex:1;min-width:0}
+.pc-board-card-actions .ui-select-trigger{height:30px;font-size:12px}
+.procurement-board-notes{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}

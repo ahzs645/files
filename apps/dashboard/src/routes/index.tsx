@@ -96,7 +96,7 @@ function DashboardPage() {
                 <span className="order-last w-full text-sm text-text-primary sm:order-none sm:w-auto sm:flex-1">{activeRun.progress.message}</span>
               ) : (
                 <span className="order-last w-full text-sm text-text-secondary sm:order-none sm:w-auto sm:flex-1">
-                  Scraper idle · last successful run {formatTimestamp(summary.latestSuccessfulRun?.completedAt ?? null)}
+                  Scraper idle · {summary.latestSuccessfulRun ? `last successful run ${formatTimestamp(summary.latestSuccessfulRun.completedAt ?? null)}` : plugin ? `no scrape runs yet · ${summary.total.toLocaleString()} opportunities saved` : `last successful run ${formatTimestamp(null)}`}
                 </span>
               )}
               <Link to="/scraper" className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-strong transition-colors">
@@ -212,7 +212,7 @@ function DashboardPage() {
                             </span>
                           ) : (
                             <span className="text-xs text-text-secondary">
-                              {item.endsIn ?? item.closingDate}
+                              {item.endsIn ?? (plugin ? new Date(String(item.closingDate).slice(0, 10) + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : item.closingDate)}
                             </span>
                           )}
                         </div>

@@ -55,3 +55,9 @@
 @media(max-width:767px){.market-heatmap td .market-heat-more{width:44px;min-width:44px}}
 
 .market-nav-group{display:block;padding:.75rem .625rem .25rem;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted)}
+.market-skeleton{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}
+.market-skeleton span{height:6.5rem;border-radius:.75rem;border:1px solid var(--border-default);background:linear-gradient(90deg,var(--surface-primary) 0%,var(--surface-secondary) 50%,var(--surface-primary) 100%);background-size:200% 100%;animation:market-shimmer 1.4s ease-in-out infinite}
+.market-skeleton .market-skeleton-wide{grid-column:1/-1;height:12rem}
+@keyframes market-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+@media(max-width:640px){.market-skeleton{grid-template-columns:1fr 1fr}}
+@media(prefers-reduced-motion:reduce){.market-skeleton span{animation:none}}

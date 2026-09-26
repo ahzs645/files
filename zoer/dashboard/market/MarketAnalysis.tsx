@@ -275,7 +275,7 @@ export function MarketAnalysis() {
     {view === 'compare' && <ComparisonControls options={options} change={setOptions} />}
     {(query.error || meta.error) && <div role="alert" className="market-error">{query.error ?? meta.error}<button type="button" onClick={() => { meta.retry(); query.retry(); }}>Retry analysis</button></div>}
     <section id="market-analysis-panel" aria-labelledby={`market-analysis-tab-${view}`} className="market-stack">
-      {!data && !query.error && <p role="status" className="market-loading">Loading {label.toLowerCase()}…</p>}
+      {!data && !query.error && <div role="status" className="market-skeleton" aria-label={`Loading ${label.toLowerCase()}`}>{Array.from({ length: 6 }, (_, i) => <span key={i} />)}<span className="market-skeleton-wide" /></div>}
       {data && <>
         {view === 'overview' && <OverviewView data={data as Overview} currency={filters.currency} inspect={inspect} />}
         {(view === 'buyers' || view === 'suppliers') && <EntityView key={view} exclude={exclude} filters={filters} data={data as Overview} kind={view === 'buyers' ? 'buyer' : 'supplier'} currency={filters.currency} inspect={inspect} focus={name => focus(view === 'buyers' ? 'buyer' : 'supplier', name)} explore={view === 'buyers' ? explore : undefined} />}

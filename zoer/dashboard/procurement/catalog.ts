@@ -49,6 +49,8 @@ export type ProcurementQueryOptions = {
   kind?: 'all' | 'opportunity' | 'award';
   search?: string;
   region?: string; category?: string; buyer?: string; supplier?: string; classification?: string;
+  /** An AI label from a successful categorizing review (not an on-demand evidence run). */
+  aiLabel?: string;
   starred?: boolean;
   deadline?: 'all' | 'week';
   after?: string;
@@ -80,6 +82,10 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
   }
   for (const [key,expression] of [['region', `coalesce(${field('region')},${field('issuingLocation')},'')`],['category',`coalesce(${field('category')},${field('classification')},'')`],['buyer',buyer],['supplier',`coalesce(${field('successfulSupplier')},'')`],['classification', `coalesce(CASE WHEN ${field('classificationCodes')}='' OR ${field('classificationCodes')}='[]' THEN NULL ELSE ${field('classificationCodes')} END, CASE WHEN ${field('commodities')}='' OR ${field('commodities')}='[]' THEN NULL ELSE ${field('commodities')} END, ${field('sourceCategory')},${field('category')},'')`]] as const) { if (options[key] !== undefined && options[key] !== '') {filters.push(`${expression}=?`);countParameters.push(options[key]!);} }
   if (options.starred) filters.push(`${field('starred')}=1`);
+  if (options.aiLabel?.trim()) {
+    filters.push(`id IN (SELECT record_id FROM reviews WHERE status='succeeded' AND prompt_id NOT LIKE 'procurement:%' AND json_extract(result, '$.labels') LIKE ? ESCAPE '\\')`);
+    countParameters.push(`%${JSON.stringify(options.aiLabel.trim()).replace(/[\\%_]/g, '\\$&')}%`);
+  }
   if (options.search?.trim()) {
     const searchable = [title, buyer, field('externalId'), field('opportunityId'), field('sourceKey'), field('importKey'), field('successfulSupplier'), field('status'), field('region')];
     filters.push(`CASE WHEN ${searchable.map(expression => `coalesce(${expression}, '') LIKE ? ESCAPE '\\'`).join(' OR ')} THEN 1 ELSE 0 END=1`);

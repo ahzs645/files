@@ -26,7 +26,8 @@ const tree = postcss.parse(css);
 // package never recolours or resets the host. Property declarations remain global.
 const globals: string[] = [];
 tree.walkAtRules('property', rule => { globals.push(rule.toString()); rule.remove(); });
-tree.walkRules(rule => { rule.selector = rule.selector.replace(/:root|:host|\bhtml\b|\bbody\b/g, ':scope'); });
+// Element selectors only: `\b` would also match class names such as `.pc-notice-body`.
+tree.walkRules(rule => { rule.selector = rule.selector.replace(/:root|:host|(?<![\w.#=:-])(?:html|body)(?![\w-])/g, ':scope'); });
 const tokens: Record<string,string> = { 'bg-base':'surface-base','bg-surface':'surface-primary','bg-surface-strong':'surface-secondary','bg-subtle':'surface-hover','bg-hover':'surface-hover','border-default':'border-default','border-strong':'input-border','border-subtle':'border-muted','text-primary':'text-primary','text-secondary':'text-secondary','text-tertiary':'text-muted','accent':'accent','accent-strong':'accent-hover','accent-muted':'accent-subtle','green':'status-success','red':'status-error','orange':'status-warning','yellow':'status-warning' };
 const inputsSha256: Record<string,string> = {};
 const inputs = new Set([resolve(root,'zoer/build-native.ts'), ...result.output.flatMap(item => item.type === 'chunk' ? Object.keys(item.modules) : [])]);

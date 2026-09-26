@@ -11,6 +11,10 @@ function catalog(rows: { id: string; kind?: string; data: Record<string, unknown
       const query = buildProcurementQuery(options);
       return { rows: db.prepare(query.statement).all(...query.parameters), total: db.prepare(query.countStatement).get(...query.countParameters)?.total };
     },
+    review(recordId: string, promptId: string, status: string, result: unknown) {
+      db.exec('CREATE TABLE IF NOT EXISTS reviews(id TEXT PRIMARY KEY, record_id TEXT, prompt_id TEXT, status TEXT, result TEXT, created_at TEXT)');
+      db.prepare('INSERT INTO reviews VALUES (?, ?, ?, ?, ?, ?)').run(recordId + promptId + status, recordId, promptId, status, JSON.stringify(result), '2026-09-26T00:00:00Z');
+    },
     touch(id: string, updatedAt: string) { db.prepare('UPDATE records SET updated_at=? WHERE id=?').run(updatedAt, id); },
     close() { db.close(); },
   };
@@ -64,6 +68,20 @@ describe('procurement catalog', () => {
       expect(db.query({ sort: 'date-desc', limit: 2, offset: 2 }).rows.map(row => row.id)).toEqual(['a', 'b']);
       expect(db.query({ sort: 'date-desc', after: 'c' }).rows).toHaveLength(4);
       expect(db.query({ sort: 'date-desc', limit: 2, offset: 2 }).total).toBe(4);
+    } finally { db.close(); }
+  });
+
+  it('filters by an AI label from successful categorizing reviews only', () => {
+    const db = catalog([{ id: 'a', data: { description: 'Roof' } }, { id: 'b', data: { description: 'IT' } }, { id: 'c', data: { description: 'Evidence only' } }, { id: 'd', data: { description: 'Failed' } }]);
+    try {
+      db.review('a', 'default', 'succeeded', { labels: ['Construction', 'COR required'] });
+      db.review('b', 'default', 'succeeded', { labels: ['IT services', 'Construction management'] });
+      db.review('c', 'procurement:bid-no-bid', 'succeeded', { labels: ['Construction'] });
+      db.review('d', 'default', 'failed', { labels: ['Construction'] });
+      expect(db.query({ aiLabel: 'Construction' }).rows.map(row => row.id)).toEqual(['a']);
+      expect(db.query({ aiLabel: 'Construction' }).total).toBe(1);
+      expect(db.query({ aiLabel: 'COR required', search: 'Roof' }).rows.map(row => row.id)).toEqual(['a']);
+      expect(db.query({ aiLabel: '%' }).total).toBe(0);
     } finally { db.close(); }
   });
 

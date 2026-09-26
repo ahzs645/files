@@ -43,7 +43,19 @@ The workspace has five sections: **Search**, **Pursuits**, **Documents & AI**, *
 - **Search** lists saved notices from every source in one toolbar row: search, source, notice type, *Closing in 7 days*, *Shortlisted*, more filters and saved searches. Below 1100px the inline filters fold into a Filters sheet. Results sort by recently updated, or by closing date (upcoming first, then passed, then undated). Selecting notices shows Compare, Evidence & AI and Export. A notice's dialog can shortlist it, add it to Pursuits, or open Documents & AI.
 - **Pursuits** is the stage board. Shortlisted notices are offered for adding.
 - **Analysis** starts with *All sources* (the cross-source award values view), followed by the BC Bid award views.
-- **Sources** has a card per source with status, counts and actions. BC Bid's own tools (Overview, Opportunities, Awards, Scraper, Run history, Export & import) sit under Sources in a second tab row.
+- **Sources** has a card per source with status, counts and actions. BC Bid's own pages (Overview, Opportunities, Awards, Scraper, Runs, Export) are chosen from the page header under Sources: a segmented control on desktop and a single picker below 900px, so there is only one tab row.
+
+### Notice view, AI categories and document preview (0.27)
+
+Opening a notice from Search, Pursuits or Documents & AI shows one notice view: a side panel beside the results at 1024px and wider, a sheet otherwise (`?notice=<id>` keeps Back working). It has three tabs:
+
+- **Overview**: closing date, estimated value (from the latest AI review when the documents disclose one), buyer, status and document count; the AI summary and categories; the latest bid/no-bid result; the description; and your own tags (AI categories can be saved as tags). Shortlist and the pursuit stage sit in the header.
+- **Documents**: the downloaded files with an inline PDF preview and an extracted-text view. Failed files show why. BC Bid notices can fetch their attachments here. PDF preview needs the Zoer host's `catalog.preview` (Zoer builds after 2026-09-26); older hosts fall back to the text view.
+- **AI**: quick actions (Summarize & categorize, Mandatory requirements, Bid / no-bid, What changed in addenda?) and a free-form question, run with the chosen model. Results show readable fields, AI categories and cited quotes; *Show in document* opens the file's text with the quote highlighted. The question mode needs the Zoer host's `question` evidence mode.
+
+AI categories are the `labels` from each notice's newest categorizing review. They appear on Search rows and pursuit cards, are grouped (work type, requirements, signals) in the Filters sheet, and filter Search with `?aiLabel=`. *Summarize & categorize* uses a saved "Summary & categories" prompt that asks for labels from a fixed vocabulary. The AI category filter is not yet part of saved searches or alerts.
+
+Documents & AI keeps bulk attachment download and bulk AI review; prompt editing moved into a dialog, and record details open the notice view.
 
 Old links still work: `/procurement?view=board|market|sources|saved|deadlines` redirect to Pursuits, Analysis → All sources, Sources, the Saved searches dialog and the closing-soon filter. The BC Bid overview counts an opportunity as open only when its closing date has not passed, and its Closing soon list shows upcoming deadlines only.
 
