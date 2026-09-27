@@ -115,7 +115,7 @@ export function AwardRunList({ limit = 5 }: { limit?: number }) {
 export function AwardsBrowser() {
   const { onlyStarred, setOnlyStarred } = useContext(BidPreferences);
   const [filters,setFilters]=useBidFilters('award');
-  const count = useQuery('catalog.count', { kind: 'award' });
+  const count = useQuery('catalog.count', { kind: 'award', sources: filters.sources });
   const narrow = useNarrowScreen(); const [layout, setLayout] = useState<BidLayout>('list');
   const [filtersOpen, setFiltersOpen] = useState(false), [columnFilters, setColumnFilters] = useState(0);
   const inlinePanel = narrow && layout === 'list';

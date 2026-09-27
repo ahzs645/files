@@ -24,16 +24,32 @@ for (const kind of ['award','opportunity']) for (let i=0;i<413;i++) db.query('IN
 test('dashboard only aggregates and pages visible summaries; literal hostile search and stars reach later records', async () => {
   calls.length=0;
   expect((await queryCatalog('dashboard.summary',{},model,1)).total).toBe(413);
-  const first=await queryCatalog('opportunities.list',{limit:8},model,1);
+  const first=await queryCatalog('opportunities.list',{limit:8,sources:['bc-bid']},model,1);
   expect(first.items).toHaveLength(8); expect(first.total).toBe(413); expect(first.nextCursor).toBe('8');
   expect(first.items[0].detailFields).toBeUndefined();
+  expect(first.items[0].sourceId).toBe('bc-bid');
   expect(calls.every(call=>call.method==='catalog.query'||(call.method==='catalog.read'&&call.input.ids?.length===0))).toBe(true);
   const search=await queryCatalog('opportunities.list',{search:"%_unique' DROP;"},model,1);
   expect(search.items.map((row:any)=>row.sourceKey)).toEqual(['410']);
-  const starred=await queryCatalog('opportunities.list',{starredOnly:true},model,1);
+  const starred=await queryCatalog('opportunities.list',{starredOnly:true,sources:['bc-bid']},model,1);
   expect(starred.items[0].starred).toBe(true); expect(starred.total).toBe(1);
   const last=await queryCatalog('contractAwards.list',{cursor:'400',limit:100},model,1);
   expect(last.items).toHaveLength(13); expect(last.nextCursor).toBeNull();
+});
+test('the shared catalog spans every source, filters by source and rejects invalid scopes', async () => {
+  const everything=await queryCatalog('opportunities.list',{limit:8},model,1);
+  expect(everything.total).toBe(414);
+  const federal=await queryCatalog('catalog.rows',{kind:'opportunity',sources:['canadabuys']},model,1);
+  expect(federal.total).toBe(1); expect(federal.items[0].sourceId).toBe('canadabuys');
+  expect((await queryCatalog('catalog.count',{kind:'opportunity',sources:['bc-bid']},model,1)).total).toBe(413);
+  const starred=await queryCatalog('opportunities.list',{starredOnly:true},model,1);
+  expect(starred.total).toBe(2);
+  const filtered=await queryCatalog('catalog.rows',{kind:'opportunity',filters:[{column:'sourceId',operator:'equals',value:'canadabuys'}]},model,1);
+  expect(filtered.total).toBe(1);
+  const sorted=await queryCatalog('catalog.rows',{kind:'opportunity',sort:{id:'sourceId',desc:true},limit:1},model,1);
+  expect(sorted.items[0].sourceId).toBe('canadabuys');
+  await expect(queryCatalog('catalog.rows',{kind:'opportunity',sources:'bc-bid'},model,1)).rejects.toThrow('Invalid source filter');
+  await expect(queryCatalog('catalog.rows',{kind:'opportunity',sources:[42]},model,1)).rejects.toThrow('Invalid source filter');
 });
 test('full and starred exports include all pages and original details only when requested', async () => {
   calls.length=0;
@@ -63,8 +79,11 @@ test('shared grid sorts the full dataset with stable pages, numeric values and s
 test('organization options include values beyond one catalog page and exact organization filtering uses the full table', async()=>{
   for(let i=0;i<413;i++)db.query("UPDATE records SET data=json_set(data,'$.issuedBy',?) WHERE id=?").run(`Buyer ${String(i).padStart(3,'0')}`,`opportunity:${String(i).padStart(4,'0')}`);
   revision++;
-  const facets=await queryCatalog('catalog.facets',{kind:'opportunity'},model,revision);
+  const facets=await queryCatalog('catalog.facets',{kind:'opportunity',sources:['bc-bid']},model,revision);
   expect(facets.organizations).toHaveLength(413);expect(facets.organizations.at(-1)).toBe('Buyer 412');
+  expect(facets.sources).toEqual(['bc-bid','canadabuys']);
+  const all=await queryCatalog('catalog.facets',{kind:'opportunity'},model,revision);
+  expect(all.organizations).toHaveLength(414);
   const result=await queryCatalog('catalog.rows',{kind:'opportunity',organization:'Buyer 410'},model,revision);expect(result.total).toBe(1);expect(result.items[0].sourceKey).toBe('410');
 });
 test('live exports keep full records without revision coupling to concurrent saves', async () => {

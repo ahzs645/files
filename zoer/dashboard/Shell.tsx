@@ -8,22 +8,25 @@ import { SettingsPage } from './Settings';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { Select } from '@zoer/plugin-ui/controls';
 
-type Section = 'search' | 'pursuits' | 'documents' | 'analysis' | 'sources';
-// Phones use the short label so all five sections fit without scrolling.
+type Section = 'search' | 'opportunities' | 'awards' | 'pursuits' | 'documents' | 'analysis' | 'sources';
+// Phones use the short labels so the sections fit without scrolling far.
 const sections: [Section, string, string, string?][] = [
-  ['search', 'Search', '/procurement'], ['pursuits', 'Pursuits', '/pursuits'], ['documents', 'Documents & AI', '/documents', 'Docs & AI'],
+  ['search', 'Search', '/procurement'], ['opportunities', 'Opportunities', '/opportunities', 'Opps'], ['awards', 'Awards', '/contract-awards'],
+  ['pursuits', 'Pursuits', '/pursuits'], ['documents', 'Documents & AI', '/documents', 'Docs & AI'],
   ['analysis', 'Analysis', '/analysis/overview'], ['sources', 'Sources', '/sources'],
 ];
 // BC Bid's own tools sit under Sources; the source router still owns these paths.
+// The shared Opportunities and Awards catalogs live at the top level and cover every source.
 const bcBid: [string, string][] = [
-  ['/bc-bid-dashboard', 'Overview'], ['/opportunities', 'Opportunities'], ['/contract-awards', 'Awards'],
-  ['/scraper', 'Scraper'], ['/scraper/history', 'Runs'], ['/settings', 'Export'],
+  ['/bc-bid-dashboard', 'Overview'], ['/scraper', 'Scraper'], ['/scraper/history', 'Runs'], ['/settings', 'Export'],
 ];
 function sectionOf(path: string): Section {
   if (path === '/' || path === '/procurement') return 'search';
   if (path === '/pursuits') return 'pursuits';
   if (path === '/documents') return 'documents';
   if (path.startsWith('/analysis') || path.startsWith('/contract-awards/analysis')) return 'analysis';
+  if (path === '/opportunities' || path.startsWith('/opportunities/')) return 'opportunities';
+  if (path === '/contract-awards' || path.startsWith('/contract-awards/')) return 'awards';
   return 'sources';
 }
 function bcBidActive(to: string, path: string) {

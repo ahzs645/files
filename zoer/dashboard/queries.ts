@@ -4,13 +4,26 @@ import { host } from './bridge';
 import { queryModel, type Model } from './model';
 const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
 const field = (name: string) => `json_extract(data, '$.${name}')`;
-async function sql(statement: string, parameters: (string | number)[] = []) {
-  // Legacy BC Bid views stay scoped when the shared catalog gains other sources.
-  statement = statement.replace(/\bWHERE\b/i, `WHERE CASE WHEN json_extract(data,'$.sourceId') IS NULL OR json_extract(data,'$.sourceId')='' OR json_extract(data,'$.sourceId')='bc-bid' THEN 1 ELSE 0 END=1 AND`);
+// A record's home source. Records saved before multi-source support carry no sourceId.
+// CASE instead of nullif(): the catalog console only admits allowlisted functions.
+const SOURCE_EXPRESSION = `CASE WHEN ${field('sourceId')} IS NULL OR ${field('sourceId')}='' THEN 'bc-bid' ELSE ${field('sourceId')} END`;
+async function unscopedSql(statement: string, parameters: (string | number)[] = []) {
   return (await host('catalog.query', { statement, parameters })).rows as any[];
 }
-const opportunityFields = ['sourceKey','processId','opportunityId','description','status','type','issuedBy','closingDate','detailUrl','starred','commodities'];
-const awardFields = ['importKey','_id','opportunityId','opportunityDescription','opportunityType','issuingOrganization','issuingLocation','contractNumber','contactEmail','contractContactEmail','contractValue','contractValueText','currency','successfulSupplier','supplierAddress','awardDate','justification','sourceUrl','starred','createdAt','updatedAt','sourceFileName'];
+async function sql(statement: string, parameters: (string | number)[] = []) {
+  // BC Bid's own tools (overview, exports, awards analysis) stay scoped to their source.
+  statement = statement.replace(/\bWHERE\b/i, `WHERE CASE WHEN ${SOURCE_EXPRESSION}='bc-bid' THEN 1 ELSE 0 END=1 AND`);
+  return unscopedSql(statement, parameters);
+}
+/** The shared grid's source scope: undefined/empty selects every source. */
+function sourceScope(sources: unknown): string[] | undefined {
+  if (sources === undefined) return undefined;
+  if (!Array.isArray(sources) || sources.length > 20 || sources.some(value => typeof value !== 'string' || !value || value.length > 100)) throw new Error('Invalid source filter.');
+  return sources.length ? sources : undefined;
+}
+const sourcePredicate = (sources: string[]) => `${SOURCE_EXPRESSION} IN (${sources.map(() => '?').join(',')})`;
+const opportunityFields = ['sourceKey','processId','opportunityId','description','status','type','sourceId','issuedBy','closingDate','detailUrl','starred','commodities'];
+const awardFields = ['importKey','_id','opportunityId','opportunityDescription','opportunityType','sourceId','issuingOrganization','issuingLocation','contractNumber','contactEmail','contractContactEmail','contractValue','contractValueText','currency','successfulSupplier','supplierAddress','awardDate','justification','sourceUrl','starred','createdAt','updatedAt','sourceFileName'];
 export async function readAll(kind: 'opportunity' | 'award', starredOnly = false, live = false) {
   if (live) {
     // A finite keyset export of saved records. Each row is read once; concurrent
@@ -42,20 +55,22 @@ export async function readAll(kind: 'opportunity' | 'award', starredOnly = false
 }
 // Compact source-name inventory, shared by facets, counts and mapped SQL predicates.
 const buyerInventories = new Map<string, { revision: number; promise: Promise<string[]> }>();
-async function buyerSources(kind: 'award' | 'opportunity', revision: number): Promise<string[]> {
-  const cached = buyerInventories.get(kind); if (cached?.revision === revision) return cached.promise;
+async function buyerSources(kind: 'award' | 'opportunity', revision: number, sources?: string[]): Promise<string[]> {
+  const key = kind + '|' + (sources?.join(',') ?? '');
+  const cached = buyerInventories.get(key); if (cached?.revision === revision) return cached.promise;
   const promise = (async () => {
     await host('catalog.read', { ids: [], revision });
     const expression = `coalesce(${field(kind === 'award' ? 'issuingOrganization' : 'issuedBy')}, '')`;
+    const scope = sources ? ` AND ${sourcePredicate(sources)}` : '';
     const values: string[] = []; let after: string | undefined;
     while (true) {
-      const rows = await sql(`SELECT DISTINCT ${expression} AS value FROM records WHERE kind=?${after === undefined ? '' : ` AND ${expression}>?`} ORDER BY value LIMIT 200`, after === undefined ? [kind] : [kind, after]);
+      const rows = await unscopedSql(`SELECT DISTINCT ${expression} AS value FROM records WHERE kind=?${scope}${after === undefined ? '' : ` AND ${expression}>?`} ORDER BY value LIMIT 200`, [kind, ...(sources ?? []), ...(after === undefined ? [] : [after])]);
       values.push(...rows.map(r => String(r.value))); if (rows.length < 200) break; after = values.at(-1)!;
     }
     await host('catalog.read', { ids: [], revision }); return values;
   })();
-  buyerInventories.set(kind, { revision, promise });
-  void promise.catch(() => { if (buyerInventories.get(kind)?.promise === promise) buyerInventories.delete(kind); });
+  buyerInventories.set(key, { revision, promise });
+  void promise.catch(() => { if (buyerInventories.get(key)?.promise === promise) buyerInventories.delete(key); });
   return promise;
 }
 // Keep one revision in memory. Overview, drilldowns and search share both the
@@ -115,12 +130,14 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   if(name === 'catalog.facets') {
     if(!['opportunity','award'].includes(args.kind))throw new Error('Unknown catalog kind.');
     const level = args.buyerLevel ?? 'organization'; if (!isBuyerLevel(level)) throw Error('Unknown buyer grouping.');
-    const sources = await buyerSources(args.kind, revision);
+    const scope = sourceScope(args.sources), scopeSql = scope ? ` AND ${sourcePredicate(scope)}` : '', scopeParams = scope ?? [];
+    const sources = await buyerSources(args.kind, revision, scope);
     const organizations = [...new Set(sources.map(source => resolveBuyer(source).dimensions[level]))].sort((a,b)=>a.localeCompare(b));
+    const sourceIds = await unscopedSql(`SELECT DISTINCT ${SOURCE_EXPRESSION} AS value FROM records WHERE kind=? ORDER BY value LIMIT 200`, [args.kind]);
     const keys=args.kind==='award'?{types:'opportunityType'}:{statuses:'status',types:'type'};
-    return { organizations, ...Object.fromEntries(await Promise.all(Object.entries(keys).map(async([label,key])=>{
+    return { organizations, sources: sourceIds.map(row=>String(row.value)), ...Object.fromEntries(await Promise.all(Object.entries(keys).map(async([label,key])=>{
       const values:string[]=[];let after='';
-      while(true){const rows=await sql(`SELECT DISTINCT ${field(key)} AS value FROM records WHERE kind=? AND ${field(key)} > ? ORDER BY value LIMIT 200`,[args.kind,after]);values.push(...rows.map(r=>String(r.value)));if(rows.length<200)break;after=values.at(-1)!;}
+      while(true){const rows=await unscopedSql(`SELECT DISTINCT ${field(key)} AS value FROM records WHERE kind=?${scopeSql} AND ${field(key)} > ? ORDER BY value LIMIT 200`,[args.kind,...scopeParams,after]);values.push(...rows.map(r=>String(r.value)));if(rows.length<200)break;after=values.at(-1)!;}
       return [label,values];
     }))) };
   }
@@ -130,21 +147,22 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
       sql(`SELECT DISTINCT ${field('status')} AS value FROM records WHERE kind='opportunity' AND ${field('status')} <> '' ORDER BY value`),
       sql(`SELECT DISTINCT ${field('type')} AS value FROM records WHERE kind='opportunity' AND ${field('type')} <> '' ORDER BY value`),
     ]);
-    const sources = await buyerSources('opportunity', revision);
+    const sources = await buyerSources('opportunity', revision, ['bc-bid']);
     return { ...counts[0], organizations: new Set(sources.map(s => resolveBuyer(s).organization)).size, originalOrganizations: sources.length, buyerMappingVersion: BUYER_MAPPING_VERSION, open: counts[0].open ?? 0, closingSoon: counts[0].closingSoon ?? 0, statusOptions: statuses.map(row => row.value), typeOptions: types.map(row => row.value) };
   }
   if (name === 'opportunities.getByProcessId') {
+    // Details resolve across every source: the shared grid lists them all.
     const result = await host('catalog.read', { match: { kind: 'opportunity', field: 'processId', value: args.processId }, limit: 1 });
-    if (result.records.length && isBcBid(result.records[0].data)) return annotateBuyerRecord(result.records[0].data, 'opportunity');
+    if (result.records.length) return annotateBuyerRecord(result.records[0].data, 'opportunity');
     const row = (await host('catalog.read', { ids: ['opportunity:' + args.processId] })).records[0]?.data;
-    return row && isBcBid(row) ? annotateBuyerRecord(row, 'opportunity') : null;
+    return row ? annotateBuyerRecord(row, 'opportunity') : null;
   }
   if (name === 'contractAwards.summary') {
     const [counts, latest] = await Promise.all([
       sql(`SELECT count(*) AS total, count(DISTINCT CASE WHEN ${field('issuingOrganization')} <> '' THEN ${field('issuingOrganization')} END) AS organizations, count(DISTINCT CASE WHEN ${field('successfulSupplier')} <> '' THEN ${field('successfulSupplier')} END) AS suppliers FROM records WHERE kind='award'`),
       sql(`SELECT ${field('updatedAt')} AS latestImportAt, ${field('sourceFileName')} AS latestImportFile FROM records WHERE kind='award' ORDER BY ${field('updatedAt')} DESC LIMIT 1`),
     ]);
-    const sources = await buyerSources('award', revision);
+    const sources = await buyerSources('award', revision, ['bc-bid']);
     return { ...counts[0], organizations: new Set(sources.map(s => resolveBuyer(s).organization)).size, originalOrganizations: sources.length, buyerMappingVersion: BUYER_MAPPING_VERSION, latestImportAt: null, latestImportFile: null, ...latest[0] };
   }
   const kind = name === 'opportunities.list' ? 'opportunity' : name === 'contractAwards.list' ? 'award' : args.kind;
@@ -152,13 +170,15 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     if (!['award', 'opportunity'].includes(kind)) throw new Error('Unknown catalog kind.');
     const level = args.buyerLevel ?? 'organization'; if (!isBuyerLevel(level)) throw Error('Unknown buyer grouping.');
     if (args.filters !== undefined && (!Array.isArray(args.filters) || args.filters.length > 12)) throw new Error('Use at most 12 filters.');
+    const scope = sourceScope(args.sources);
     const needsMapping = !!args.organization || !!args.search?.trim() || isBuyerColumn(args.sort?.id ?? '') || args.filters?.some((f: any) => isBuyerColumn(f.column));
-    const mapped = needsMapping ? buyerQuery(await buyerSources(kind, revision), kind, level, args) : undefined;
+    const mapped = needsMapping ? buyerQuery(await buyerSources(kind, revision, scope), kind, level, args) : undefined;
     const from = mapped?.from ?? 'records';
     const fields = kind === 'award' ? awardFields : opportunityFields;
     const numeric = new Set(['contractValue','starred','createdAt','updatedAt']);
-    const column = (key:string) => { if (!fields.includes(key)) throw new Error('Unknown table column.'); return numeric.has(key) ? `CAST(${field(key)} AS REAL)` : field(key); };
+    const column = (key:string) => { if (!fields.includes(key)) throw new Error('Unknown table column.'); return key === 'sourceId' ? SOURCE_EXPRESSION : numeric.has(key) ? `CAST(${field(key)} AS REAL)` : field(key); };
     const where = ['kind=?'], params: (string | number)[] = [kind];
+    if (scope) { where.push(sourcePredicate(scope)); params.push(...scope); }
     if (args.starredOnly) where.push(`${field('starred')}=1`);
     if (args.upcoming) where.push(`julianday(${field('closingDate')}) >= julianday('now', 'start of day')`);
     // Status and type accept one value or a list (multi-select); issuedBy stays a single value.
@@ -199,12 +219,12 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     }
     const clause = where.join(' AND ');
     const queryParams = mapped ? [mapped.parameter, ...params] : params;
-    const count = sql(`SELECT count(*) AS total FROM ${from} WHERE ${clause}`, queryParams);
+    const count = unscopedSql(`SELECT count(*) AS total FROM ${from} WHERE ${clause}`, queryParams);
     if (name === 'catalog.count') { const result = (await count)[0]; if (mapped) await host('catalog.read', { ids: [], revision }); return result; }
     const limit = Math.max(1, Math.min(200, Math.floor(Number(args.limit) || 50))), offset = Math.max(0, Math.floor(Number(args.cursor) || 0));
     const order = mapped?.order ?? (args.sort ? `${column(args.sort.id)} IS NULL, ${column(args.sort.id)} ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : kind === 'award' ? `${field('awardDate')} DESC, id` : `coalesce(${field('closingDate')}, '9999'), ${field('description')}, id`);
     const [items, totals] = await Promise.all([
-      sql(`SELECT id AS catalogId, ${fields.map(key => `${field(key)} AS "${key}"`).join(', ')} FROM ${from} WHERE ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`, [...queryParams, limit, offset]), count,
+      unscopedSql(`SELECT id AS catalogId, ${fields.map(key => `${key === 'sourceId' ? SOURCE_EXPRESSION : field(key)} AS "${key}"`).join(', ')} FROM ${from} WHERE ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`, [...queryParams, limit, offset]), count,
     ]);
     // SQLite JSON booleans arrive as integers. Preserve the preference adapter's boolean contract.
     for (const row of items) {
