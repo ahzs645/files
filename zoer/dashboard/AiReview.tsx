@@ -34,7 +34,7 @@ export function AiReview() {
   const run = async (fn: () => Promise<void>) => { setBusy(true); setError(''); setMessage(''); try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const review = () => run(async () => {
     if (!model) throw new Error('Wait for the saved catalog to load.');
-    const cli = /^(codex|opencode):/.test(modelId);
+    const cli = /^(codex|opencode|claude):/.test(modelId);
     await host('action', { actionId: cli ? 'records.review.cli' : 'records.review', input: { recordIds: [...selection], force, promptId, includeDocuments: documents, ...(cli ? { computerId: reviewModel.computerId, cliSelection: reviewModel.cliSelection } : {}) }, modelProfileId: modelId });
     setMessage('Review started.'); await refresh();
   });

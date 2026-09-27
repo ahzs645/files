@@ -198,7 +198,7 @@ function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews
   const run = async (action: string) => {
     if (running || !modelId) return;
     setRunning(action); setError('');
-    const cli = /^(codex|opencode):/.test(modelId), computer = cli ? { computerId: modelId.slice(modelId.indexOf(':') + 1) } : {};
+    const cli = /^(codex|opencode|claude):/.test(modelId), computer = cli ? { computerId: modelId.slice(modelId.indexOf(':') + 1) } : {};
     try {
       if (action === 'summary') {
         const saved = await host('catalog.state');

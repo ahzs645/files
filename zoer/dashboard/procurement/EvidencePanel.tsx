@@ -62,7 +62,7 @@ export function EvidencePanel({ recordIds, onClose }: { recordIds: string[]; onC
     if (busy || !modelId || !ids.length) return;
     setBusy(true); setError(''); setReview(undefined);
     try {
-      const cli = /^(codex|opencode):/.test(modelId);
+      const cli = /^(codex|opencode|claude):/.test(modelId);
       const completed = await runProcurementAction(cli ? 'records.evidence.cli' : 'records.evidence', { recordIds: ids, mode, ...(cli ? { computerId: modelId.slice(modelId.indexOf(':') + 1) } : {}) }, lifecycle.current?.signal, { modelProfileId: modelId });
       const saved = await host('catalog.record', { id: ids[0] });
       const evidence = saved.reviews.find((item: any) => item.run_id === completed.id && item.result?.purpose === mode);
