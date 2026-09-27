@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Select } from '@zoer/plugin-ui/database';
-import { Modal } from '@zoer/plugin-ui/analysis';
+import { Modal, ReviewModelSelector } from '@zoer/plugin-ui/analysis';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { BatchHistory, BatchProgress, useCatalogState } from './BatchHistory';
 import { RecordPicker } from './RecordPicker';
@@ -20,20 +20,15 @@ export function AiReview() {
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [recordId, setRecordId] = usePluginQuery('record');
   const [state, refresh] = useCatalogState(setError);
-  const [models, setModels] = useState<any[]>([]), [modelId, setModelId] = useState('');
+  const [reviewModel, setReviewModel] = useState<any>(null);
+  const modelId = reviewModel?.modelProfileId ?? '';
   const [promptId, setPromptId] = useState(''), [name, setName] = useState('Contract review'), [prompt, setPrompt] = useState(defaultPrompt), [promptsOpen, setPromptsOpen] = useState(false);
   const [documents, setDocuments] = useState(true), [force, setForce] = useState(false);
-  useEffect(() => {
-    void host('models').then(r => {
-      setModels(r.models.filter((m: any) => m.authReady));
-      setModelId(r.models.some((m: any) => m.id === r.activeModelProfileId && m.authReady) ? r.activeModelProfileId : '');
-    }).catch(e => setError(e.message));
-  }, []);
   const run = async (fn: () => Promise<void>) => { setBusy(true); setError(''); setMessage(''); try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const review = () => run(async () => {
     if (!model) throw new Error('Wait for the saved catalog to load.');
     const cli = /^(codex|opencode):/.test(modelId);
-    await host('action', { actionId: cli ? 'records.review.cli' : 'records.review', input: { recordIds: [...selection], force, promptId, includeDocuments: documents, ...(cli ? { computerId: modelId.slice(modelId.indexOf(':') + 1) } : {}) }, modelProfileId: modelId });
+    await host('action', { actionId: cli ? 'records.review.cli' : 'records.review', input: { recordIds: [...selection], force, promptId, includeDocuments: documents, ...(cli ? { computerId: reviewModel.computerId, cliSelection: reviewModel.cliSelection } : {}) }, modelProfileId: modelId });
     setMessage('Review started.'); await refresh();
   });
   const choosePrompt = (id: string) => { setPromptId(id); const saved = state.prompts.find((p: any) => p.id === id); if (saved) { setName(saved.name); setPrompt(saved.prompt); } };
@@ -45,8 +40,7 @@ export function AiReview() {
       <section className="zoer-history" aria-label="Review settings">
         <h2>Review settings</h2>
         <div className="research-toolbar research-fill"><Choice label="Prompt" value={promptId} options={state.prompts} onChange={choosePrompt} /><Button variant="ghost" onClick={() => setPromptsOpen(true)}>{promptId ? 'Edit' : 'New'}</Button></div>
-        <Choice label="Model" value={modelId} options={models} onChange={setModelId} />
-        {!models.length && <p className="research-note">Add a model profile or start a Codex or OpenCode computer.</p>}
+        <ReviewModelSelector request={host} onChange={setReviewModel} disabled={busy} />
         <label className="research-check"><input type="checkbox" checked={documents} onChange={e => setDocuments(e.target.checked)} />Include downloaded documents</label>
         <label className="research-check"><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />Re-run unchanged records</label>
         <div className="research-toolbar"><Button disabled={busy || !selection.size || !promptId || !modelId} onClick={() => void review()}>Review {selection.size || ''} selected</Button></div>

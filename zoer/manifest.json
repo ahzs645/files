@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.29.0",
+  "version": "0.29.1",
   "description": "Multi-source procurement catalog with BC Bid, CanadaBuys collection, saved searches, pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -856,8 +856,8 @@
           "maxOutputBytes": 1048576
         },
         "id": "records.review.cli",
-        "title": "Review selected bids with installed Codex",
-        "description": "Use the selected running computer\u2019s signed-in Codex CLI at low reasoning. Reviews use saved evidence with shell and web tools disabled.",
+        "title": "Review selected bids with installed CLI",
+        "description": "Use the selected computer\u2019s supported CLI and model to review saved evidence with shell and web tools disabled.",
         "requiredCapabilities": [
           "runtime-resources",
           "artifact-store"
@@ -893,6 +893,27 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 150
+            },
+            "cliSelection": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cliProvider": {
+                  "type": "string",
+                  "enum": [
+                    "codex",
+                    "opencode"
+                  ]
+                },
+                "cliModel": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "cliEffort": {
+                  "type": "string",
+                  "maxLength": 30
+                }
+              }
             }
           },
           "required": [
