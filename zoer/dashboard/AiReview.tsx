@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Select } from '@zoer/plugin-ui/database';
 import { Modal, ReviewModelSelector } from '@zoer/plugin-ui/analysis';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
@@ -21,7 +21,14 @@ export function AiReview() {
   const [recordId, setRecordId] = usePluginQuery('record');
   const [state, refresh] = useCatalogState(setError);
   const [reviewModel, setReviewModel] = useState<any>(null);
+  const [legacyModels, setLegacyModels] = useState<any[]>([]);
   const modelId = reviewModel?.modelProfileId ?? '';
+  useEffect(() => {
+    if (ReviewModelSelector) return;
+    let active = true;
+    void host('models').then(r => { if (active) setLegacyModels(r.models.filter((m: any) => m.authReady)); }).catch(e => { if (active) setError(e.message); });
+    return () => { active = false; };
+  }, []);
   const [promptId, setPromptId] = useState(''), [name, setName] = useState('Contract review'), [prompt, setPrompt] = useState(defaultPrompt), [promptsOpen, setPromptsOpen] = useState(false);
   const [documents, setDocuments] = useState(true), [force, setForce] = useState(false);
   const run = async (fn: () => Promise<void>) => { setBusy(true); setError(''); setMessage(''); try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
@@ -40,7 +47,10 @@ export function AiReview() {
       <section className="zoer-history" aria-label="Review settings">
         <h2>Review settings</h2>
         <div className="research-toolbar research-fill"><Choice label="Prompt" value={promptId} options={state.prompts} onChange={choosePrompt} /><Button variant="ghost" onClick={() => setPromptsOpen(true)}>{promptId ? 'Edit' : 'New'}</Button></div>
-        <ReviewModelSelector request={host} onChange={setReviewModel} disabled={busy} />
+        {ReviewModelSelector ? <ReviewModelSelector request={host} onChange={setReviewModel} disabled={busy} /> : <>
+          <Choice label="Model" value={modelId} options={legacyModels} onChange={id => setReviewModel({ modelProfileId:id, computerId:id.slice(id.indexOf(':') + 1) })} />
+          <p className="research-note">Update Zoer to choose computers and models with the shared chat selector.</p>
+        </>}
         <label className="research-check"><input type="checkbox" checked={documents} onChange={e => setDocuments(e.target.checked)} />Include downloaded documents</label>
         <label className="research-check"><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />Re-run unchanged records</label>
         <div className="research-toolbar"><Button disabled={busy || !selection.size || !promptId || !modelId} onClick={() => void review()}>Review {selection.size || ''} selected</Button></div>
