@@ -38,7 +38,7 @@ The iframe keeps its sandbox attribute, so the dev document still has an opaque 
 
 ### Workspace layout (0.26)
 
-The workspace has five sections: **Search**, **Pursuits**, **Documents & AI**, **Analysis** and **Sources**.
+The workspace has eight sections: **Search**, **Opportunities**, **Awards**, **Pursuits**, **Documents**, **AI review**, **Analysis** and **Sources**.
 
 - **Search** lists saved notices from every source in one toolbar row: search, source, notice type, *Closing in 7 days*, *Shortlisted*, more filters and saved searches. Below 1100px the inline filters fold into a Filters sheet. Results sort by recently updated, or by closing date (upcoming first, then passed, then undated). Selecting notices shows Compare, Evidence & AI and Export. A notice's dialog can shortlist it, add it to Pursuits, or open Documents & AI.
 - **Pursuits** is the stage board. Shortlisted notices are offered for adding.
@@ -55,7 +55,7 @@ Opening a notice from Search, Pursuits or Documents & AI shows one notice view: 
 
 AI categories are the `labels` from each notice's newest categorizing review. They appear on Search rows and pursuit cards, are grouped (work type, requirements, signals) in the Filters sheet, and filter Search with `?aiLabel=`. *Summarize & categorize* uses a saved "Summary & categories" prompt that asks for labels from a fixed vocabulary. The AI category filter is not yet part of saved searches or alerts.
 
-Documents & AI keeps bulk attachment download and bulk AI review; prompt editing moved into a dialog, and record details open the notice view.
+Documents provides searchable saved-file coverage, per-file warnings, download retries and saved-file re-extraction. AI review owns model/prompt selection and review history. Both show current processing progress; record details open the notice view.
 
 Old links still work: `/procurement?view=board|market|sources|saved|deadlines` redirect to Pursuits, Analysis → All sources, Sources, the Saved searches dialog and the closing-soon filter. The BC Bid overview counts an opportunity as open only when its closing date has not passed, and its Closing soon list shows upcoming deadlines only.
 
@@ -86,9 +86,9 @@ A live capture uses a temporary tab in the selected browser and closes it after 
 
 ### Documents & AI
 
-Select up to 50 saved opportunities or awards (including Starred only), retrieve up to 100 attachments per record at 8 MiB each, and save versioned review prompts. The selected Zoer browser handles downloads. Exact, unique opportunity-ID matches can associate award attachment links; absent links remain explicit. Downloads are separate from listing/history scraping.
+Select up to 50 saved opportunities or awards (including Starred only), retrieve up to 100 attachments per record at 150 MiB each, and save versioned review prompts. The selected Zoer browser handles downloads. Exact, unique opportunity-ID matches can associate award attachment links; absent links remain explicit. Downloads are separate from listing/history scraping.
 
-Review records alone or optionally include downloaded text. PDF extraction covers up to 100 pages, DOCX/TXT/CSV/Markdown are supported, and extracted text is capped at 240,000 characters. Scanned PDFs need OCR; unsupported originals are retained. Reviews process document chunks then the contract, retaining detailed evidence and coverage. The final pass uses bounded record/document summaries. Choose a reachable model API or a running computer with Codex signed in. Installed Codex uses low reasoning and a four-minute bound per call, with ephemeral sessions, inherited configuration and shell/browser/app tools disabled. Stop discards an in-flight response and prevents further calls; the command can take up to four minutes to finish. Each batch has a 250-model-call/six-hour limit, with Stop and Retry/resume. Unchanged successful reviews and saved files are reused unless forced.
+Review records alone or optionally include downloaded text. PDF extraction reports actual truncation at 100 pages or 240,000 characters. English/French OCR covers up to 10 sparse pages per file/archive and reports recognition/coverage warnings. DOCX, DOC, XLSX cached values, TXT/CSV/Markdown and bounded ZIP contents are supported; nested archives, legacy XLS and CAD remain manual-review formats. Originals are retained. Reviews process document chunks then the contract, retaining detailed evidence and coverage. The final pass uses bounded record/document summaries. Choose a reachable model API, a running computer with Codex signed in, or the tested isolated OpenCode 1.18.31 runner with an explicitly configured free model. CLI prompts travel through private files and standard input, with bounded transport chunks and cleanup. Installed Codex uses low reasoning and a four-minute bound per call, with ephemeral sessions, inherited configuration and shell/browser/app tools disabled. Stop discards an in-flight response and prevents further calls; the command can take up to four minutes to finish. Each batch has a 250-model-call/six-hour limit, with Stop and Retry/resume. Unchanged successful reviews and saved files are reused unless forced.
 
 Custom AI fields and labels are saved separately from manual tags; accept labels explicitly into tags if desired. **Open database viewer** opens Zoer’s read-only records/documents/prompts/reviews/tags/batches catalog. The primary SQLite database and original files persist on Zoer’s shared volume. Legacy JSON journals are migrated once and retained for recovery. No second Convex instance is created.
 
@@ -194,7 +194,7 @@ On phones the Analysis header is a single row: the view picker plus icon-only Fi
 
 ### Evidence-based feasibility review (0.22)
 
-Documents & AI defaults to including downloaded documents and provides a review prompt for disclosed budget/funding, mandatory versus preferred designations, practical scope, equipment responsibility, eligibility, procurement route and next steps. Missing evidence must stay unknown. Saved prompts remain versioned and are not overwritten. The host research update raises attachment coverage to 100 files per record (8 MiB each), includes every document chunk in bounded hierarchical synthesis, and reports missing/unreadable files and extraction warnings. This requires the matching Zoer host update; source completeness still requires a successful live scrape and inspection of external document portals. Installed Codex uses the selected computer’s BC Bid workload model preference.
+Documents & AI defaults to including downloaded documents and provides a review prompt for disclosed budget/funding, mandatory versus preferred designations, practical scope, equipment responsibility, eligibility, procurement route and next steps. Missing evidence must stay unknown. Saved prompts remain versioned and are not overwritten. The host research update raises attachment coverage to 100 files per record (150 MiB each), includes every document chunk in bounded hierarchical synthesis, and reports missing/unreadable files and extraction warnings. This requires the matching Zoer host update; source completeness still requires a successful live scrape and inspection of external document portals. Installed Codex uses the selected computer’s BC Bid workload model preference.
 
 ### Bulk opportunity documents (0.23)
 
@@ -213,3 +213,11 @@ Exclusions live in the analysis URL and recalculate totals, rankings and matchin
 ## Releases
 
 `.github/workflows/zoer-plugin-release.yml` publishes the plugin as a GitHub Release when a `zoer-v<version>` tag matching `zoer/manifest.json` is pushed. It tests and builds against Zoer's shared UI source, then signs the package with `zoer/tools/zoer-plugin.mjs release`. The release has two files: `bc-bid-monitor-<version>.zip` and `zoer-plugin.json`. Zoer installs it from Extensions → Stage package → GitHub release (`ahzs645/files`), and its update checker follows new releases. Regenerate `zoer/tools/zoer-plugin.mjs` from a Zoer checkout with `bun run plugin export-cli <path>`. The workflow needs the `ZOER_SOURCE_TOKEN` secret. Signing with `ZOER_PLUGIN_SIGNING_KEY` and `ZOER_PLUGIN_KEY_ID` is optional; without them the release is unsigned.
+
+### Portable backup and restore (0.29)
+
+On an updated Zoer host, open Procurement → Settings → Backup and restore to download a portable `.zoer-procurement` archive. It includes the catalog, saved original files and versions, prompts, AI reviews, tags, pursuits, retained workflow history and artifacts, notification history, and portable settings.
+
+Install the same Procurement plugin version on the destination Zoer host and create its project database through Databases before restoring. Upload the archive, review its inventory, then restore into the empty workspace. An occupied catalog is refused. Restore verifies file checksums and record counts, keeps schedules paused, and clears environment-specific connections; reconnect browsers and AI resources before resuming work. Accounts, credentials and browser sessions are not copied.
+
+Backup and restore is supplied by Zoer itself, so installing this plugin release alone does not add it to an older host. Both hosts need the matching Procurement transfer update. Archives record the exact installed plugin version, including development suffixes; after upgrading from a development build, create a fresh backup to migrate to this release.

@@ -21,24 +21,23 @@ export function BulkDocuments({running,onStarted}:{running:boolean;onStarted:()=
       const selected=documentScope(fresh,scope);
       if(!selected.ids.length)throw new Error('No saved attachment links in this scope. Capture opportunity details in Scraper first.');
       await host('action',{actionId:'documents.download.all',input:{recordIds:selected.ids,force:false}});
-      setMessage(`Download started for ${selected.ids.length.toLocaleString()} opportunities. Progress appears in Batch history below; you can leave this page.`);
+      setMessage(`Download started for ${selected.ids.length.toLocaleString()} opportunities. You can leave this page.`);
       await onStarted();
     }catch(e){setError((e as Error).message);}finally{pending.current=false;setBusy(false);}
   };
-  const noun=scope==='current'?'current':'saved';
-  return <section className="zoer-history" aria-label="Bulk attachment download">
-    <h2>Bulk attachment download</h2>
-    <div className="zoer-record-tools">
-      <label className="research-label">Download scope<Select aria-label="Download scope" value={scope} onChange={e=>setScope(e.target.value as 'current'|'all')} disabled={busy}><option value="current">Current opportunities</option><option value="all">All saved opportunities</option></Select></label>
-      <Button disabled={loading||busy||running||!preview?.ids.length} onClick={()=>void start()}>{busy?'Starting download…':'Download all attachments'}</Button>
-      <Button variant="ghost" disabled={loading||busy} onClick={()=>void load()}>Refresh counts</Button>
+  return <section className="zoer-history" aria-label="Download all attachments">
+    <h2>Download all attachments</h2>
+    <div className="research-toolbar research-stack">
+      <label className="research-label">Scope<Select aria-label="Download scope" value={scope} onChange={e=>setScope(e.target.value as 'current'|'all')} disabled={busy}><option value="current">Open opportunities</option><option value="all">All opportunities</option></Select></label>
+      <Button disabled={loading||busy||running||!preview?.ids.length} onClick={()=>void start()}>{busy?'Starting…':'Download all'}</Button>
+      <Button variant="ghost" disabled={loading||busy} onClick={()=>void load()}>Refresh</Button>
     </div>
-    {loading?<p role="status">Counting saved opportunities and attachment links…</p>:preview&&<p><strong>{preview.total.toLocaleString()} {noun} opportunities.</strong> {preview.ids.length.toLocaleString()} have {preview.links.toLocaleString()} saved attachment links; {preview.missing.toLocaleString()} have none.</p>}
-    <p className="text-text-secondary">{scope==='current'?'Open opportunities whose closing date hasn’t passed (or is unknown).':'Includes closed opportunities.'} Covers every saved opportunity, not just the ones selected below.</p>
-    {!!preview?.unknownDates&&scope==='current'&&<p>{preview.unknownDates.toLocaleString()} of these have no usable closing date and are treated as current.</p>}
-    {!!preview?.missing&&<div className="zoer-record-tools"><span>{preview.missing.toLocaleString()} opportunities have no saved attachment links and will be skipped.</span><Button variant="ghost" onClick={()=>navigatePlugin('/scraper')}>Capture missing details</Button></div>}
-    <details><summary>Limits and storage</summary><p>Files are stored in Zoer for AI review, and files already downloaded are reused rather than fetched again. Each run takes up to 100 files per opportunity at 8 MiB per file and stops after six hours. Stop and Retry in Batch history keep the files already saved.</p></details>
-    {running&&<p role="status">A download is already running. See Batch history below.</p>}
+    {loading?<p role="status">Counting attachments…</p>:preview&&<p>
+      <strong>{preview.links.toLocaleString()} attachment links</strong> across {preview.ids.length.toLocaleString()} of {preview.total.toLocaleString()} opportunities.
+      {!!preview.missing&&<> {preview.missing.toLocaleString()} have no attachment links. <button type="button" className="research-link" onClick={()=>navigatePlugin('/scraper')}>Capture details</button></>}
+    </p>}
+    <p className="research-note">Up to 100 files per opportunity, 150 MiB each. Files already saved are reused.</p>
+    {running&&<p role="status">A download is running. See Download history.</p>}
     {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}
   </section>;
 }

@@ -77,34 +77,35 @@ button.pc-label[aria-pressed=true]{outline:2px solid currentColor;outline-offset
 .pc-citations footer button{color:var(--accent)}
 .pc-citations footer button:hover{text-decoration:underline}
 
-/* Documents */
-.pc-docs{display:grid;grid-template-columns:13rem minmax(0,1fr);gap:.875rem;min-height:28rem}
-.pc-doc-list{display:flex;flex-direction:column;gap:.25rem;min-width:0}
-.pc-doc-list button{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;padding:.5rem .625rem;border-radius:.5rem;color:var(--text-secondary);overflow-wrap:anywhere}
-.pc-doc-list button:hover{background:var(--surface-secondary);color:var(--text-primary)}
-.pc-doc-list button[aria-current]{background:var(--accent-subtle);color:var(--text-primary)}
-.pc-doc-list small{font-size:11px;color:var(--text-muted)}
-.pc-doc-list button[data-status=failed] small{color:var(--status-danger,#f87171)}
-.pc-preview{display:flex;flex-direction:column;gap:.5rem;min-width:0}
-.pc-preview-bar{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
-.pc-preview-name{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-preview-modes{display:inline-flex;border:1px solid var(--border-default);border-radius:.5rem;overflow:hidden}
-.pc-preview-modes button{min-height:28px;padding:0 .625rem;font-size:12px;color:var(--text-secondary);border-left:1px solid var(--border-default)}
+/* Documents: one compact bar, then the preview fills the space. */
+.pc-docs{display:flex;flex-direction:column;gap:.625rem;min-width:0}
+.pc-doc-bar{display:flex;align-items:center;gap:.5rem;min-width:0}
+.pc-doc-picker{flex:1;min-width:0}
+.pc-doc-picker .ui-select-trigger{height:34px;font-size:13px}
+.pc-doc-name{flex:1;min-width:0;display:flex;align-items:center;gap:.5rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-doc-name svg{flex:none;color:var(--text-secondary)}
+.pc-doc-tools{display:inline-flex;align-items:center;gap:.125rem;flex:none}
+.pc-preview-modes{display:inline-flex;flex:none;border:1px solid var(--border-default);border-radius:.5rem;overflow:hidden}
+.pc-preview-modes button{min-height:32px;padding:0 .75rem;font-size:12.5px;color:var(--text-secondary);border-left:1px solid var(--border-default)}
 .pc-preview-modes button:first-child{border-left:0}
 .pc-preview-modes button[aria-pressed=true]{background:var(--accent-subtle);color:var(--text-primary);font-weight:600}
-.pc-pdf{width:100%;flex:1;min-height:32rem;border:1px solid var(--border-default);border-radius:.5rem;background:#fff}
-.pc-text{position:relative;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);max-height:36rem;overflow:auto;padding:.875rem 1rem}
-.pc-text pre{white-space:pre-wrap;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-primary);overflow-wrap:anywhere}
-.pc-text mark{background:#fde68a;color:#18181b;border-radius:2px;padding:0 1px}
+.pc-doc-view{height:min(70vh,52rem);min-height:22rem}
+.pc-notice[data-layout=panel] .pc-doc-view{height:calc(100dvh - 21rem)}
+.pc-pdf{width:100%;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-secondary)}
+.pc-text{position:relative;border-radius:.5rem;background:var(--surface-secondary);overflow:auto;padding:1.25rem 1.375rem;overscroll-behavior:contain}
+.pc-text pre{white-space:pre-wrap;font:13.5px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text-primary);overflow-wrap:anywhere;max-width:46rem;margin:0 auto}
+.pc-text mark{background:#fde68a;color:#18181b;border-radius:2px;padding:1px 2px;box-shadow:0 0 0 2px #fde68a}
+.pc-doc-failed{display:flex;gap:.75rem;align-items:flex-start;padding:1rem;border:1px dashed var(--border-default);border-radius:.625rem;color:var(--text-secondary)}
+.pc-doc-failed svg{flex:none;color:var(--status-warning);margin-top:.125rem}
+.pc-doc-failed p{line-height:1.5}
+.pc-doc-failed strong{color:var(--text-primary)}
 .pc-preview-loading{color:var(--text-secondary);padding:1rem 0}
-.pc-notice[data-layout=panel] .pc-docs{grid-template-columns:1fr;min-height:0}
-.pc-notice[data-layout=panel] .pc-doc-list{flex-direction:row;flex-wrap:wrap}
-.pc-notice[data-layout=panel] .pc-doc-list button{width:auto}
 
 @media(max-width:700px){
   .pc-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .pc-docs{grid-template-columns:1fr;min-height:0}
-  .pc-pdf{min-height:65vh}
+  .pc-doc-view{height:calc(100dvh - 19rem);min-height:18rem}
+  .pc-text{padding:1rem}
+  .pc-doc-picker .ui-select-trigger,.pc-preview-modes button{min-height:40px;height:40px}
   .pc-ai-fields>div{grid-template-columns:1fr;gap:.125rem}
   .pc-ask-question{flex-direction:column}
   .pc-notice-stage{flex:1 1 10rem}
@@ -113,3 +114,4 @@ button.pc-label[aria-pressed=true]{outline:2px solid currentColor;outline-offset
 
 .research-prompt-row{display:flex;align-items:flex-end;gap:.5rem}.research-prompt-row>label{flex:1;min-width:0}
 .pc-card-links{display:inline-flex;gap:.75rem}
+@media(max-width:480px){.pc-doc-bar{flex-wrap:wrap}.pc-doc-picker,.pc-doc-bar>.pc-doc-name{flex:1 1 100%}.pc-doc-tools{margin-left:auto}}

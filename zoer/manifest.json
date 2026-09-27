@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "description": "Multi-source procurement catalog with BC Bid, CanadaBuys collection, saved searches, pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -1374,6 +1374,44 @@
                 "label"
               ]
             }
+          ]
+        }
+      },
+      {
+        "id": "documents.extract",
+        "idempotent": false,
+        "title": "Extract saved document text",
+        "description": "Re-extract saved originals without downloading them again. Limited or unreadable content remains visible.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "documents.extract.v1"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              }
+            }
+          },
+          "required": [
+            "recordIds"
           ]
         }
       }

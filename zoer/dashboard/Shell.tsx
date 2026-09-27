@@ -3,16 +3,17 @@ import { Procurement } from './procurement/Procurement';
 import { Pursuits } from './procurement/Pursuits';
 import { Sources } from './procurement/Sources';
 import './procurement/procurement.css';
-import { Research } from './Research';
+import { Documents } from './Documents';
+import { AiReview } from './AiReview';
 import { SettingsPage } from './Settings';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { Select } from '@zoer/plugin-ui/controls';
 
-type Section = 'search' | 'opportunities' | 'awards' | 'pursuits' | 'documents' | 'analysis' | 'sources';
+type Section = 'search' | 'opportunities' | 'awards' | 'pursuits' | 'documents' | 'ai' | 'analysis' | 'sources';
 // Phones use the short labels so the sections fit without scrolling far.
 const sections: [Section, string, string, string?][] = [
   ['search', 'Search', '/procurement'], ['opportunities', 'Opportunities', '/opportunities', 'Opps'], ['awards', 'Awards', '/contract-awards'],
-  ['pursuits', 'Pursuits', '/pursuits'], ['documents', 'Documents & AI', '/documents', 'Docs & AI'],
+  ['pursuits', 'Pursuits', '/pursuits'], ['documents', 'Documents', '/documents', 'Docs'], ['ai', 'AI review', '/ai-review', 'AI'],
   ['analysis', 'Analysis', '/analysis/overview'], ['sources', 'Sources', '/sources'],
 ];
 // BC Bid's own tools sit under Sources; the source router still owns these paths.
@@ -24,6 +25,7 @@ function sectionOf(path: string): Section {
   if (path === '/' || path === '/procurement') return 'search';
   if (path === '/pursuits') return 'pursuits';
   if (path === '/documents') return 'documents';
+  if (path === '/ai-review') return 'ai';
   if (path.startsWith('/analysis') || path.startsWith('/contract-awards/analysis')) return 'analysis';
   if (path === '/opportunities' || path.startsWith('/opportunities/')) return 'opportunities';
   if (path === '/contract-awards' || path.startsWith('/contract-awards/')) return 'awards';
@@ -54,14 +56,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const path = usePluginLocation().split("?")[0];
   const section = sectionOf(path);
   const inBcBid = section === 'sources' && path !== '/sources';
-  const shellPage = section === 'search' || section === 'pursuits' || section === 'documents' || path === '/sources' || path === '/settings';
+  const shellPage = section === 'search' || section === 'pursuits' || section === 'documents' || section === 'ai' || path === '/sources' || path === '/settings';
   const analysis = section === 'analysis';
   // Catalog pages size their table to the remaining height instead of scrolling the whole page.
   const catalog = path === '/opportunities' || path === '/contract-awards';
   const top = useRef<HTMLElement>(null);
   useTabStrip(top, path);
   const bcBidPage = bcBid.find(([to]) => bcBidActive(to, path))?.[0] ?? '/bc-bid-dashboard';
-  const page = section === 'search' ? <Procurement /> : section === 'pursuits' ? <Pursuits /> : section === 'documents' ? <Research /> : path === '/sources' ? <Sources /> : path === '/settings' ? <SettingsPage /> : children;
+  const page = section === 'search' ? <Procurement /> : section === 'pursuits' ? <Pursuits /> : section === 'documents' ? <Documents /> : section === 'ai' ? <AiReview /> : path === '/sources' ? <Sources /> : path === '/settings' ? <SettingsPage /> : children;
   return <div className="flex h-full min-h-0 flex-col">
     <nav ref={top} aria-label="Procurement sections" className="zoer-tabs relative flex min-w-0 shrink-0 gap-0.5 overflow-x-auto border-b border-border-default px-2 sm:gap-1 sm:px-4">
       {sections.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}

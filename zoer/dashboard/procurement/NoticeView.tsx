@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { Download, FileText, FileWarning, RefreshCw, X } from 'lucide-react';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
+import * as Controls from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { setStar } from '../backend';
 import { navigatePlugin } from '../navigation';
@@ -104,13 +105,19 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved }: { id
 const isPdf = (doc: any) => doc?.status === 'downloaded' && (/pdf/i.test(doc.media_type ?? '') || /\.pdf$/i.test(doc.name ?? ''));
 const size = (bytes: number) => bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
+// Zoer 2026-09-26+ draws PDF pages itself; older hosts and the sandboxed build fall back to the browser viewer.
+const HostPdfPreview = (Controls as Record<string, unknown>).PdfPreview as ComponentType<{ url: string; label: string; className?: string; onError?(error: Error): void }> | undefined;
+const coarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
 function Documents({ id, source, documents, cite, onRefresh }: { id: string; source: string; documents: any[]; cite?: Cite; onRefresh(): void }) {
   const readable = documents.filter(doc => doc.status === 'downloaded');
   const [selected, setSelected] = useState<string>(cite?.documentId ?? readable[0]?.id ?? documents[0]?.id ?? '');
-  const [mode, setMode] = useState<'pdf' | 'text'>(cite ? 'text' : 'pdf');
+  const initialMode = (doc: any) => isPdf(doc) && (HostPdfPreview || !coarse()) ? 'pdf' : 'text';
+  const [mode, setMode] = useState<'pdf' | 'text'>(cite ? 'text' : initialMode(documents.find(item => item.id === selected)));
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
   useEffect(() => { if (cite) { setSelected(cite.documentId); setMode('text'); } }, [cite]);
   const doc = documents.find(item => item.id === selected);
+  const choose = (value: string) => { setSelected(value); setMode(initialMode(documents.find(item => item.id === value))); };
   const getAttachments = async () => {
     setBusy(true); setError(''); setMessage('');
     try { await runProcurementAction('documents.download', { recordIds: [id] }); setMessage('Attachments downloaded.'); onRefresh(); }
@@ -119,18 +126,24 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
   if (!documents.length) return <div className="pc-notice-section"><div className="pc-card pc-card-empty"><header><h3>No documents yet</h3></header>
     {source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}</div></div>;
+  const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${item.text_length ? '' : ' · no text extracted'}` : 'Couldn’t read this file';
   return <div className="pc-docs">
-    <ul className="pc-doc-list" aria-label="Documents">{documents.map(item => <li key={item.id}><button type="button" aria-current={item.id === selected || undefined} data-status={item.status} onClick={() => { setSelected(item.id); setMode(isPdf(item) ? 'pdf' : 'text'); }}>
-      <span>{item.name}</span><small>{item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${item.text_length ? '' : ' · no text'}` : item.error || item.status}</small></button></li>)}
-      {source === 'bc-bid' && <li><Btn size="sm" variant="ghost" disabled={busy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments again'}</Btn></li>}</ul>
-    <div className="pc-preview">
-      {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-      {doc && <>
-        <div className="pc-preview-bar"><span className="pc-preview-name">{doc.name}</span><span className="pc-preview-modes" role="group" aria-label="Preview as">{isPdf(doc) && <button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')}>PDF</button>}<button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>Text</button></span>{doc.status === 'downloaded' && <Btn size="sm" variant="ghost" onClick={() => void host('catalog.download', { id: doc.id, name: doc.name }).catch(e => setError(e.message))}>Download</Btn>}</div>
-        {doc.status !== 'downloaded' ? <div className="pc-card pc-card-empty"><p>{doc.error || 'This file could not be downloaded.'}</p>{doc.url && safeSourceUrl(doc.url) && <a className="procurement-link" href={safeSourceUrl(doc.url)!} target="_blank" rel="noopener noreferrer">Open original ↗</a>}</div>
-          : mode === 'pdf' && isPdf(doc) ? <PdfPreview doc={doc} onFallback={() => setMode('text')} /> : <TextPreview doc={doc} quote={cite && cite.documentId === doc.id ? cite.quote : ''} />}
-      </>}
+    <div className="pc-doc-bar">
+      {documents.length > 1
+        ? <label className="pc-doc-picker"><span className="sr-only">Document</span><Select aria-label="Document" presentation="dropdown" searchable={false} value={selected} onChange={event => choose(event.target.value)}
+            optionDetails={Object.fromEntries(documents.map(item => [item.id, { icon: item.status === 'downloaded' ? <FileText aria-hidden="true" className="h-4 w-4" /> : <FileWarning aria-hidden="true" className="h-4 w-4" />, description: detail(item) }]))}>
+            {documents.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></label>
+        : <span className="pc-doc-name"><FileText aria-hidden="true" className="h-4 w-4" />{doc?.name}</span>}
+      {doc && isPdf(doc) && <span className="pc-preview-modes" role="group" aria-label="Preview as"><button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')}>PDF</button><button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>Text</button></span>}
+      <span className="pc-doc-tools">
+        {doc?.status === 'downloaded' && <Btn size="sm" variant="ghost" aria-label={`Download ${doc.name}`} tooltip="Download" icon={<Download aria-hidden="true" className="h-4 w-4" />} onClick={() => void host('catalog.download', { id: doc.id, name: doc.name }).catch(e => setError(e.message))}><span className="sr-only">Download</span></Btn>}
+        {source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
+      </span>
     </div>
+    {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-card-meta">{message}</p>}
+    {doc && (doc.status !== 'downloaded'
+      ? <div className="pc-doc-failed"><FileWarning aria-hidden="true" className="h-5 w-5" /><div><p><strong>{doc.name}</strong> couldn’t be read.</p><p className="pc-card-meta">{doc.error || 'The download failed.'}</p>{doc.url && safeSourceUrl(doc.url) && <a className="procurement-link" href={safeSourceUrl(doc.url)!} target="_blank" rel="noopener noreferrer">Open the original ↗</a>}</div></div>
+      : mode === 'pdf' && isPdf(doc) ? <PdfPreview doc={doc} onFallback={() => setMode('text')} /> : <TextPreview doc={doc} quote={cite && cite.documentId === doc.id ? cite.quote : ''} />)}
   </div>;
 }
 
@@ -144,7 +157,9 @@ function PdfPreview({ doc, onFallback }: { doc: any; onFallback(): void }) {
   }, [doc.id]);
   if (error) return <p role="status">{error}</p>;
   if (!url) return <p role="status" className="pc-preview-loading">Loading preview…</p>;
-  return <iframe className="pc-pdf" title={`Preview of ${doc.name}`} src={url} />;
+  if (HostPdfPreview) return <HostPdfPreview url={url} label={`Preview of ${doc.name}`} className="pc-doc-view" onError={onFallback} />;
+  // Older hosts: the browser's viewer, with its toolbar hidden where supported.
+  return <iframe className="pc-doc-view pc-pdf" title={`Preview of ${doc.name}`} src={`${url}#toolbar=0&navpanes=0&view=FitH`} />;
 }
 
 function TextPreview({ doc, quote }: { doc: any; quote: string }) {
@@ -165,7 +180,7 @@ function TextPreview({ doc, quote }: { doc: any; quote: string }) {
   if (text.isPending) return <p role="status" className="pc-preview-loading">Loading text…</p>;
   if (text.error) return <p role="alert">{text.error.message}</p>;
   if (!text.data) return <p className="pc-card pc-card-empty">No text was extracted from this file. Scanned PDFs need OCR; use PDF or Download to read it.</p>;
-  return <div className="pc-text" ref={box}>{quote && parts.length === 1 && <p role="status" className="pc-card-meta">The quoted passage wasn’t found verbatim in this version.</p>}<pre>{parts[0]}{parts.length > 1 && <mark ref={mark}>{parts[1]}</mark>}{parts[2]}</pre></div>;
+  return <div className="pc-text pc-doc-view" ref={box}>{quote && parts.length === 1 && <p role="status" className="pc-card-meta">The quoted passage wasn’t found verbatim in this version.</p>}<pre>{parts[0]}{parts.length > 1 && <mark ref={mark}>{parts[1]}</mark>}{parts[2]}</pre></div>;
 }
 
 const ACTIONS: [string, string][] = [['summary', 'Summarize & categorize'], ['requirements', 'Mandatory requirements'], ['bid-no-bid', 'Bid / no-bid'], ['amendments', 'What changed in addenda?']];

@@ -11,7 +11,7 @@ const MODES = [
 type EvidenceMode = typeof MODES[number][0];
 const content = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 
-/** Also renders persisted evidence reviews in the existing Documents & AI view. */
+/** Also renders persisted evidence reviews in the AI review view. */
 export function EvidenceReport({ review }: { review: any }) {
   const [error, setError] = useState(''), [downloading, setDownloading] = useState('');
   const result = review?.result;
@@ -66,7 +66,7 @@ export function EvidencePanel({ recordIds, onClose }: { recordIds: string[]; onC
       const completed = await runProcurementAction(cli ? 'records.evidence.cli' : 'records.evidence', { recordIds: ids, mode, ...(cli ? { computerId: modelId.slice(modelId.indexOf(':') + 1) } : {}) }, lifecycle.current?.signal, { modelProfileId: modelId });
       const saved = await host('catalog.record', { id: ids[0] });
       const evidence = saved.reviews.find((item: any) => item.run_id === completed.id && item.result?.purpose === mode);
-      if (!evidence) throw Error('The run finished but its evidence review could not be read back. Check Documents & AI before retrying.');
+      if (!evidence) throw Error('The run finished but its evidence review could not be read back. Check AI review before retrying.');
       setReview(evidence);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
@@ -76,7 +76,7 @@ export function EvidencePanel({ recordIds, onClose }: { recordIds: string[]; onC
       <label>Model<Select aria-label="Evidence review model" value={modelId} disabled={busy || loadingModels} onChange={event => setModelId(event.target.value)}><option value="">Choose a ready model</option>{models.map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</Select></label>
       {loadingModels && <p role="status">Loading model availability…</p>}{!loadingModels && !models.length && <p>Configure a model profile or start a configured Codex or OpenCode computer before reviewing.</p>}{mode === 'compare' && ids.length < 2 && <p>Select at least two notices for comparison.</p>}
       {mode === 'amendments' && <p>Amendment review compares retained source versions. Without an earlier readable version, it will report that the change cannot be verified.</p>}
-      {busy && <p role="status">The durable review is running. Results are saved in Documents & AI; model failures and missing sources are reported explicitly.</p>}{error && <p role="alert">{error}</p>}{review && <EvidenceReport review={review} />}
+      {busy && <p role="status">The durable review is running. Results are saved in AI review; model failures and missing sources are reported explicitly.</p>}{error && <p role="alert">{error}</p>}{review && <EvidenceReport review={review} />}
     </div>
   </Modal>;
 }
