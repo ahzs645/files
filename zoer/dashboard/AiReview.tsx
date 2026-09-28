@@ -38,6 +38,7 @@ export function AiReview() {
     await host('action', { actionId: cli ? 'records.review.cli' : 'records.review', input: { recordIds: [...selection], force, promptId, includeDocuments: documents, ...(cli ? { computerId: reviewModel.computerId, cliSelection: reviewModel.cliSelection } : {}) }, modelProfileId: modelId });
     setMessage('Review started.'); await refresh();
   });
+  const reviewBlocker = busy ? 'Starting review…' : !selection.size ? 'Select at least one record to review.' : !promptId ? 'Choose a saved review prompt above, or use New to create one.' : !modelId ? 'Choose a computer and an available review model.' : '';
   const choosePrompt = (id: string) => { setPromptId(id); const saved = state.prompts.find((p: any) => p.id === id); if (saved) { setName(saved.name); setPrompt(saved.prompt); } };
   return <section className="research">
     <header className="bid-page-header"><h1>AI review</h1><Button variant="ghost" onClick={() => void host('catalog.open')}>Open database viewer</Button></header>
@@ -53,7 +54,8 @@ export function AiReview() {
         </>}
         <label className="research-check"><input type="checkbox" checked={documents} onChange={e => setDocuments(e.target.checked)} />Include downloaded documents</label>
         <label className="research-check"><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />Re-run unchanged records</label>
-        <div className="research-toolbar"><Button disabled={busy || !selection.size || !promptId || !modelId} onClick={() => void review()}>Review {selection.size || ''} selected</Button></div>
+        <div className="research-toolbar"><Button aria-describedby={reviewBlocker ? "review-requirements" : undefined} disabled={!!reviewBlocker} onClick={() => void review()}>Review {selection.size || ''} selected</Button></div>
+        {reviewBlocker && <p id="review-requirements" role="status" className="research-note">{reviewBlocker}</p>}
         <p className="research-note">Long documents are reviewed in chunks; finished chunks are reused on retry.</p>
       </section>
     </div>
