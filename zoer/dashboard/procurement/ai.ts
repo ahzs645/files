@@ -1,4 +1,5 @@
 import { defaultReviewPrompt } from '../review-prompt';
+import { checkFields, fieldValue, parsePrompt } from '../review-fields';
 
 /** Evidence runs (on-demand modes) are saved as reviews with a `procurement:` prompt id and a `purpose`. */
 export const isEvidence = (review: any) => !!review?.result?.purpose || String(review?.prompt_id ?? '').startsWith('procurement:') || String(review?.prompt_id ?? '').startsWith('evidence:');
@@ -48,7 +49,14 @@ export function formatField(key: string, value: unknown): string | string[] {
 /** Estimated value from the latest review, when the documents disclose one. */
 export function estimatedValue(review: any): string {
   const funding = review?.result?.fields?.funding;
-  return funding?.status === 'disclosed' ? money(funding.amount, funding.currency) : '';
+  if (funding?.status === 'disclosed') return money(funding.amount, funding.currency);
+  // Typed prompts: the first money field that returned a well-formed amount.
+  for (const field of parsePrompt(review?.result?.prompt?.instructions).fields) {
+    if (field.type !== 'money') continue;
+    const value = fieldValue(review.result.fields, field.key);
+    if (checkFields([field], { [field.key]: value }).checks[0].state === 'ok') return money((value as any).amount, (value as any).currency);
+  }
+  return '';
 }
 
 /** How much of the notice the review actually read. */

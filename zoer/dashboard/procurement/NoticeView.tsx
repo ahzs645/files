@@ -57,7 +57,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'overview' }: { i
     {record && tab === 'documents' && <Documents id={id} source={source} documents={documents} cite={cite} onRefresh={refresh} />}
     {record && tab === 'ai' && <Ai id={id} reviews={reviews} documents={documents} onCite={showCitation} onRefresh={refresh} />}
   </div>;
-  if (layout === 'dialog') return <Modal title={title} mobileSheet onClose={onClose} headerContent={<div className="pc-notice" data-layout="dialog">{head}</div>}><div className="pc-notice" data-layout="dialog">{body}</div></Modal>;
+  if (layout === 'dialog') return <Modal title={title} mobileSheet size="wide" onClose={onClose} headerContent={<div className="pc-notice" data-layout="dialog">{head}</div>}><div className="pc-notice" data-layout="dialog">{body}</div></Modal>;
   return <aside className="pc-notice" data-layout="panel" aria-label={`Notice: ${title}`}>
     <div className="pc-notice-titlebar"><h2>{title}</h2><button type="button" className="pc-icon-btn" aria-label="Close notice" onClick={onClose}><X aria-hidden="true" className="h-4 w-4" /></button></div>
     {head}{body}

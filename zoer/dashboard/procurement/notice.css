@@ -1,5 +1,4 @@
-/* Notice view: side panel on wide screens, the host dialog (wider) otherwise. */
-dialog.ui-modal:has(.pc-notice){width:min(1040px,calc(100vw - 2rem));max-width:none}
+/* Notice view: side panel on wide screens, otherwise the host dialog (Modal size="wide"; plugin CSS can't size the portaled dialog). */
 .pc-notice{display:flex;flex-direction:column;min-width:0;font-size:13px}
 .pc-notice[data-layout=panel]{border:1px solid var(--border-default);border-radius:.75rem;background:var(--surface-primary);position:sticky;top:0;height:calc(100dvh - 9.5rem);overflow:hidden}
 .pc-notice[data-layout=panel] .pc-notice-body{overflow-y:auto;flex:1;min-height:0}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
 import { researchRetry } from './research-retry';
@@ -26,20 +26,24 @@ export function BatchProgress({batches, tasks = []}: {batches:any[];tasks?:any[]
   </section>;
 }
 
-export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], onChanged, onError }: {
+export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], onChanged, onError, details }: {
   title: string; kind: 'download' | 'review'; batches: any[]; modelId?: string; tasks?: any[]; onChanged: () => Promise<void>; onError: (message: string) => void;
+  /** Optional per-run panel, shown when the run's Results toggle is open. */
+  details?: (batch: any) => ReactNode;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false), [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => { const next = new Set(open); next.has(id) ? next.delete(id) : next.add(id); setOpen(next); };
   const rows = batches.filter(batch => batch.kind === kind);
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await onChanged(); } catch (e) { onError((e as Error).message); } finally { setBusy(false); } };
   return <section className="zoer-history" aria-label={title}>
     <h2>{title}</h2>
     {!rows.length && <p>Nothing yet.</p>}
-    {rows.map(batch => <article key={batch.id} className="research-batch">
+    {rows.map(batch => <div key={batch.id} className="research-batch-item"><article className="research-batch">
       <div><strong className="research-status" data-status={batch.status}>{batch.status}</strong>{batch.updated_at && <time dateTime={batch.updated_at}>{new Date(batch.updated_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>}<p>{batch.completed}/{batch.total} records complete · {batch.failed} records failed{batch.error ? <> · <span role="alert">{batch.error}</span></> : null}</p>{tasks.filter(task=>task.run_id===batch.id).slice(0,3).map((task,index)=><p className="research-task" key={index}><strong>{task.phase||task.kind}</strong> · {task.name||task.record_id} · {batch.status!=='running'&&task.status==='running'?'Interrupted':task.status}{task.error?` · ${task.error}`:''}</p>)}</div>
       {batch.status === 'running'
         ? <Button variant="ghost" disabled={busy} onClick={() => void act(() => host('cancel', { id: batch.id }))}>Stop</Button>
         : <Button variant="ghost" disabled={busy} onClick={() => void act(() => host('action', (JSON.parse(batch.input||'{}').extractOnly?{actionId:'documents.extract',input:{recordIds:JSON.parse(batch.input).recordIds}}:researchRetry(batch, modelId))))}>Retry</Button>}
-    </article>)}
+      {details && <Button variant="ghost" aria-expanded={open.has(batch.id)} aria-controls={`run-${batch.id}`} onClick={() => toggle(batch.id)}>{open.has(batch.id) ? 'Hide results' : 'Results'}</Button>}
+    </article>{details && open.has(batch.id) && <div id={`run-${batch.id}`}>{details(batch)}</div>}</div>)}
   </section>;
 }
