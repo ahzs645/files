@@ -4,6 +4,7 @@
     "types": ["vite/client", "node"],
     "paths": {
       "@bcbid/shared": ["packages/shared/src/index.ts"],
+      "@bcbid/procurement-core": ["packages/procurement-core/src/index.ts"],
       "@bcbid/shared/*": ["packages/shared/src/*"],
       "@convex/_generated/api": ["zoer/dashboard/api.ts"],
       "@convex/*": ["convex/*"],

@@ -1,4 +1,4 @@
-import { ago, coverageText, fieldLabel, formatField, isEvidence, labelGroup, reviewTitle } from './ai';
+import { ago, coverageText, fieldLabel, formatField, isEvidence, labelGroup, reviewTitle, verdictText, verdictTone } from './ai';
 import { checkFields, formatTyped, parsePrompt } from '../review-fields';
 
 export function LabelChips({ labels, limit }: { labels: string[]; limit?: number }) {
@@ -22,7 +22,7 @@ export function AiResult({ review, onCite, docNames = {} }: { review: any; onCit
   return <article className="pc-ai-result" aria-label={reviewTitle(review)}>
     <header><h3>{reviewTitle(review)}{result?.question ? <span className="pc-ai-question">“{result.question}”</span> : null}</h3><p>{meta}</p></header>
     {review.status !== 'succeeded' && <p role="alert">{review.error || `Review ${review.status}.`}</p>}
-    {recommendation && <p className="pc-verdict" data-verdict={/no/i.test(String(recommendation)) ? 'no' : 'yes'}>{String(recommendation)}</p>}
+    {recommendation != null && recommendation !== '' && <p className="pc-verdict" data-verdict={verdictTone(recommendation)}>{verdictText(recommendation)}</p>}
     {result?.summary && <p className="pc-ai-summary">{result.summary}</p>}
     {Array.isArray(result?.labels) && <LabelChips labels={result.labels} />}
     {typed ? <dl className="pc-ai-fields">{typed.checks.map(({ field, value, state, note }) => <div key={field.key} data-state={state}><dt>{field.label}</dt><dd><Lines text={formatTyped(field, value)} />{note && state !== 'missing' && <small className="pc-field-problem">{note}</small>}</dd></div>)}</dl>

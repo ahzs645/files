@@ -191,7 +191,7 @@ describe("shared BC Bid parsers", () => {
     expect(opening).toBeUndefined();
 
     // Description should be clean — no __ivCtrl JS
-    expect(result.descriptionText).toContain("Ceramic");
+    expect(result.descriptionText).toContain("Winskill Aquatic Centre");
     expect(result.descriptionText).not.toContain("__ivCtrl");
     expect(result.descriptionText).not.toContain("GridView");
 

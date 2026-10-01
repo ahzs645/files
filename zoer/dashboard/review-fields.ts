@@ -11,7 +11,35 @@ export const FIELD_TYPES = ['text', 'number', 'percent', 'scale', 'money', 'date
 export type FieldType = typeof FIELD_TYPES[number];
 /** A whole-number rating range; the labels explain what the ends mean. */
 export type Scale = { min: number; max: number; lowLabel?: string; highLabel?: string };
-export type ReviewField = { key: string; label: string; type: FieldType; description: string; options?: string[]; scale?: Scale };
+/**
+ * What a money amount means. Only `buyer_budget` and `buyer_estimated_value` may fill a notice's budget or
+ * estimated value; insurance limits, bonds, awards, grants and internal estimates stay separate, and `other`
+ * is never used as a budget. Saved prompts without a role are inferred conservatively from key and label.
+ */
+export const MONEY_ROLES = ['buyer_budget', 'buyer_estimated_value', 'award_value', 'insurance_limit', 'bid_security', 'funding_program_amount', 'internal_cost_estimate', 'other'] as const;
+export type MoneyRole = typeof MONEY_ROLES[number];
+export const MONEY_ROLE_LABELS: Record<MoneyRole, string> = {
+  buyer_budget: 'Buyer budget', buyer_estimated_value: 'Estimated contract value', award_value: 'Award value', insurance_limit: 'Insurance limit',
+  bid_security: 'Bond or bid security', funding_program_amount: 'Grant or funding program amount', internal_cost_estimate: 'Internal cost estimate', other: 'Other amount',
+};
+export type ReviewField = { key: string; label: string; type: FieldType; description: string; options?: string[]; scale?: Scale; role?: MoneyRole };
+
+/** The declared role of a money field, else one inferred from its key and label; `other` when unclear. */
+export function moneyRole(field: Pick<ReviewField, 'key' | 'label' | 'type' | 'role'>): MoneyRole {
+  if (field.type !== 'money') return 'other';
+  if (field.role && MONEY_ROLES.includes(field.role)) return field.role;
+  const text = `${field.key.replace(/([a-z])([A-Z])/g, '$1 $2')} ${field.label}`.toLowerCase();
+  // Exclusions first: "insurance value" or "bond amount" must never read as a budget.
+  if (/insur|liabilit|indemn/.test(text)) return 'insurance_limit';
+  if (/\bbond|secur|deposit|guarantee|holdback|surety/.test(text)) return 'bid_security';
+  if (/award|winning|successful bid|historic/.test(text)) return 'award_value';
+  if (/grant|funding program|subsid|rebate/.test(text)) return 'funding_program_amount';
+  if (/internal|our cost|margin|profit/.test(text)) return 'internal_cost_estimate';
+  if (/budget|ceiling|upset|not to exceed|maximum (contract )?value/.test(text)) return 'buyer_budget';
+  if (/estimat|contract value|project value|value of (the )?contract|tender value/.test(text)) return 'buyer_estimated_value';
+  return 'other';
+}
+export const isBudgetRole = (role: MoneyRole) => role === 'buyer_budget' || role === 'buyer_estimated_value';
 export const DEFAULT_SCALE: Scale = { min: 1, max: 5 };
 const scaleOf = (field: ReviewField): Scale => field.scale ?? DEFAULT_SCALE;
 
@@ -78,6 +106,7 @@ const clean = (fields: ReviewField[]): ReviewField[] => fields.map(f => ({
   key: f.key, label: f.label.trim().slice(0, 60), type: f.type, description: f.description.trim().replace(/\s+/g, ' ').slice(0, 400),
   ...(f.type === 'choice' ? { options: [...new Set((f.options ?? []).map(o => o.trim().slice(0, 60)).filter(Boolean))].slice(0, 20) } : {}),
   ...(f.type === 'scale' ? { scale: cleanScale(scaleOf(f)) } : {}),
+  ...(f.type === 'money' && f.role && MONEY_ROLES.includes(f.role) ? { role: f.role } : {}),
 }));
 const cleanScale = ({ min, max, lowLabel, highLabel }: Scale): Scale => ({
   min, max, ...(lowLabel?.trim() ? { lowLabel: lowLabel.trim().slice(0, 60) } : {}), ...(highLabel?.trim() ? { highLabel: highLabel.trim().slice(0, 60) } : {}),
@@ -92,7 +121,7 @@ function scaleFormat({ min, max, lowLabel, highLabel }: Scale) {
 export function outputContract(fields: ReviewField[]): string {
   if (!fields.length) return '';
   const list = clean(fields);
-  const lines = list.map(f => `- "${f.key}" (${f.label}; ${f.type === 'choice' ? `one of ${f.options!.map(o => JSON.stringify(o)).join(', ')}` : f.type === 'scale' ? scaleFormat(f.scale!) : FORMATS[f.type]}): ${f.description}`);
+  const lines = list.map(f => `- "${f.key}" (${f.label}; ${f.type === 'choice' ? `one of ${f.options!.map(o => JSON.stringify(o)).join(', ')}` : f.type === 'scale' ? scaleFormat(f.scale!) : FORMATS[f.type]}${f.role ? `; amount type: ${MONEY_ROLE_LABELS[f.role].toLowerCase()} only` : ''}): ${f.description}`);
   const example = Object.fromEntries(list.map(f => [f.key, f.type === 'choice' ? f.options![0] : f.type === 'scale' ? Math.round((f.scale!.min + f.scale!.max) / 2) : EXAMPLES[f.type]]));
   return [
     HEADER,
@@ -119,7 +148,8 @@ export function parsePrompt(text: string | undefined | null): { instructions: st
     const parsed = JSON.parse(TAG.exec(value.slice(at))?.[1] ?? '');
     const fields = (Array.isArray(parsed?.fields) ? parsed.fields : []).filter((f: any) => f && typeof f.key === 'string' && FIELD_TYPES.includes(f.type))
       .map((f: any) => ({ key: f.key, label: String(f.label ?? f.key), type: f.type, description: String(f.description ?? ''), ...(Array.isArray(f.options) ? { options: f.options.map(String) } : {}),
-        ...(f.scale && typeof f.scale === 'object' ? { scale: { min: Number(f.scale.min), max: Number(f.scale.max), ...(typeof f.scale.lowLabel === 'string' ? { lowLabel: f.scale.lowLabel } : {}), ...(typeof f.scale.highLabel === 'string' ? { highLabel: f.scale.highLabel } : {}) } } : {}) }));
+        ...(f.scale && typeof f.scale === 'object' ? { scale: { min: Number(f.scale.min), max: Number(f.scale.max), ...(typeof f.scale.lowLabel === 'string' ? { lowLabel: f.scale.lowLabel } : {}), ...(typeof f.scale.highLabel === 'string' ? { highLabel: f.scale.highLabel } : {}) } } : {}),
+        ...(f.type === 'money' && MONEY_ROLES.includes(f.role) ? { role: f.role } : {}) }));
     return { instructions, fields };
   } catch { return { instructions, fields: [] }; }
 }
@@ -201,7 +231,7 @@ Distinguish an explicit budget, ceiling or estimated contract value from grant f
     { key: 'procurementRoute', label: 'Procurement route', type: 'choice', options: ['Competitive bid', 'Notice of intent / direct award', 'Qualification list', 'Grant', 'Other'], description: 'How the contract will be awarded, as supported by the evidence.' },
     { key: 'closingDate', label: 'Closing date', type: 'date', description: 'Submission closing date and time exactly as stated, with its UTC offset when a timezone is given.' },
     { key: 'questionsDeadline', label: 'Questions deadline', type: 'date', description: 'Last date for bidder questions.' },
-    { key: 'budget', label: 'Budget', type: 'money', description: 'Explicit budget, ceiling or estimated contract value. Null when no budget is stated.' },
+    { key: 'budget', label: 'Budget', type: 'money', role: 'buyer_budget', description: 'Explicit budget, ceiling or estimated contract value. Null when no budget is stated.' },
     { key: 'mandatorySiteMeeting', label: 'Mandatory site meeting', type: 'yes-no', description: 'True only when attendance at a site visit or meeting is stated as mandatory.' },
     { key: 'mandatoryCredentials', label: 'Mandatory credentials', type: 'list', description: 'Licences, designations, certifications or registrations explicitly required, each with who must hold it.' },
     { key: 'preferredCredentials', label: 'Preferred credentials', type: 'list', description: 'Credentials that are preferred or scored but not mandatory.' },

@@ -51,7 +51,7 @@ describe('review results', () => {
     ]);
     expect(rows[3].title).toBe('Notice d');
     // Reused results must predate the run's last update, and only unresolved records are looked up.
-    expect(calls[1].parameters).toEqual(['p', '2026-09-28T00:00:00Z', 'opportunity:c', 'd']);
+    expect(calls[1].parameters).toEqual(['p', '2026-09-28T00:00:00Z', '2026-09-28T00:00:00Z', 'opportunity:c', 'd']);
     expect(calls[2].parameters).toEqual(['d']);
     for (const call of calls) expect(call.statement).not.toMatch(/;|\bcontent\b|\bupdate\b|\bdelete\b|\btemp\b|\bmain\b/i);
     expect((await readRunResults(async () => ({ rows: [] }), { id: 'r', recordIds: ['x'], running: true }))[0].outcome).toBe('waiting');

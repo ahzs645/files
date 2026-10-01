@@ -6,7 +6,7 @@ import { BatchHistory, BatchProgress, useCatalogState } from './BatchHistory';
 import { RecordPicker } from './RecordPicker';
 import { useWorkspace } from './backend';
 import { host } from './bridge';
-import { usePluginQuery } from './navigation';
+import { navigatePlugin, usePluginQuery } from './navigation';
 import { NoticeView } from './procurement/NoticeView';
 import { PromptEditor, type ReviewRunner } from './PromptEditor';
 import { ReviewResults, RunResults } from './ReviewResults';
@@ -48,7 +48,7 @@ export function AiReview() {
   const latest = state.batches[0], revision = `${promptId}:${prompt?.version}:${latest?.id}:${latest?.completed}:${latest?.status}`;
   const reviewBlocker = busy ? 'Starting review…' : !selection.size ? 'Select at least one record to review.' : !promptId ? 'Choose a saved review prompt above, or use New to create one.' : !modelId ? 'Choose a computer and an available review model.' : '';
   return <section className="research">
-    <header className="bid-page-header"><h1>AI review</h1><Button variant="ghost" onClick={() => void host('catalog.open')}>Open database viewer</Button></header>
+    <header className="bid-page-header"><h1>AI review</h1><Button variant="ghost" onClick={() => navigatePlugin('/workbench')}>Pipeline stages</Button><Button variant="ghost" onClick={() => void host('catalog.open')}>Open database viewer</Button></header>
     <div className="research-segment" role="tablist" aria-label="AI review views">
       <Button role="tab" aria-selected={view !== 'analysis'} variant={view !== 'analysis' ? 'primary' : 'ghost'} onClick={() => setView('')}>Run reviews</Button>
       <Button role="tab" aria-selected={view === 'analysis'} variant={view === 'analysis' ? 'primary' : 'ghost'} onClick={() => setView('analysis')}>Analysis</Button>

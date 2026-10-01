@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "description": "Multi-source procurement catalog with BC Bid, CanadaBuys collection, saved searches, pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -1434,6 +1434,228 @@
           },
           "required": [
             "recordIds"
+          ]
+        }
+      },
+      {
+        "id": "procurement.workspace",
+        "title": "Prepare the review workspace",
+        "description": "Create or upgrade the review workspace tables in this plugin's catalog and report its capabilities. Existing records are not changed.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "procurement.workspace.v1"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxOutputBytes": 65536
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      {
+        "id": "procurement.pipeline",
+        "title": "Prepare evidence and extract requirements",
+        "description": "Triage saved notices from the notice alone, or extract atomic requirements and facts from the notice and every readable document with exact source spans. Results are proposals for human review; nothing is submitted.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "procurement.pipeline.v1"
+        },
+        "requiredCapabilities": [
+          "model-runtime",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              }
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "triage",
+                "extract"
+              ]
+            },
+            "profileVersionId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 200
+            },
+            "force": {
+              "type": "boolean"
+            },
+            "resumeRunId": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "dryRun": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "recordIds",
+            "stage"
+          ]
+        }
+      },
+      {
+        "id": "procurement.pipeline.cli",
+        "title": "Prepare evidence and extract requirements with installed CLI",
+        "description": "Triage saved notices from the notice alone, or extract atomic requirements and facts from the notice and every readable document with exact source spans. Results are proposals for human review; nothing is submitted.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "procurement.pipeline.cli.v1"
+        },
+        "requiredCapabilities": [
+          "runtime-resources",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              }
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "triage",
+                "extract"
+              ]
+            },
+            "profileVersionId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 200
+            },
+            "force": {
+              "type": "boolean"
+            },
+            "resumeRunId": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "computerId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 150
+            },
+            "cliSelection": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cliProvider": {
+                  "type": "string",
+                  "enum": [
+                    "codex",
+                    "opencode",
+                    "claude"
+                  ]
+                },
+                "cliModel": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "cliEffort": {
+                  "type": "string",
+                  "maxLength": 30
+                }
+              }
+            },
+            "dryRun": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "recordIds",
+            "stage",
+            "computerId"
+          ]
+        }
+      },
+      {
+        "id": "procurement.write",
+        "title": "Save a review decision",
+        "description": "Version-checked review events, requirement matches, company profiles, human decisions, tasks and change acknowledgements. Never contacts a buyer or submits a bid.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "procurement.write.v1"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 120000,
+          "maxOutputBytes": 262144
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "review.append",
+                "match.set",
+                "assess",
+                "profile.save",
+                "profile.publish",
+                "decision.record",
+                "task.create",
+                "task.update",
+                "change.acknowledge",
+                "judgement.set"
+              ]
+            }
+          },
+          "required": [
+            "op"
           ]
         }
       }

@@ -1,3 +1,5 @@
+import { CLOSING_TODAY_TEXT, addDays, deadlineState, parseDeadline, zoneDate } from './deadline';
+
 export type ProcurementSource = {
   id: string;
   label: string;
@@ -24,24 +26,14 @@ export function safeSourceUrl(raw: unknown): string | null {
   } catch { return null; }
 }
 
-function validDateOnly(raw: string): boolean {
-  const [year, month, day] = raw.split('-').map(Number);
-  if (!year || month < 1 || month > 12 || day < 1) return false;
-  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
-}
-
-/** Preserve source date/time text: timezone-less values never imply expiry. */
+/** Preserve source date/time text and add the shared open/closed judgement (see deadline.ts). */
 export function deadlineLabel(raw: unknown, now: number | Date = Date.now()): string {
   if (typeof raw !== 'string' || !raw.trim()) return 'Not provided';
-  const value = raw.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return validDateOnly(value) ? `${value} (date only)` : `${value} (invalid date)`;
-  const match = /^(\d{4}-\d{2}-\d{2})[Tt ]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?([Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/.exec(value);
-  if (!match || !validDateOnly(match[1])) return `${value} (unrecognized date)`;
-  if (!match[3]) return `${value} (timezone not specified)`;
-  const time = Date.parse(value);
-  if (!Number.isFinite(time)) return `${value} (invalid date)`;
-  return `${value}${time < Number(now) ? ' · Deadline passed' : ''}`;
+  const value = raw.trim(), parsed = parseDeadline(value), state = deadlineState(value, now);
+  const judgement = state === 'closed' ? ' · Deadline passed' : state === 'closing_today_time_unverified' ? ` · ${CLOSING_TODAY_TEXT}` : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return parsed ? `${value} (date only)${judgement}` : `${value} (invalid date)`;
+  if (!parsed) return `${value} (unrecognized date)`;
+  return parsed.precision === 'date' ? `${value} (timezone not specified)${judgement}` : `${value}${judgement}`;
 }
 
 export type ProcurementQueryOptions = {
@@ -53,6 +45,8 @@ export type ProcurementQueryOptions = {
   aiLabel?: string;
   starred?: boolean;
   deadline?: 'all' | 'week';
+  /** Frozen "now" for deadline filters (tests); defaults to the current time. */
+  asOf?: number;
   after?: string;
   limit?: number;
   /**
@@ -61,6 +55,10 @@ export type ProcurementQueryOptions = {
    */
   sort?: 'id' | 'date-desc' | 'date-asc' | 'updated';
   offset?: number;
+  /** Extra parameterized WHERE fragment (review-workspace filters) over unaliased `records`. */
+  where?: { sql: string; parameters: (string | number)[] };
+  /** Custom parameterized ORDER BY (pages by offset like the dated sorts); overrides `sort`'s order. */
+  order?: { sql: string; parameters: (string | number)[] };
 };
 
 const field = (key: string) => `json_extract(data, '$.${key}')`;
@@ -68,6 +66,13 @@ const field = (key: string) => `json_extract(data, '$.${key}')`;
 const source = `coalesce(CASE WHEN ${field('sourceId')}='' THEN NULL ELSE ${field('sourceId')} END, 'bc-bid')`;
 const title = `coalesce(${field('description')}, ${field('opportunityDescription')}, ${field('title')}, '')`;
 const buyer = `coalesce(${field('issuedBy')}, ${field('issuingOrganization')}, '')`;
+/** SQL test for a value with an explicit UTC offset (an instant). */
+export const zonedSql = (value: string) => `${value} GLOB '????-??-??[Tt ]??:??*[Zz]' OR ${value} GLOB '????-??-??[Tt ]??:??*[+-]??:??'`;
+/**
+ * Sort key: 0 upcoming, 1 passed, 2 undated; takes today's America/Vancouver date as one parameter. Date-only
+ * and timezone-less values count as passed only after their calendar day, never at UTC midnight.
+ */
+export const passedOrder = (value: string) => `CASE WHEN coalesce(${value}, '')='' THEN 2 WHEN ${zonedSql(value)} THEN CASE WHEN julianday(${value}) < julianday('now') THEN 1 ELSE 0 END WHEN ${value} < ? THEN 1 ELSE 0 END`;
 const deadline = `CASE WHEN kind='opportunity' THEN coalesce(${field('closingAt')},${field('closingDate')}) ELSE ${field('awardDate')} END`;
 
 /** Read-only, bounded catalog query. Counts retain filters but ignore the cursor. */
@@ -92,25 +97,30 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
     const literal = `%${options.search.trim().replace(/[\\%_]/g, '\\$&')}%`;
     countParameters.push(...searchable.map(() => literal));
   }
+  const today = zoneDate(options.asOf ?? Date.now());
   if (options.deadline === 'week') {
     const closing = `coalesce(${field('closingAt')},${field('closingDate')})`;
     filters.push("kind='opportunity'", `lower(coalesce(${field('status')}, '')) IN ('open', 'active')`);
-    // SQLite otherwise interprets offset-less input as UTC. Require a source
-    // offset first; date-only and unknown-timezone notices are not closing-soon.
-    filters.push(`CASE WHEN ${closing} GLOB '????-??-??[Tt ]??:??*[Zz]' OR ${closing} GLOB '????-??-??[Tt ]??:??*[+-]??:??' THEN 1 ELSE 0 END=1`);
-    filters.push(`julianday(${closing})>=julianday('now')`, `julianday(${closing})<=julianday('now')+7`);
+    // SQL approximation of deadlineState (deadline.ts): values with an explicit offset compare as instants
+    // (SQLite would read offset-less input as UTC). Date-only and timezone-less values compare by calendar
+    // date against today in America/Vancouver, so a same-day date-only notice stays listed (time unverified).
+    filters.push(`CASE WHEN ${zonedSql(closing)} THEN CASE WHEN julianday(${closing})>=julianday('now') AND julianday(${closing})<=julianday('now')+7 THEN 1 ELSE 0 END WHEN ${closing} GLOB '????-??-??*' THEN CASE WHEN ${closing}>=? AND ${closing}<? THEN 1 ELSE 0 END ELSE 0 END=1`);
+    countParameters.push(today, addDays(today, 8));
   }
+  if (options.where?.sql && options.where.sql !== '1=1') { filters.push(options.where.sql); countParameters.push(...options.where.parameters); }
   const where = filters.join(' AND ');
   const parameters = [...countParameters];
-  const dated = options.sort === 'date-desc' || options.sort === 'date-asc' || options.sort === 'updated';
+  const dated = options.sort === 'date-desc' || options.sort === 'date-asc' || options.sort === 'updated' || !!options.order;
   const cursor = options.after && !dated ? ' AND id>?' : '';
   if (cursor) parameters.push(options.after!);
+  if (options.order) parameters.push(...options.order.parameters);
+  else if (options.sort === 'date-asc') parameters.push(today);
   const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(50, Math.floor(options.limit!))) : 25;
   parameters.push(limit);
   const offset = dated && Number.isFinite(options.offset) ? Math.max(0, Math.min(100_000, Math.floor(options.offset!))) : 0;
   if (dated) parameters.push(offset);
-  const order = options.sort === 'updated' ? 'updated_at DESC, id'
-    : options.sort === 'date-asc' ? `CASE WHEN coalesce(${deadline}, '')='' THEN 2 WHEN julianday(${deadline}) < julianday('now') THEN 1 ELSE 0 END, ${deadline} ASC, id`
+  const order = options.order ? options.order.sql : options.sort === 'updated' ? 'updated_at DESC, id'
+    : options.sort === 'date-asc' ? `${passedOrder(deadline)}, ${deadline} ASC, id`
     : dated ? `CASE WHEN coalesce(${deadline}, '')='' THEN 1 ELSE 0 END, coalesce(${deadline}, '') DESC, id` : 'id';
   const projection = [
     'id', 'kind', `${title} AS title`, `${source} AS sourceId`,
@@ -127,5 +137,7 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
     parameters,
     countStatement: `SELECT count(*) AS total FROM records WHERE ${where}`,
     countParameters,
+    /** The WHERE clause alone (over unaliased `records`), for snapshots and matrix counts; parameters = countParameters. */
+    where,
   };
 }

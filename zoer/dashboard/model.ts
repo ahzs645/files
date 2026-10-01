@@ -1,4 +1,5 @@
 import { buyerSearchMatches, annotateBuyerRecord, resolveBuyer, BUYER_MAPPING_VERSION } from './market/buyers';
+import { closesWithin, deadlineState } from './procurement/deadline';
 import { queryBuyerProfiles } from './buyer-profiles';
 import { buildMarketView } from './market/model';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
@@ -71,11 +72,11 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
 export type Model = ReturnType<typeof buildModel>;
 export function queryModel(model: Model, name: string, args: any = {}): any {
   const { opportunities, runs, awards } = model;
-  // A saved "Open" status goes stale; a passed closing date wins.
-  const today = new Date().toISOString().slice(0, 10);
-  const notClosed = (row: { closingDate?: string }) => !row.closingDate || row.closingDate.slice(0, 10) >= today;
+  // A saved "Open" status goes stale; a passed closing date wins. Shared rules (procurement/deadline.ts): a
+  // same-day date-only deadline is not closed, and calendar days are Vancouver days, not UTC.
+  const notClosed = (row: { closingDate?: string }) => !row.closingDate || deadlineState(row.closingDate) !== 'closed';
   if (name === 'dashboard.summary') return { total: opportunities.length, open: opportunities.filter(row => /open/i.test(row.status) && notClosed(row)).length,
-    closingSoon: opportunities.filter(row => { const time = Date.parse(row.closingDate); return time >= Date.now() && time <= Date.now() + 7 * 86400000; }).length,
+    closingSoon: opportunities.filter(row => closesWithin(row.closingDate, 7)).length,
     organizations: new Set(opportunities.map(row => resolveBuyer(row.issuedBy).organization)).size, buyerMappingVersion: BUYER_MAPPING_VERSION,
     statusOptions: [...new Set(opportunities.map(row => row.status).filter(Boolean))].sort(), typeOptions: [...new Set(opportunities.map(row => row.type).filter(Boolean))].sort(),
     latestRun: runs[0] ?? null, latestSuccessfulRun: runs.find(run => run.status === 'succeeded') ?? null };

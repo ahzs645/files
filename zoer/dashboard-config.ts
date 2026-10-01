@@ -30,6 +30,7 @@ export function dashboardConfig(): InlineConfig {
       { find: 'convex/react', replacement: resolve(root, 'zoer/dashboard/backend.tsx') },
       { find: '@convex/_generated/api', replacement: resolve(root, 'zoer/dashboard/api.ts') },
       { find: '@bcbid/shared', replacement: resolve(root, 'packages/shared/src/index.ts') },
+      { find: '@bcbid/procurement-core', replacement: resolve(root, 'packages/procurement-core/src/index.ts') },
     ] },
   };
 }

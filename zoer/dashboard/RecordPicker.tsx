@@ -15,9 +15,14 @@ export function RecordPicker({ selection, setSelection, onDetails, actions }: {
   selection: Set<string>; setSelection: (next: Set<string>) => void; onDetails: (id: string) => void; actions?: ReactNode;
 }) {
   const [kind, setKind] = usePluginQuery('kind', 'opportunity'), [search, setSearch] = usePluginQuery('search'), [source, setSource] = usePluginQuery('source');
+  const [docs, setDocs] = usePluginQuery('docs');
   const [starred, setStarred] = useState(false), [page, setPage] = useState(0);
-  useEffect(() => { setPage(0); }, [search, kind, starred, source]);
-  const result = useQuery('catalog.rows', { kind, search, starredOnly: starred, ...(source ? { sources: [source] } : {}), limit: 25, cursor: String(page * 25) });
+  useEffect(() => { setPage(0); }, [search, kind, starred, source, docs]);
+  const scope = { kind, ...(source ? { sources: [source] } : {}) };
+  const result = useQuery('catalog.rows', { ...scope, search, starredOnly: starred, ...(docs ? { documents: docs } : {}), limit: 25, cursor: String(page * 25) });
+  // Counts follow the record type and source, not the search, so the options stay stable while typing.
+  const withFiles = useQuery('catalog.count', { ...scope, documents: 'downloaded' }), toFetch = useQuery('catalog.count', { ...scope, documents: 'pending' });
+  const tally = (count: any) => count ? ` · ${Number(count.total).toLocaleString()}` : '';
   // Shared with the Procurement search page, so both show the same per-source counts.
   const { model } = useWorkspace();
   const inventory = useCachedQuery({ queryKey: ['catalog', 'procurement-inventory'], enabled: !!model, queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60000 });
@@ -37,6 +42,11 @@ export function RecordPicker({ selection, setSelection, onDetails, actions }: {
         <option value="">All sources{inventory.data ? ` · ${total.toLocaleString()}` : ''}</option>
         {sources.map(id => <option key={id} value={id}>{sourceName(id)}{inventory.data ? ` · ${(counts.get(id) ?? 0).toLocaleString()}` : ''}</option>)}
       </Select></label>
+      <label className="research-label research-source"><span className="sr-only">Documents</span><Select aria-label="Documents" presentation="dropdown" searchable={false} value={docs} onChange={e => setDocs(e.target.value)}>
+        <option value="">Any documents</option>
+        <option value="downloaded">Documents downloaded{tally(withFiles)}</option>
+        <option value="pending">Not downloaded yet{tally(toFetch)}</option>
+      </Select></label>
       <label className="research-check"><input type="checkbox" checked={starred} onChange={e => setStarred(e.target.checked)} />Starred</label>
     </div>
     <label className="research-label"><span className="sr-only">Search</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title, buyer or contract number" /></label>
@@ -46,7 +56,7 @@ export function RecordPicker({ selection, setSelection, onDetails, actions }: {
       <span className="research-count">{selection.size}/{MAX_SELECTION} selected</span>
       {actions && <div className="research-toolbar-end">{actions}</div>}
     </div>
-    {result && !visible.length && <p className="research-note">No {kind === 'award' ? 'awards' : 'opportunities'} match{source ? ` in ${sourceName(source)}` : ''}{starred ? ' among starred records' : ''}{search ? ` for “${search}”` : ''}.</p>}
+    {result && !visible.length && <p className="research-note">No {kind === 'award' ? 'awards' : 'opportunities'} match{source ? ` in ${sourceName(source)}` : ''}{docs === 'downloaded' ? ' with downloaded documents' : docs === 'pending' ? ' with documents still to download' : ''}{starred ? ' among starred records' : ''}{search ? ` for “${search}”` : ''}.</p>}
     <div className="research-records">{visible.map(row => <article key={row.id}>
       <label><input type="checkbox" checked={selection.has(row.id)} disabled={!selection.has(row.id) && selection.size >= MAX_SELECTION} onChange={e => toggle(row.id, e.target.checked)} />
         <span><strong>{row.title}</strong><BuyerName record={row.data} /><small><span className="research-source-tag">{sourceName(sourceId(row.data))}</span>{row.data.opportunityId || row.data.contractNumber}</small></span></label>

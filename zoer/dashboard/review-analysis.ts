@@ -3,7 +3,9 @@
  * review coverage by source, and reviewed opportunities that close soon.
  */
 import { fieldLabel } from './procurement/ai';
-import { DEFAULT_SCALE, checkFields, fieldValue, parsePrompt, type ReviewField } from './review-fields';
+import { passedOrder } from './procurement/catalog';
+import { closesWithin, deadlineSortTime, deadlineState, zoneDate, type DeadlineState } from './procurement/deadline';
+import { DEFAULT_SCALE, MONEY_ROLE_LABELS, checkFields, fieldValue, moneyRole, parsePrompt, type ReviewField } from './review-fields';
 
 type Query = (method: 'catalog.query', input: { statement: string; parameters: (string | number)[] }) => Promise<{ rows: any[] }>;
 const PAGE = 200, MAX_ROWS = 4000;
@@ -22,15 +24,21 @@ export type AnalysisRow = {
 };
 const parse = (text: unknown, fallback: any) => { if (typeof text !== 'string') return fallback; try { return JSON.parse(text) ?? fallback; } catch { return fallback; } };
 
-/** Latest successful result per record and prompt, optionally for one prompt and source. */
-export async function readAnalysisRows(query: Query, scope: { promptId?: string; source?: string } = {}) {
+/**
+ * Latest successful result per record and prompt, optionally for one prompt and source. With `promptVersion`,
+ * only results from that version count (latest per record within it): field definitions can change between
+ * versions, so results from different versions are never aggregated together.
+ */
+export async function readAnalysisRows(query: Query, scope: { promptId?: string; promptVersion?: number; source?: string } = {}) {
   const filters = [CATEGORIZING], parameters: (string | number)[] = [];
   if (scope.promptId) { filters.push('r.prompt_id=?'); parameters.push(scope.promptId); }
+  const sameVersion = scope.promptVersion !== undefined ? ' AND n.prompt_version=r.prompt_version' : '';
+  if (scope.promptVersion !== undefined) { filters.push('r.prompt_version=?'); parameters.push(scope.promptVersion); }
   if (scope.source) { filters.push(`${SOURCE}=?`); parameters.push(scope.source); }
   const statement = `SELECT r.record_id,r.prompt_id,r.prompt_version,r.created_at,json_extract(r.result,'$.fields') fields,json_extract(r.result,'$.labels') labels,
     rec.title,rec.kind,${SOURCE} source,${DEADLINE} deadline,${BUYER} buyer,${data('status')} status
     FROM reviews r JOIN records rec ON rec.id=r.record_id
-    WHERE ${filters.join(' AND ')} AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND n.status='succeeded' AND n.created_at>r.created_at)
+    WHERE ${filters.join(' AND ')} AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND n.status='succeeded' AND n.created_at>r.created_at${sameVersion})
     ORDER BY r.created_at DESC,r.id LIMIT ? OFFSET ?`;
   const rows: AnalysisRow[] = [];
   for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
@@ -44,6 +52,30 @@ export async function readAnalysisRows(query: Query, scope: { promptId?: string;
   return { rows, truncated: true };
 }
 
+export type PromptVersionCount = { version: number; records: number };
+/**
+ * Records with a successful result per version of one prompt, newest version first, plus how many records have
+ * results only from versions other than `current` (excluded from the current-version analysis).
+ */
+export async function readPromptVersions(query: Query, promptId: string, current: number, source?: string) {
+  const filters = [CATEGORIZING, 'r.prompt_id=?'], parameters: (string | number)[] = [promptId];
+  if (source) { filters.push(`${SOURCE}=?`); parameters.push(source); }
+  const from = `FROM reviews r JOIN records rec ON rec.id=r.record_id WHERE ${filters.join(' AND ')}`;
+  const [versions, older] = await Promise.all([
+    query('catalog.query', { parameters, statement: `SELECT r.prompt_version version,count(DISTINCT r.record_id) records ${from} GROUP BY r.prompt_version ORDER BY r.prompt_version DESC LIMIT 200` }),
+    query('catalog.query', { parameters: [...parameters, current, current], statement: `SELECT count(DISTINCT r.record_id) records ${from} AND r.prompt_version<>?
+      AND NOT EXISTS (SELECT 1 FROM reviews c WHERE c.record_id=r.record_id AND c.prompt_id=r.prompt_id AND c.status='succeeded' AND c.prompt_version=?)` }),
+  ]);
+  return { versions: versions.rows.map(row => ({ version: Number(row.version), records: Number(row.records) })) as PromptVersionCount[], olderOnly: Number(older.rows[0]?.records ?? 0) };
+}
+
+/** The saved instructions of one prompt version, read from a result it produced (older versions are not stored elsewhere). */
+export async function readVersionInstructions(query: Query, promptId: string, version: number): Promise<string | undefined> {
+  const { rows } = await query('catalog.query', { parameters: [promptId, version], statement: `SELECT json_extract(r.result,'$.prompt.instructions') instructions FROM reviews r
+    WHERE r.prompt_id=? AND r.prompt_version=? AND r.status='succeeded' ORDER BY r.created_at DESC LIMIT 1` });
+  return typeof rows[0]?.instructions === 'string' ? rows[0].instructions : undefined;
+}
+
 /** Open opportunities per source, and how many have a categorizing review. */
 export async function readCoverage(query: Query) {
   const { rows } = await query('catalog.query', { parameters: [], statement: `SELECT ${SOURCE} source,count(*) open,
@@ -53,9 +85,13 @@ export async function readCoverage(query: Query) {
 }
 
 export type Bucket = { label: string; count: number; recordIds: string[] };
+export type Stats = { count: number; min: string; median: string; max: string; mean: string };
+/** One currency and basis of a money field. Amounts are never summed or averaged across partitions. */
+export type MoneyPartition = { currency: string; basis: string; stats: Stats; buckets: Bucket[] };
 export type FieldSummary =
   | { key: string; label: string; kind: 'categories'; buckets: Bucket[]; notStated: number }
-  | { key: string; label: string; kind: 'numbers'; buckets: Bucket[]; notStated: number; stats: { count: number; min: string; median: string; max: string; mean: string } }
+  | { key: string; label: string; kind: 'numbers'; buckets: Bucket[]; notStated: number; stats: Stats }
+  | { key: string; label: string; kind: 'money'; notStated: number; partitions: MoneyPartition[] }
   | { key: string; label: string; kind: 'items'; buckets: Bucket[]; notStated: number; none: number }
   | { key: string; label: string; kind: 'text'; stated: number; notStated: number };
 
@@ -79,6 +115,12 @@ function ranges(values: Array<[number, string]>, format: (n: number) => string, 
   return buckets;
 }
 
+function stats(values: number[], format: (n: number) => string): Stats {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted.length ? { count: sorted.length, min: format(sorted[0]), median: format(median(sorted)), max: format(sorted[sorted.length - 1]), mean: format(sorted.reduce((s, v) => s + v, 0) / sorted.length) }
+    : { count: 0, min: '—', median: '—', max: '—', mean: '—' };
+}
+
 /** Summarize one typed field over the rows. Values that don't match the type are left out of charts. */
 export function summarizeField(field: ReviewField, rows: AnalysisRow[]): FieldSummary {
   const present = rows.map(row => [fieldValue(row.fields, field.key), row.recordId] as const);
@@ -98,17 +140,26 @@ export function summarizeField(field: ReviewField, rows: AnalysisRow[]): FieldSu
       const months = typed.map(([v, id]) => [String(v).slice(0, 7), id] as [string, string]);
       return { ...base, kind: 'categories', notStated, buckets: bucketize(months).sort((a, b) => a.label.localeCompare(b.label)) };
     }
-    case 'number': case 'percent': case 'scale': case 'money': {
-      const amount = (v: unknown) => field.type === 'money' ? (v as any).amount as number : v as number;
-      const values = typed.map(([v, id]) => [amount(v), id] as [number, string]);
-      // Compact amounts (CA$250K) keep stats and range labels readable in narrow cards.
-      const currency = (typed[0]?.[0] as any)?.currency ?? 'CAD';
-      const format = (n: number) => field.type === 'money' ? new Intl.NumberFormat(undefined, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(n)
-        : field.type === 'percent' ? `${Math.round(n * 10) / 10}%` : field.type === 'scale' ? String(Math.round(n * 10) / 10) : (Math.round(n * 100) / 100).toLocaleString();
-      const sorted = values.map(([v]) => v).sort((a, b) => a - b);
-      const stats = sorted.length ? { count: sorted.length, min: format(sorted[0]), median: format(median(sorted)), max: format(sorted[sorted.length - 1]), mean: format(sorted.reduce((s, v) => s + v, 0) / sorted.length) }
-        : { count: 0, min: '—', median: '—', max: '—', mean: '—' };
-      return { ...base, kind: 'numbers', notStated, stats, buckets: values.length ? ranges(values, format, field.type === 'scale' ? field.scale ?? DEFAULT_SCALE : undefined) : [] };
+    case 'money': {
+      // Partition by currency and basis (value.basis when the model gave one, else the field's role); an unknown
+      // basis is its own partition. Stats and ranges are computed within a partition only.
+      const role = moneyRole(field), groups = new Map<string, { currency: string; basis: string; values: Array<[number, string]> }>();
+      for (const [v, id] of typed) {
+        const m = v as { amount: number; currency: string; basis?: unknown }, stated = typeof m.basis === 'string' && m.basis.trim() ? m.basis.trim().replace(/_/g, ' ').toLowerCase() : '';
+        const basis = stated || (role === 'other' ? 'basis not stated' : MONEY_ROLE_LABELS[role].toLowerCase()), key = `${m.currency}|${basis}`;
+        const g = groups.get(key) ?? { currency: m.currency, basis, values: [] }; g.values.push([m.amount, id]); groups.set(key, g);
+      }
+      const partitions = [...groups.values()].sort((a, b) => b.values.length - a.values.length || a.currency.localeCompare(b.currency) || a.basis.localeCompare(b.basis)).map(g => {
+        // Compact amounts (CA$250K) keep stats and range labels readable in narrow cards.
+        const format = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: g.currency, notation: 'compact', maximumFractionDigits: 1 }).format(n);
+        return { currency: g.currency, basis: g.basis, stats: stats(g.values.map(([v]) => v), format), buckets: ranges(g.values, format) };
+      });
+      return { ...base, kind: 'money', notStated, partitions };
+    }
+    case 'number': case 'percent': case 'scale': {
+      const values = typed.map(([v, id]) => [v as number, id] as [number, string]);
+      const format = (n: number) => field.type === 'percent' ? `${Math.round(n * 10) / 10}%` : field.type === 'scale' ? String(Math.round(n * 10) / 10) : (Math.round(n * 100) / 100).toLocaleString();
+      return { ...base, kind: 'numbers', notStated, stats: stats(values.map(([v]) => v), format), buckets: values.length ? ranges(values, format, field.type === 'scale' ? field.scale ?? DEFAULT_SCALE : undefined) : [] };
     }
     default: return { ...base, kind: 'text', stated: stated.length, notStated };
   }
@@ -164,21 +215,18 @@ export function labelCounts(rows: AnalysisRow[]) {
   return bucketize(entries).map(bucket => ({ ...bucket, label: display(bucket.label) }));
 }
 
-/** Parse a source deadline; date-only values count until the end of that day. */
-export function deadlineTime(raw: string | null): number | null {
-  if (!raw) return null;
-  const value = raw.trim();
-  const time = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T23:59:59`) : Date.parse(value);
-  return Number.isFinite(time) ? time : null;
-}
+/** A sortable deadline time (see procurement/deadline.ts); date-only values sort at the end of their Vancouver day. */
+export const deadlineTime = (raw: string | null): number | null => deadlineSortTime(raw);
 
-/** Reviewed opportunities whose deadline falls within `days`, soonest first. */
-export function closingSoon(rows: AnalysisRow[], now = Date.now(), days = 14) {
+/**
+ * Reviewed opportunities not yet closed whose deadline falls within `days`, soonest first. A same-day date-only
+ * deadline is included with state `closing_today_time_unverified`, never dropped as closed.
+ */
+export function closingSoon(rows: AnalysisRow[], now = Date.now(), days = 14): Array<AnalysisRow & { time: number; state: DeadlineState }> {
   const seen = new Set<string>();
-  return rows.filter(row => row.kind === 'opportunity')
-    .map(row => ({ row, time: deadlineTime(row.deadline) }))
-    .filter(({ row, time }) => time !== null && time >= now && time <= now + days * 86_400_000 && !seen.has(row.recordId) && seen.add(row.recordId))
-    .sort((a, b) => a.time! - b.time!).map(({ row, time }) => ({ ...row, time: time! }));
+  return rows.filter(row => row.kind === 'opportunity' && closesWithin(row.deadline, days, now) && !seen.has(row.recordId) && seen.add(row.recordId))
+    .map(row => ({ ...row, time: deadlineSortTime(row.deadline)!, state: deadlineState(row.deadline, now) }))
+    .sort((a, b) => a.time - b.time);
 }
 
 /** A headline score to show beside each notice: the prompt's first scale, percent or number field. */
@@ -187,10 +235,10 @@ export function scoreField(promptText: string | undefined): ReviewField | undefi
 }
 
 /** Open opportunities from one source with no categorizing review yet, upcoming deadlines first. */
-export async function readUnreviewed(query: Query, source: string, limit = 50) {
-  const { rows } = await query('catalog.query', { parameters: [source, limit], statement: `SELECT rec.id FROM records rec
+export async function readUnreviewed(query: Query, source: string, limit = 50, now = Date.now()) {
+  const { rows } = await query('catalog.query', { parameters: [source, zoneDate(now), limit], statement: `SELECT rec.id FROM records rec
     WHERE rec.kind='opportunity' AND lower(coalesce(${data('status')},'open')) IN ('open','active','') AND ${SOURCE}=?
     AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.record_id=rec.id AND ${CATEGORIZING})
-    ORDER BY CASE WHEN coalesce(${DEADLINE},'')='' THEN 2 WHEN julianday(${DEADLINE})<julianday('now') THEN 1 ELSE 0 END,${DEADLINE},rec.id LIMIT ?` });
+    ORDER BY ${passedOrder(DEADLINE)},${DEADLINE},rec.id LIMIT ?` });
   return rows.map(row => String(row.id));
 }

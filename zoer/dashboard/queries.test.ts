@@ -3,6 +3,7 @@ import { test, expect, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 const db = new Database(':memory:');
 db.exec('CREATE TABLE records(id TEXT PRIMARY KEY,kind TEXT,data TEXT)');
+db.exec('CREATE TABLE documents(id TEXT PRIMARY KEY,record_id TEXT,status TEXT)');
 let revision = 1;
 let queryHook: ((input: any) => void | Promise<void>) | undefined;
 const calls: any[] = [];
@@ -220,4 +221,17 @@ test('escaped JSON-path characters in newly encountered buyers remain filterable
   const result=await queryCatalog('catalog.rows',{kind:'award',organization:resolveBuyer(source).organization,sort:{id:'buyer',desc:false}},model,revision);
   expect(result.total).toBe(1);expect(result.items[0].buyerOriginal).toBe(source);
  }
+});
+
+test('filters records by downloaded documents or attachment links still to download', async () => {
+  const add=(id:string,attachments:unknown[])=>db.query('INSERT INTO records VALUES(?,?,?)').run(id,'opportunity',JSON.stringify({sourceId:'docs-test',sourceKey:id,description:id,attachments}));
+  add('opportunity:docs-saved',[{url:'https://example.test/a.pdf'}]); add('opportunity:docs-failed',[{url:'https://example.test/b.pdf'}]); add('opportunity:docs-none',[]);
+  db.query('INSERT INTO documents VALUES(?,?,?)').run('d1','opportunity:docs-saved','downloaded');
+  db.query('INSERT INTO documents VALUES(?,?,?)').run('d2','opportunity:docs-failed','failed');
+  const ids=async(documents:string)=>(await queryCatalog('catalog.rows',{kind:'opportunity',sources:['docs-test'],documents},model,1)).items.map((row:any)=>row.catalogId).sort();
+  expect(await ids('downloaded')).toEqual(['opportunity:docs-saved']);
+  expect(await ids('pending')).toEqual(['opportunity:docs-failed']);
+  expect(await ids('')).toEqual(['opportunity:docs-failed','opportunity:docs-none','opportunity:docs-saved']);
+  expect((await queryCatalog('catalog.count',{kind:'opportunity',sources:['docs-test'],documents:'downloaded'},model,1)).total).toBe(1);
+  await expect(queryCatalog('catalog.rows',{kind:'opportunity',documents:'everything'},model,1)).rejects.toThrow('Unknown document filter');
 });

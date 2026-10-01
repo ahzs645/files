@@ -7,6 +7,9 @@ import { NoticeView } from './NoticeView';
 import { readProcurementState } from './state-client';
 import { useRecordLabels } from './labels';
 import { sql } from './display';
+import { PursuitTasks, useOpenTasks, type TaskRow } from './PursuitTasks';
+import { REVIEW_KEY, useReviewWorkspace } from '../review-workspace/actions';
+import { readLatestDecisions } from '../review-workspace/queries';
 
 const field = (key: string) => `json_extract(data, '$.${key}')`;
 
@@ -24,8 +27,16 @@ export function Pursuits() {
     return new Map<string, PursuitDetails>(rows.map(row => [row.id, { kind: row.kind, deadline: row.deadline, buyer: row.buyer }]));
   } });
   const labels = useRecordLabels(ids, !!model);
+  // Human decisions and tasks come from the review workspace; without it the board works exactly as before.
+  const review = !!useReviewWorkspace().data?.available;
+  const decisions = useQuery({ queryKey: [...REVIEW_KEY, 'pursuit-decisions', ids], enabled: review && ids.length > 0, queryFn: () => readLatestDecisions(ids) });
+  const openTasks = useOpenTasks(review);
+  const tasksByRecord = new Map<string, TaskRow[]>();
+  for (const task of openTasks.data ?? []) tasksByRecord.set(task.recordId, [...(tasksByRecord.get(task.recordId) ?? []), task]);
+  const pursuits = (state.data?.pursuits ?? []).map(item => ({ recordId: item.recordId, title: item.title, stage: item.stage, deadline: details.data?.get(item.recordId)?.kind === 'opportunity' ? details.data.get(item.recordId)!.deadline : null }));
   return <section className="procurement-workspace" aria-label="Pursuits">
-    <PursuitBoard records={candidates.data ?? []} details={details.data} labels={labels} onOpenRecord={id => patchPluginQuery({ notice: id }, 'push')} />
+    <PursuitBoard records={candidates.data ?? []} details={details.data} labels={labels} onOpenRecord={id => patchPluginQuery({ notice: id }, 'push')} decisions={review ? decisions.data ?? new Map() : undefined} tasks={review ? tasksByRecord : undefined} />
+    <PursuitTasks pursuits={pursuits} enabled={review} />
     {noticeId && <NoticeView id={noticeId} layout="dialog" onClose={() => patchPluginQuery({ notice: '' })} />}
   </section>;
 }

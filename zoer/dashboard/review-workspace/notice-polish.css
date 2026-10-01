@@ -1,0 +1,88 @@
+/* Notice detail polish: overrides/extends review.css to cut noise in the Decision/Requirements/Changes/Activity
+   tabs without changing data or behaviour. Host theme tokens only (INTERFACE-SPEC §4). Loaded once from
+   DecisionHeader.tsx; every notice-tab component shares one bundle so the rules apply everywhere. */
+
+/* Purposeful colour (host palette on review.css :root — --rw-info/teal/violet/ok/warn/bad — read with a literal
+   fallback so this file works even before/without that palette landing). Tint pattern per the shared spec:
+   background 12%, border 40%, text/icon full strength. Colour never stands in for the text label. */
+.rw-chip[data-tone=ok]{border-color:color-mix(in srgb,var(--rw-ok,var(--status-success)) 40%,transparent);background:color-mix(in srgb,var(--rw-ok,var(--status-success)) 12%,transparent)}
+.rw-chip[data-tone=ok] b{color:var(--rw-ok,var(--status-success))}
+.rw-chip[data-tone=warn]{border-color:color-mix(in srgb,var(--rw-warn,var(--status-warning)) 40%,transparent);background:color-mix(in srgb,var(--rw-warn,var(--status-warning)) 12%,transparent)}
+.rw-chip[data-tone=warn] b{color:var(--rw-warn,var(--status-warning))}
+.rw-chip[data-tone=bad]{border-color:color-mix(in srgb,var(--rw-bad,var(--status-error)) 40%,transparent);background:color-mix(in srgb,var(--rw-bad,var(--status-error)) 12%,transparent)}
+.rw-chip[data-tone=bad] b{color:var(--rw-bad,var(--status-error))}
+.rw-chip[data-tone=violet]{border-color:color-mix(in srgb,var(--rw-violet,#8b5cf6) 40%,transparent);background:color-mix(in srgb,var(--rw-violet,#8b5cf6) 12%,transparent)}
+.rw-chip[data-tone=violet] b{color:var(--rw-violet,#8b5cf6)}
+.rw-chip[data-tone=info]{border-color:color-mix(in srgb,var(--rw-info,#3b82f6) 40%,transparent);background:color-mix(in srgb,var(--rw-info,#3b82f6) 12%,transparent)}
+.rw-chip[data-tone=info] b{color:var(--rw-info,#3b82f6)}
+.rw-chip[data-tone=teal]{border-color:color-mix(in srgb,var(--rw-teal,#14b8a6) 40%,transparent);background:color-mix(in srgb,var(--rw-teal,#14b8a6) 12%,transparent)}
+.rw-chip[data-tone=teal] b{color:var(--rw-teal,#14b8a6)}
+
+/* AI-suggestion card: a left accent bar in the suggested action's tone, so it reads at a glance without
+   requiring the badge text to be re-read. The bar colour always matches the badge/chip tone shown inside it. */
+.rw-nd-suggest{border-left-width:3px}
+.rw-nd-suggest[data-tone=ok]{border-left-color:var(--rw-ok,var(--status-success))}
+.rw-nd-suggest[data-tone=warn]{border-left-color:var(--rw-warn,var(--status-warning))}
+.rw-nd-suggest[data-tone=bad]{border-left-color:var(--rw-bad,var(--status-error))}
+.rw-nd-suggest[data-tone=violet]{border-left-color:var(--rw-violet,#8b5cf6)}
+.rw-nd-suggest[data-tone=neutral]{border-left-color:var(--border-default)}
+
+/* Decision options: a subtle tone per choice so "Pursue"/"No bid"/"Monitor"/"Defer" are distinguishable before
+   reading the label, without ever replacing it. */
+.rw-nd-decision-option{padding:.25rem .625rem .25rem .5rem;border-radius:.5rem;border:1px solid var(--border-default)}
+.rw-nd-decision-option[data-tone=ok]{border-color:color-mix(in srgb,var(--rw-ok,var(--status-success)) 35%,transparent);background:color-mix(in srgb,var(--rw-ok,var(--status-success)) 8%,transparent)}
+.rw-nd-decision-option[data-tone=bad]{border-color:color-mix(in srgb,var(--rw-bad,var(--status-error)) 35%,transparent);background:color-mix(in srgb,var(--rw-bad,var(--status-error)) 8%,transparent)}
+.rw-nd-decision-option[data-tone=info]{border-color:color-mix(in srgb,var(--rw-info,#3b82f6) 35%,transparent);background:color-mix(in srgb,var(--rw-info,#3b82f6) 8%,transparent)}
+
+/* Stale/conflict banners: one compact row (icon, text, action) that wraps cleanly on narrow widths. */
+.rw-nd-alert-row{flex-wrap:wrap}
+.rw-nd-alert-icon{flex:none;width:1rem;height:1rem;align-self:center}
+.rw-nd-alert-row[data-tone=stale] .rw-nd-alert-icon{color:var(--rw-violet,#7c3aed)}
+.rw-nd-alert-row[data-tone=warning] .rw-nd-alert-icon{color:var(--rw-warn,var(--status-warning))}
+.rw-nd-alert-text{display:flex;flex-wrap:wrap;align-items:baseline;gap:.25rem .5rem}
+.rw-nd-alert-action{margin-left:auto}
+@media(max-width:480px){.rw-nd-alert-action{margin-left:0}}
+
+/* Suggestion card: reasons/unknowns are capped and the rest sit behind a toggle instead of a long list. */
+.rw-nd-toggle{font-size:12.5px}
+.rw-nd-unknown-group{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;font-size:12.5px;line-height:1.5;color:var(--text-secondary);margin:0}
+
+/* Evidence scope: one line plus a disclosure for omitted files, instead of a multi-row definition list. */
+.rw-nd-scope-line{font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
+.rw-nd-scope-line strong{color:var(--text-primary);font-weight:650;margin-right:.25rem}
+.rw-nd-disclosure{font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
+.rw-nd-disclosure>summary{cursor:pointer;color:var(--accent);width:fit-content}
+.rw-nd-disclosure>summary:hover{text-decoration:underline}
+.rw-nd-disclosure[open]>summary{margin-bottom:.375rem}
+
+/* "Your decision" + "Pursuit stage" sit next to the decision form's own heading, not in a separate scope box. */
+.rw-nd-decision-status{display:flex;flex-wrap:wrap;gap:.25rem 1rem;align-items:center;font-size:12px;color:var(--text-secondary);white-space:nowrap}
+.rw-nd-decision-status .rw-chip{margin-left:.375rem}
+@media(max-width:480px){.rw-nd-decision-status{flex-direction:column;align-items:flex-start;gap:.125rem;white-space:normal}}
+
+/* AI stages: stage name + status chip + time/model/usage on one row; the full note only when it isn't "current". */
+.rw-nd-stage-row{display:flex;flex-wrap:wrap;align-items:center;gap:.375rem .625rem}
+/* Model selector, "run again" and the run buttons in one tidy, wrapping row. */
+.rw-nd-run-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem}
+.rw-nd-run-row .rw-check{flex:none}
+
+/* Reviewer judgements: a compact 4-row table instead of a stacked list. `.rw-table` forces min-width:36rem,
+   wider than the notice side panel, which pushed the action column out of view; size it to the panel instead. */
+table.rw-nd-judge-table{width:100%;min-width:0;table-layout:fixed}
+.rw-nd-judge-table th,.rw-nd-judge-table td{padding:.375rem .5rem;vertical-align:middle}
+.rw-nd-judge-table tbody th{width:30%;white-space:normal}
+.rw-nd-judge-table th:nth-child(2),.rw-nd-judge-table td:nth-child(2){width:22%}
+.rw-nd-judge-table th:nth-child(4),.rw-nd-judge-table td:nth-child(4){width:4.5rem;text-align:right}
+.rw-nd-judge-note{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Requirements filters: the host Select is `width:100%` by default, which stacks four dropdowns one per row
+   inside a flex-wrap group. Sizing them to content lets them sit in one wrapping row instead. */
+.rw-nd-filters .ui-select-trigger{width:auto!important;flex:0 1 auto}
+
+/* Requirement rows: tighter vertical rhythm; actions align to the right edge once there is room for it. */
+.rw-nd-reqs>li{padding:.5rem 0;gap:.3rem}
+@media(min-width:900px){.rw-nd-reqs>li>.rw-actions{justify-content:flex-end}}
+
+/* Changes/Activity: the same tighter rhythm as the rest of the notice detail. */
+.rw-nd-changes>li{padding:.4rem .5625rem}
+.rw-nd-timeline>li{padding-bottom:.375rem}

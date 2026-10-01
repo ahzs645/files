@@ -166,3 +166,33 @@
 .pc-board-card-actions label{flex:1;min-width:0}
 .pc-board-card-actions .ui-select-trigger{height:30px;font-size:12px}
 .procurement-board-notes{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+
+/* Opportunities list: the review line and the profile/sort group in the result bar. */
+.pc-resultbar-end{display:inline-flex;align-items:center;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;min-width:0}
+.rw-o-line{margin-top:.375rem;display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem;font-size:12px;color:var(--text-secondary)}
+.rw-o-line .rw-chip{font-size:11.5px}
+.rw-o-inline b{font-weight:600;color:var(--text-primary)}
+.rw-o-warn{color:var(--status-warning)}
+.pc-empty-filters{font-size:13px;color:var(--text-secondary);list-style:disc;margin-left:1.1rem}
+@media(max-width:640px){.pc-resultbar-end{width:100%;justify-content:space-between;flex-wrap:nowrap}.pc-resultbar-end .rw-profile-picker>span{display:none}.pc-resultbar-end .rw-profile-picker .ui-select-trigger{min-width:0;max-width:13rem}}
+
+/* Colour: sources get their own hue, source status reads open/closed at a glance, pursuit stages are colour-coded. */
+.pc-tag[data-source]{border-color:color-mix(in srgb,var(--pc-src) 45%,transparent);background:color-mix(in srgb,var(--pc-src) 12%,transparent);color:color-mix(in srgb,var(--pc-src) 72%,var(--text-primary))}
+.pc-tag[data-source=bc-bid]{--pc-src:#14b8a6}
+.pc-tag[data-source=canadabuys]{--pc-src:#f43f5e}
+.pc-tag[data-source]:not([data-source=bc-bid]):not([data-source=canadabuys]){--pc-src:#3b82f6}
+.pc-row-status[data-status=open],.pc-row-status[data-status=active]{color:var(--status-success);font-weight:600}
+.pc-row-status[data-status=closed],.pc-row-status[data-status=expired],.pc-row-status[data-status=cancelled]{color:var(--text-muted)}
+.pc-row-status[data-status=awarded]{color:color-mix(in srgb,#8b5cf6 75%,var(--text-primary))}
+.procurement-board-column[data-stage] h3{color:color-mix(in srgb,var(--pc-stage) 80%,var(--text-primary))}
+.procurement-board-column[data-stage] h3::before{content:"";display:inline-block;width:.5rem;height:.5rem;border-radius:999px;margin-right:.4rem;vertical-align:.08em;background:var(--pc-stage)}
+.procurement-board-column[data-stage=watching]{--pc-stage:#64748b}
+.procurement-board-column[data-stage=reviewing]{--pc-stage:#3b82f6}
+.procurement-board-column[data-stage=preparing]{--pc-stage:var(--status-warning)}
+.procurement-board-column[data-stage=submitted]{--pc-stage:#8b5cf6}
+.procurement-board-column[data-stage=awarded]{--pc-stage:var(--status-success)}
+.procurement-board-column[data-stage=closed]{--pc-stage:#94a3b8}
+/* The legacy dashboard stylesheet forces color-scheme:dark on the root; inherit the host's light/dark scheme
+   instead so native checkboxes, selects and scrollbars match the host theme. */
+:scope:scope{color-scheme:inherit}
+.procurement-board-card .rw-chip{white-space:normal;max-width:100%;border-radius:.375rem;line-height:1.3;padding:.125rem .5rem}

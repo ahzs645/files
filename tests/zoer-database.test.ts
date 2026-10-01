@@ -19,6 +19,14 @@ function database(legacy:any[]=[]){
 }
 const opportunity={sourceKey:'123',processId:'123',description:'Original',status:'Open',detailFields:[{label:'Scope',value:'Keep'}],attachments:[{url:'https://bcbid.gov.bc.ca/a.pdf'}],addenda:[]};
 describe('unified database transport',()=>{
+  it('refreshes status from detail evidence while preserving the saved identity and star',async()=>{
+    const db=database();await migrateCatalog(db.call);
+    await saveCatalogDocument(db.call,{kind:'listing',records:[{...opportunity,starred:true}]},'listing');
+    await saveCatalogDocument(db.call,{kind:'detail',record:{processId:'123',descriptionText:'Full scope',detailFields:[{label:'Status',value:'Closed'}],sourceCapturedAt:'2026-09-28T00:00:00Z'}},'detail');
+    expect(db.records.get('opportunity:123').data).toMatchObject({status:'Closed',sourceKey:'123',starred:true,descriptionText:'Full scope',sourceCapturedAt:'2026-09-28T00:00:00Z'});
+    await saveCatalogDocument(db.call,{kind:'detail',record:{processId:'123',detailFields:[{label:'Scope',value:'Updated'}]}},'no-status');
+    expect(db.records.get('opportunity:123').data.status).toBe('Closed');
+  });
   it('migrates records, stars, history and checkpoints, then supports direct writes without artifacts',async()=>{
     const item=(document:any,date:string)=>({record:{id:date,runId:'old-run',createdAt:date},document:{version:1,...document}});
     const db=database([item({kind:'listing',records:[opportunity]},'2026-01-01'),item({kind:'star',entity:'opportunity',key:'123',starred:true},'2026-01-02')]);

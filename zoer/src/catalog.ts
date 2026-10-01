@@ -74,7 +74,8 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
   } else if (doc.kind === 'detail') {
     const found = (await call('catalog.read', { match: { kind: 'opportunity', field: 'processId', value: doc.record.processId }, limit: 2 })).records;
     if (found.length !== 1) throw new Error('Detail does not match exactly one saved opportunity.');
-    const row = { ...found[0].data, ...doc.record, starred: found[0].data.starred, lastRunId: runId };
+    const status = doc.record.detailFields?.find((field: any) => /^status$/i.test(field.label.trim()))?.value?.trim();
+    const row = { ...found[0].data, ...doc.record, ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId };
     records = [catalogRow('opportunity', row)];
     const state = await call('catalog.workspace', { keys: ['checkpoint:full'] });
     const checkpoint = state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;

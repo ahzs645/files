@@ -5,7 +5,7 @@ import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
 import { AiResult } from './procurement/AiResult';
 import { defaultReviewPrompt } from './review-prompt';
-import { DEFAULT_SCALE, FIELD_TYPES, FIELD_TYPE_LABELS, MAX_FIELDS, MAX_PROMPT_LENGTH, TYPED_TEMPLATE, checkFields, composePrompt, fieldKey, fieldProblems, parsePrompt, suggestFields, type FieldType, type ReviewField } from './review-fields';
+import { DEFAULT_SCALE, FIELD_TYPES, FIELD_TYPE_LABELS, MAX_FIELDS, MONEY_ROLES, MONEY_ROLE_LABELS, moneyRole, type MoneyRole, MAX_PROMPT_LENGTH, TYPED_TEMPLATE, checkFields, composePrompt, fieldKey, fieldProblems, parsePrompt, suggestFields, type FieldType, type ReviewField } from './review-fields';
 import { readRunReview } from './review-results';
 
 /** How the page would start a review with its current model selection; null until one is chosen. */
@@ -44,6 +44,10 @@ function FieldEditor({ field, index, count, taken, onChange, onMove, onRemove }:
       <label className="research-label">Highest<input type="number" step={1} value={shown(field.scale?.max ?? DEFAULT_SCALE.max)} onChange={e => onChange({ ...field, scale: { ...(field.scale ?? DEFAULT_SCALE), max: e.target.valueAsNumber } })} /></label>
       <label className="research-label">Highest means<input value={field.scale?.highLabel ?? ''} maxLength={60} placeholder="e.g. strong fit" onChange={e => onChange({ ...field, scale: { ...(field.scale ?? DEFAULT_SCALE), highLabel: e.target.value } })} /></label>
     </div>}
+    {field.type === 'money' && <label className="research-label">What the amount means<Select aria-label={`${name} amount type`} presentation="dropdown" searchable={false} value={field.role ?? ''} onChange={e => { const { role: _, ...rest } = field; onChange(e.target.value ? { ...rest, role: e.target.value as MoneyRole } : rest); }}>
+      <option value="">From the name ({MONEY_ROLE_LABELS[moneyRole({ ...field, role: undefined })].toLowerCase()})</option>
+      {MONEY_ROLES.map(role => <option key={role} value={role}>{MONEY_ROLE_LABELS[role]}</option>)}
+    </Select></label>}
     {field.type === 'choice' && <label className="research-label">Options, one per line<textarea rows={Math.min(6, Math.max(2, (field.options?.length ?? 0) + 1))} value={(field.options ?? []).join('\n')} onChange={e => onChange({ ...field, options: e.target.value.split('\n') })} /></label>}
   </fieldset>;
 }

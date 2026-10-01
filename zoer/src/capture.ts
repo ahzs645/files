@@ -26,7 +26,7 @@ export function parseCapture(page: PageCapture, kind: 'listing' | 'detail') {
     };
   }
   if (!/\/(?:rfp|bpm)\/process_manage_extranet\/\d+(?:\/|$)/.test(url.pathname)) throw new Error('Open a BC Bid public opportunity detail page before capturing details.');
-  const record = parseDetailPage(page.html, BASE_URL, page.url);
+  const record = { ...parseDetailPage(page.html, BASE_URL, page.url), sourceCapturedAt: page.capturedAt };
   if (!record.processId || (!record.detailFields.length && !record.descriptionText)) throw new Error('Opportunity details are not loaded yet.');
   const fields = [
     ...(record.descriptionText ? [{ label: 'Description', value: record.descriptionText }] : []),

@@ -221,3 +221,16 @@ On an updated Zoer host, open Procurement → Settings → Backup and restore to
 Install Procurement on the destination Zoer host and create its project database through Databases before restoring. Upload the archive, review its inventory, then restore into the empty workspace. An occupied catalog is refused. Restore verifies file checksums and record counts, keeps schedules paused, and clears environment-specific connections; reconnect browsers and AI resources before resuming work. Accounts, credentials and browser sessions are not copied.
 
 Backup and restore is supplied by Zoer itself, so installing this plugin release alone does not add it to an older host. Both hosts need the matching Procurement transfer update. Archives retain the original plugin version for provenance. Updated hosts use a separate backup data version and accept validated original backups from 0.28.0, 0.28.1 development builds, and 0.29.0. Unknown data versions or incompatible schemas require an explicit migration.
+
+
+### Rich-text opportunity details
+
+The detail parser retains long published summaries and reads rendered CKEditor
+content once. Unlabelled rich text following Delivery of Submissions is retained
+with that section even when the host snapshot has removed its hidden textarea.
+Summary Details takes precedence over the short opportunity title. Detail captures
+use the browser capture timestamp and refresh the catalog status from the explicit
+source Status field; they do not infer closure from dates. Existing records need
+recapture or an explicit source-backed import to recover previously discarded text.
+The tracked parser JavaScript mirrors its TypeScript source: extensionless imports
+in the test runner can resolve the JavaScript file first, so keep both synchronized.

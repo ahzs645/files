@@ -105,7 +105,7 @@ describe('procurement catalog', () => {
     } finally { db.close(); }
   });
 
-  it('closing soon includes only explicit timezone, open opportunities within seven days', () => {
+  it('closing soon uses instants for zoned values and Vancouver calendar days for date-only and timezone-less values (P0)', () => {
     const future = new Date(Date.now() + 2 * 86400000).toISOString();
     const db = catalog([
       { id: 'active', data: { status: 'ACTIVE', closingDate: future } },
@@ -120,9 +120,10 @@ describe('procurement catalog', () => {
       { id: 'award', kind: 'award', data: { status: 'Open', awardDate: future, closingDate: future } },
     ]);
     try {
-      expect(db.query({ deadline: 'week' }).rows.map(row => row.id)).toEqual(['active', 'open']);
+      // P0: date-only and timezone-less deadlines within the week are listed (time unverified), not silently dropped.
+      expect(db.query({ deadline: 'week' }).rows.map(row => row.id)).toEqual(['active', 'date-only', 'no-zone', 'open']);
       expect(db.query({ deadline: 'week', kind: 'award' }).total).toBe(0);
-      expect(db.query({ deadline: 'week', after: 'active' }).total).toBe(2);
+      expect(db.query({ deadline: 'week', after: 'active' }).total).toBe(4);
     } finally { db.close(); }
   });
 
@@ -145,12 +146,13 @@ describe('source links and honest deadlines', () => {
   it('keeps missing, invalid, date-only and timezone-less deadlines honest', () => {
     const now = new Date('2026-09-22T12:00:00Z');
     expect(deadlineLabel(null, now)).toBe('Not provided');
-    expect(deadlineLabel('2020-01-01', now)).toBe('2020-01-01 (date only)');
+    expect(deadlineLabel('2020-01-01', now)).toBe('2020-01-01 (date only) · Deadline passed');
     expect(deadlineLabel('2020-01-01T08:00:00', now)).toContain('timezone not specified');
     expect(deadlineLabel('tomorrow', now)).toContain('unrecognized date');
     expect(deadlineLabel('2026-02-30', now)).toContain('invalid date');
     expect(deadlineLabel('2026-02-30T12:00:00Z', now)).toContain('unrecognized date');
-    expect(deadlineLabel('2024-02-29', now)).toBe('2024-02-29 (date only)');
+    expect(deadlineLabel('2024-02-29', now)).toBe('2024-02-29 (date only) · Deadline passed');
+    expect(deadlineLabel('2026-10-01', now)).toBe('2026-10-01 (date only)');
   });
 
   it('uses exact offsets to determine passed timestamps', () => {

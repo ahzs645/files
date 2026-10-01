@@ -25,19 +25,17 @@ export function BulkDocuments({running,onStarted}:{running:boolean;onStarted:()=
       await onStarted();
     }catch(e){setError((e as Error).message);}finally{pending.current=false;setBusy(false);}
   };
-  return <section className="zoer-history" aria-label="Download all attachments">
+  return <section className="zoer-history doc-download" aria-label="Download all attachments">
     <h2>Download all attachments</h2>
     <div className="research-toolbar research-stack">
-      <label className="research-label">Scope<Select aria-label="Download scope" value={scope} onChange={e=>setScope(e.target.value as 'current'|'all')} disabled={busy}><option value="current">Open opportunities</option><option value="all">All opportunities</option></Select></label>
-      <Button disabled={loading||busy||running||!preview?.ids.length} onClick={()=>void start()}>{busy?'Starting…':'Download all'}</Button>
+      <label className="research-label"><span className="sr-only">Scope</span><Select aria-label="Download scope" value={scope} onChange={e=>setScope(e.target.value as 'current'|'all')} disabled={busy}><option value="current">Open opportunities</option><option value="all">All opportunities</option></Select></label>
+      <Button disabled={loading||busy||running||!preview?.ids.length} onClick={()=>void start()} title="Up to 100 files per opportunity, 150 MB each. Files already saved are reused.">{busy?'Starting…':running?'Download running…':'Download all'}</Button>
       <Button variant="ghost" disabled={loading||busy} onClick={()=>void load()}>Refresh</Button>
     </div>
     {loading?<p role="status">Counting attachments…</p>:preview&&<p>
-      <strong>{preview.links.toLocaleString()} attachment links</strong> across {preview.ids.length.toLocaleString()} of {preview.total.toLocaleString()} opportunities.
-      {!!preview.missing&&<> {preview.missing.toLocaleString()} have no attachment links. <button type="button" className="research-link" onClick={()=>navigatePlugin('/scraper')}>Capture details</button></>}
+      <strong>{preview.links.toLocaleString()} attachments</strong> from {preview.ids.length.toLocaleString()} of {preview.total.toLocaleString()} opportunities.
+      {!!preview.missing&&<> {preview.missing.toLocaleString()} have no attachment links yet. <button type="button" className="research-link" onClick={()=>navigatePlugin('/scraper')}>Capture their details</button></>}
     </p>}
-    <p className="research-note">Up to 100 files per opportunity, 150 MiB each. Files already saved are reused.</p>
-    {running&&<p role="status">A download is running. See Download history.</p>}
     {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}
   </section>;
 }

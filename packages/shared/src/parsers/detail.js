@@ -23,6 +23,9 @@ const FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field'], .f
 function cleanText($, el) {
     const clone = el.clone();
     clone.find(REMOVABLE_TEXT_SELECTORS).remove();
+    // Preserve word boundaries between rich-text paragraphs and line breaks.
+    clone.find("br").replaceWith(" ");
+    clone.find("p, div, li").append(" ");
     return normalizeWhitespace(clone.text());
 }
 /**
@@ -36,9 +39,8 @@ function isNoiseValue(value) {
     // Contains long runs of AM/PM time options from time-picker dropdowns
     if (/(\d{1,2}:\d{2}:\d{2}\s*(AM|PM)\s*){4,}/i.test(value))
         return true;
-    // Unreasonably long for a single field value (real values are rarely >2000 chars)
-    if (value.length > 2000)
-        return true;
+    // Published scopes and submission instructions can be much longer than 2,000
+    // characters. Length alone is not evidence of dropdown or script noise.
     // Contains "Delete the value." or "Delete all values." UI control text
     if (/Delete (the|all) value/i.test(value))
         return true;
@@ -122,9 +124,9 @@ function fileNameFromUrl(url) {
 function extractFieldLabel(el) {
     const label = (el.find(".label-field").first().length ? el.find(".label-field").first() : el.find("label").first()).clone();
     label.find(".tooltip-field, .sr-only").remove();
-    return normalizeWhitespace(label.text().replace(/[:*]$/, ""));
+    return normalizeWhitespace(label.text().replace(/[:*]$/, "")) ||
+        normalizeWhitespace(el.find("[aria-label]").first().attr("aria-label") ?? "");
 }
-
 function extractFieldValue($, field) {
     const scopes = [
         field.find("[data-iv-role='controlWrapper']").first(),
@@ -132,6 +134,14 @@ function extractFieldValue($, field) {
         field
     ].filter((scope) => scope.length > 0);
     for (const scope of scopes) {
+        // CKEditor renders the same HTML as the hidden textarea. Read it once,
+        // as text, instead of combining serialized markup with the rendered copy.
+        const editor = scope.find(".cke_textarea_inline").filter((_, node) => !isHiddenContext($, $(node)));
+        if (editor.length) {
+            const value = cleanText($, editor);
+            if (value && !isNoiseValue(value))
+                return value;
+        }
         const inputValues = scope
             .find("input, textarea")
             .map((_, element) => {
@@ -158,20 +168,36 @@ function extractFieldValue($, field) {
 }
 function readFieldRows($) {
     const fields = new Map();
+    let previousLabel = "";
     $(FIELD_SELECTORS).each((_, element) => {
         const el = $(element);
         if (isHiddenContext($, el)) {
             return;
         }
-        const label = extractFieldLabel(el);
+        let label = extractFieldLabel(el);
         const value = extractFieldValue($, el);
+        // The host removes hidden textarea controls, including their aria-label.
+        // BC Bid places this visible, unlabelled rich-text continuation immediately
+        // after the Delivery of Submissions field (with hidden alternatives between).
+        const submissionContinuation = el.is(".no-label.iv-html-type, .iv-no-label.iv-html-type")
+            && /^(Delivery of Submissions|Additional Delivery Method Details)$/i.test(previousLabel)
+            && (!label || label === "Additional Delivery Method Details");
+        if (submissionContinuation)
+            label = "Delivery of Submissions";
+        if (label)
+            previousLabel = label;
         if (!label || !value || value === label) {
             return;
         }
         if (isNoiseValue(value)) {
             return;
         }
-        if (!fields.has(label)) {
+        if (submissionContinuation && fields.has(label)) {
+            const previous = fields.get(label);
+            if (!previous.includes(value))
+                fields.set(label, [previous, value].join("\n\n"));
+        }
+        else if (!fields.has(label)) {
             fields.set(label, value);
         }
     });
@@ -326,9 +352,9 @@ export function parseDetailPage(html, baseUrl, pageUrl) {
     const detailFields = mergeFields(readFieldRows($), readGridFields($));
     const addenda = readAddenda($, baseUrl);
     const attachments = readAttachments($, baseUrl, new Set(addenda.flatMap((addendum) => (addendum.link ? [addendum.link] : []))));
-    let descriptionText = "";
+    let descriptionText = detailFields.find((field) => /^summary details$/i.test(field.label))?.value ?? "";
     const specificDescriptionEl = $("[data-testid='description'], [class*='description'], [id*='description']").first();
-    if (specificDescriptionEl.length > 0) {
+    if (!descriptionText && specificDescriptionEl.length > 0) {
         descriptionText = cleanText($, specificDescriptionEl);
     }
     if (!descriptionText || isNoiseValue(descriptionText) || isBoilerplateDescription(descriptionText)) {

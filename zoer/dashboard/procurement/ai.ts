@@ -1,5 +1,5 @@
 import { defaultReviewPrompt } from '../review-prompt';
-import { checkFields, fieldValue, parsePrompt } from '../review-fields';
+import { MONEY_ROLE_LABELS, checkFields, fieldValue, isBudgetRole, moneyRole, parsePrompt } from '../review-fields';
 
 /** Evidence runs (on-demand modes) are saved as reviews with a `procurement:` prompt id and a `purpose`. */
 export const isEvidence = (review: any) => !!review?.result?.purpose || String(review?.prompt_id ?? '').startsWith('procurement:') || String(review?.prompt_id ?? '').startsWith('evidence:');
@@ -46,27 +46,95 @@ export function formatField(key: string, value: unknown): string | string[] {
   return Object.entries(o).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${fieldLabel(k)}: ${Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : v}`);
 }
 
-/** Estimated value from the latest review, when the documents disclose one. */
-export function estimatedValue(review: any): string {
-  const funding = review?.result?.fields?.funding;
-  if (funding?.status === 'disclosed') return money(funding.amount, funding.currency);
-  // Typed prompts: the first money field that returned a well-formed amount.
-  for (const field of parsePrompt(review?.result?.prompt?.instructions).fields) {
+export type BuyerValue = { label: string; text: string; ai: boolean; others: Array<{ label: string; text: string }> };
+/**
+ * The notice's budget or estimated value from the latest review, labelled with its basis. Only the free-form
+ * `funding` field (when disclosed) or a money field whose role is buyer budget / estimated value may fill it;
+ * insurance limits, bonds, awards, grants and unclassified amounts are listed separately in `others`, never
+ * promoted to the budget.
+ */
+export function buyerValue(review: any): BuyerValue {
+  if (!review?.result) return { label: 'Budget', text: 'Not reviewed', ai: false, others: [] };
+  const fields = review.result.fields, others: BuyerValue['others'] = [];
+  let found: { label: string; text: string } | undefined;
+  const funding = fieldValue(fields, 'funding') as any;
+  if (funding?.status === 'disclosed' && money(funding.amount, funding.currency))
+    found = { label: /estimat/i.test(String(funding.basis ?? '')) ? 'Estimated value (AI-extracted)' : 'Buyer budget (AI-extracted)', text: money(funding.amount, funding.currency) };
+  for (const field of parsePrompt(review.result.prompt?.instructions).fields) {
     if (field.type !== 'money') continue;
-    const value = fieldValue(review.result.fields, field.key);
-    if (checkFields([field], { [field.key]: value }).checks[0].state === 'ok') return money((value as any).amount, (value as any).currency);
+    const value = fieldValue(fields, field.key);
+    if (checkFields([field], { [field.key]: value }).checks[0].state !== 'ok') continue;
+    const role = moneyRole(field), text = money((value as any).amount, (value as any).currency);
+    if (isBudgetRole(role) && !found) found = { label: `${MONEY_ROLE_LABELS[role]} (AI-extracted)`, text };
+    else if (!isBudgetRole(role)) others.push({ label: `${role === 'other' ? field.label : MONEY_ROLE_LABELS[role]} (AI-extracted)`, text });
   }
-  return '';
+  if (found) return { ...found, ai: true, others };
+  const insurance = others.some(o => o.label.startsWith(MONEY_ROLE_LABELS.insurance_limit));
+  const unclear = funding?.status === 'unclear';
+  return { label: 'Budget', text: insurance ? 'Budget not found; insurance limit listed separately' : unclear ? 'Unclear in reviewed material' : 'Not found in reviewed material', ai: true, others };
+}
+/** @deprecated Kept for callers expecting a string; use `buyerValue` for the basis label. */
+export const estimatedValue = (review: any) => { const value = buyerValue(review); return value.label === 'Budget' ? '' : value.text; };
+
+export type VerdictTone = 'supported' | 'not_recommended' | 'neutral';
+const POSITIVE = new Set(['bid', 'pursue', 'yes', 'go', 'ready for human decision', 'recommend bid', 'recommended']);
+const NEGATIVE = new Set(['no', 'no bid', 'nobid', 'do not bid', 'dont bid', 'decline', 'not recommended', 'no go', 'do not pursue']);
+/**
+ * Explicit verdict mapping: only recognised positive values are green and recognised negatives orange.
+ * `needs_information`, `investigate`, `conditional`, `consider_partner`, free prose and anything unknown are neutral.
+ */
+export function verdictTone(value: unknown): VerdictTone {
+  const raw = value && typeof value === 'object' ? (value as any).decision ?? (value as any).verdict ?? (value as any).recommendation : value;
+  if (typeof raw !== 'string') return 'neutral';
+  const key = raw.toLowerCase().replace(/[’']/g, '').replace(/[-_/]+/g, ' ').replace(/[.!]+$/, '').replace(/\s+/g, ' ').trim();
+  return POSITIVE.has(key) ? 'supported' : NEGATIVE.has(key) ? 'not_recommended' : 'neutral';
+}
+export const verdictText = (value: unknown) => {
+  const raw = value && typeof value === 'object' ? (value as any).decision ?? (value as any).verdict ?? (value as any).recommendation : value;
+  return raw == null || raw === '' ? 'See details' : words(String(raw)).replace(/^./, c => c.toUpperCase());
+};
+
+/** A saved document with extracted text. A downloaded file with empty text is saved, not readable. */
+export const hasUsableText = (doc: any) => doc?.status === 'downloaded' && Number(doc.text_length ?? doc.textLength ?? 0) > 0;
+export type DocumentCounts = { discovered: number | null; downloaded: number; usable: number; savedWithoutText: number; failed: number };
+/** Separate denominators; `discovered` is null when the notice's attachment links were never checked. */
+export function documentCounts(documents: any[], attachments: unknown): DocumentCounts {
+  const downloaded = documents.filter(doc => doc.status === 'downloaded'), usable = downloaded.filter(hasUsableText).length;
+  const links = Array.isArray(attachments) ? new Set([...attachments.map((a: any) => a?.url ?? a?.name ?? JSON.stringify(a)), ...documents.map(doc => doc.url ?? doc.id)]).size : null;
+  return { discovered: links, downloaded: downloaded.length, usable, savedWithoutText: downloaded.length - usable, failed: documents.filter(doc => doc.status === 'failed').length };
+}
+const files = (n: number) => `${n} file${n === 1 ? '' : 's'}`;
+/** "4 of 6 discovered files downloaded" */
+const ofDiscovered = (downloaded: number, discovered: number) => `${downloaded} of ${discovered} discovered file${discovered === 1 ? '' : 's'} downloaded`;
+export function documentSummary(c: DocumentCounts): string {
+  if (!c.downloaded && !c.failed) return c.discovered === null ? 'Attachment discovery not checked' : c.discovered === 0 ? 'No public attachment links found in this check' : `${files(c.discovered)} discovered; none downloaded`;
+  const head = c.discovered === null ? `${files(c.downloaded)} downloaded (discovered total unknown)` : ofDiscovered(c.downloaded, Math.max(c.discovered, c.downloaded));
+  return `${head}; ${c.usable} contain${c.usable === 1 ? 's' : ''} usable text`;
 }
 
-/** How much of the notice the review actually read. */
+/**
+ * How much of the notice the review actually read, as separate denominators. The host's `readable` is not
+ * trusted beyond `downloaded` minus the files it listed as unreadable.
+ */
 export function coverageText(review: any): string {
   const c = review?.result?.coverage;
   if (!c) return '';
-  if (Array.isArray(c.records)) { const r = c.records[0]; return r ? `${r.readable ?? 0} readable of ${r.downloaded ?? 0} downloaded` : ''; }
-  if (!c.includeDocuments) return 'Notice text only';
-  const unreadable = Array.isArray(c.unreadable) && c.unreadable.length ? ` · ${c.unreadable.join(', ')} unreadable` : '';
-  return `${c.readable ?? 0} of ${c.downloaded ?? 0} documents${unreadable}`;
+  const count = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+  if (Array.isArray(c.records)) {
+    if (!c.records.length) return '';
+    const sum = (key: string) => c.records.reduce((n: number, r: any) => n + count(r?.[key]), 0);
+    const listed = (key: string) => c.records.reduce((n: number, r: any) => n + (Array.isArray(r?.[key]) ? r[key].length : 0), 0);
+    const discovered = sum('discovered'), downloaded = sum('downloaded'), included = sum('readable'), omitted = listed('omitted');
+    if (!downloaded) return discovered ? `${files(discovered)} discovered; none downloaded; based on the saved notice only` : 'Based on the saved notice only';
+    return [ofDiscovered(downloaded, Math.max(discovered, downloaded)), `${included} text source${included === 1 ? '' : 's'} included`, omitted ? `${omitted} omitted for length` : ''].filter(Boolean).join('; ');
+  }
+  if (!c.includeDocuments) return 'Based on the saved notice only';
+  const downloaded = count(c.downloaded), discovered = count(c.discovered);
+  const unreadable = Array.isArray(c.unreadable) ? c.unreadable.map((u: any) => typeof u === 'string' ? u : u?.name || u?.documentId).filter(Boolean) : [];
+  const usable = Math.max(0, Math.min(count(c.readable), downloaded - (Array.isArray(c.unreadable) ? c.unreadable.length : 0)));
+  if (!downloaded) return discovered ? `${files(discovered)} discovered; none downloaded` : 'No downloaded files were available';
+  const head = discovered >= downloaded ? ofDiscovered(downloaded, discovered) : `${files(downloaded)} downloaded`;
+  return `${head}; ${usable} contain${usable === 1 ? 's' : ''} usable text${unreadable.length ? ` · saved without usable text: ${unreadable.join(', ')}` : ''}`;
 }
 
 export const ago = (iso: unknown) => {

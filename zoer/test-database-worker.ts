@@ -31,6 +31,8 @@ async function run(actionId:string,input:any={}) {
         if(actionId==='awards.history') {
           assert.equal(value.searchFields[0].value,'2015-01-01');assert.equal(value.searchFields[1].value,'2015-01-31');
           result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:pages===1,visiblePages:[1]},html:`<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">${value.searchFields[0].value}</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">${value.searchFields[1].value}</li></ul></div><table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>2015-01-01</td><td>100</td></tr></tbody></table>`};
+        } else if(actionId==='detail.capture') {
+          result={url:'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/231457',title:'BC Bid',capturedAt:'2026-09-28T02:00:00Z',html:readFileSync(resolve(import.meta.dir,'../tests/fixtures/detail/bc-transit-231457.html'),'utf8')};
         } else {
           const file=!value.url||value.url===LISTING_URL?'listing/page1.html':'detail/with-addenda.html';
           result={url:value.url??LISTING_URL,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:1,hasNext:false,visiblePages:[1]},html:readFileSync(resolve(import.meta.dir,'../tests/fixtures',file),'utf8')};
@@ -50,4 +52,13 @@ await run('opportunities.import',{records:[opportunity.data],fileName:'roundtrip
 const awards=await run('awards.history',{resume:newAwardRanges('2015-01-01','2015-01-31')});assert.equal(awards.count,2);assert.equal(state.get('checkpoint:awards').complete,true);
 await run('awards.import',{records:[{opportunityDescription:'Imported award',successfulSupplier:'Supplier',starred:true}],fileName:'awards.json'});
 assert.ok([...records.values()].some(row=>row.kind==='award'&&row.data.starred));
+await run('opportunities.import',{records:[{sourceKey:'231457',processId:'231457',description:'BC Transit',status:'Open',starred:true}]});
+await run('detail.capture');
+const rich=records.get('opportunity:231457').data;
+assert.equal(rich.status,'Closed');assert.equal(rich.starred,true);
+assert.equal(rich.sourceCapturedAt,'2026-09-28T02:00:00Z');
+assert.ok(rich.descriptionText.length>2500);
+assert.ok(rich.descriptionText.includes('do not need to resubmit'));
+assert.ok(rich.detailFields.find((field:any)=>field.label==='Delivery of Submissions').value.includes('Submissions by other methods will not be accepted.'));
+console.log('Bundled detail.capture passed: long summary, rich-text submission instructions, explicit status, capture time and preserved star.');
 console.log('Bundled worker passed: migration, listing, full/sample scrape, stars, both imports, award history; rotating catalog/browser tickets; zero artifact writes.');

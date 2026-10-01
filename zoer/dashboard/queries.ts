@@ -2,6 +2,7 @@ import { buyerQuery, isBuyerColumn } from './buyer-query';
 import { BUYER_MAPPING_VERSION, annotateBuyerRecord, resolveBuyer, isBuyerLevel } from './market/buyers';
 import { host } from './bridge';
 import { queryModel, type Model } from './model';
+import { zoneDate } from './procurement/deadline';
 const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
 const field = (name: string) => `json_extract(data, '$.${name}')`;
 // A record's home source. Records saved before multi-source support carry no sourceId.
@@ -143,7 +144,10 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   }
   if (name === 'dashboard.summary') {
     const [counts, statuses, types] = await Promise.all([
-      sql(`SELECT count(*) AS total, sum(CASE WHEN lower(${field('status')}) LIKE '%open%' AND coalesce(julianday(${field('closingDate')}), 9999999) >= julianday('now', 'start of day') THEN 1 ELSE 0 END) AS open, sum(CASE WHEN julianday(${field('closingDate')}) BETWEEN julianday(?) AND julianday(?) THEN 1 ELSE 0 END) AS closingSoon, count(DISTINCT CASE WHEN ${field('issuedBy')} <> '' THEN ${field('issuedBy')} END) AS organizations FROM records WHERE kind='opportunity'`, [new Date().toISOString(), new Date(Date.now()+7*86400000).toISOString()]),
+      // Deadlines (procurement/deadline.ts, approximated in SQL): compare against today's America/Vancouver date, not the
+      // UTC day, so a same-day date-only closingDate stays open (time unverified) until the Vancouver day ends. Timestamps
+      // that passed earlier on that date also count as open here: lenient rather than silently closed.
+      sql(`SELECT count(*) AS total, sum(CASE WHEN lower(${field('status')}) LIKE '%open%' AND coalesce(julianday(${field('closingDate')}), 9999999) >= julianday(?) THEN 1 ELSE 0 END) AS open, sum(CASE WHEN julianday(${field('closingDate')}) BETWEEN julianday(?) AND julianday(?) OR ${field('closingDate')}=? THEN 1 ELSE 0 END) AS closingSoon, count(DISTINCT CASE WHEN ${field('issuedBy')} <> '' THEN ${field('issuedBy')} END) AS organizations FROM records WHERE kind='opportunity'`, [zoneDate(), new Date().toISOString(), new Date(Date.now()+7*86400000).toISOString(), zoneDate()]),
       sql(`SELECT DISTINCT ${field('status')} AS value FROM records WHERE kind='opportunity' AND ${field('status')} <> '' ORDER BY value`),
       sql(`SELECT DISTINCT ${field('type')} AS value FROM records WHERE kind='opportunity' AND ${field('type')} <> '' ORDER BY value`),
     ]);
@@ -180,7 +184,12 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     const where = ['kind=?'], params: (string | number)[] = [kind];
     if (scope) { where.push(sourcePredicate(scope)); params.push(...scope); }
     if (args.starredOnly) where.push(`${field('starred')}=1`);
-    if (args.upcoming) where.push(`julianday(${field('closingDate')}) >= julianday('now', 'start of day')`);
+    // Documents: `downloaded` has at least one saved file; `pending` has attachment links but no saved file yet.
+    if (args.documents !== undefined && !['', 'downloaded', 'pending'].includes(args.documents)) throw new Error('Unknown document filter.');
+    const downloaded = "id IN (SELECT record_id FROM documents WHERE status='downloaded')";
+    if (args.documents === 'downloaded') where.push(downloaded);
+    if (args.documents === 'pending') where.push(`${field('attachments[0]')} IS NOT NULL AND NOT ${downloaded}`);
+    if (args.upcoming) { where.push(`julianday(${field('closingDate')}) >= julianday(?)`); params.push(zoneDate()); } // Vancouver day; see dashboard.summary
     // Status and type accept one value or a list (multi-select); issuedBy stays a single value.
     for (const key of ['status','type','issuedBy']) { const values = (Array.isArray(args[key]) ? args[key] : [args[key]]).filter((value: unknown): value is string => typeof value === 'string' && value !== ''); if (values.length) { where.push(`${field(kind==='award'&&key==='type'?'opportunityType':key)} IN (${values.map(() => '?').join(',')})`); params.push(...values); } }
     if(mapped?.filter) where.push(mapped.filter);

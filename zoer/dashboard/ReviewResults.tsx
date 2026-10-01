@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
-import { downloadText, toCsv } from './export';
+import { downloadCsvWithManifest, exportManifest, manifestNote } from './export';
 import { ago } from './procurement/ai';
-import { RESULTS_PAGE, columnText, readReviewResults, readRunResults, resultColumns, resultProblems, resultsCsv, type ResultColumn, type RunScope } from './review-results';
+import { RESULTS_PAGE, columnText, readAllReviewResults, readReviewResults, readRunResults, resultColumns, resultProblems, resultsCsv, type ResultColumn, type RunScope } from './review-results';
 
 const Cell = ({ text }: { text: string | string[] }) => Array.isArray(text) ? <ul>{text.map((line, i) => <li key={i}>{line}</li>)}</ul> : <>{text}</>;
 const OUTCOME: Record<string, string> = { reused: 'Unchanged · earlier result reused', waiting: 'Waiting to be reviewed', none: 'No result saved' };
 const csvName = (name: string) => `review-${name.replace(/[^\w-]+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
-const downloadCsv = (columns: ResultColumn[], rows: any[], name: string) => { const [header, body] = resultsCsv(columns, rows.filter(r => r.status === 'succeeded')); downloadText(toCsv(header, body), csvName(name), 'text/csv;charset=utf-8'); };
+/** The CSV plus a manifest; returns the manifest so the UI can say whether the file is complete. */
+const downloadCsv = (columns: ResultColumn[], rows: any[], name: string, manifest: Omit<Parameters<typeof exportManifest>[0], 'file' | 'rowsExported'>) => {
+  const [header, body] = resultsCsv(columns, rows.filter(r => r.status === 'succeeded'));
+  const full = exportManifest({ ...manifest, file: csvName(name), rowsExported: body.length });
+  downloadCsvWithManifest(header, body, full);
+  return full;
+};
 
 /** One row per record and one column per output field; failed, reused and pending records are labelled. */
 function ResultsTable({ columns, rows, version, onOpen }: { columns: ResultColumn[]; rows: any[]; version?: number; onOpen: (recordId: string) => void }) {
@@ -32,8 +38,8 @@ function ResultsTable({ columns, rows, version, onOpen }: { columns: ResultColum
 /** Latest result per record for the selected prompt, one column per output field. */
 export function ReviewResults({ prompt, revision, onOpen }: { prompt: any; revision: string; onOpen: (recordId: string) => void }) {
   const [page, setPage] = useState(0), [data, setData] = useState<{ rows: any[]; more: boolean } | null>(null);
-  const [problemsOnly, setProblemsOnly] = useState(false), [error, setError] = useState(''), [exporting, setExporting] = useState(false);
-  useEffect(() => { setPage(0); setData(null); setProblemsOnly(false); }, [prompt.id]);
+  const [problemsOnly, setProblemsOnly] = useState(false), [error, setError] = useState(''), [exporting, setExporting] = useState(false), [exported, setExported] = useState<{ text: string; incomplete: boolean } | null>(null);
+  useEffect(() => { setPage(0); setData(null); setProblemsOnly(false); setExported(null); }, [prompt.id]);
   useEffect(() => {
     let active = true;
     readReviewResults(host, prompt.id, page * RESULTS_PAGE).then(next => { if (active) { setData(next); setError(''); } }, e => { if (active) setError(e.message); });
@@ -44,11 +50,16 @@ export function ReviewResults({ prompt, revision, onOpen }: { prompt: any; revis
   const typed = columns.some(c => c.field);
   const shown = problemsOnly ? rows.filter(r => resultProblems(r)?.problems) : rows;
   const exportCsv = async () => {
-    setExporting(true); setError('');
+    setExporting(true); setError(''); setExported(null);
     try {
-      const all: any[] = [];
-      for (let offset = 0, more = true; more && offset < 3000; offset += RESULTS_PAGE) { const next = await readReviewResults(host, prompt.id, offset); all.push(...next.rows); more = next.more; }
-      downloadCsv(resultColumns(prompt.prompt, all), all, prompt.name);
+      const all = await readAllReviewResults(host, prompt.id);
+      const older = all.rows.filter(r => r.prompt_version !== prompt.version).length;
+      const manifest = downloadCsv(resultColumns(prompt.prompt, all.rows), all.rows, prompt.name, {
+        scope: `Latest successful result per record for prompt "${prompt.name}"`, filters: { promptId: prompt.id, status: 'succeeded', latestPerRecord: true },
+        prompt: { id: prompt.id, name: prompt.name, version: prompt.version, resultVersions: all.versions }, totalMatching: all.total, truncationReason: all.reason || undefined,
+        notes: older ? [`${older} row(s) come from older prompt versions; their values are read against the current columns and checked against the fields they were asked for.`] : undefined,
+      });
+      setExported({ text: manifestNote(manifest), incomplete: manifest.truncated });
     } catch (e) { setError((e as Error).message); } finally { setExporting(false); }
   };
   return <section className="zoer-history" aria-label="Review results">
@@ -61,6 +72,7 @@ export function ReviewResults({ prompt, revision, onOpen }: { prompt: any; revis
     </div>
     <p className="research-note">Latest successful result for each record reviewed with this prompt.{typed ? ' Rows from older prompt versions are checked against the fields they were asked for.' : ' This prompt has no typed fields, so columns show the keys the AI returned most often.'}</p>
     {error && <p role="alert">{error}</p>}
+    {exported && <p role={exported.incomplete ? 'alert' : 'status'} className="research-note">{exported.text}</p>}
     {!data ? <p className="research-note">Loading…</p> : !rows.length ? <p className="research-note">No results yet. Select records and run a review, or use Test in the prompt editor.</p> :
       !shown.length ? <p className="research-note">No field problems on this page.</p> : <ResultsTable columns={columns} rows={shown} version={prompt.version} onOpen={onOpen} />}
     {(page > 0 || data?.more) && <div className="research-toolbar research-pager">
@@ -76,7 +88,17 @@ export function RunResults({ batch, prompts, onOpen }: { batch: any; prompts: an
   const input = (() => { try { return JSON.parse(batch.input || '{}'); } catch { return {}; } })();
   const prompt = input.prompt ?? prompts.find(p => p.id === input.promptId);
   const scope: RunScope = { id: batch.id, promptId: prompt?.id ?? input.promptId, recordIds: input.recordIds, finishedAt: batch.status === 'running' ? undefined : batch.updated_at, running: batch.status === 'running' };
-  const [rows, setRows] = useState<any[] | null>(null), [error, setError] = useState('');
+  const [rows, setRows] = useState<any[] | null>(null), [error, setError] = useState(''), [exported, setExported] = useState<{ text: string; incomplete: boolean } | null>(null);
+  const exportRun = () => {
+    const all = rows ?? [], succeeded = all.filter(r => r.status === 'succeeded').length, declared = scope.recordIds?.length ? new Set(scope.recordIds).size : null;
+    const manifest = downloadCsv(columns, all, `${prompt?.name ?? 'run'}-${batch.id.slice(-6)}`, {
+      scope: `Review run ${batch.id}: records with a successful result (produced by the run or reused unchanged)`, filters: { runId: batch.id, status: 'succeeded' },
+      prompt: prompt ? { id: prompt.id, name: prompt.name, version: prompt.version } : undefined, totalMatching: succeeded,
+      truncationReason: declared !== null && all.length < declared ? `Only ${all.length} of ${declared} selected records could be listed.` : undefined,
+      notes: [`${all.length} record(s) in the run; ${all.length - succeeded} without a successful result are not exported.`],
+    });
+    setExported({ text: manifestNote(manifest), incomplete: manifest.truncated });
+  };
   useEffect(() => {
     let active = true;
     readRunResults(host, scope).then(next => { if (active) { setRows(next); setError(''); } }, e => { if (active) setError(e.message); });
@@ -88,9 +110,10 @@ export function RunResults({ batch, prompts, onOpen }: { batch: any; prompts: an
   return <div className="review-run-results" role="region" aria-label={`Results of review run ${prompt?.name ?? ''}`.trim()}>
     <div className="research-toolbar review-results-head">
       <p className="research-note">{prompt ? `${prompt.name} · version ${prompt.version}` : 'Prompt details were not saved with this run.'}{summary ? ` · ${summary}` : ''}</p>
-      <div className="research-toolbar-end"><Button variant="ghost" disabled={!rows?.some(r => r.status === 'succeeded')} onClick={() => downloadCsv(columns, rows ?? [], `${prompt?.name ?? 'run'}-${batch.id.slice(-6)}`)}>Export CSV</Button></div>
+      <div className="research-toolbar-end"><Button variant="ghost" disabled={!rows?.some(r => r.status === 'succeeded')} onClick={exportRun}>Export CSV</Button></div>
     </div>
     {error && <p role="alert">{error}</p>}
+    {exported && <p role={exported.incomplete ? 'alert' : 'status'} className="research-note">{exported.text}</p>}
     {!rows ? <p className="research-note">Loading…</p> : !rows.length ? <p className="research-note">This run saved no results.</p> : <ResultsTable columns={columns} rows={rows} version={prompt?.version} onOpen={onOpen} />}
   </div>;
 }

@@ -25,7 +25,8 @@ describe('AI review analysis', () => {
     expect(pct.kind === 'numbers' && pct.buckets.reduce((n, b) => n + b.count, 0)).toBe(3);
     expect(pct.kind === 'numbers' && pct.stats.median).toBe('20%');
     const money = summarizeField(field('money'), [row('a', { v: { amount: 100000, currency: 'CAD' } }), row('b', { v: { amount: 300000, currency: 'CAD' } })]);
-    expect(money.kind === 'numbers' && money.stats.max).toMatch(/300K/);
+    expect(money.kind === 'money' && money.partitions.map(p => [p.currency, p.stats.count])).toEqual([['CAD', 2]]);
+    expect(money.kind === 'money' && money.partitions[0].stats.max).toMatch(/300K/);
   });
   it('counts list items across records and records with an empty list', () => {
     const s = summarizeField(field('list'), [row('a', { v: ['COR', 'Bid bond'] }), row('b', { v: ['COR'] }), row('c', { v: [] })]);
@@ -78,7 +79,7 @@ describe('AI review analysis', () => {
     expect(calls[0].parameters).toEqual(['p', 'canadabuys', 200, 0]); expect(calls[1].parameters).toEqual(['p', 'canadabuys', 200, 200]);
     const coverage = await readCoverage(async (_, input) => { calls.push(input); return { rows: [{ source: 'bc-bid', open: '5', reviewed: '2' }] }; });
     expect(coverage).toEqual([{ source: 'bc-bid', open: 5, reviewed: 2 }]);
-    expect(await readUnreviewed(async (_, input) => { calls.push(input); expect(input.parameters).toEqual(['canadabuys', 50]); return { rows: [{ id: 'x' }] }; }, 'canadabuys')).toEqual(['x']);
+    expect(await readUnreviewed(async (_, input) => { calls.push(input); expect(input.parameters).toEqual(['canadabuys', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), 50]); return { rows: [{ id: 'x' }] }; }, 'canadabuys')).toEqual(['x']);
     for (const call of calls) {
       expect(call.statement).not.toMatch(/;|\bcontent\b|\bupdate\b|\bdelete\b|\btemp\b|\bmain\b|\bpragma\b/i);
       const functions = [...call.statement.matchAll(/([a-z_][a-z0-9_]*)\s*\(/gi)].map((m: RegExpMatchArray) => m[1].toLowerCase());
