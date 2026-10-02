@@ -99,7 +99,8 @@ export function Procurement() {
   const labels = useRecordLabels(ids, !!model && view !== 'matrix' && view !== 'compare');
   const { facets, loading: facetsLoading } = useLabelFacets(panel === 'filters');
   const counts = new Map<string, number>();
-  for (const row of inventory.data ?? []) counts.set(row.sourceId, (counts.get(row.sourceId) ?? 0) + Number(row.count));
+  // Source counts follow the notice type, so "All sources" here matches the record pickers for the same type.
+  for (const row of inventory.data ?? []) if (kind === 'all' || row.kind === kind) counts.set(row.sourceId, (counts.get(row.sourceId) ?? 0) + Number(row.count));
   const sources = [...SOURCES.map(item => item.id), ...[...counts.keys()].filter(id => !SOURCES.some(item => item.id === id))];
   const inventoryTotal = [...counts.values()].reduce((sum, value) => sum + value, 0);
 

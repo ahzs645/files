@@ -1,7 +1,8 @@
 import { migrateCatalog, saveCatalogDocument } from './catalog';
 import { scrapeAwardRanges, newAwardRanges } from './award-ranges';
 import { awardRangeCapture, AWARD_DATE_FIELDS } from './award-range-capture';
-import { scrapeFull } from './full-scrape';
+import { scrapeFull, fullScrapeResume } from './full-scrape';
+import { createHostChannel, isPauseError, paused } from './pause';
 import { scrapeSample } from './scrape';
 import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
 import { createInterface } from 'node:readline';
@@ -14,33 +15,33 @@ import { updateProcurementClassifications } from './procurement-classifications'
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const iterator = lines[Symbol.asyncIterator]();
 const write = (value: unknown) => process.stdout.write(`${JSON.stringify(value)}\n`);
-async function next() {
+async function read() {
   const line = await iterator.next();
   if (line.done) throw new Error('Zoer closed the worker channel.');
   return JSON.parse(line.value);
 }
+// A pause request piggybacked on any host response makes later browser/network calls fail with ZOER_PAUSED locally.
+const channel = createHostChannel(read, write);
 let runId = 'unknown';
-let sequence = 0;
 let browserTicket: string;
 let artifactTicket: string;
 let catalogTicket: string;
 let networkTicket: string;
 async function call(method: string, input: unknown) {
-  const requestId = `bcbid-${++sequence}`;
-  write({ protocolVersion: '1', kind: 'host-call', requestId, method, input });
-  const response = await next();
-  if (response.protocolVersion !== '1' || response.kind !== 'host-response' || response.requestId !== requestId) throw new Error('Invalid Zoer host response.');
+  const response = await channel.request(method, input);
   if (response.nextTicket && method.startsWith('browser.')) browserTicket = response.nextTicket;
   if (response.nextTicket && method.startsWith('catalog.')) catalogTicket = response.nextTicket;
   if (response.nextTicket && method === 'network.fetch') networkTicket = response.nextTicket;
   if (response.nextTicket && method === 'artifact.write') artifactTicket = response.nextTicket;
-  if (!response.ok) throw new Error(response.error?.message ?? 'Zoer host call failed.');
+  if (!response.ok) throw channel.failure(response);
   return response.result;
 }
 try {
-  const request = await next();
+  const request = await channel.next();
   if (request.protocolVersion !== '1' || request.kind !== 'integration-action' || typeof request.run?.id !== 'string') throw new Error('Invalid Zoer worker request.');
   runId = request.run.id;
+  // Zoer re-runs a step paused for an update with the same input; `resumeCheckpoint` (value or null) marks it.
+  const resumedFromPause = request.resumeCheckpoint !== undefined || process.env.ZOER_RESUMED_FROM_PAUSE === '1';
   const artifact = request.grants.artifacts?.find((grant: any) => grant.alias === 'output' && grant.access === 'write');
   if (!artifact?.ticket) throw new Error('Zoer did not grant output artifact storage.');
   artifactTicket = artifact.ticket;
@@ -81,12 +82,15 @@ try {
     const checkpointKey = recent ? 'checkpoint:awards:recent' : 'checkpoint:awards';
     const state = await catalogCall('catalog.workspace', { keys: [checkpointKey] });
     const previous = state.entries.find((entry: any) => entry.key === checkpointKey)?.value;
-    const supplied = request.input?.resume;
+    // Zoer's stored pause checkpoint wins over an operator resume; both carry dated ranges.
+    const supplied = request.resumeCheckpoint ?? request.input?.resume;
+    // A resumed run (resumeCheckpoint null after a hard stop) or a re-run of the same run continues its saved ranges.
+    const ownProgress = previous?.version === 2 && !previous.complete && (resumedFromPause || previous.runId === runId);
     const today = new Date().toISOString().slice(0, 10);
     const from = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10);
     // Old page-number checkpoints cannot prove coverage of any date range.
     // Retain them for reference, and merge records from the bounded backfill.
-    const resume = supplied?.version === 2 ? supplied : !recent && previous?.version === 2 ? previous : recent ? newAwardRanges(from, today) : newAwardRanges();
+    const resume = supplied?.version === 2 ? supplied : ownProgress || (!recent && previous?.version === 2) ? previous : recent ? newAwardRanges(from, today) : newAwardRanges();
     let archiveLegacy = !recent && previous && previous.version !== 2 ? previous : undefined;
     const output = await scrapeAwardRanges(awardRangeCapture(options => call('browser.capture-url', { ...options, ticket: browserTicket }), AWARD_DATE_FIELDS), async document => {
       const id = await save({ ...document, checkpointKey, ...(archiveLegacy ? { legacyCheckpoint: archiveLegacy } : {}) });
@@ -116,7 +120,12 @@ try {
     write({protocolVersion:'1',runId,ok:true,output:{artifactId,count:records.length}});
   } else if (request.action.id === 'scrape.full') {
     if (!browserTicket) throw new Error('Select a running Zoer browser session.');
-    const output = await scrapeFull({ captureUrl: (url, pageNumber) => call('browser.capture-url', { ticket: browserTicket, url, pageNumber, ...(pageNumber ? {} : { readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }) }) }, save, request.input?.resume);
+    const resume = await fullScrapeResume(request, async () => {
+      if (!catalogTicket) return undefined;
+      const state = await catalogCall('catalog.workspace', { keys: ['checkpoint:full'] });
+      return state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;
+    }, resumedFromPause);
+    const output = await scrapeFull({ captureUrl: (url, pageNumber) => call('browser.capture-url', { ticket: browserTicket, url, pageNumber, ...(pageNumber ? {} : { readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }) }) }, save, resume, { runId });
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.sample') {
     if (!browserTicket) throw new Error('Select a running Zoer browser session.');
@@ -132,7 +141,9 @@ try {
   write({ protocolVersion: '1', runId, ok: true, output: { rows: captured.rows, artifactId: stored.id, sourceUrl: page.url, capturedAt: page.capturedAt, scope: 'current-page' } });
   }
 } catch (error) {
-  write({ protocolVersion: '1', runId, ok: false, error: { code: 'capture_failed', message: error instanceof Error ? error.message : 'BC Bid capture failed.' } });
+  // A pause is never a failure: actions without their own checkpoint re-run safely (upserts) on resume.
+  if (isPauseError(error)) write({ protocolVersion: '1', runId, ok: true, output: paused(null) });
+  else write({ protocolVersion: '1', runId, ok: false, error: { code: 'capture_failed', message: error instanceof Error ? error.message : 'BC Bid capture failed.' } });
 } finally {
   lines.close();
 }

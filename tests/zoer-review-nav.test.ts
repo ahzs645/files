@@ -37,15 +37,17 @@ describe('review workspace navigation', () => {
     expect(viewOf('/procurement?view=compare')).toBe('compare');
     expect(viewOf('/procurement?view=deadlines')).toBe('table');
     expect(viewOf('/opportunities/5')).toBe('grid');
-    // Evidence and Documents are single-view sections.
+    // Evidence is a single-view section; Documents' Download/Files/History are views.
     expect(viewOf('/evidence')).toBe('');
-    expect(viewOf('/documents')).toBe('');
+    expect(viewOf('/documents')).toBe('download');
+    expect(viewOf('/documents?tab=history')).toBe('history');
     expect(viewOf('/insights')).toBe('decisions');
     expect(viewOf('/analysis/sources')).toBe('market');
     expect(viewOf('/contract-awards/analysis/organizations/a')).toBe('market');
     expect(viewOf('/contract-awards')).toBe('awards');
     expect(viewOf('/workbench')).toBe('stages');
     expect(viewOf('/ai-review')).toBe('reviews');
+    expect(viewOf('/ai-review?view=analysis')).toBe('analysis');
     expect(viewOf('/pursuits')).toBe('');
   });
   it('switches opportunity views without losing the filter scope', () => {
@@ -54,6 +56,15 @@ describe('review workspace navigation', () => {
     expect(viewHref('opportunities', 'grid', '/procurement?source=bc-bid')).toBe('/opportunities');
     expect(viewHref('opportunities', 'compare', '/opportunities')).toBe('/procurement?view=compare');
     expect(viewHref('insights', 'awards', '/insights')).toBe('/contract-awards');
+  });
+  it('keeps the record picker state when switching Documents and AI review views', () => {
+    expect(viewHref('documents', 'files', '/documents?search=roof&source=bc-bid')).toBe('/documents?search=roof&source=bc-bid&tab=files');
+    expect(viewHref('documents', 'download', '/documents?tab=history&search=roof')).toBe('/documents?search=roof');
+    expect(viewHref('workbench', 'analysis', '/ai-review?search=bridge&kind=award')).toBe('/ai-review?search=bridge&kind=award&view=analysis');
+    expect(viewHref('workbench', 'reviews', '/ai-review?view=analysis&search=bridge')).toBe('/ai-review?search=bridge');
+    // A different page starts fresh.
+    expect(viewHref('workbench', 'stages', '/ai-review?search=bridge')).toBe('/workbench');
+    expect(viewHref('workbench', 'reviews', '/workbench?x=1')).toBe('/ai-review');
   });
   it('chooses the page component for shell-owned routes and defers the rest to the router', () => {
     expect(pageOf('/home')).toBe('home');

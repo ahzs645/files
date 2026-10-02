@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { parseCanadaBuysCsv, preserveCanadaBuysEnrichment, verifyCanadaBuysImportReceipt } from '../dashboard/procurement/import-canadabuys';
 import { nextImportBatch } from '../dashboard/procurement/import-batches';
+import { isPauseError } from './pause';
 import { CANADABUYS_DATASET_URL, CANADABUYS_DOCUMENTATION_URL, COLLECTION_KEY, canadaBuysClosingAt } from '../dashboard/procurement/source-adapters';
 
 type Host = (method: string, input: any) => Promise<any>;
@@ -98,6 +99,11 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
         error: finished && !complete ? { code: 'source_records_excluded', message: `${current.receipt.excludedCount} oversized notice(s) were excluded. Coverage is incomplete; the checksummed receipt records every excluded CSV row.`, at: now() } : null }) };
     });
   } catch (error) {
+    if (isPauseError(error)) {
+      // Paused for a Zoer update: committed batches and the cursor are kept; the re-run resumes from them.
+      await transaction(host, async current => { owned(current); return { entries: stateEntry({ ...current, status: 'paused', leaseUntil: null, error: null }) }; }).catch(() => undefined);
+      throw error;
+    }
     const message = (error as Error).message.slice(0, 2000), code = error instanceof CollectionError ? error.code : 'collection_failed';
     await transaction(host, async current => { owned(current); return { entries: stateEntry({ ...current, status: 'failed', leaseUntil: null, error: { code, message, at: now() } }) }; });
     throw error;

@@ -62,7 +62,7 @@ export function ScrapeControlPanel({
         </Button>
 
         <div className="ml-auto">
-          <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} />
+          <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} paused={hasActiveRun && activeRun?.paused} />
         </div>
       </div>
 

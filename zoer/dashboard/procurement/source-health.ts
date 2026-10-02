@@ -43,7 +43,7 @@ export function capabilityMatrix(sourceId: string, capabilities: AdapterCapabili
 export const CAPABILITY_TEXT: Record<CapabilityStatus, string> = { available: 'Available', partial: 'Partial', unavailable: 'Not supported', unknown: 'Unknown' };
 
 export interface BatchRow { id: string; kind: string; status: string; completed: number | string; failed: number | string; total: number | string; error: string | null; updated_at: string }
-const BATCH_STATUS: Record<string, string> = { running: 'Running', succeeded: 'Succeeded', failed: 'Failed', partial: 'Partly failed', stopped: 'Stopped', waiting_for_user: 'Waiting for you (browser check)', cancelled: 'Cancelled' };
+const BATCH_STATUS: Record<string, string> = { running: 'Running', succeeded: 'Succeeded', failed: 'Failed', partial: 'Partly failed', stopped: 'Stopped', waiting_for_user: 'Waiting for you (browser check)', cancelled: 'Cancelled', paused: 'Paused for update' };
 export const batchStatusText = (status: string) => BATCH_STATUS[status] ?? `Unrecognized status: ${status}`;
 /**
  * Latest attempt and latest success per batch kind. A failed, partial, stopped or waiting run is reported with
@@ -56,7 +56,7 @@ export function batchHealth(rows: BatchRow[]) {
     const attempt = list[0], success = list.find(row => row.status === 'succeeded') ?? null;
     const n = (value: number | string) => Number(value) || 0;
     const outcome = `${n(attempt.completed)} of ${n(attempt.total)} records completed${n(attempt.failed) ? `, ${n(attempt.failed)} failed` : ''}`;
-    return { kind, attempt: { ...attempt, statusText: batchStatusText(attempt.status), outcome, problem: !['succeeded', 'running'].includes(attempt.status) }, success,
+    return { kind, attempt: { ...attempt, statusText: batchStatusText(attempt.status), outcome, problem: !['succeeded', 'running', 'paused'].includes(attempt.status) }, success,
       problems: list.filter(row => ['failed', 'partial', 'stopped', 'waiting_for_user'].includes(row.status)).length };
   });
 }

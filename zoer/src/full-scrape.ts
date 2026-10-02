@@ -1,4 +1,5 @@
-import { expandCheckpoint } from './checkpoint';
+import { compactCheckpoint, expandCheckpoint } from './checkpoint';
+import { isPauseError, paused } from './pause';
 export { compactCheckpoint } from './checkpoint';
 import { parseCapture, type PageCapture } from './capture';
 import { LISTING_URL } from './scrape';
@@ -10,6 +11,8 @@ export interface Checkpoint {
   currentPage: number; totalPages: number | null; listingCount: number; detailsCompleted: number;
   knownKeys: string[]; pending: PendingDetail[]; failures: { sourceKey: string; message: string }[];
   complete: boolean; error?: string;
+  /** Run that last saved this progress; a re-run of the same run (paused for a Zoer update) continues it. */
+  runId?: string;
 }
 const key = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length < 1000;
 export function validateCheckpoint(value: any): Checkpoint {
@@ -24,13 +27,28 @@ export function validateCheckpoint(value: any): Checkpoint {
   }
   return structuredClone(value);
 }
+/**
+ * Which progress a scrape.full run continues from. Zoer's stored pause checkpoint wins, then an operator
+ * resume. With neither, saved catalog progress is continued only when this is a resumed run
+ * (`resumeCheckpoint` present but null after a hard stop, or ZOER_RESUMED_FROM_PAUSE=1) or a re-run of the run that saved it. A new run starts fresh.
+ */
+export async function fullScrapeResume(request: { run?: { id?: string }; input?: any; resumeCheckpoint?: unknown }, loadSaved: () => Promise<any>,
+  resumingPausedRun = request.resumeCheckpoint !== undefined) {
+  const supplied = request.resumeCheckpoint ?? request.input?.resume;
+  if (supplied) return supplied;
+  const saved = await loadSaved();
+  if (!saved || saved.complete || !(resumingPausedRun || (request.run?.id && saved.runId === request.run.id))) return undefined;
+  try { return validateCheckpoint(saved); } catch { return undefined; }
+}
+const compactOrNull = (state: Checkpoint) => { try { return compactCheckpoint(state); } catch { return null; } };
 /** Immutable listing/detail deltas keep data durable; compact checkpoints resume without re-fetching completed details. */
-export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?: number): Promise<PageCapture> }, save: (document: any) => Promise<string>, resume?: unknown) {
+export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?: number): Promise<PageCapture> }, save: (document: any) => Promise<string>, resume?: unknown, options: { runId?: string } = {}) {
   const now = () => new Date().toISOString();
   const state: Checkpoint = resume ? validateCheckpoint(expandCheckpoint(resume)) : { version: 1, kind: 'scrape', scope: 'all-current-public-opportunities', limited: false,
     capturedAt: now(), startedAt: now(), phase: 'listing', currentPage: 0, totalPages: null, listingCount: 0, detailsCompleted: 0,
     knownKeys: [], pending: [], failures: [], complete: false };
   state.failures = []; delete state.error;
+  if (options.runId) state.runId = options.runId;
   const known = new Set(state.knownKeys);
   let artifactId = '';
   const checkpoint = async () => { state.capturedAt = now(); state.listingCount = known.size; artifactId = await save(state); };
@@ -40,6 +58,7 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
       try { return await browser.captureUrl(url, pageNumber); }
       catch (error) {
         failure = error;
+        if (isPauseError(error)) throw error;
         if (/manual|browser check|cancel|unavailable|budget|invalid.ticket/i.test(String(error))) throw error;
       }
     }
@@ -79,6 +98,7 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
         state.pending = state.pending.filter(item => item.sourceKey !== row.sourceKey);
         state.detailsCompleted++;
       } catch (error) {
+        if (isPauseError(error)) throw error;
         const message = error instanceof Error ? error.message : String(error);
         state.failures.push({ sourceKey: row.sourceKey, message });
         if (/manual|browser check|cancel|unavailable|budget|invalid.ticket/i.test(message)) throw error;
@@ -92,6 +112,12 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
     return { artifactId, listingCount: known.size, detailCount: state.detailsCompleted, pageCount: state.currentPage + state.detailsCompleted,
       scope: state.scope, limited: false, totalPages: state.totalPages! };
   } catch (error) {
+    if (isPauseError(error)) {
+      // Zoer is updating: nothing new starts, progress is flushed, and the run resumes on the new backend.
+      // A failed flush still returns the in-memory checkpoint; per-detail saves already updated the catalog.
+      try { await checkpoint(); } catch { /* resumeCheckpoint carries the same progress */ }
+      return paused(compactOrNull(state));
+    }
     state.error = error instanceof Error ? error.message : String(error);
     await checkpoint();
     throw error;

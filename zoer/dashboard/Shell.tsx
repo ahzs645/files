@@ -13,8 +13,11 @@ import { ProfilesPage } from './review-workspace/ProfileEditor';
 import { PipelineWorkbench } from './review-workspace/PipelineWorkbench';
 import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, SECTION_VIEWS, pageOf, redirectOf, sectionOf, viewHref, viewOf, type Page, type Section } from './review-workspace/nav';
 import './review-workspace/review.css';
-import { useEffect, useRef, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import { Select } from '@zoer/plugin-ui/controls';
+import { useEffect, useRef, useSyncExternalStore, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { PageTabs } from '@zoer/plugin-ui/analysis';
+import { Btn } from '@zoer/plugin-ui/controls';
+import { useWorkspace } from './backend';
+import { queryClient } from './query-client';
 
 // BC Bid's own tools sit under Sources; the source router still owns these paths.
 // The shared Opportunities and Awards catalogs live in their own sections and cover every source.
@@ -43,16 +46,30 @@ function useTabStrip(ref: RefObject<HTMLElement | null>, path: string) {
     return () => { nav.removeEventListener('scroll', update); observer.disconnect(); };
   }, [ref]);
 }
-/** A section's alternative views: segmented control on wide screens, one picker on phones (same pattern as BC Bid's pages). */
+/** Second-level tabs for a section's alternative views or a source's own pages (host PageTabs, same on phones). */
+function SubTabs({ id, label, tabs, value }: { id: string; label: string; tabs: [string, string, string][]; value: string }) {
+  return <PageTabs id={id} label={label} tabs={tabs.map(([tab, text]) => ({ id: tab, label: text }))} value={value}
+    onChange={tab => navigatePlugin(tabs.find(([candidate]) => candidate === tab)![2])}
+    href={tab => pluginHref(tabs.find(([candidate]) => candidate === tab)![2])} />;
+}
 function SectionViews({ section, location }: { section: Section; location: string }) {
   const views = SECTION_VIEWS[section];
   if (!views) return null;
-  const current = viewOf(location), name = SECTION_NAMES[section];
-  return <div className="pc-source-header">
-    <div className="pc-source-crumb"><strong>{name}</strong></div>
-    <nav aria-label={`${name} views`} className="pc-segmented">{views.map(([id, label]) => { const to = viewHref(section, id, location); return <a key={id} href={pluginHref(to)} aria-current={id === current ? 'page' : undefined} onClick={follow(to)}>{label}</a>; })}</nav>
-    <label className="pc-source-picker"><span className="sr-only">{name} view</span><Select aria-label={`${name} view`} presentation="dropdown" searchable={false} value={current} onChange={event => navigatePlugin(viewHref(section, event.target.value, location))}>{views.map(([id, label]) => <option key={id} value={id}>{name} · {label}</option>)}</Select></label>
-  </div>;
+  return <SubTabs id="pc-views" label={`${SECTION_NAMES[section]} views`} value={viewOf(location)} tabs={views.map(([id, label]) => [id, label, viewHref(section, id, location)])} />;
+}
+/**
+ * One load status for the whole workspace, inside the content area: a workspace error wins over a
+ * background refresh failure for the same cause, and previously loaded data stays on screen.
+ */
+function LoadStatus() {
+  const { error } = useWorkspace();
+  const queryError = useSyncExternalStore(
+    listener => queryClient.getQueryCache().subscribe(listener),
+    () => queryClient.getQueryCache().getAll().find(query => query.getObserversCount() > 0 && query.state.status === 'error')?.state.error?.message ?? '',
+  );
+  const message = error || queryError;
+  if (!message) return null;
+  return <div role="alert" className="pc-load-status"><span>Couldn’t refresh: {message.replace(/\.$/, '')}. Showing saved data.</span><Btn size="sm" onClick={() => void queryClient.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></div>;
 }
 const PAGE_VIEWS: Partial<Record<Page, () => ReactNode>> = {
   home: () => <Home />, insights: () => <Insights />, procurement: () => <Procurement />, pursuits: () => <Pursuits />, documents: () => <Documents />,
@@ -77,18 +94,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     <nav ref={top} aria-label="Procurement sections" className="zoer-tabs relative flex min-w-0 shrink-0 gap-0.5 overflow-x-auto border-b border-border-default px-2 sm:gap-1 sm:px-4">
       {PRIMARY_SECTIONS.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}
       <span role="group" aria-label="Configure" className="rw-nav-configure">
-        <span className="rw-nav-label" aria-hidden="true">Configure</span>
         {CONFIGURE_SECTIONS.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}
       </span>
     </nav>
     {/* A source's own pages are chosen inside the page header, not from a second tab row. */}
-    {inBcBid && <div className="pc-source-header">
-      <div className="pc-source-crumb"><a href={pluginHref('/sources')} onClick={follow('/sources')}>Sources</a><span aria-hidden="true">/</span><strong>BC Bid</strong></div>
-      <nav aria-label="BC Bid sections" className="pc-segmented">{bcBid.map(([to, label]) => { const active = to === bcBidPage; return <a key={to} href={pluginHref(to)} aria-current={active ? 'page' : undefined} onClick={follow(to)}>{label}</a>; })}</nav>
-      <label className="pc-source-picker"><span className="sr-only">BC Bid page</span><Select aria-label="BC Bid page" presentation="dropdown" searchable={false} value={bcBidPage} onChange={event => navigatePlugin(event.target.value)}>{bcBid.map(([to, label]) => <option key={to} value={to}>BC Bid · {label}</option>)}</Select></label>
-    </div>}
-    {!redirect && <SectionViews section={section} location={location} />}
+    {inBcBid && <SubTabs id="pc-views" label="BC Bid pages" value={bcBidPage} tabs={bcBid.map(([to, label]) => [to, label, to])} />}
+    {!redirect && !inBcBid && <SectionViews section={section} location={location} />}
     {/* Analysis owns a full-height rail, so its wrapper fills the scroll area with flex rather than a percentage that would collapse while a view loads. */}
-    <div role="region" aria-label="Procurement content" className={`zoer-content min-h-0 flex-1 overflow-y-auto${analysis || catalog ? ' flex flex-col' : ''}`}><div className={analysis ? 'flex flex-1 flex-col' : catalog ? 'zoer-catalog mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col p-3 sm:p-4' : 'mx-auto max-w-[1400px] p-3 sm:p-4'}>{page}</div></div>
+    <div id="pc-views-panel" role="region" aria-label="Procurement content" className={`zoer-content min-h-0 flex-1 overflow-y-auto${analysis || catalog ? ' flex flex-col' : ''}`}><div className={analysis ? 'flex flex-1 flex-col' : catalog ? 'zoer-catalog mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col p-3 sm:p-4' : 'mx-auto max-w-[1400px] p-3 sm:p-4'}>{inBcBid && <p className="pc-source-crumb"><a href={pluginHref('/sources')} onClick={follow('/sources')}>Sources</a><span aria-hidden="true">/</span><strong>BC Bid</strong></p>}<LoadStatus />{page}</div></div>
   </div>;
 }

@@ -31,19 +31,15 @@ export function Documents() {
   };
   const current = TABS.some(([id]) => id === tab) ? tab : '';
   return <section className="research doc-page">
-    <header className="bid-page-header"><h1>Documents</h1><Button variant="ghost" onClick={() => void host('catalog.open')}>Database viewer</Button></header>
+    {/* Download · Files · History are the section's tabs (Shell); the page itself has no heading. */}
     <DocumentStats refreshKey={refreshKey} />
     <BatchProgress batches={state.batches} tasks={state.tasks} />
-    <div className="research-segment doc-tabs" role="tablist" aria-label="Document views">
-      {TABS.map(([id, label]) => <Button key={id || 'download'} role="tab" aria-selected={current === id} variant={current === id ? 'primary' : 'ghost'} onClick={() => setTab(id)}>
-        {label}{id === 'history' && attention && <span className="doc-dot" aria-label="needs attention" />}
-      </Button>)}
-    </div>
+    {attention && current !== 'history' && <p className="doc-attention" role="status"><span className="doc-dot" aria-hidden="true" />The last download needs attention. <button type="button" onClick={() => setTab('history')}>Open history</button></p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {current === '' && <>
       <BulkDocuments running={downloads.some((batch: any) => batch.status === 'running')} onStarted={refresh} />
       <h2 className="doc-subhead">Or pick opportunities</h2>
-      <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId}
+      <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} more={[{ label: 'Open database viewer', onClick: () => void host('catalog.open') }]}
         actions={<Button disabled={busy || !selection.size} onClick={() => void download()}>Download selected</Button>} />
     </>}
     {current === 'files' && <DocumentFiles onDetails={setRecordId} refreshKey={refreshKey} running={running} />}

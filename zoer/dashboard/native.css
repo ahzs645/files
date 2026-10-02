@@ -143,7 +143,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .bid-list-award>summary::after{content:'Show details';display:block;margin-top:6px;font-size:12px;color:var(--color-accent)}
 .bid-list-award[open]>summary::after{content:'Hide details'}
 .bid-list-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:12px;color:var(--color-text-tertiary)}
-.bid-list-status{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.bid-list-status{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:500;letter-spacing:.04em}
 .bid-list-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:4px;font-size:14px;font-weight:600;line-height:1.35;color:var(--color-text-primary);overflow-wrap:anywhere}
 .bid-list-buyer{display:block;margin-top:4px;font-size:13px;color:var(--color-text-secondary)}
 .bid-list-buyer small{font-size:12px}
@@ -230,3 +230,18 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .doc-steps>summary{margin-top:4px;font-size:12px;color:var(--color-text-tertiary);cursor:pointer}
 @media(max-width:640px){.doc-file-list article{flex-direction:row;flex-wrap:wrap;align-items:center}.doc-file-list .research-file-info{flex-basis:100%}}
 @media(max-width:640px){.doc-page .research-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.doc-page .research-metrics>div{padding:6px 8px}.doc-page .research-metrics dt{font-size:11px}.doc-page .research-metrics dd{font-size:15px}}
+/* Opened from a "Continue scrape" notification. */
+.zoer-continue { border-color:var(--color-accent); box-shadow:inset 3px 0 0 var(--color-accent); }
+.zoer-continue .zoer-continue-reason { color:var(--color-orange); overflow-wrap:anywhere; }
+.doc-attention{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary)}
+.doc-attention .doc-dot{margin-left:0}
+.doc-attention button{color:var(--color-accent);text-decoration:underline;text-underline-offset:2px}
+/* Record picker: search row first; filters inline on wider screens, behind one Filters button on phones. */
+.research-search-row{align-items:center;flex-wrap:nowrap;margin-top:0}
+.research-search-row .research-search{flex:1 1 auto;min-width:0}
+.research-filters-toggle{display:none}
+@media(max-width:639px){
+  .research-filters-toggle{display:inline-flex}
+  .research-filters:not([data-open]){display:none}
+  .research-records article{padding:8px 0}
+}

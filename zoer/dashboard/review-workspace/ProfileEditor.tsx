@@ -56,8 +56,8 @@ export function ProfilesPage() {
   const current = selected === 'new' ? null : list.find(p => p.id === selected) ?? (selected ? null : list[0] ?? null);
   const creating = selected === 'new' || (!current && !profiles.isPending && !list.length);
   const choose = (id: string) => { if (dirty && id !== (current?.id ?? 'new')) setPending(id); else { setSelected(id); setDirty(false); } };
-  return <section className="rw-page" aria-labelledby="profiles-title">
-    <header className="rw-page-head"><div><h1 id="profiles-title">Company profiles</h1><p className="rw-note">Capabilities with evidence. Assessments are made against a published version, never a loose description; switching or publishing a profile never relabels an earlier assessment.</p></div></header>
+  // The Profiles tab names the page; how versions work is on the Publish button's tooltip.
+  return <section className="rw-page" aria-label="Company profiles">
     {workspace.isPending ? <p role="status">Checking the review workspace…</p> : !available ? <p className="rw-upgrade">{workspace.data?.reason}</p> : <>
       {profiles.error && <p role="alert">{(profiles.error as Error).message}</p>}
       {pending !== null && <div className="rw-callout" role="alertdialog" aria-label="Unsaved changes"><span>The draft has unsaved changes.</span><Btn size="sm" variant="secondary" onClick={() => setPending(null)}>Keep editing</Btn><Btn size="sm" variant="danger" onClick={() => { setSelected(pending); setPending(null); setDirty(false); }}>Discard and switch</Btn></div>}
@@ -68,7 +68,6 @@ export function ProfilesPage() {
             <strong>{p.name}</strong><span>{p.publishedVersion ? `Published v${p.publishedVersion}` : 'Not published yet'} · draft {p.draftVersion}</span>
           </button>)}
           <Btn variant="secondary" size="sm" onClick={() => choose('new')}>New profile</Btn>
-          <p className="rw-note">No profile selected elsewhere means triage and extraction still work, but eligibility reads “Not assessed for this profile”.</p>
         </nav>
         {creating ? <ProfileWorkspace key="new" profile={null} onDirty={setDirty} onCreated={id => { setSelected(id); setDirty(false); }} />
           : current ? <ProfileWorkspace key={current.id} profile={current} onDirty={setDirty} onCreated={() => {}} /> : null}
@@ -142,10 +141,9 @@ function ProfileWorkspace({ profile, onDirty, onCreated }: { profile: ProfileRow
       <div><h2>{profile ? profile.name : 'New profile'}</h2><p className="rw-note">{profile ? <>Draft {profile.draftVersion} · saved {when(profile.updatedAt)}</> : 'Save a draft first; publish it when the evidence is ready.'}{dirty && <span className="rw-chip" data-tone="needs_information"><b>Unsaved changes</b></span>}{!dirty && unpublished && <span className="rw-chip" data-tone="needs_information"><b>Draft differs from the published version</b></span>}</p></div>
       <div className="rw-actions">
         <Btn variant="secondary" disabled={locked || !dirty} loading={busy === 'save'} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save draft'}</Btn>
-        <Btn variant="primary" disabled={locked || !profile || dirty || !unpublished} loading={busy === 'publish'} aria-describedby="publish-note" onClick={() => void publish()}>{busy === 'publish' ? 'Publishing…' : 'Publish new version'}</Btn>
+        <Btn variant="primary" disabled={locked || !profile || dirty || !unpublished} loading={busy === 'publish'} tooltip={`Creates a new version; earlier assessments keep theirs.${profile && dirty ? ' Save the draft first.' : ''}`} onClick={() => void publish()}>{busy === 'publish' ? 'Publishing…' : 'Publish new version'}</Btn>
       </div>
     </div>
-    <p id="publish-note" className="rw-note">Publishing creates a new immutable version. Earlier assessments keep the version they were made with; source extraction is never rerun.{profile && dirty ? ' Save the draft before publishing.' : ''}</p>
     {error && <p role="alert" className="rw-error">{error}</p>}{message && <p role="status">{message}</p>}
     {issues.length > 0 && <div role="alert" className="rw-issues"><strong>Fix these before saving:</strong><ul>{issues.map((issue, i) => <li key={i}>{issue.message}</li>)}</ul></div>}
     {published && <div className="rw-callout" role="status">

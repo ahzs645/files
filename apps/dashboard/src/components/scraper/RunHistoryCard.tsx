@@ -58,7 +58,7 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-subtle p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <StatusPill status={run.status} interrupted={run.errorCode === "scrape_interrupted"} />
+        <StatusPill status={run.status} interrupted={run.errorCode === "scrape_interrupted"} paused={run.paused} />
         <span className="text-xs text-text-tertiary">{formatTimestamp(run.startedAt)}</span>
       </div>
 

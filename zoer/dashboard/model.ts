@@ -6,6 +6,17 @@ import { buildContractAwardImportKey, buildContractAwardSearchText, parseContrac
 import { buildContractAwardAnalysisOverview, buildContractAwardEntityProfile, buildContractAwardEntityOptions } from '../../convex/contractAwardsAnalysisHelpers';
 
 export interface WorkspaceState { runs: any[]; artifacts: any[]; runsTruncated?: boolean }
+const TERMINAL = ['succeeded', 'failed', 'cancelled', 'outcome_unknown'];
+/**
+ * A Zoer update deploy parks running work (step `waiting_for_event`, wait key `maintenance:<drainId>`) and
+ * resumes it automatically; new runs wait as pending with "Paused for Zoer update". Never a failure.
+ */
+export function isPausedForUpdate(run: any) {
+  if (!run || TERMINAL.includes(run.status) || run.cancelRequestedAt) return false;
+  return run.paused === true || run.status === 'waiting_for_event' || /^maintenance:/.test(run.waitKey ?? '')
+    || /paused for (zoer )?update/i.test(`${run.queueReason ?? ''} ${run.statusReason ?? ''}`);
+}
+export const PAUSED_FOR_UPDATE = 'Paused for update. Zoer continues automatically after the update; no action needed.';
 export interface SavedDocument { record: { id: string; runId: string; createdAt: string }; document: any }
 const emptyCounts = () => ({ listingCount: 0, detailCount: 0, opportunityCount: 0, addendaCount: 0, attachmentCount: 0, pageCount: 0, failedDetails: 0 });
 const defaults = { descriptionText: '', detailFields: [], attachments: [], addenda: [], commodities: [], searchText: '' };
@@ -56,12 +67,15 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
     const rows = [...(history.get(run.id)?.values() ?? [])];
     const counts = { ...emptyCounts(), listingCount: doc?.listingCount ?? doc?.recordsCount ?? doc?.records?.length ?? 0, detailCount: doc?.detailsCompleted ?? (doc?.kind === 'detail' ? 1 : 0), opportunityCount: Math.max(rows.length, doc?.knownKeys?.length ?? doc?.recordsCount ?? 0),
       addendaCount: rows.reduce((sum, row) => sum + row.addenda.length, 0), attachmentCount: rows.reduce((sum, row) => sum + row.attachments.length, 0), failedDetails: doc?.failures?.length ?? 0, pageCount: doc ? (doc.currentPage ?? 1) + (doc.detailsCompleted ?? 0) : 0 };
+    // A paused run stays "running" (still active: no duplicate start or manual resume) and is flagged `paused`.
+    const paused = isPausedForUpdate(run);
     const status = ['succeeded', 'failed', 'cancelled'].includes(run.status) ? run.status : run.status === 'outcome_unknown' ? 'failed' : run.cancelRequestedAt ? 'stopping' : 'running';
-    const phase = status === 'succeeded' ? 'complete' : status === 'failed' ? 'failed' : status === 'cancelled' ? 'cancelled' : status === 'stopping' ? 'stopping' : doc?.phase ?? (doc ? 'detail' : 'listing');
+    const phase = paused ? 'paused' : status === 'succeeded' ? 'complete' : status === 'failed' ? 'failed' : status === 'cancelled' ? 'cancelled' : status === 'stopping' ? 'stopping' : doc?.phase ?? (doc ? 'detail' : 'listing');
     const interrupted = run.status === 'outcome_unknown';
-    const message = run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved progress is retained; resume the saved scrape to continue.' : run.error) || (status === 'succeeded' ? `${counts.listingCount} listings · ${counts.detailCount} details · ${full ? 'all current public opportunities' : 'bounded capture'}` : status === 'cancelled' ? 'Stopped by operator' : doc ? `Saved ${counts.listingCount} listings across ${doc.currentPage ?? 1} pages · ${counts.detailCount} details${full ? ` · ${doc.pending?.length ?? 0} remaining` : ""}` : 'Opening BC Bid and collecting the listing page');
-    return { _id: run.id, status, trigger: 'manual', startedAt: Date.parse(run.createdAt), completedAt: run.completedAt ? Date.parse(run.completedAt) : null,
-      cancellationRequested: !!run.cancelRequestedAt, counts, errorMessage: interrupted ? null : run.error || doc?.error, errorCode: interrupted ? 'scrape_interrupted' : status === 'failed' ? 'scrape_failed' : null,
+    const savedSoFar = doc && full ? ` Saved so far: ${counts.listingCount} listings · ${counts.detailCount} details · ${doc.pending?.length ?? 0} remaining.` : '';
+    const message = paused ? PAUSED_FOR_UPDATE + savedSoFar : run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved progress is retained; resume the saved scrape to continue.' : run.error) || (status === 'succeeded' ? `${counts.listingCount} listings · ${counts.detailCount} details · ${full ? 'all current public opportunities' : 'bounded capture'}` : status === 'cancelled' ? 'Stopped by operator' : doc ? `Saved ${counts.listingCount} listings across ${doc.currentPage ?? 1} pages · ${counts.detailCount} details${full ? ` · ${doc.pending?.length ?? 0} remaining` : ""}` : 'Opening BC Bid and collecting the listing page');
+    return { _id: run.id, status, paused, trigger: 'manual', startedAt: Date.parse(run.createdAt), completedAt: run.completedAt ? Date.parse(run.completedAt) : null,
+      cancellationRequested: !!run.cancelRequestedAt, counts, errorMessage: interrupted || paused ? null : run.error || doc?.error, errorCode: interrupted ? 'scrape_interrupted' : status === 'failed' ? 'scrape_failed' : null,
       progress: { phase, message, percent: status === 'succeeded' ? 100 : full ? (doc.phase === "listing" ? 10 : 30 + 69 * counts.detailCount / Math.max(1, counts.listingCount)) : doc ? Math.min(90, 20 + counts.detailCount * 20) : 0, current: counts.detailCount, total: full ? counts.listingCount : doc?.detailLimit ?? 3,
         pagesCompleted: doc?.currentPage ?? counts.pageCount, totalPages: doc?.totalPages ?? null, listingsDiscovered: counts.listingCount, detailsCompleted: counts.detailCount, detailsTotal: full ? counts.listingCount : doc?.detailLimit ?? null,
         batchesCompleted: doc ? 1 : 0, batchesTotal: null, heartbeatAt: Date.parse(heartbeat.get(run.id) ?? doc?.capturedAt ?? run.createdAt) } };

@@ -7,6 +7,7 @@ export type ScrapeRunPhase =
   | "detail"
   | "ingesting"
   | "stopping"
+  | "paused"
   | "complete"
   | "failed"
   | "cancelled";
@@ -25,6 +26,8 @@ export interface OpportunityAddendum {
   title: string;
   date: string | null;
   link: string | null;
+  /** Full text of a Q&A-style addendum, when the notice posts one. */
+  message?: string;
 }
 
 export interface OpportunityListing {
@@ -325,6 +328,8 @@ export interface ScrapeRun {
   completedAt?: number | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  /** Parked by a Zoer update deploy; resumes automatically. Status stays "running". */
+  paused?: boolean;
   artifactPath?: string | null;
   cancellationRequested: boolean;
   progress: ScrapeRunProgress;

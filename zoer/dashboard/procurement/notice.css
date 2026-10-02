@@ -120,4 +120,4 @@ button.pc-label[aria-pressed=true]{outline:2px solid currentColor;outline-offset
 .pc-notice-tabs{overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}
 .pc-notice-tabs::-webkit-scrollbar{display:none}
 .pc-notice-tabs button:focus-visible{outline:2px solid var(--input-focus,var(--accent));outline-offset:-2px}
-.pc-notice-subhead{font-size:11px!important;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);margin-top:.25rem}
+.pc-notice-subhead{font-size:12px!important;font-weight:650;color:var(--text-muted);margin-top:.25rem}

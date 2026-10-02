@@ -177,13 +177,21 @@ function RecentDecisions({ source }: { source: string }) {
 function Deadlines({ source, asOf }: { source: string; asOf: number }) {
   const deadlines = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'deadlines', source, asOf], refetchInterval: 60_000, queryFn: () => readDeadlines(source, asOf) });
   return <Panel title="Closing in the next 14 days">
-    <Loadable query={deadlines} what="deadlines">{({ total, rows }) => rows.length === 0 ? <p className="rw-muted">Nothing saved closes in the next 14 days.</p> : <>
-      <ul className="rw-list">{rows.map(row => { const d = deadlineText(row.closing, asOf); return <li key={row.id}>
+    <Loadable query={deadlines} what="deadlines">{({ total, rows }) => {
+      if (rows.length === 0) return <p className="rw-muted">Nothing saved closes in the next 14 days.</p>;
+      // Date-only deadlines falling today share one group header instead of repeating the caveat on every row.
+      const dated = rows.map(row => ({ row, d: deadlineText(row.closing, asOf) }));
+      const today = dated.filter(item => item.d.state === 'closing_today_time_unverified'), later = dated.filter(item => item.d.state !== 'closing_today_time_unverified');
+      const item = ({ row, d }: typeof dated[number], dateOnly: boolean) => <li key={row.id}>
         <RouteLink to={`/procurement?notice=${encodeURIComponent(row.id)}`} className="rw-item-title">{row.title || row.id}</RouteLink>
-        <span className={d.state === 'closing_today_time_unverified' ? 'rw-warn' : 'rw-muted'}>{[row.buyer, d.text].filter(Boolean).join(' · ')}</span>
-      </li>; })}</ul>
-      {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'notice')} in the next 14 days · see all →</RouteLink>}
-    </>}</Loadable>
+        <span className="rw-muted">{[row.buyer, dateOnly ? null : d.text].filter(Boolean).join(' · ')}</span>
+      </li>;
+      return <>
+        {today.length > 0 && <><h3 className="rw-group-title">Closes today (time unverified)</h3><ul className="rw-list">{today.map(entry => item(entry, true))}</ul></>}
+        {later.length > 0 && <>{today.length > 0 && <h3 className="rw-group-title">Later</h3>}<ul className="rw-list">{later.map(entry => item(entry, false))}</ul></>}
+        {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'notice')} in the next 14 days · see all →</RouteLink>}
+      </>;
+    }}</Loadable>
   </Panel>;
 }
 

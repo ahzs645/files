@@ -42,12 +42,14 @@ export function redirectOf(location: string): string | null {
   return query ? `/procurement?${query}` : '/home';
 }
 
-/** A section's alternative views, shown as a segmented control inside the section. [view id, label, route] */
+/** A section's alternative views, shown as the host's second-level PageTabs under the section nav. [view id, label, route] */
 export type SectionView = [string, string, string];
 export const SECTION_VIEWS: Partial<Record<Section, SectionView[]>> = {
   opportunities: [['table', 'List', '/procurement'], ['grid', 'Grid', '/opportunities'], ['matrix', 'Fit matrix', '/procurement?view=matrix'], ['compare', 'Compare', '/procurement?view=compare']],
   insights: [['decisions', 'Decision insights', '/insights'], ['market', 'Market analysis', '/analysis/overview'], ['awards', 'Award history', '/contract-awards']],
-  workbench: [['reviews', 'AI review', '/ai-review'], ['stages', 'Pipeline stages', '/workbench']],
+  documents: [['download', 'Download', '/documents'], ['files', 'Files', '/documents?tab=files'], ['history', 'History', '/documents?tab=history']],
+  // Run reviews and Analysis used to be a second button row inside AI review; they are views of the section now.
+  workbench: [['reviews', 'Run reviews', '/ai-review'], ['analysis', 'Analysis', '/ai-review?view=analysis'], ['stages', 'Pipeline stages', '/workbench']],
 };
 
 /** The active view id within a section, or '' when the section has no views. */
@@ -56,18 +58,32 @@ export function viewOf(location: string): string {
   switch (sectionOf(location)) {
     case 'opportunities': { if (under(path, '/opportunities')) return 'grid'; const view = params.get('view'); return view === 'matrix' || view === 'compare' ? view : 'table'; }
     case 'insights': return path === '/insights' ? 'decisions' : under(path, '/analysis') || under(path, '/contract-awards/analysis') ? 'market' : 'awards';
-    case 'workbench': return path === '/workbench' ? 'stages' : 'reviews';
+    case 'workbench': return path === '/workbench' ? 'stages' : params.get('view') === 'analysis' ? 'analysis' : 'reviews';
+    case 'documents': { const tab = params.get('tab'); return tab === 'files' || tab === 'history' ? tab : 'download'; }
     default: return '';
   }
 }
 
+/** Views that are one page told apart by a query key; switching among them keeps the rest of the page's state. */
+const VIEW_KEYS: Partial<Record<Section, string>> = { documents: 'tab', workbench: 'view' };
+
 /**
  * Route for switching to another view. Moving between the review table, matrix and comparison keeps the
  * current filters (source, queue, profile...) so the same scope is shown differently; it drops the page cursor.
+ * Documents' Download/Files/History and AI review's Run reviews/Analysis keep the record picker's search and
+ * filters (and the open record) the same way, as their in-page tabs used to.
  */
 export function viewHref(section: Section, view: string, location: string): string {
   const target = SECTION_VIEWS[section]?.find(([id]) => id === view)?.[2] ?? '/';
   const path = pathOf(location);
+  const key = VIEW_KEYS[section];
+  if (key && pathOf(target) === path) {
+    const params = new URLSearchParams(location.split('?')[1] ?? '');
+    params.delete(key);
+    const next = new URLSearchParams(target.split('?')[1] ?? '').get(key);
+    if (next) params.set(key, next);
+    return path + (params.size ? '?' + params : '');
+  }
   if (section !== 'opportunities' || path !== '/procurement' || !target.startsWith('/procurement')) return target;
   const params = new URLSearchParams(location.split('?')[1] ?? '');
   for (const key of ['view', 'page', 'after', 'notice', 'tab']) params.delete(key);

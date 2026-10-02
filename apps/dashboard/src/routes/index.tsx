@@ -91,7 +91,7 @@ function DashboardPage() {
         {plugin ? (
           <Card>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} />
+              <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} paused={hasActiveRun && activeRun?.paused} />
               {hasActiveRun && activeRun ? (
                 <span className="order-last w-full text-sm text-text-primary sm:order-none sm:w-auto sm:flex-1">{activeRun.progress.message}</span>
               ) : (
@@ -126,7 +126,7 @@ function DashboardPage() {
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} />
+                <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} paused={hasActiveRun && activeRun?.paused} />
                 {hasActiveRun ? (
                   <span className="text-xs text-text-tertiary">
                     {formatRelativeTime(activeRun?.startedAt)}

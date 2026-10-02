@@ -6,7 +6,7 @@ import { BatchHistory, BatchProgress, useCatalogState } from './BatchHistory';
 import { RecordPicker } from './RecordPicker';
 import { useWorkspace } from './backend';
 import { host } from './bridge';
-import { navigatePlugin, usePluginQuery } from './navigation';
+import { usePluginQuery } from './navigation';
 import { NoticeView } from './procurement/NoticeView';
 import { PromptEditor, type ReviewRunner } from './PromptEditor';
 import { ReviewResults, RunResults } from './ReviewResults';
@@ -48,15 +48,11 @@ export function AiReview() {
   const latest = state.batches[0], revision = `${promptId}:${prompt?.version}:${latest?.id}:${latest?.completed}:${latest?.status}`;
   const reviewBlocker = busy ? 'Starting review…' : !selection.size ? 'Select at least one record to review.' : !promptId ? 'Choose a saved review prompt above, or use New to create one.' : !modelId ? 'Choose a computer and an available review model.' : '';
   return <section className="research">
-    <header className="bid-page-header"><h1>AI review</h1><Button variant="ghost" onClick={() => navigatePlugin('/workbench')}>Pipeline stages</Button><Button variant="ghost" onClick={() => void host('catalog.open')}>Open database viewer</Button></header>
-    <div className="research-segment" role="tablist" aria-label="AI review views">
-      <Button role="tab" aria-selected={view !== 'analysis'} variant={view !== 'analysis' ? 'primary' : 'ghost'} onClick={() => setView('')}>Run reviews</Button>
-      <Button role="tab" aria-selected={view === 'analysis'} variant={view === 'analysis' ? 'primary' : 'ghost'} onClick={() => setView('analysis')}>Analysis</Button>
-    </div>
+    {/* The section tabs name this page (Run reviews · Analysis · Pipeline stages), so it has no heading of its own. */}
     <BatchProgress batches={state.batches} tasks={state.tasks} />
     {view === 'analysis' ? <ReviewAnalysis prompts={state.prompts} onOpen={setRecordId} onSelect={selectFromAnalysis} /> : <>
     <div className="research-grid">
-      <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} />
+      <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} more={[{ label: 'Open database viewer', onClick: () => void host('catalog.open') }]} />
       <section className="zoer-history" aria-label="Review settings">
         <h2>Review settings</h2>
         <div className="research-toolbar research-fill"><Choice label="Prompt" value={promptId} options={state.prompts} onChange={setPromptId} />{prompt && <Button variant="ghost" onClick={() => setEditing('edit')}>Edit</Button>}<Button variant="ghost" onClick={() => setEditing('new')}>New</Button></div>
@@ -68,7 +64,6 @@ export function AiReview() {
         <label className="research-check"><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />Re-run unchanged records</label>
         <div className="research-toolbar"><Button aria-describedby={reviewBlocker ? "review-requirements" : undefined} disabled={!!reviewBlocker} onClick={() => void review()}>Review {selection.size || ''} selected</Button></div>
         {reviewBlocker && <p id="review-requirements" role="status" className="research-note">{reviewBlocker}</p>}
-        <p className="research-note">Long documents are reviewed in chunks; finished chunks are reused on retry.</p>
       </section>
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}

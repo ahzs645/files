@@ -157,7 +157,7 @@
 .pc-active-filters .pc-label{font-size:12px;line-height:1.5rem;padding:0 .625rem;cursor:pointer}
 .pc-facets{display:flex;flex-direction:column;gap:.5rem}
 .pc-facets h3{font-size:13px;font-weight:650;color:var(--text-primary)}
-.pc-facets h4{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);margin:.25rem 0}
+.pc-facets h4{font-size:12px;font-weight:600;color:var(--text-muted);margin:.25rem 0}
 .pc-facets .pc-label{font-size:12px;line-height:1.5rem;padding:0 .5625rem}
 .pc-board-date{font-size:12px;color:var(--text-secondary)}
 .pc-board-date[data-tone=soon]{color:var(--status-warning)}
@@ -196,3 +196,25 @@
    instead so native checkboxes, selects and scrollbars match the host theme. */
 :scope:scope{color-scheme:inherit}
 .procurement-board-card .rw-chip{white-space:normal;max-width:100%;border-radius:.375rem;line-height:1.3;padding:.125rem .5rem}
+/* One load status inside the content area (mirrors the host ResourceStatus warning). */
+.pc-load-status{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-bottom:.75rem;padding:.625rem .75rem;border:1px solid color-mix(in srgb,var(--status-warning) 30%,transparent);border-radius:.375rem;background:color-mix(in srgb,var(--status-warning) 10%,transparent);color:var(--status-warning);font-size:12px}
+.pc-load-status>span{flex:1 1 12rem;min-width:0;overflow-wrap:anywhere}
+p.pc-source-crumb{margin-bottom:.75rem}
+/* Fallbacks for hosts without StatusBadge/EmptyState exports; same shape and tokens as the host. */
+.pc-status-badge{display:inline-flex;align-items:center;gap:.25rem;max-width:100%;border:1px solid var(--border-default);border-radius:999px;padding:.125rem .5rem;font-size:12px;font-weight:500;line-height:1rem;background:var(--surface-secondary);color:var(--text-secondary)}
+.pc-status-badge[data-tone=success],.pc-status-badge[data-tone=running]{color:var(--status-success);border-color:color-mix(in srgb,var(--status-success) 30%,transparent);background:color-mix(in srgb,var(--status-success) 10%,transparent)}
+.pc-status-badge[data-tone=warning]{color:var(--status-warning);border-color:color-mix(in srgb,var(--status-warning) 30%,transparent);background:color-mix(in srgb,var(--status-warning) 10%,transparent)}
+.pc-status-badge[data-tone=error]{color:var(--status-error);border-color:color-mix(in srgb,var(--status-error) 30%,transparent);background:color-mix(in srgb,var(--status-error) 10%,transparent)}
+.pc-status-badge[data-tone=info]{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 30%,transparent);background:var(--accent-subtle)}
+.pc-status-badge[data-variant=dot]{border:0;background:none;padding:0;color:var(--text-secondary)}
+.pc-empty-state{display:flex;flex-direction:column;align-items:center;padding:3rem 1rem;text-align:center}
+.pc-empty-state>div{margin-bottom:.625rem;color:var(--text-faint)}.pc-empty-state>div svg{width:2rem;height:2rem}
+.pc-empty-state>p{font-size:14px;font-weight:500;color:var(--text-heading)}
+.pc-empty-state>span{margin-top:.25rem;max-width:24rem;font-size:14px;line-height:1.5rem;color:var(--text-secondary)}
+/* Phones: the stages become a vertical list; an empty stage collapses to its one-line header. */
+@media(max-width:640px){
+  .procurement-workflow .procurement-board{flex-direction:column;overflow-x:visible;scroll-snap-type:none;padding-bottom:0}
+  .procurement-board .procurement-board-column{flex:none;max-width:none;width:100%}
+  .procurement-board .procurement-board-column[data-empty]{gap:0;padding:.5rem .75rem}
+  .procurement-board .procurement-board-column[data-empty]>.procurement-coverage{display:none}
+}

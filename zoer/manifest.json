@@ -22,7 +22,7 @@
     ],
     "workspace": {
       "title": "Procurement",
-      "icon": "puzzle",
+      "icon": "briefcase",
       "surfaceIds": [
         "opportunities",
         "details"
@@ -493,7 +493,7 @@
           "artifact-store"
         ],
         "resourceLimits": {
-          "timeoutMs": 7200000,
+          "timeoutMs": 21600000,
           "maxMemoryMb": 512,
           "maxOutputBytes": 67108864,
           "maxBrowserPages": 8192
@@ -501,7 +501,7 @@
         "idempotent": false,
         "id": "scrape.full",
         "title": "Scrape all current public opportunities",
-        "description": "Crawl all current listing pages and opportunity details, saving attachment links and resumable checkpoints. Up to 200 listing pages, 3000 opportunities, two hours. Browser checks require manual completion.",
+        "description": "Crawl all current listing pages and opportunity details, saving attachment links and resumable checkpoints. Up to 200 listing pages, 3000 opportunities, six hours. Browser checks require manual completion.",
         "inputSchema": {
           "type": "object",
           "additionalProperties": false,
@@ -546,6 +546,25 @@
             "scope",
             "limited",
             "totalPages"
+          ]
+        },
+        "stopNotification": {
+          "title": "BC Bid scrape stopped before finishing",
+          "actionLabel": "Continue scrape",
+          "route": "/scraper?continue=1",
+          "cases": [
+            {
+              "match": "browser check|verification",
+              "title": "BC Bid needs a browser check",
+              "actionLabel": "Continue scrape",
+              "route": "/scraper?continue=1"
+            },
+            {
+              "match": "output limit|timeout|time limit",
+              "title": "BC Bid scrape paused at its run limit",
+              "actionLabel": "Continue scrape",
+              "route": "/scraper?continue=1"
+            }
           ]
         }
       },
@@ -721,6 +740,31 @@
           },
           "required": [
             "recordIds"
+          ]
+        },
+        "stopNotification": {
+          "title": "Attachment download stopped before finishing",
+          "actionLabel": "Review and retry",
+          "route": "/documents?tab=history",
+          "cases": [
+            {
+              "match": "browser check|verification|download did not start",
+              "title": "BC Bid needs a browser check",
+              "actionLabel": "Retry downloads",
+              "route": "/documents?tab=history"
+            },
+            {
+              "match": "MiB limit|too large",
+              "title": "An attachment is too large to download",
+              "actionLabel": "Review files",
+              "route": "/documents?tab=files"
+            },
+            {
+              "match": "attachment control is missing|capture the notice details",
+              "title": "Some notices need their details captured again",
+              "actionLabel": "Open scraper",
+              "route": "/scraper"
+            }
           ]
         }
       },

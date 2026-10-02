@@ -1,5 +1,6 @@
 import { parseAwardPage } from './award-history';
 import type { PageCapture } from './capture';
+import { isPauseError, paused } from './pause';
 
 export interface AwardRange { from: string; to: string; complete: boolean }
 export interface AwardRangeCheckpoint {
@@ -69,9 +70,14 @@ export async function scrapeAwardRanges(
   const maxPages = limits.maxPages ?? 3500, rangePages = limits.rangePages ?? 40, maxRanges = limits.maxRanges ?? 10000;
   for (const n of [maxPages, rangePages, maxRanges]) if (!Number.isInteger(n) || n < 1) throw new Error('Invalid award range limit.');
   let loaded = 0;
+  // Last checkpoint the host committed together with its rows; a pause returns this, never unsaved progress.
+  let durable = structuredClone(state);
   const persist = async (records: any[], page: PageCapture | null) => {
-    artifactId = await save({ version: 2, kind: 'awards', scope: 'public-award-history', records, checkpoint: structuredClone(state), sourceUrl: page?.url, capturedAt: page?.capturedAt ?? new Date().toISOString(), fileName: 'BC Bid public award history' });
+    const checkpoint = structuredClone(state);
+    artifactId = await save({ version: 2, kind: 'awards', scope: 'public-award-history', records, checkpoint, sourceUrl: page?.url, capturedAt: page?.capturedAt ?? new Date().toISOString(), fileName: 'BC Bid public award history' });
+    durable = checkpoint;
   };
+  try {
   while (!state.complete) {
     const range = state.ranges[state.active];
     let previous = '', duplicatePages = 0, number = 1;
@@ -119,6 +125,12 @@ export async function scrapeAwardRanges(
       if (!page.pagination!.hasNext) break;
       number++;
     }
+  }
+  } catch (error) {
+    // Paused for a Zoer update. Every completed page was saved with its checkpoint; resume
+    // rechecks only the unfinished range from its first page.
+    if (isPauseError(error)) return paused(durable);
+    throw error;
   }
   return { artifactId, count: state.count, pages: state.pages, complete: true, scope: state.scope, undated: state.undated, ranges: state.ranges.length };
 }

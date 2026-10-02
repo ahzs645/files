@@ -8,6 +8,7 @@ import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { parseContractAwardsJson, normalizeContractAwardImportRecord } from '../../packages/shared/src/contractAwards';
 import { activeAwardRun, startAwardHistory, stopAwardHistory, useWorkspace, useAction, useQuery, readAll } from './backend';
 import { downloadRecords } from './export';
+import { isPausedForUpdate, PAUSED_FOR_UPDATE } from './model';
 import { StatusPill } from '../../apps/dashboard/src/components/scraper/StatusPill';
 import { formatRuntime, formatTimestamp } from '../../apps/dashboard/src/lib/formatting';
 function parseAwardImport(text: string) {
@@ -74,7 +75,7 @@ export function AwardHistoryPanel() {
   const isRecent = model.awardRecentCheckpoint?.runId === latest?.id;
   const checkpoint = isRecent ? model.awardRecentCheckpoint : model.awardCheckpoint;
   // A retry can be interrupted before its first save. Keep the durable checkpoint visible.
-  const status = active ? (active.cancelRequestedAt ? 'Stopping after the current request.' : active.queueReason || 'Download running. You can close this page.')
+  const status = active ? (active.cancelRequestedAt ? 'Stopping after the current request.' : isPausedForUpdate(active) ? PAUSED_FOR_UPDATE : active.queueReason || 'Download running. You can close this page.')
     : checkpoint?.complete ? isRecent ? 'Recent refresh complete.' : checkpoint.version === 2 ? 'Dated history complete.' : 'Search complete.'
     : latest ? `Last run ${latest.status === 'outcome_unknown' ? 'was interrupted' : latest.cancelRequestedAt ? 'stopped' : latest.status}. Saved records are retained.`
     : 'Not downloaded yet.';
@@ -97,14 +98,14 @@ export function AwardRunList({ limit = 5 }: { limit?: number }) {
     {truncated}
     <h2 className="text-[15px] font-semibold text-text-primary">Award history runs</h2>
     {model.awardRuns.slice(0, limit).map((run: any) => {
-      const interrupted = run.status === 'outcome_unknown';
+      const interrupted = run.status === 'outcome_unknown', paused = isPausedForUpdate(run);
       const status = ['succeeded', 'failed', 'cancelled'].includes(run.status) ? run.status : interrupted ? 'failed' : run.cancelRequestedAt ? 'stopping' : 'running';
       const startedAt = Date.parse(run.createdAt), completedAt = run.completedAt ? Date.parse(run.completedAt) : null;
       const progress = [model.awardCheckpoint, model.awardRecentCheckpoint].find(value => value?.runId === run.id);
       const rows = awardProgress(progress);
-      const message = run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved pages are retained.' : run.error || (status === 'succeeded' ? 'Award search finished. See coverage above.' : status === 'cancelled' ? 'Stopped by operator.' : status === 'stopping' ? 'Stopping after the current request.' : 'Downloading public award history.'));
+      const message = paused ? PAUSED_FOR_UPDATE : run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved pages are retained.' : run.error || (status === 'succeeded' ? 'Award search finished. See coverage above.' : status === 'cancelled' ? 'Stopped by operator.' : status === 'stopping' ? 'Stopping after the current request.' : 'Downloading public award history.'));
       return <article key={run.id} className="rounded-xl border border-border-subtle bg-bg-subtle p-4 space-y-2">
-        <div className="flex items-center justify-between gap-3"><StatusPill status={status} interrupted={interrupted} /><span className="text-xs text-text-tertiary">{formatTimestamp(startedAt)}</span></div>
+        <div className="flex items-center justify-between gap-3"><StatusPill status={status} interrupted={interrupted} paused={paused} /><span className="text-xs text-text-tertiary">{formatTimestamp(startedAt)}</span></div>
         <div className="text-sm font-medium text-text-primary">{message}</div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">{rows && <span>{rows}</span>}<span>{formatRuntime((completedAt ?? Date.now()) - startedAt)}</span><span className="text-text-tertiary">Award history</span></div>
       </article>;

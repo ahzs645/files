@@ -6,7 +6,7 @@ import { ScraperSetup } from './ScraperSetup';
 import { BidPreferences } from '../../apps/dashboard/src/components/preferences/BidPreferences';
 import { OpportunitiesBrowser } from './BidGrid';
 import { AwardsBrowser, AwardRunList } from './Catalog';
-import { StrictMode, useEffect, useState, useSyncExternalStore } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider, createRouter, createMemoryHistory } from '@tanstack/react-router';
 import { routeTree } from '../../apps/dashboard/src/routeTree.gen';
@@ -34,11 +34,8 @@ function App() {
   // While a shared dialog is open the host stretches this iframe over its whole window and reports the panel's
   // former offsets; padding by them keeps the content in place so the dialog can cover the header and bottom bar.
   const [insets, setInsets] = useState(noInsets);
-  const { error, model, notice } = useWorkspace();
-  const queryError = useSyncExternalStore(
-    listener => queryClient.getQueryCache().subscribe(listener),
-    () => queryClient.getQueryCache().getAll().find(query => query.getObserversCount() > 0 && query.state.status === 'error')?.state.error?.message ?? '',
-  );
+  // Load errors are shown once, inside the content area (Shell's LoadStatus).
+  const { model, notice } = useWorkspace();
   const [starredRoute, setStarredRoute] = usePluginQuery("starred");
   const onlyStarred = starredRoute === "1", setOnlyStarred = (value: boolean) => setStarredRoute(value ? "1" : "");
   useEffect(() => {
@@ -54,8 +51,6 @@ function App() {
   if (!navigationReady) return <p role="status">Opening BC Bid…</p>;
   return <div className="flex h-screen flex-col" style={{ padding: `${insets.top}px ${insets.right}px ${insets.bottom}px ${insets.left}px` }}>
     {notice && <p role="status" className="px-4 py-3 text-sm text-text-secondary">{notice}</p>}
-    {queryError && <div role="status" className="px-5 py-3 text-sm text-text-secondary">Some data could not refresh: {queryError} Previously loaded results are retained. <button onClick={() => void queryClient.invalidateQueries({queryKey:['catalog']})}>Retry</button></div>}
-    {error && <div role="alert" className="bg-red-muted px-5 py-3 text-sm text-red">{error}</div>}
     <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ analysisView: <MarketAnalysis />, scraperSetup: <ScraperSetup />, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar, awardsView: <AwardsBrowser />, opportunitiesView: <OpportunitiesBrowser />, historyExtras: <AwardRunList />, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>
   </div>;
 }

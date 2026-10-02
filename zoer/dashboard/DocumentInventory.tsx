@@ -54,6 +54,6 @@ export function DocumentFiles({onDetails, refreshKey = '', running}: {onDetails(
         <div className="research-toolbar doc-file-actions"><Button variant="ghost" onClick={()=>onDetails(row.record_id)}>Open</Button><Button variant="ghost" disabled={!!busy||running} onClick={()=>void act(row,row.status==='downloaded')}>{busy===row.id?'Starting…':row.status==='downloaded'?'Re-extract':'Retry'}</Button></div>
       </article>;})}</div>}
     <div className="research-toolbar research-pager"><Button variant="ghost" disabled={!page||files.isFetching} onClick={()=>setPage(page-1)}>Previous</Button><span>Page {page+1}</span><Button variant="ghost" disabled={!files.data||files.data.rows.length<=50||files.isFetching} onClick={()=>setPage(page+1)}>Next</Button></div>
-    <details><summary>Supported file types</summary><p className="research-note">PDF (first 100 pages, OCR on up to 10 scanned pages), DOCX, DOC, XLSX, text and ZIP. Text is capped at 240,000 characters. Nested or encrypted ZIPs, XLS and CAD drawings need manual review.</p></details>
+    <details><summary>Supported file types</summary><p className="research-note">PDF (OCR on up to 40 scanned pages), Word (DOCX, DOC, RTF), Excel (XLSX, XLS), PowerPoint (PPTX, PPT), images by OCR, Google Earth maps (KML, KMZ), text and ZIP, including one nested ZIP level. Text is capped at 1,500,000 characters. Encrypted ZIPs, CAD drawings and GIS data are kept as originals for manual review.</p></details>
   </section>;
 }
