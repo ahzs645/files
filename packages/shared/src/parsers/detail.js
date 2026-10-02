@@ -293,6 +293,61 @@ function readAddenda($, baseUrl) {
     });
     return addenda;
 }
+/** Grids nest inside layout tables; only the innermost table holds one row per record. */
+function innermostTables($, matches) {
+    return $("table")
+        .toArray()
+        .map((element) => $(element))
+        .filter((table) => table.find("table").length === 0 && matches(getTableHeaders($, table)));
+}
+/**
+ * Multi-use lists and newer notices post addenda as Q&A messages: title, message,
+ * attached files and a "Created On" date. Their files stay in the attachment list.
+ */
+function readMessageAddenda($, baseUrl) {
+    const addenda = [];
+    const seen = new Set();
+    for (const table of innermostTables($, (headers) => headers.includes("Message") && headers.some((header) => /^created on\b/i.test(header)))) {
+        // Column positions come from every header cell, including the blank title and file columns.
+        const headers = table.find("thead tr").first().find("th, td").map((_, header) => normalizeWhitespace($(header).text())).get();
+        const messageIndex = headers.indexOf("Message");
+        const dateIndex = headers.findIndex((header) => /^created on\b/i.test(header));
+        getTableRows(table).each((_, row) => {
+            const cells = $(row).find("td");
+            const title = normalizeWhitespace($(cells[Math.max(0, messageIndex - 1)]).text());
+            if (!title) {
+                return;
+            }
+            // Long messages show a truncated preview; the screen-reader copy holds the full text.
+            const messageCell = $(cells[messageIndex]);
+            const full = messageCell.find(".sr-only").first();
+            const message = normalizeWhitespace(full.length ? full.text() : messageCell.text());
+            const date = parseDateToIso(normalizeWhitespace($(cells[dateIndex]).text())) ?? null;
+            const link = toAbsoluteUrl(baseUrl, $(row).find("a[href*='download_public']").first().attr("href"));
+            const key = `${title}::${date ?? ""}`;
+            if (seen.has(key)) {
+                return;
+            }
+            seen.add(key);
+            addenda.push({ title, date, link, ...(message && message !== title ? { message } : {}) });
+        });
+    }
+    return addenda;
+}
+/** Multi-use lists publish the suppliers who qualified, unless the owner marks the list confidential. */
+function readQualifiedSuppliers($) {
+    const suppliers = [];
+    for (const table of innermostTables($, (headers) => headers[0] === "Supplier Legal Name")) {
+        getTableRows(table).each((_, row) => {
+            const [legal, trading] = $(row).find("td").map((__, cell) => normalizeWhitespace($(cell).text())).get();
+            if (legal) {
+                suppliers.push(trading && trading.toLowerCase() !== legal.toLowerCase() ? `${legal} (${trading})` : legal);
+            }
+        });
+    }
+    const unique = dedupeStrings(suppliers);
+    return unique.length ? [{ label: "Qualified Suppliers", value: unique.join("\n") }] : [];
+}
 function deriveAttachmentName($, anchor, url) {
     const anchorText = normalizeWhitespace(anchor.text());
     const row = anchor.closest("tr");
@@ -349,9 +404,12 @@ function mergeFields(...collections) {
 }
 export function parseDetailPage(html, baseUrl, pageUrl) {
     const $ = cheerio.load(html);
-    const detailFields = mergeFields(readFieldRows($), readGridFields($));
-    const addenda = readAddenda($, baseUrl);
-    const attachments = readAttachments($, baseUrl, new Set(addenda.flatMap((addendum) => (addendum.link ? [addendum.link] : []))));
+    const detailFields = mergeFields(readFieldRows($), readGridFields($), readQualifiedSuppliers($))
+        // An email field without an address picked up neighbouring form text.
+        .filter((field) => !/^e-?mail( address)?$/i.test(field.label) || field.value.includes("@"));
+    const classicAddenda = readAddenda($, baseUrl);
+    const attachments = readAttachments($, baseUrl, new Set(classicAddenda.flatMap((addendum) => (addendum.link ? [addendum.link] : []))));
+    const addenda = [...classicAddenda, ...readMessageAddenda($, baseUrl)];
     let descriptionText = detailFields.find((field) => /^summary details$/i.test(field.label))?.value ?? "";
     const specificDescriptionEl = $("[data-testid='description'], [class*='description'], [id*='description']").first();
     if (!descriptionText && specificDescriptionEl.length > 0) {

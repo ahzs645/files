@@ -1,6 +1,6 @@
 import { BuyerName } from '../ui/BuyerName';
 import type { ReactNode } from "react";
-import { ExternalLink, FileText, Tag, Paperclip, BookOpen, Contact, CalendarDays } from "lucide-react";
+import { ExternalLink, FileText, Tag, Paperclip, BookOpen, Contact, CalendarDays, Users } from "lucide-react";
 import type { OpportunityDetail as OpportunityDetailType, OpportunityField } from "@bcbid/shared";
 import { getOpportunityStatusTone, OPPORTUNITY_TONE_STYLES } from "../../lib/constants";
 import "./opportunity-detail.css";
@@ -23,7 +23,8 @@ export function OpportunityDetailView({ detail, actions }: { detail: Opportunity
   const findField = (labels: string[]) => detail.detailFields.find(field => labels.includes(normalizedLabel(field.label)))?.value;
   const summaryFields = detail.detailFields.filter(field => /^(summary details|summary|scope|scope of work|description)$/i.test(field.label.trim()));
   const submissionFields = detail.detailFields.filter(field => /submission|delivery|enquir|inquir|mandatory|meeting|site visit/i.test(field.label));
-  const contactFields = detail.detailFields.filter(field => /contact|address|region|postal|province|city|telephone|fax/i.test(field.label) && !submissionFields.includes(field));
+  const contactFields = detail.detailFields.filter(field => /contact|address|e-?mail|region|postal|province|city|telephone|phone|fax/i.test(field.label) && !submissionFields.includes(field));
+  const qualifiedSuppliers = detail.detailFields.find(field => field.label === "Qualified Suppliers")?.value.split("\n").filter(Boolean) ?? [];
   const summary = summaryFields.length ? summaryFields : detail.descriptionText && detail.descriptionText !== detail.description
     ? [{ label: "Summary", value: detail.descriptionText }] : [];
   const sourceFields = [...detail.detailFields];
@@ -85,7 +86,7 @@ export function OpportunityDetailView({ detail, actions }: { detail: Opportunity
         <section className="bid-detail-section">
           <h2><BookOpen size={16} /> Addenda <span className="bid-detail-count">{detail.addenda.length}</span></h2>
           {detail.addenda.length > 0 ? <ul className="bid-detail-documents">{detail.addenda.map((addendum, index) => <li key={`${addendum.title}-${index}`}>
-            <div className="bid-detail-addendum"><div><p>{addendum.title}</p><span className="bid-detail-muted">{addendum.date || "Date unavailable"}</span></div>
+            <div className="bid-detail-addendum"><div><p>{addendum.title}</p><span className="bid-detail-muted">{addendum.date || "Date unavailable"}</span>{addendum.message && <p className="bid-detail-addendum-message">{addendum.message}</p>}</div>
               {addendum.link && <a href={addendum.link} target="_blank" rel="noreferrer" aria-label={`Open ${addendum.title}`}><ExternalLink size={16} /></a>}
             </div>
           </li>)}</ul> : <p className="bid-detail-muted">No addenda captured for this opportunity.</p>}
@@ -97,6 +98,10 @@ export function OpportunityDetailView({ detail, actions }: { detail: Opportunity
           <h2><Contact size={16} /> Contacts & location</h2>
           {contactFields.length ? <FieldList fields={contactFields} /> : <p className="bid-detail-muted">No contact details have been captured.</p>}
         </section>
+        {qualifiedSuppliers.length > 0 && <section className="bid-detail-section">
+          <h2><Users size={16} /> Qualified suppliers <span className="bid-detail-count">{qualifiedSuppliers.length}</span></h2>
+          <ul className="bid-detail-commodities">{qualifiedSuppliers.map((supplier, index) => <li key={`${supplier}-${index}`}>{supplier}</li>)}</ul>
+        </section>}
         {detail.commodities.length > 0 && <section className="bid-detail-section">
           <h2><Tag size={16} /> Commodities</h2>
           <ul className="bid-detail-commodities">{detail.commodities.map((commodity, index) => <li key={`${commodity}-${index}`}>{commodity}</li>)}</ul>

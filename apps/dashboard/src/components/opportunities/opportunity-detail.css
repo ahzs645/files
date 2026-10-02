@@ -56,3 +56,4 @@
   .bid-detail-source, .bid-detail-source-fields > summary, .bid-detail-actions .bid-star { min-height: 44px; }
   .bid-detail-source-fields > summary { align-content: center; }
 }
+.bid-detail-addendum-message{margin-top:4px;font-size:12.5px;line-height:1.5;color:var(--color-text-secondary);white-space:pre-line;overflow-wrap:anywhere}

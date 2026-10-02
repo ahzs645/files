@@ -355,6 +355,54 @@ describe("shared BC Bid parsers", () => {
     ]);
   });
 
+  it("parses multi-use list Q&A addenda and qualified suppliers without dropping their files", () => {
+    // Trimmed from BC Bid opportunity 10164: grids sit inside layout tables, the title and file columns have blank headers.
+    const html = `
+      <table><tbody><tr><td>
+        <table id="layout"><tbody><tr><td><span>Email address</span></td><td>Delivery of Submissions Submissions must be submitted</td></tr></tbody></table>
+        <table id="qa_grd">
+          <thead><tr><th></th><th>Message</th><th></th><th>Created On (Pacific Time)</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Addendum 2: Termination date extended</td>
+              <td><span>Hello, extended to June 30, 2028. ...</span><span class="sr-only">Hello, extended to June 30, 2028. Thank you, Caroline</span></td>
+              <td><div><a href="/bare.aspx/en/fil/download_public/aaaa-1">Addendum_2.pdf</a><a href="/bare.aspx/en/fil/download_public/aaaa-2">Addendum_2_Appendix.pdf</a></div></td>
+              <td>2026-06-25 7:48:23 AM</td>
+            </tr>
+            <tr>
+              <td>Initial Intake Date - Extension</td>
+              <td><span>Extended to December 19, 2022.</span></td>
+              <td></td>
+              <td>2022-12-13 8:55:04 AM</td>
+            </tr>
+          </tbody>
+        </table>
+        <table id="qualified_grd">
+          <thead><tr><th>Supplier Legal Name</th><th>Doing Business as Name</th></tr></thead>
+          <tbody>
+            <tr><td>DEETKEN ENTERPRISES INC.</td><td>Deetken Insight</td></tr>
+            <tr><td>MNP LLP</td><td>MNP</td></tr>
+            <tr><td>ACME LTD.</td><td>Acme Ltd.</td></tr>
+          </tbody>
+        </table>
+      </td></tr></tbody></table>
+    `;
+
+    const result = parseDetailPage(html, "https://bcbid.gov.bc.ca", "https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/10164");
+
+    expect(result.addenda).toEqual([
+      { title: "Addendum 2: Termination date extended", date: "2026-06-25", link: "https://bcbid.gov.bc.ca/bare.aspx/en/fil/download_public/aaaa-1", message: "Hello, extended to June 30, 2028. Thank you, Caroline" },
+      { title: "Initial Intake Date - Extension", date: "2022-12-13", link: null, message: "Extended to December 19, 2022." }
+    ]);
+    // Q&A addendum files stay downloadable as attachments.
+    expect(result.attachments.map((attachment) => attachment.url)).toEqual(expect.arrayContaining([
+      "https://bcbid.gov.bc.ca/bare.aspx/en/fil/download_public/aaaa-1",
+      "https://bcbid.gov.bc.ca/bare.aspx/en/fil/download_public/aaaa-2"
+    ]));
+    expect(result.detailFields).toContainEqual({ label: "Qualified Suppliers", value: "DEETKEN ENTERPRISES INC. (Deetken Insight)\nMNP LLP (MNP)\nACME LTD." });
+    expect(result.detailFields.find((field) => field.label === "Email address")).toBeUndefined();
+  });
+
   it("handles missing optional sections", async () => {
     const html = await readFixture("detail", "without-optionals.html");
     const result = parseDetailPage(
