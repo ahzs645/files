@@ -48,6 +48,9 @@ const TEXT: Record<string, (message: string) => string> = {
   time_budget: message => portalProblems(message) ?? 'Stopped at the time limit; the next run continues where it stopped.',
   portals_failed: message => portalProblems(message) ?? 'Some portals could not be collected. The others were saved; see the list below.',
   portals_incomplete: message => portalProblems(message) ?? 'Some portals were only partly collected. See the list below.',
+  waiting_for_user: () => 'Some sites showed a browser check and are waiting for you. Complete the check in the Zoer browser, then collect those sites again. The other sites were saved.',
+  portals_skipped: () => 'Some sites were skipped on purpose (outside the hours their robots.txt allows). The other sites were saved.',
+  outside_visit_window: message => message || 'Outside the hours this site allows automated visits. Nothing was loaded; collect it inside that window.',
 };
 
 /** Sentence plus raw detail for an error saved in collection state; null when there is no error. */

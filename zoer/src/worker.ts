@@ -9,6 +9,7 @@ import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMea
 import { createInterface } from 'node:readline';
 import { parseCapture, type PageCapture } from './capture';
 import { collectProcurementSource } from './connector-collection';
+import { collectBrowserSources } from './browser-collection';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
 import { backfillEnrichment } from './procurement-enrichment';
@@ -64,6 +65,13 @@ try {
     const collectCall = (method: string, input: any) => method === 'network.fetch'
       ? call(method, { ...input, ticket: networkTicket }) : catalogCall(method, input);
     write({ protocolVersion: '1', runId, ok: true, output: await collectProcurementSource(collectCall, request.input ?? {}, runId) });
+  } else if (request.action.id === 'procurement.collect.browser') {
+    if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+    if (!catalogTicket) throw new Error('Browser collection requires an existing catalog grant.');
+    // `settle`: Zoer lets the page finish loading on its own (a check that clears itself, a list drawn by script)
+    // and reports the HTTP status. Nothing on the page is clicked. Older Zoer ignores it and returns the loaded page.
+    const capture = (url: string) => call('browser.capture-url', { ticket: browserTicket, url, settle: true });
+    write({ protocolVersion: '1', runId, ok: true, output: await collectBrowserSources(catalogCall, request.input ?? {}, runId, { capture }) });
   } else if (request.action.id === 'procurement.classifications') {
     if (!catalogTicket) throw new Error('Procurement classification mapping requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementClassifications(catalogCall, request.input ?? {}, runId) });

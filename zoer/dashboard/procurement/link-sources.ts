@@ -1,6 +1,7 @@
 /**
- * Procurement sites we cannot collect from (sign-in walls, no public listing, terms), listed so people can check
- * them by hand. The BC sources stream owns the entries; this module only fixes the shape the Sources page reads.
+ * Procurement sites we cannot collect from (robots.txt, sign-in walls, no public listing), listed so people can check
+ * them by hand. Sites that only block plain automated requests are collected in the person's Zoer browser instead
+ * (browser-sites.ts, `procurement.collect.browser`) and are not listed here. The BC sources stream owns the entries; this module only fixes the shape the Sources page reads.
  * Each URL was opened on 2026-10-03 and showed its page to a person; zoer/src/connectors/SOURCES-RESEARCH.md has
  * the evidence for every reason.
  */
@@ -20,8 +21,9 @@ export interface LinkSource {
   detail?: string;
 }
 
-const ROBOTS = 'robots.txt disallows collection';
-const CHALLENGE = 'Blocks automated requests';
+/** The reason for sites whose robots.txt forbids collection; the browser-sites card lists these too. */
+export const ROBOTS_REASON = 'robots.txt disallows collection';
+const ROBOTS = ROBOTS_REASON;
 const NOTHING_OPEN = 'Nothing open to check a reader against';
 const bonfire = (host: string, label: string, region?: string): LinkSource => ({
   id: `bonfire-${host}`, label: `${label} (Bonfire)`, url: `https://${host}.bonfirehub.ca/portal/?tab=openOpportunities`, ...(region ? { region } : {}),
@@ -31,9 +33,6 @@ const bonfire = (host: string, label: string, region?: string): LinkSource => ({
 const site = (id: string, label: string, url: string, region: string, reason: string, detail: string): LinkSource => ({ id, label, url, region, reason, detail });
 
 export const LINK_SOURCES: readonly LinkSource[] = [
-  { id: 'civicinfo-bc', label: 'CivicInfo BC Bids & Tenders', url: 'https://www.civicinfo.bc.ca/bids', region: 'British Columbia', reason: CHALLENGE,
-    buyers: ['BC municipalities, regional districts and local boards that post there'],
-    detail: 'Directory of BC local-government bids (23 current on 2026-10-03). Every page, including its RSS, answers non-browser requests with a Cloudflare challenge, which Procurement does not bypass.' },
   { id: 'jaggaer-vancouver', label: 'City of Vancouver (Jaggaer)', url: 'https://bids.sciquest.com/apps/Router/PublicEvent?CustomerOrg=CityofVancouver', region: 'Vancouver',
     reason: ROBOTS, detail: 'Server-rendered list with zoned closing times and contacts, but bids.sciquest.com robots.txt is "Disallow: /" for every agent.' },
   bonfire('victoria', 'City of Victoria', 'Victoria'),
@@ -53,16 +52,6 @@ export const LINK_SOURCES: readonly LinkSource[] = [
   bonfire('fraserhealth', 'Fraser Health', 'Fraser'),
   bonfire('phsa', 'Provincial Health Services Authority'),
   bonfire('fnha', 'First Nations Health Authority'),
-  site('kelowna-site', 'City of Kelowna current bidding opportunities', 'https://www.kelowna.ca/business-services/business-city/bidding-opportunities/current-bidding-opportunities', 'Kelowna', CHALLENGE, 'Cloudflare challenge for non-browser requests.'),
-  site('westvancouver', 'District of West Vancouver', 'https://westvancouver.ca/business-development/information-businesses', 'West Vancouver', CHALLENGE, 'Cloudflare challenge for non-browser requests.'),
-  site('rdkb', 'Regional District of Kootenay Boundary', 'https://rdkb.com/Regional-Government/Organization/Opportunities', 'Kootenay Boundary', CHALLENGE, 'Cloudflare challenge for non-browser requests.'),
-  site('cranbrook', 'City of Cranbrook', 'https://cranbrook.ca/business/city-tenders', 'Cranbrook', CHALLENGE, 'The bids page carries a bot-challenge script; times are printed as "MT".'),
-  site('yvr', 'Vancouver Airport Authority (YVR)', 'https://www.yvr.ca/en/business/work-with-yvr', 'Richmond', CHALLENGE, 'HTTP 403 to non-browser requests.'),
-  site('portvancouver', 'Vancouver Fraser Port Authority', 'https://www.portvancouver.com/business-and-projects/rfps-and-procurement', 'Metro Vancouver', CHALLENGE, 'Cloudflare challenge for non-browser requests.'),
-  site('bcferries', 'BC Ferries procurement', 'https://www.bcferries.com/our-company/procurement', 'British Columbia', 'Crawl limits in robots.txt',
-    'robots.txt sets Crawl-delay 10 and Visit-time 0900-1200 UTC; a scheduled run that reads notice pages would break both. Bid documents need a BC Ferries account.'),
-  site('chilliwack', 'City of Chilliwack', 'https://www.chilliwack.com/main/page.cfm?id=400', 'Chilliwack', 'Crawl limits in robots.txt', 'robots.txt sets Crawl-delay 10, which a run reading notice pages would break.'),
-  site('whistler', 'Resort Municipality of Whistler', 'https://www.whistler.ca/business-development/bid-opportunities/', 'Whistler', 'Crawl limits in robots.txt', 'robots.txt sets Crawl-delay 10 and disallows the PDFs.'),
   site('portalberni', 'City of Port Alberni', 'https://www.portalberni.ca/bid-opportunities', 'Port Alberni', 'Hand-edited table', 'Closing dates without times and no notice pages; nothing open on 2026-10-03.'),
   site('porthardy', 'District of Port Hardy', 'https://porthardy.ca/municipal-hall/staff/tender-and-bid-opportunities/', 'Port Hardy', 'No closing dates listed', 'Posts show only a title and posted date; two cooperative-purchasing notices of intent on 2026-10-03.'),
   site('scrd', 'Sunshine Coast Regional District', 'https://www.scrd.ca/bid/', 'Sunshine Coast', 'One-off page layout', 'WordPress page without a structured list; not built yet.'),

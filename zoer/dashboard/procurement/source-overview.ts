@@ -41,8 +41,8 @@ export const collectTarget = (row: ScheduleRow | undefined) => typeof row?.body?
 /** True when the saved collect schedule collects this source (directly or as part of "all"). */
 export const scheduleCovers = (row: ScheduleRow | undefined, sourceId: string) => { const target = collectTarget(row); return target === sourceId || target === 'all'; };
 
-/** `incomplete`: records saved, but fewer than the portal reported or some too large to save. */
-export type PortalStatus = 'complete' | 'incomplete' | 'failed' | 'not-run';
+/** `incomplete`: records saved, but fewer than the portal reported or some too large to save. `waiting`: a person must act first (browser check). */
+export type PortalStatus = 'complete' | 'incomplete' | 'failed' | 'not-run' | 'waiting';
 export interface PortalState { status: PortalStatus; retrievedAt?: string; recordCount?: number; totalReported?: number; lastSuccessAt?: string; error?: { code?: string; message?: string } }
 export interface ConnectorCollection {
   sourceId: string; status: 'running' | 'complete' | 'incomplete' | 'failed' | 'paused';
@@ -64,7 +64,7 @@ export function readConnectorCollection(value: unknown, sourceId: string): Conne
   const portals: Record<string, PortalState> = {};
   for (const [id, raw] of Object.entries(object(value.portals) ? value.portals : {})) {
     if (!object(raw)) continue;
-    portals[id] = { status: ['complete', 'incomplete', 'failed', 'not-run'].includes(raw.status) ? raw.status : 'not-run', retrievedAt: time(raw.retrievedAt), recordCount: count(raw.recordCount),
+    portals[id] = { status: ['complete', 'incomplete', 'failed', 'not-run', 'waiting'].includes(raw.status) ? raw.status : 'not-run', retrievedAt: time(raw.retrievedAt), recordCount: count(raw.recordCount),
       totalReported: count(raw.totalReported), lastSuccessAt: time(raw.lastSuccessAt), error: object(raw.error) ? { code: raw.error.code, message: raw.error.message } : undefined };
   }
   return { sourceId, status: value.status, leaseUntil: value.leaseUntil ?? null, lastAttemptedAt: time(value.lastAttemptedAt), lastSuccessAt: time(value.lastSuccessAt),
@@ -79,7 +79,8 @@ export function connectorStatus(state: ConnectorCollection | null | undefined, n
   switch (state.status) {
     case 'running': return state.leaseUntil && Date.parse(state.leaseUntil) < now ? { tone: 'warn', text: 'Stopped unexpectedly' } : { tone: 'busy', text: 'Collecting' };
     case 'complete': return { tone: 'good', text: 'Collected' };
-    case 'incomplete': return { tone: 'warn', text: state.error?.code === 'time_budget' ? 'Stopped at the time limit; next run continues' : state.error?.code === 'portals_incomplete' ? 'Some portals partly collected' : 'Some portals failed' };
+    case 'incomplete': return { tone: 'warn', text: state.error?.code === 'time_budget' ? 'Stopped at the time limit; next run continues' : state.error?.code === 'portals_incomplete' ? 'Some portals partly collected'
+      : state.error?.code === 'waiting_for_user' ? 'Waiting for you' : state.error?.code === 'portals_skipped' ? 'Some sites skipped' : 'Some portals failed' };
     case 'failed': return { tone: 'warn', text: 'Last collection failed' };
     case 'paused': return { tone: 'idle', text: 'Paused; resumes on next run' };
   }
@@ -109,6 +110,7 @@ export function portalRows(portals: readonly ConnectorPortal[], state: Connector
     const listed = entry.recordCount === undefined ? 'Count not recorded' : `${entry.recordCount.toLocaleString()} listed`;
     const counts = entry.totalReported === undefined ? listed : `${listed} · portal reports ${entry.totalReported.toLocaleString()}`;
     const explained = sourceErrorText(entry.error);
+    if (entry.status === 'waiting') return { ...base, status: 'waiting' as const, statusText: 'Waiting for you', tone: 'warn' as const, problem: true, counts: base.lastSuccessAt ? 'Waiting for a browser check' : 'Never collected', error: explained?.detail, errorText: explained?.text };
     if (entry.status === 'failed') return { ...base, status: 'failed' as const, statusText: 'Failed', tone: 'warn' as const, problem: true, counts: base.lastSuccessAt ? 'Last attempt failed' : 'Never collected', error: explained?.detail ?? 'No error message recorded.', errorText: explained?.text ?? 'No error message recorded.' };
     if (entry.status === 'incomplete') return { ...base, status: 'incomplete' as const, statusText: 'Partly collected', tone: 'warn' as const, problem: true, counts, error: explained?.detail, errorText: explained?.text };
     return { ...base, status: 'complete' as const, statusText: 'Collected', tone: 'good' as const, problem: false, counts };
@@ -117,7 +119,7 @@ export function portalRows(portals: readonly ConnectorPortal[], state: Connector
 
 export function portalSummary(rows: PortalRow[]) {
   const by = (status: string) => rows.filter(row => row.status === status).length;
-  return { total: rows.length, complete: by('complete'), incomplete: by('incomplete'), failed: by('failed'), notRun: by('not-run'), unknown: by('unknown'), problems: rows.filter(row => row.problem).length };
+  return { total: rows.length, complete: by('complete'), incomplete: by('incomplete'), failed: by('failed'), waiting: by('waiting'), notRun: by('not-run'), unknown: by('unknown'), problems: rows.filter(row => row.problem).length };
 }
 export function portalSummaryText(rows: PortalRow[]): string {
   const s = portalSummary(rows);

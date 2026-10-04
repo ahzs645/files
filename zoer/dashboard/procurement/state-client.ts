@@ -8,12 +8,12 @@ export async function readProcurementState() {
   return { pursuits: readProcurementItems<Pursuit>(value(PURSUITS_KEY), 'pursuits'), searches: readProcurementItems<SavedSearch>(value(SEARCHES_KEY), 'searches') };
 }
 
-/** Await a durable action; callers remain responsible for verifying their resulting data. */
-export async function runProcurementAction(actionId: string, input: unknown, signal?: AbortSignal, options?: { modelProfileId?: string }) {
+/** Await a durable action; callers remain responsible for verifying their resulting data. `waitMs` (default 150 s) bounds the wait. */
+export async function runProcurementAction(actionId: string, input: unknown, signal?: AbortSignal, options?: { modelProfileId?: string; waitMs?: number }) {
   if (signal?.aborted) throw Error('Workspace closed. A previously started save may still finish.');
   const { run } = await host('action', { actionId, input, ...(options?.modelProfileId ? { modelProfileId: options.modelProfileId } : {}) });
   if (!run?.id) throw Error('No durable save run was returned. Refresh before retrying.');
-  const deadline = Date.now() + 150_000;
+  const deadline = Date.now() + (options?.waitMs ?? 150_000);
   while (Date.now() < deadline) {
     if (signal?.aborted) throw Error('Workspace closed. The save continues in run history.');
     const state = await host('state', { summary: true });

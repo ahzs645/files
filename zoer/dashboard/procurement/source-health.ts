@@ -31,6 +31,7 @@ const ADDENDA: Record<string, { status: CapabilityStatus; method: string }> = {
   canadabuys: { status: 'unavailable', method: 'Amendment numbers are kept as data; addendum files are not downloaded by this connector.' },
   bidsandtenders: { status: 'partial', method: 'The listing\'s addenda count is saved with each notice and refreshed every run; addendum files need a vendor login and are not downloaded.' },
   'municipal-sites': { status: 'partial', method: 'Addenda a site links on the notice page are saved with the other document links and refreshed while the notice is open; files are not downloaded and some sites post addenda only on BC Bid.' },
+  'browser-sites': { status: 'unavailable', method: 'Only the bids page is read, so addenda posted on notice pages are not seen; check the site.' },
 };
 /** The four capabilities the Sources page reports, in a fixed order. Missing information reads "unknown", never "unavailable". */
 export function capabilityMatrix(sourceId: string, capabilities: AdapterCapabilities | undefined) {
