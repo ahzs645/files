@@ -35,7 +35,7 @@ describe('procurement catalog', () => {
       expect(db.query({ source: "' OR 1=1 --" }).total).toBe(0);
       expect(sourceId({})).toBe('bc-bid'); expect(sourceId({ sourceId: '' })).toBe('bc-bid');
       expect(sourceId({ sourceId: 'future-source' })).toBe('future-source');
-      expect(SOURCES.map(source => source.id)).toEqual(['bc-bid', 'canadabuys', 'bidsandtenders', 'municipal-sites']);
+      expect(SOURCES.map(source => source.id)).toEqual(['bc-bid', 'canadabuys', 'bidsandtenders', 'municipal-sites', 'browser-sites']);
     } finally { db.close(); }
   });
 

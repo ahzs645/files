@@ -51,6 +51,11 @@ describe('robots.txt', () => {
     expect(robotsAllows(policy, 'https://x.ca/bids')).toBe(true);
     expect(robotsAllows(robotsPolicy('User-agent: *\nDisallow: /'), 'https://x.ca/bids')).toBe(false);
     expect(robotsAllows(robotsPolicy(''), 'https://x.ca/bids')).toBe(true);
+    // Groups naming AI crawlers bind this collector too, and their disallows win over a longer * allow.
+    const ai = robotsPolicy('User-agent: *\nAllow: /business\n\nUser-agent: anthropic-ai\nUser-agent: ClaudeBot\nDisallow: /');
+    expect(robotsAllows(ai, 'https://x.ca/business/rfps')).toBe(false);
+    expect(robotsAllows(ai, 'https://x.ca/robots.txt')).toBe(true);
+    expect(robotsAllows(robotsPolicy('User-agent: GPTBot\nDisallow: /private\n\nUser-agent: *\nAllow: /'), 'https://x.ca/bids')).toBe(true);
     expect(parseRobots('Disallow: /orphan\nUser-agent: a\nUser-agent: b\nDisallow: /x')).toEqual([{ agents: ['a', 'b'], rules: [{ allow: false, pattern: '/x' }] }]);
   });
   it('checks visiting windows in UTC, including windows past midnight', () => {

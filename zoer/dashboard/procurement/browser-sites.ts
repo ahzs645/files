@@ -47,7 +47,6 @@ export const BROWSER_SITES: readonly BrowserSite[] = [
   site('westvancouver', 'District of West Vancouver', 'westvancouver.ca', 'https://westvancouver.ca/business-development/information-businesses', place('West Vancouver', 'Metro Vancouver')),
   site('rdkb', 'Regional District of Kootenay Boundary', 'rdkb.com', 'https://rdkb.com/Regional-Government/Organization/Opportunities', place(null, 'Kootenay Boundary')),
   site('yvr', 'Vancouver Airport Authority (YVR)', 'www.yvr.ca', 'https://www.yvr.ca/en/business/work-with-yvr', place('Richmond', 'Metro Vancouver')),
-  site('portvancouver', 'Vancouver Fraser Port Authority', 'www.portvancouver.com', 'https://www.portvancouver.com/business-and-projects/rfps-and-procurement', place(null, 'Metro Vancouver')),
   // Cranbrook prints times as "MT" (Mountain Time).
   site('cranbrook', 'City of Cranbrook', 'cranbrook.ca', 'https://cranbrook.ca/business/city-tenders', place('Cranbrook', 'East Kootenay'), { timeZone: 'America/Edmonton' }),
   // Paced: the earlier survey noted Crawl-delay 10 for these three and Visit-time 0900-1200 (UTC) for BC Ferries.

@@ -102,7 +102,7 @@ export function Sources() {
         action: <Btn size="sm" variant="secondary" disabled={!!busy || status.text === 'Collecting'} onClick={() => void collect(source.id, { sourceId: source.id }, `${source.label} collection finished. Check each portal below.`)}>{running ? 'Collecting…' : 'Collect'}</Btn> };
     }),
     // Saved notices from a source this version has no card for still get a row, so nothing saved goes unseen.
-    ...[...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))].filter(id => id !== 'bc-bid' && id !== 'canadabuys' && !CONNECTOR_SOURCES.some(source => source.id === id)).map((id): OverviewRow => ({
+    ...[...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))].filter(id => id !== 'bc-bid' && id !== 'canadabuys' && id !== 'browser-sites' && !CONNECTOR_SOURCES.some(source => source.id === id)).map((id): OverviewRow => ({
       id, name: sourceName(id), region: 'No collection details in this version', tone: 'idle', status: 'Saved notices only', saved: saved(id), lastSuccess: 'Not recorded', next: 'Not scheduled', action: null })),
   ];
 

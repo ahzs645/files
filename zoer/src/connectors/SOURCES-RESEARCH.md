@@ -50,7 +50,6 @@ below come from the earlier survey notes in this file and only ever slow a run d
 | District of West Vancouver | westvancouver.ca/business-development/information-businesses | Cloudflare challenge | 5 s | table, else blocks (unverified; the URL may be a landing page) |
 | Regional District of Kootenay Boundary | rdkb.com/Regional-Government/Organization/Opportunities | Cloudflare challenge | 5 s | table, else blocks (unverified) |
 | Vancouver Airport Authority (YVR) | yvr.ca/en/business/work-with-yvr | HTTP 403 to non-browser requests | 5 s | table, else blocks (unverified; may only link elsewhere) |
-| Vancouver Fraser Port Authority | portvancouver.com/business-and-projects/rfps-and-procurement | Cloudflare challenge | 5 s | table, else blocks (unverified) |
 | City of Cranbrook | cranbrook.ca/business/city-tenders | bot-challenge script; times printed "MT" | 5 s | table, else blocks (unverified) |
 | City of Chilliwack | chilliwack.com/main/page.cfm?id=400 | robots Crawl-delay 10 | 10 s | table, else blocks (unverified) |
 | Resort Municipality of Whistler | whistler.ca/business-development/bid-opportunities/ | robots Crawl-delay 10; PDFs disallowed (never loaded) | 10 s | table, else blocks (unverified) |
@@ -117,3 +116,5 @@ dashboard's deadline judgement uses `closingAt`, and no notice page is fetched f
 Raw responses are not kept in the repo. Each host got its robots.txt plus one or two page requests, ≥ 2 s apart. Pages
 that redirected were re-fetched at the `Location`; connector `listUrls` are the final URLs, so no run spends a request on a
 redirect hop.
+
+Vancouver Fraser Port Authority moved back to link only (2026-10-03): its robots.txt names `anthropic-ai` and `ClaudeBot`. The browser route now obeys every robots group addressed to AI crawlers (`AI_CRAWLER_AGENTS` in `robots.ts`) in addition to its own/`*` group.

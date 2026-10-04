@@ -35,6 +35,8 @@ const site = (id: string, label: string, url: string, region: string, reason: st
 export const LINK_SOURCES: readonly LinkSource[] = [
   { id: 'jaggaer-vancouver', label: 'City of Vancouver (Jaggaer)', url: 'https://bids.sciquest.com/apps/Router/PublicEvent?CustomerOrg=CityofVancouver', region: 'Vancouver',
     reason: ROBOTS, detail: 'Server-rendered list with zoned closing times and contacts, but bids.sciquest.com robots.txt is "Disallow: /" for every agent.' },
+  { id: 'portvancouver', label: 'Vancouver Fraser Port Authority', url: 'https://www.portvancouver.com/business-and-projects/rfps-and-procurement', region: 'Metro Vancouver',
+    reason: 'robots.txt disallows AI crawlers', detail: 'Its robots.txt disallows anthropic-ai and ClaudeBot by name. Procurement is built and run with AI help, so it does not collect this site, even through your browser. Many of its notices are also on BC Bid.' },
   bonfire('victoria', 'City of Victoria', 'Victoria'),
   bonfire('saanich', 'District of Saanich', 'Saanich'),
   bonfire('centralsaanich', 'District of Central Saanich', 'Central Saanich'),
