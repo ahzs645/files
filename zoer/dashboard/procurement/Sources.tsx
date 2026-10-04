@@ -14,6 +14,7 @@ import { LINK_SOURCES } from './link-sources';
 import { CanadaBuysImport } from './CanadaBuysImport';
 import { INVENTORY_SQL, sourceName, sql } from './display';
 import { shortError } from '../error-text';
+import { sourceErrorText, type CollectionError } from './source-errors';
 
 const BC_CHECKPOINTS = [['checkpoint:full', 'Current opportunities'], ['checkpoint:awards', 'Historical awards'], ['checkpoint:awards:recent', 'Recent awards']] as const;
 const when = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : typeof value === 'number' ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
@@ -119,7 +120,7 @@ export function Sources() {
       <Card id="canadabuys" name="CanadaBuys" region="Canada · official dataset" tone={overview[1].tone} status={overview[1].status}
         stats={[['Opportunities', saved('canadabuys')], ['Last collection', overview[1].lastSuccess], ['Last CSV import', when(importedAt)], ['Next scheduled run', nextRun('canadabuys')]]}
         actions={<><Btn variant="primary" disabled={!!busy} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Collecting…' : 'Collect latest'}</Btn><Btn variant="secondary" onClick={() => setScheduleFor(scheduleTargetFor('canadabuys'))}>Schedule</Btn><Btn variant="ghost" onClick={() => setImportOpen(true)}>Import CSV</Btn></>}>
-        {collection?.error && <p role="alert">{collection.error.code}: {collection.error.message}</p>}
+        <SourceError error={collection?.error} />
         <details><summary>Collection options</summary><div className="pc-collect-options"><label><span>Batches per run</span><Select aria-label="Collection batches" value={batches} onChange={e => setBatches(e.target.value)}>{[1, 5, 10, 20].map(n => <option key={n} value={n}>{n} batches</option>)}</Select></label><Btn variant="secondary" disabled={!!busy} onClick={() => void collectCanadaBuys('restart')}>Start a new snapshot</Btn></div><p className="procurement-coverage">Start a new snapshot when CanadaBuys publishes a changed dataset. Saved notices are kept.</p>
           {collection?.receipt && <><h3>Last receipt</h3><dl className="pc-detail-list">{['retrievedAt', 'importedAt', 'totalSourceRecords', 'totalRecords', 'excludedCount', 'byteCount', 'sha256'].map(key => <div key={key}><dt>{key}</dt><dd>{collection.receipt[key] ?? 'Not reported'}</dd></div>)}</dl>{collection.receipt.excluded?.length > 0 && <><p>Some notices were excluded. Find them by CSV record number in the snapshot with this SHA-256.</p><ul>{collection.receipt.excluded.map((item: any) => <li key={item.csvRecord}>CSV record {item.csvRecord}: {item.bytes.toLocaleString()} bytes · {item.reason}</li>)}</ul></>}</>}
         </details>
@@ -138,6 +139,13 @@ export function Sources() {
     </div></Modal>}
     {importOpen && <CanadaBuysImport onClose={() => setImportOpen(false)} onImported={() => { void client.invalidateQueries({ queryKey: ['catalog'] }); }} />}
   </section>;
+}
+
+/** A source's last error in plain words; the saved code and message stay one tap away for bug reports. */
+function SourceError({ error }: { error: CollectionError | null | undefined }) {
+  const explained = sourceErrorText(error);
+  if (!explained) return null;
+  return <div className="pc-source-error" role="alert"><p>{explained.text}</p>{explained.detail !== explained.text && <details><summary>Details</summary><p><code>{explained.detail}</code></p></details>}</div>;
 }
 
 /** BC Bid scrapes need a browser, which dashboard schedules cannot attach, so they are read here and changed in Zoer. */
@@ -170,7 +178,7 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
       <Btn variant="secondary" onClick={onSchedule}>Schedule</Btn>
     </>}>
     {stateError && <p role="alert">Collection state could not be read: {stateError}</p>}
-    {state?.error && <p role="alert">{[state.error.code, state.error.message].filter(Boolean).join(': ')}</p>}
+    <SourceError error={state?.error} />
     {counts.error && <p role="alert">Saved counts per portal could not be read: {(counts.error as Error).message}</p>}
     <div className="pc-portal-tools">
       <label className="pc-portal-search"><span className="sr-only">Search portals</span><input type="search" placeholder={`Search ${rows.length} portals`} value={query} onChange={e => setQuery(e.target.value)} /></label>
@@ -181,7 +189,7 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
       <thead><tr><th scope="col">Portal</th><th scope="col">Status</th><th scope="col">Last collected</th><th scope="col">Last run</th><th scope="col">Saved</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
       <tbody>{shown.slice(0, limit).map(row => <tr key={row.id} data-problem={row.problem || undefined}>
         <th scope="row"><a href={row.url} target="_blank" rel="noreferrer">{row.label}</a><small>{row.place}</small></th>
-        <td data-label="Status"><span className="pc-status" data-tone={row.tone}>{row.statusText}</span>{row.error && <small className="pc-portal-error" title={row.error}>{shortError(row.error)}</small>}</td>
+        <td data-label="Status"><span className="pc-status" data-tone={row.tone}>{row.statusText}</span>{row.errorText && <small className="pc-portal-error" title={row.error}>{row.errorText}</small>}</td>
         <td data-label="Last collected">{row.status === 'unknown' ? 'Unknown' : when(row.lastSuccessAt)}</td>
         <td data-label="Last run">{row.counts}</td>
         <td data-label="Saved">{row.saved === null ? (counts.error ? 'Unknown' : '…') : row.saved.toLocaleString()}</td>

@@ -118,6 +118,10 @@
 .pc-checkpoints li>div{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
 .pc-checkpoints li>div span,.pc-checkpoints li p{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
 .pc-checkpoints [role=alert]{color:var(--status-warning)}
+/* Plain-language source error; the raw code/message sits in a small Details disclosure. */
+.pc-source-error{display:flex;flex-direction:column;gap:.125rem;font-size:13px;line-height:1.5;color:var(--status-warning)}
+.pc-source-card .pc-source-error details{border-top:0;padding-top:0;font-size:12px;color:var(--text-secondary)}
+.pc-source-error code{font-size:12px;overflow-wrap:anywhere;color:var(--text-secondary)}
 .pc-detail-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem 1rem;font-size:12px;margin:.25rem 0 .5rem}
 .pc-detail-list dt{color:var(--text-secondary)}
 .pc-detail-list dd{overflow-wrap:anywhere}

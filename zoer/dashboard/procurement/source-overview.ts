@@ -3,6 +3,7 @@ import { BIDSANDTENDERS_PORTALS } from './portals';
 import { SOURCES } from './catalog';
 import { connectorCollectionKey } from './source-adapters';
 import type { ScheduleRow } from './schedule-state';
+import { sourceErrorText } from './source-errors';
 
 /**
  * Sources page model for many sources and many portals (CONNECTORS.md §4). Pure: the page reads workspace state,
@@ -84,7 +85,9 @@ export function connectorStatus(state: ConnectorCollection | null | undefined, n
 export interface PortalRow {
   id: string; label: string; place: string; url: string; status: PortalStatus | 'unknown';
   statusText: string; tone: Tone; problem: boolean; counts: string; saved: number | null;
-  retrievedAt?: string; lastSuccessAt?: string; error?: string;
+  retrievedAt?: string; lastSuccessAt?: string;
+  /** Raw `code: message` (for a tooltip) and the same error in plain words (shown). */
+  error?: string; errorText?: string;
 }
 const placeText = (portal: ConnectorPortal) => [portal.place.municipality, portal.place.regionalDistrict && portal.place.regionalDistrict !== portal.place.municipality ? `${portal.place.regionalDistrict} RD` : null].filter(Boolean).join(' · ') || 'Place not recorded';
 
@@ -102,8 +105,9 @@ export function portalRows(portals: readonly ConnectorPortal[], state: Connector
     if (entry.status === 'not-run') return { ...base, status: 'not-run' as const, statusText: 'Not in last run', tone: 'idle' as const, problem: false, counts: entry.recordCount === undefined ? 'Count not recorded' : `${entry.recordCount.toLocaleString()} listed` };
     const listed = entry.recordCount === undefined ? 'Count not recorded' : `${entry.recordCount.toLocaleString()} listed`;
     const counts = entry.totalReported === undefined ? listed : `${listed} · portal reports ${entry.totalReported.toLocaleString()}`;
-    if (entry.status === 'failed') return { ...base, status: 'failed' as const, statusText: 'Failed', tone: 'warn' as const, problem: true, counts: base.lastSuccessAt ? 'Last attempt failed' : 'Never collected', error: [entry.error?.code, entry.error?.message].filter(Boolean).join(': ') || 'No error message recorded.' };
-    if (entry.status === 'incomplete') return { ...base, status: 'incomplete' as const, statusText: 'Partly collected', tone: 'warn' as const, problem: true, counts, error: [entry.error?.code, entry.error?.message].filter(Boolean).join(': ') || undefined };
+    const explained = sourceErrorText(entry.error);
+    if (entry.status === 'failed') return { ...base, status: 'failed' as const, statusText: 'Failed', tone: 'warn' as const, problem: true, counts: base.lastSuccessAt ? 'Last attempt failed' : 'Never collected', error: explained?.detail ?? 'No error message recorded.', errorText: explained?.text ?? 'No error message recorded.' };
+    if (entry.status === 'incomplete') return { ...base, status: 'incomplete' as const, statusText: 'Partly collected', tone: 'warn' as const, problem: true, counts, error: explained?.detail, errorText: explained?.text };
     return { ...base, status: 'complete' as const, statusText: 'Collected', tone: 'good' as const, problem: false, counts };
   });
 }
