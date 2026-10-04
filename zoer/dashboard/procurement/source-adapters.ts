@@ -1,4 +1,5 @@
 import { BIDSANDTENDERS_PORTALS } from './portals';
+import { SITE_PORTALS } from './site-portals';
 
 export const CANADABUYS_DATASET_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 export const CANADABUYS_DOCUMENTATION_URL = 'https://donnees-data.tpsgc-pwgsc.gc.ca/ba2/ac-cb/soutien-support-eng.html';
@@ -38,6 +39,14 @@ export const PROCUREMENT_SOURCE_ADAPTERS: ProcurementSourceAdapter[] = [
       attachments: { status: 'unavailable', method: 'Document and addenda counts from the listing only; files need a vendor login and are not downloaded' },
       awards: { status: 'unavailable', method: 'Awarded and closed notices are not collected' },
       auth: { status: 'unavailable', method: 'Public pages only; no vendor login. The search needs a per-run cookie session kept by Zoer (networkSession)' },
+    } },
+  { id: 'municipal-sites', label: 'BC local government websites',
+    coverage: `Bids listed on the own websites of ${SITE_PORTALS.length} BC local governments (${SITE_PORTALS.map(portal => portal.label).join(', ')}), one site at a time; a failed site does not stop the others. Some sites also list recently closed notices, others only open ones. Absence is not proof of closure. Saved records are retained.`, capabilities: {
+      listing: { status: 'available', method: 'procurement.collect: each site\'s public bids page (server-rendered HTML), following its next-page links up to 3 pages' },
+      detail: { status: 'partial', method: 'Public notice page per not-yet-closed notice (up to 25 per site per run): description, published contacts and document links. Closing times are exact only where the page states the zone; otherwise only the date is used' },
+      attachments: { status: 'unavailable', method: 'Document links are saved with each notice; files are not downloaded' },
+      awards: { status: 'unavailable', method: 'Award results are not collected; an "Awarded" column is kept as text where a site shows one' },
+      auth: { status: 'unavailable', method: 'Public pages only; no login, cookies or browser checks' },
     } },
 ];
 

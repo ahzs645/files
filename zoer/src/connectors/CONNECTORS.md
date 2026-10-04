@@ -51,7 +51,7 @@ Catalog row `{ id: 'opportunity:' + sourceKey, kind: 'opportunity', title: descr
 | `status` | source status text, e.g. `Open` |
 | `type` | notice type if published |
 | `closingDate` | source closing text exactly as shown (e.g. `Wed Oct 7, 2026 3:00 PM (PDT)`) |
-| `closingAt` | ISO instant with offset **only** when the source gives a time and zone we can verify |
+| `closingAt` | ISO instant with offset when the source gives a time and zone we can verify; otherwise the closing **date** alone (`YYYY-MM-DD`, read as "time unverified" by the deadline logic) when the date is unambiguous; omitted when neither |
 | `publishedAt` | ISO instant/date if published |
 | `detailUrl` | https link a person can open; `sourceUrl` = the listing page |
 | `region` | municipality, else regional district, else source region text |
@@ -144,6 +144,10 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
     `connector-collection.ts` and CanadaBuys do) with `id = sourceKey`.
   - `link-sources.ts` (`LINK_SOURCES: LinkSource[]`, `{ id, label, url, region?, reason? }`) is read by the Sources
     page "Check these yourself" card; it ships empty here.
+- 2026-10-03 (coordinator, after `feat/bcsrc-other-sources`): `closingAt` may be a bare date (`YYYY-MM-DD`) when a source
+  prints a closing time without a zone or only a date. `deadlineState` treats date precision as "time unverified", so
+  such notices still sort and filter; an offset is never invented. Sources that print no status get `status` derived
+  only from a verified `closingAt` (`statusDerivedFrom: 'closingAt'`), else `Unknown`.
 - 2026-10-03 (`sourceId: 'all'`, `feat/bcsrc-polish`) — the proposal above, implemented in
   `connector-collection.ts#collectAllSources`:
   - Order: CanadaBuys, then `CONNECTORS` in registry order, each under its own state key and lease. Input
