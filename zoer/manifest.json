@@ -33,7 +33,19 @@
       "squamish.bidsandtenders.ca",
       "surrey.bidsandtenders.ca",
       "vernon.bidsandtenders.ca",
-      "westkelowna.bidsandtenders.ca"
+      "westkelowna.bidsandtenders.ca",
+      "rdn.bc.ca",
+      "www.srd.ca",
+      "www.penticton.ca",
+      "www.fernie.ca",
+      "www.fvrd.ca",
+      "www.surrey.ca",
+      "www.courtenay.ca",
+      "www.esquimalt.ca",
+      "www.quesnel.ca",
+      "www.comox.ca",
+      "www.saanich.ca",
+      "www.dawsoncreek.ca"
     ],
     "permissions": [
       "browser:page:read",
@@ -1188,7 +1200,8 @@
               "type": "string",
               "enum": [
                 "canadabuys",
-                "bidsandtenders"
+                "bidsandtenders",
+                "municipal-sites"
               ]
             },
             "mode": {
