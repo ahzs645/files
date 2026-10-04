@@ -103,3 +103,13 @@ describe('schedules', () => {
     expect(scheduledCollectInput('bidsandtenders')).toEqual({ sourceId: 'bidsandtenders' });
   });
 });
+
+describe('bids&tenders collector additions (CONNECTORS.md changes)', () => {
+  it('reads partly collected portals and the time-budget stop', () => {
+    const parsed = readConnectorCollection(state({ richmond: { status: 'incomplete', retrievedAt: '2026-10-03T12:00:00Z', recordCount: 40, totalReported: 43, error: { code: 'records_excluded', message: '3 notices over 250 kB' } } }, { error: { code: 'time_budget', message: '1 of 25 portal(s).' } }), 'bidsandtenders');
+    const row = portalRows(BIDSANDTENDERS_PORTALS, parsed).find(item => item.id === 'richmond')!;
+    expect(row).toMatchObject({ status: 'incomplete', statusText: 'Partly collected', problem: true, counts: '40 listed · portal reports 43', lastSuccessAt: '2026-10-03T12:00:00Z', error: 'records_excluded: 3 notices over 250 kB' });
+    expect(connectorStatus(parsed, now).text).toBe('Stopped at the time limit; next run continues');
+    expect(portalSummaryText(portalRows(BIDSANDTENDERS_PORTALS, parsed))).toMatch(/^1 of 25 portals collected in the last run · 1 partly · 24 not collected yet$/);
+  });
+});

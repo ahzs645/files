@@ -4,19 +4,19 @@ import { nextImportBatch } from '../dashboard/procurement/import-batches';
 import { isPauseError } from './pause';
 import { CANADABUYS_DATASET_URL, CANADABUYS_DOCUMENTATION_URL, COLLECTION_KEY, canadaBuysClosingAt } from '../dashboard/procurement/source-adapters';
 
-type Host = (method: string, input: any) => Promise<any>;
+export type Host = (method: string, input: any) => Promise<any>;
 export interface CollectionInput { sourceId: 'canadabuys'; mode?: 'resume' | 'restart'; maxBatches?: number }
 const MAX_BYTES = 20 * 1024 * 1024;
 const LEASE_MS = 10 * 60_000;
 class CollectionError extends Error { constructor(message: string, readonly code: string) { super(message); } }
 const fail = (message: string, code: string): never => { throw new CollectionError(message, code); };
 
-/** A state-only or record+cursor transaction, retried against current catalog revision. */
-async function transaction(host: Host, build: (state: any, revision: number) => Promise<any>) {
+/** A state-only or record+cursor transaction on one workspace state key, retried against current catalog revision. */
+export async function catalogTransaction(host: Host, key: string, build: (state: any, revision: number) => Promise<any>) {
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const state = await host('catalog.workspace', { keys: [COLLECTION_KEY] });
-      const value = await build(state.entries.find((entry: any) => entry.key === COLLECTION_KEY)?.value ?? {}, state.revision);
+      const state = await host('catalog.workspace', { keys: [key] });
+      const value = await build(state.entries.find((entry: any) => entry.key === key)?.value ?? {}, state.revision);
       const result = await host('catalog.commit', { revision: state.revision, ...value });
       if (!result.conflict) return value.entries[0].value;
     } catch (error) {
@@ -25,6 +25,7 @@ async function transaction(host: Host, build: (state: any, revision: number) => 
   }
   throw new CollectionError('Catalog changed repeatedly; resume the collection safely.', 'catalog_conflict');
 }
+const transaction = (host: Host, build: (state: any, revision: number) => Promise<any>) => catalogTransaction(host, COLLECTION_KEY, build);
 
 export async function collectCanadaBuys(host: Host, input: CollectionInput, runId: string, now = () => new Date().toISOString()) {
   if (input.sourceId !== 'canadabuys' || (input.mode && !['resume', 'restart'].includes(input.mode)) ||

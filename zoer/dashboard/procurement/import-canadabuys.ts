@@ -145,10 +145,15 @@ export function parseCanadaBuysCsv(text: string, provenance: CanadaBuysProvenanc
 
 /** Request the existing worker's listing-only merge: enrichment is read within its revision transaction. */
 export function preserveCanadaBuysEnrichment(records: any[], existing: Array<{ id: string; data: any }>): any[] {
+  return preserveSourceEnrichment(records, existing, 'canadabuys');
+}
+
+/** Same merge for any collected source: a saved record from another source under the same id stops the batch. */
+export function preserveSourceEnrichment(records: any[], existing: Array<{ id: string; data: any }>, sourceId: string): any[] {
   const previous = new Map(existing.map(row => [row.id, row.data]));
   return records.map(record => {
     const old = previous.get(`opportunity:${record.sourceKey}`);
-    if (old && old.sourceId !== 'canadabuys') throw new Error(`Source identity collision for ${record.sourceKey}; import stopped.`);
+    if (old && old.sourceId !== sourceId) throw new Error(`Source identity collision for ${record.sourceKey}; import stopped.`);
     const merged = { ...record,
       sourceFields: record.sourceFields ?? record.detailFields ?? [],
       sourceDescriptionText: record.sourceDescriptionText ?? record.descriptionText ?? '',

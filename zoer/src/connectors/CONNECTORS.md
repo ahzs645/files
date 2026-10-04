@@ -101,3 +101,46 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
 ## Changes
 
 - 2026-10-03: initial contract.
+- 2026-10-03 (bids&tenders connector, `feat/bcsrc-bidsandtenders`):
+  - `NetFetch` over Zoer: `zoer/src/connector-collection.ts#hostNetFetch` sends `{ url, method, headers, bodyBase64 }`;
+    `form` becomes a `URLSearchParams` body with `content-type: application/x-www-form-urlencoded`; `user-agent` is
+    `ZoerProcurement/0.32`; bodies are decoded as strict UTF-8 (`source_encoding` otherwise). Connectors never set headers.
+  - Portal failures: throw `ConnectorError(code, message)` from `zoer/src/connectors/errors.ts` (`httpFailure()` maps
+    403/429/other). Codes used: `source_http_error`, `source_forbidden`, `source_rate_limited`, `source_layout`,
+    `source_schema`, `source_session`, `source_encoding`, `connector_invalid`; anything without a code is `portal_failed`.
+    A pause error or an exhausted request budget must be rethrown, never turned into a warning.
+  - §4 state additions: source `attempt: { startedAt, portals, open }`. `resume` continues an attempt that is still
+    `open` (paused, crashed or stopped by the 7.5-minute soft time limit) for the same portal set within 6 hours and skips
+    portals already saved in it; otherwise every selected portal is fetched. Source `error.code`: `time_budget`,
+    `portals_failed`, `portals_incomplete`, or the run-level code. Portal entries add `attemptStartedAt`, `attemptedAt`,
+    `warnings` (≤ 10) and `excluded`, and a fourth status `incomplete` (records saved, but fewer than `totalReported` or
+    some over 250 kB). A failed portal keeps its previous `retrievedAt`, `recordCount` and `lastSuccessAt`.
+  - Merge: `descriptionText` is kept from the saved record only when it differs from the saved `sourceDescriptionText`
+    (i.e. it was enriched), so unenriched text follows the source. A saved `place` whose `method` is not `portal` is kept.
+    `contacts` is never written by a listing connector that has none, so enrichment's contacts survive.
+  - Records may carry `category`/`sourceCategory` (bids&tenders "Bid Classification") and `noticePageRetrievedAt`.
+    `publishedAt` is a date (`YYYY-MM-DD`) when the source prints a published time without a zone.
+  - bids&tenders notice pages (`/Module/Tenders/en/Tender/Detail/<Id>`) answer 200 to a fresh browser without the
+    session (checked on six portals), so `detailUrl` is that page; unknown ids 302 to the module root.
+  - bids&tenders sets its cookies with `domain=bidsandtenders.ca`; the host jar must store a parent-domain cookie
+    host-only for the requesting host (the networkSession branch does).
+  - `connectorCollectionKey(sourceId)` in `dashboard/procurement/source-adapters.ts` gives the §4 state key for the UI.
+- 2026-10-03 (Sources page, schedules and Home "Today", `feat/bcsrc-sources-home`) — **proposal, UI side only**:
+  - Zoer keeps **one schedule row per action** (`plugin-schedules.ts` replaces the row keyed by `pluginId`+`actionId`),
+    so `procurement.collect` can be scheduled for CanadaBuys *or* bids&tenders, not both with different inputs. Proposed
+    input `sourceId: 'all'` (owner: collection stream): one run collects CanadaBuys and then every connector in
+    `CONNECTORS`, each under its own §4 state key and lease, in a fixed order; `mode` applies per source, with
+    CanadaBuys using "resume if the checksum matches, else restart" (plain `resume` fails once the daily file changes,
+    and any failed run turns the schedule off). A source that fails is recorded in its own state and does **not**
+    fail the run (only pause errors, conflicts or an exhausted budget do), otherwise one bad source stops every
+    scheduled collection. `maxNetworkRequests` must cover the sum (CanadaBuys 1 + connectors' `requestsPerPortal` ×
+    portals) and the run keeps the existing soft time limit, leaving later sources `paused` for the next run.
+  - Until then the UI schedules one source at a time: CanadaBuys with `{ sourceId: 'canadabuys', mode: 'restart',
+    maxBatches: 20 }`, a connector with `{ sourceId }`. It says which source holds the schedule and that turning one
+    on replaces the other. `COLLECT_ALL_SUPPORTED` in `dashboard/procurement/source-overview.ts` switches the UI to
+    `sourceId: 'all'`.
+  - Home "Today" counts a notice as new when every `record_history` row for its `sourceKey` belongs to collection runs
+    after the reader's last visit. Collectors must keep writing one history row per saved record per run (as
+    `connector-collection.ts` and CanadaBuys do) with `id = sourceKey`.
+  - `link-sources.ts` (`LINK_SOURCES: LinkSource[]`, `{ id, label, url, region?, reason? }`) is read by the Sources
+    page "Check these yourself" card; it ships empty here.
