@@ -3,6 +3,7 @@ import { isPauseError, paused } from './pause';
 export { compactCheckpoint } from './checkpoint';
 import { parseCapture, type PageCapture } from './capture';
 import { LISTING_URL } from './scrape';
+import { activeTargetFilters } from './targeted-scrape';
 
 interface PendingDetail { sourceKey: string; processId: string; detailUrl: string }
 export interface Checkpoint {
@@ -72,6 +73,9 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
       const page = await capture(LISTING_URL, number);
       const records = parseCapture(page, 'listing').document.records!;
       if (!page.pagination || page.pagination.currentPage !== number) throw new Error('The listing pager returned the wrong page.');
+      // BC Bid keeps a search in the browser session; under one, "all pages" would be one buyer's pages.
+      const narrowed = activeTargetFilters(page.html);
+      if (narrowed.length) throw new Error(`BC Bid's Opportunities page still has a search filter (${narrowed.map(tag => `${tag.label}: ${tag.values.join(', ')}`).join('; ')}). Press Reset on that page in the Zoer browser, then continue the scrape.`);
       if (!records.length && (number > 1 || page.pagination.hasNext)) throw new Error('An expected listing page was empty.');
       const additions = records.filter(row => !known.has(row.sourceKey));
       if (records.length && !additions.length) throw new Error('Listing pagination repeated an already captured page.');

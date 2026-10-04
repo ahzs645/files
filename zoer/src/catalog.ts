@@ -79,7 +79,8 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     // Place and contacts are re-derived from the merged row: the detail page adds the fields they come from.
     const row = enrichNotice({ ...found[0].data, ...doc.record, ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId });
     records = [catalogRow('opportunity', row)];
-    const state = await call('catalog.workspace', { keys: ['checkpoint:full'] });
+    // A targeted refresh never edits the full crawl's progress; that crawl refetches its own pending details.
+    const state = doc.scope === 'bcbid-targeted' ? { entries: [] } : await call('catalog.workspace', { keys: ['checkpoint:full'] });
     const checkpoint = state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;
     if (checkpoint?.pending?.some((item: any) => item.sourceKey === row.sourceKey)) entries.push({ key: 'checkpoint:full', value: { ...checkpoint, pending: checkpoint.pending.filter((item: any) => item.sourceKey !== row.sourceKey), detailsCompleted: checkpoint.detailsCompleted + 1 } });
   } else if (['listing', 'scrape'].includes(doc.kind)) {

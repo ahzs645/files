@@ -3,6 +3,7 @@ import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { resumableCheckpoint, resumeFullScrape, testScraperBrowser, useWorkspace } from './backend';
 import { AwardHistoryPanel } from './Catalog';
 import { usePluginQuery } from './navigation';
+import { TargetedRefreshPanel } from './TargetedRefresh';
 
 /** Compact pre-flight for the Scraper tab: resume a saved checkpoint, or test browser access before a full scrape. */
 export function ScraperSetup() {
@@ -60,6 +61,7 @@ export function ScraperSetup() {
       {error && !continuing && <p role="alert">{error}</p>}
       <details><summary>What a full scrape includes</summary><p>Every current public opportunity with its detail tabs and attachment links. Progress is saved if you close this page. If BC Bid asks for a browser check, complete it in the selected browser and hand control back before resuming.</p></details>
     </section>
+    <TargetedRefreshPanel />
     <AwardHistoryPanel />
   </>;
 }
