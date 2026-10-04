@@ -12,6 +12,7 @@ export type ProcurementSource = {
 export const SOURCES: readonly ProcurementSource[] = [
   { id: 'bc-bid', label: 'BC Bid', jurisdiction: 'British Columbia', description: 'Saved BC Bid opportunities and contract awards.', mode: 'scraper', url: 'https://bcbid.gov.bc.ca' },
   { id: 'canadabuys', label: 'CanadaBuys', jurisdiction: 'Canada', description: 'Federal notices collected from the official dataset or imported from CSV files.', mode: 'csv-import', url: 'https://canadabuys.canada.ca/en/tender-opportunities' },
+  { id: 'municipal-sites', label: 'BC local government websites', jurisdiction: 'British Columbia', description: 'Bids listed on the own websites of BC municipalities and regional districts that publish them outside BC Bid and bids&tenders.', mode: 'scraper', url: 'https://rdn.bc.ca/current-bid-opportunities' },
 ];
 
 export function sourceId(data: { sourceId?: unknown } | null | undefined): string {

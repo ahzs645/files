@@ -8,7 +8,13 @@
     "apiVersion": "1",
     "networkAllowlist": [
       "bcbid.gov.bc.ca",
-      "canadabuys.canada.ca"
+      "canadabuys.canada.ca",
+      "rdn.bc.ca",
+      "www.srd.ca",
+      "www.penticton.ca",
+      "www.fernie.ca",
+      "www.fvrd.ca",
+      "www.surrey.ca"
     ],
     "permissions": [
       "browser:page:read",
@@ -997,7 +1003,8 @@
             "sourceId": {
               "type": "string",
               "enum": [
-                "canadabuys"
+                "canadabuys",
+                "municipal-sites"
               ]
             },
             "mode": {

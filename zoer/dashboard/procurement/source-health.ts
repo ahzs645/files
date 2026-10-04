@@ -29,6 +29,7 @@ type AdapterCapabilities = Partial<Record<'listing' | 'detail' | 'attachments' |
 const ADDENDA: Record<string, { status: CapabilityStatus; method: string }> = {
   'bc-bid': { status: 'partial', method: 'Addenda published as notice attachments are saved with the other files; a changed file is detected only when it is downloaded again.' },
   canadabuys: { status: 'unavailable', method: 'Amendment numbers are kept as data; addendum files are not downloaded by this connector.' },
+  'municipal-sites': { status: 'partial', method: 'Addenda a site links on the notice page are saved with the other document links and refreshed while the notice is open; files are not downloaded and some sites post addenda only on BC Bid.' },
 };
 /** The four capabilities the Sources page reports, in a fixed order. Missing information reads "unknown", never "unavailable". */
 export function capabilityMatrix(sourceId: string, capabilities: AdapterCapabilities | undefined) {
