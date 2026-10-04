@@ -4,7 +4,7 @@ import { collectBrowserSources, validBrowserCollectionInput } from '../zoer/src/
 import { collectProcurementSource } from '../zoer/src/connector-collection';
 import { CONNECTORS } from '../zoer/src/connectors';
 import { browserCheckMessage, detectBrowserCheck } from '../zoer/src/connectors/browser-check';
-import { browserNoticeId, browserRecord, contentOf, parseBlocks, parseBrowserListing, type CapturedPage } from '../zoer/src/connectors/browser-sites';
+import { browserNoticeId, browserRecord, contentOf, layoutSample, parseBlocks, parseBrowserListing, type CapturedPage } from '../zoer/src/connectors/browser-sites';
 import { createPacer } from '../zoer/src/connectors/pacing';
 import { insideVisitTime, parseRobots, robotsAllows, robotsPolicy, robotsTextFromCapture } from '../zoer/src/connectors/robots';
 import { BROWSER_COLLECT_ACTION, BROWSER_PAGES_PER_SITE, BROWSER_SITES, browserSiteById } from '../zoer/dashboard/procurement/browser-sites';
@@ -345,5 +345,16 @@ describe('browser-sites registration', () => {
     expect(adapter.capabilities.detail.status).toBe('unavailable');
     expect(capabilityMatrix('browser-sites', adapter.capabilities).map(cap => cap.status)).toEqual(['partial', 'unavailable', 'unavailable', 'unavailable']);
     expect((manifest as any).integration.actions.find((item: any) => item.id === 'procurement.collect').inputSchema.properties.sourceId.enum).not.toContain('browser-sites');
+  });
+});
+
+describe('layout samples', () => {
+  it('keeps a bounded copy of an unreadable page without scripts, styles or menus', () => {
+    const html = `<html><head><style>p{}</style><script>var a='<b>';</script></head><body><nav>Menu</nav><main><h1>Bids</h1><p>Something new</p>${'x'.repeat(70_000)}</main></body></html>`;
+    const sample = layoutSample({ url: 'https://example.ca/bids', title: 'Bids', html }, '2026-10-04T00:00:00Z');
+    expect(sample.page.startsWith('<h1>Bids</h1>')).toBe(true);
+    expect(sample.page).not.toMatch(/script|style|Menu/);
+    expect(sample).toMatchObject({ url: 'https://example.ca/bids', capturedAt: '2026-10-04T00:00:00Z', truncated: true });
+    expect(sample.page.length).toBe(60_000);
   });
 });

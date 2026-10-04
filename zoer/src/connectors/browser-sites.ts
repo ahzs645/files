@@ -34,6 +34,18 @@ export interface BrowserSitesContext {
   /** robots.txt per host, read this run or within ROBOTS_TTL_MS; updated in place. */
   robots: Record<string, RobotsCacheEntry>;
   nowMs: () => number;
+  /**
+   * Pages whose layout no reader understood, kept with the source state (bounded, scripts and styles removed) so the
+   * reader can be fixed from what Zoer's browser actually saw instead of fetching the site again from elsewhere.
+   */
+  layoutSamples?: Record<string, LayoutSample>;
+}
+export interface LayoutSample { url: string; title: string; capturedAt: string; page: string; truncated: boolean }
+const MAX_SAMPLE_CHARS = 60_000;
+/** The page body without scripts, styles, SVG and comments, at most MAX_SAMPLE_CHARS. */
+export function layoutSample(page: CapturedPage, at: string): LayoutSample {
+  const body = contentOf(String(page.html ?? '').replace(/<(script|style|svg|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, '')).replace(/\s+/g, ' ').trim();
+  return { url: page.url, title: page.title, capturedAt: page.capturedAt ?? at, page: body.slice(0, MAX_SAMPLE_CHARS), truncated: body.length > MAX_SAMPLE_CHARS };
 }
 export const ROBOTS_TTL_MS = 24 * 60 * 60_000;
 const MAX_ROBOTS_BYTES = 64_000;
@@ -251,7 +263,12 @@ export async function collectBrowserSite(ctx: BrowserSitesContext, portal: Conne
   if (!robotsAllows(robots, page.url)) throw new ConnectorError('robots_disallowed', `${site.label} redirected to ${final.pathname}, which its robots.txt does not allow. Nothing from it was saved.`);
   if (page.status !== undefined && page.status !== 200) throw new ConnectorError(page.status === 404 ? 'source_not_found' : 'source_http_error', `${site.label}'s bids page answered HTTP ${page.status}. Saved records are kept.`);
   const retrievedAt = page.capturedAt && Number.isFinite(Date.parse(page.capturedAt)) ? new Date(Date.parse(page.capturedAt)).toISOString() : context.now();
-  const parsed = parseBrowserListing(site, page.html, page.url);
+  let parsed: ReturnType<typeof parseBrowserListing>;
+  try { parsed = parseBrowserListing(site, page.html, page.url); delete ctx.layoutSamples?.[site.id]; }
+  catch (error) {
+    if ((error as ConnectorError)?.code === 'source_layout' && ctx.layoutSamples) ctx.layoutSamples[site.id] = layoutSample(page, context.now());
+    throw error;
+  }
   const records = new Map<string, ReturnType<typeof browserRecord>>(), warnings: string[] = [];
   let unkeyed = 0;
   for (const row of parsed.rows) {

@@ -46,11 +46,13 @@ export async function collectBrowserSources(host: Host, input: unknown, runId: s
   const previous = (await host('catalog.workspace', { keys: [key] })).entries?.find((entry: any) => entry.key === key)?.value;
   const saved = savedBrowserState(previous, nowMs());
   const pacer = createPacer({ now: nowMs, sleep }, saved.pacing), robots = saved.robots;
-  const connector = browserSitesConnector({ capture: deps.capture, pacer, robots, nowMs });
+  // Layout samples from earlier runs stay until that site parses again.
+  const layoutSamples: Record<string, any> = Object.fromEntries(Object.entries<any>(previous?.browser?.layoutSamples ?? {}).filter(([id, sample]) => BROWSER_SITES.some(site => site.id === id) && typeof sample?.page === 'string'));
+  const connector = browserSitesConnector({ capture: deps.capture, pacer, robots, nowMs, layoutSamples });
   const startedAt = now();
   const state = await collectConnectorSource(host, { sourceId: BROWSER_SOURCE_ID, ...(input.sites ? { portals: input.sites } : {}) }, runId, now, {
     connector, softDeadlineAt: Date.parse(startedAt) + SOFT_DEADLINE_MS,
-    stateExtras: () => ({ browser: { pacing: pacer.snapshot(), robots: { ...robots } } }),
+    stateExtras: () => ({ browser: { pacing: pacer.snapshot(), robots: { ...robots }, layoutSamples: { ...layoutSamples } } }),
   });
   const ids = input.sites ?? BROWSER_SITES.map(site => site.id);
   const count = (test: (entry: any) => boolean) => ids.filter(id => test(state.portals?.[id])).length;
