@@ -112,8 +112,11 @@ describe('saved-search alerts select exactly what the saved search lists', () =>
   c.add('opportunity:title-differs', { description: 'Bridge', title: 'Roof' });
   c.add('award:roof', { opportunityDescription: 'Roof award', issuingOrganization: 'BC Housing', successfulSupplier: 'Dominion Roofing', category: 'Construction' });
   c.add('award:legacy', { sourceId: '', opportunityDescription: 'Legacy award', successfulSupplier: 'Acme' });
+  c.add('opportunity:nanaimo', { description: 'Roof Nanaimo', closingDate: addDays(today, 2), place: { municipality: 'Nanaimo', regionalDistrict: 'Regional District of Nanaimo', method: 'buyer' } });
+  c.add('opportunity:rdn', { description: 'Roof RDN', place: { municipality: null, regionalDistrict: 'Regional District of Nanaimo', method: 'buyer' } });
+  c.add('opportunity:nanaimo-region-only', { description: 'Roof untagged', region: 'Nanaimo' });
   c.hide('opportunity:hidden');
-  const base: ProcurementFilters = { source: '', kind: 'all', search: '', region: '', category: '', classification: '', buyer: '', supplier: '', deadline: 'all', shortlist: false, exclude: '' };
+  const base: ProcurementFilters = { source: '', kind: 'all', search: '', region: '', category: '', classification: '', buyer: '', supplier: '', deadline: 'all', shortlist: false, exclude: '', place: '' };
   const cases: [string, Partial<ProcurementFilters>][] = [
     ['everything', {}], ['source', { source: 'canadabuys' }], ['legacy source', { source: 'bc-bid' }], ['kind', { kind: 'award' }],
     ['search', { search: 'roof' }], ['search by number', { search: 'BC-100' }], ['region', { region: 'Victoria' }], ['category', { category: 'Construction' }],
@@ -121,15 +124,21 @@ describe('saved-search alerts select exactly what the saved search lists', () =>
     ['shortlist', { shortlist: true }], ['closing in 7 days', { deadline: 'week', kind: 'opportunity' }],
     ['exclude', { exclude: 'janitorial, fertiliz*' }], ['exclude buyer', { exclude: 'bc housing' }],
     ['combined', { deadline: 'week', kind: 'opportunity', search: 'roof', exclude: 'federal' }],
+    ['place: municipality', { place: 'm:Nanaimo' }], ['place: regional district', { place: 'rd:Regional District of Nanaimo' }],
+    ['place with other filters', { place: 'rd:Regional District of Nanaimo', deadline: 'week', search: 'roof' }],
   ];
   it.each(cases)('%s', (_, partial) => {
     const filters = { ...base, ...partial };
-    const options: ProcurementQueryOptions = { source: filters.source, kind: filters.kind, search: filters.search, region: filters.region, category: filters.category, classification: filters.classification, buyer: filters.buyer, supplier: filters.supplier, starred: filters.shortlist, deadline: filters.deadline, exclude: filters.exclude, hidden: 'exclude', asOf: now };
+    const options: ProcurementQueryOptions = { source: filters.source, kind: filters.kind, search: filters.search, region: filters.region, category: filters.category, classification: filters.classification, buyer: filters.buyer, supplier: filters.supplier, starred: filters.shortlist, deadline: filters.deadline, exclude: filters.exclude, place: filters.place, hidden: 'exclude', asOf: now };
     const listed = c.plugin(options);
     expect(c.host(filters, now)).toEqual(listed);
     expect(listed).not.toContain('opportunity:hidden');
   });
+  it('place filters the tagged place only, never the free-text region', () => {
+    expect(c.host({ ...base, place: 'm:Nanaimo' }, now)).toEqual(['opportunity:nanaimo']);
+    expect(c.host({ ...base, place: 'rd:Regional District of Nanaimo' }, now)).toEqual(['opportunity:nanaimo', 'opportunity:rdn']);
+  });
   it('closing in 7 days keeps today and zoneless dates and drops passed deadlines whatever the source status says', () => {
-    expect(c.host({ ...base, deadline: 'week' }, now)).toEqual(['opportunity:instant-soon', 'opportunity:janitorial', 'opportunity:roof', 'opportunity:today', 'opportunity:zoneless']);
+    expect(c.host({ ...base, deadline: 'week' }, now)).toEqual(['opportunity:instant-soon', 'opportunity:janitorial', 'opportunity:nanaimo', 'opportunity:roof', 'opportunity:today', 'opportunity:zoneless']);
   });
 });

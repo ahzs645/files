@@ -121,8 +121,8 @@ export function Procurement() {
     try { await setStar(row.kind, row.kind === 'award' ? row.importKey : row.sourceKey, !row.starred); await client.invalidateQueries({ queryKey: ['catalog'] }); }
     catch (e) { setError((e as Error).message); } finally { setSaving(''); }
   };
-  const savedFilters: ProcurementFilters = { source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred, exclude };
-  const applySaved = (saved: ProcurementFilters) => { filter({ ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '' }); setPanel(''); };
+  const savedFilters: ProcurementFilters = { source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred, exclude, place };
+  const applySaved = (saved: ProcurementFilters) => { filter({ ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '', place: saved.place ?? '' }); setPanel(''); };
   const chips = reviewChips(params, profileLabel);
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
   const extraCount = [region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude'].filter(Boolean).length + reviewCount;
@@ -262,7 +262,7 @@ export function Procurement() {
         <div className="pc-extra-fields"><FilterSelect name="Hidden notices" value={hidden === 'exclude' ? '' : hidden} onChange={value => filter({ hidden: value })} any="Leave out hidden notices" options={[['include', 'Show hidden notices too'], ['only', 'Only hidden notices']]} /></div>
       </div>
     </Modal>}
-    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || place || reviewCount > 0) && <p className="procurement-coverage">AI category, place and review filters aren’t included in saved searches or alerts yet.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
+    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || reviewCount > 0) && <p className="procurement-coverage">AI category and review filters aren’t included in saved searches or alerts yet.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
     {noticeId && (!wide || view === 'compare' || view === 'matrix') && <NoticeView id={noticeId} layout="dialog" onClose={closeNotice} />}
     {evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
   </section>;

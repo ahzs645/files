@@ -1396,6 +1396,11 @@
                     "exclude": {
                       "type": "string",
                       "maxLength": 2000
+                    },
+                    "place": {
+                      "type": "string",
+                      "maxLength": 300,
+                      "pattern": "^$|^(m|rd):\\S"
                     }
                   },
                   "required": [

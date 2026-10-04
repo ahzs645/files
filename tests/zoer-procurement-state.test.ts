@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { updateProcurementState } from '../zoer/src/procurement-state';
 import { MAX_PURSUITS, MAX_SEARCHES, PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, validateProcurementFilters } from '../zoer/dashboard/procurement/state-contract';
+import manifest from '../zoer/manifest.json';
 
 const filters = { source: '', kind: 'all' as const, search: 'roof', region: 'BC', category: '', classification: '', buyer: '', supplier: '', deadline: 'week' as const, shortlist: false };
 const pursuit = { operation: 'pursuit.upsert', expectedVersion: 0, recordId: 'opportunity:123', sourceId: 'bc-bid', stage: 'Watching', notes: 'Internal requirement checklist' };
@@ -110,6 +111,16 @@ describe('procurement workspace state', () => {
     expect(validateProcurementFilters(old).supplier).toBe('');
     expect(validateProcurementFilters(filters)).not.toHaveProperty('alerts');
     for (const invalid of [{ ...filters, enabled: true }, { ...filters, source: 'BC Bid' }, { ...filters, deadline: 'yesterday' }, { ...filters, shortlist: 'true' }, { ...filters, search: 'x'.repeat(1001) }]) expect(() => validateProcurementFilters(invalid)).toThrow();
+  });
+
+  it('saves a BC place filter in the shape the list and alerts read, and reads older searches as any place', () => {
+    const { place: omitted, ...old } = { ...filters, place: '' };
+    expect(validateProcurementFilters(old).place).toBe('');
+    expect(validateProcurementFilters({ ...old, place: 'm:Nanaimo' }).place).toBe('m:Nanaimo');
+    expect(validateProcurementFilters({ ...old, place: 'rd:Regional District of Nanaimo' }).place).toBe('rd:Regional District of Nanaimo');
+    for (const place of ['Nanaimo', 'x:Nanaimo', 'm:', 'm: Nanaimo', 'm:' + 'x'.repeat(300), 3]) expect(() => validateProcurementFilters({ ...old, place })).toThrow('place');
+    const schema = (manifest as any).integration.actions.find((action: any) => action.id === 'procurement.state').inputSchema.anyOf.find((branch: any) => branch.properties.filters).properties.filters;
+    expect(schema.properties.place).toMatchObject({ type: 'string', maxLength: 300 });
   });
 
   it('accepts older saved filters and validates exact classification without trimming source values', () => {

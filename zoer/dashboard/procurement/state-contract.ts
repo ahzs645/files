@@ -20,6 +20,8 @@ export type ProcurementFilters = {
   region: string; category: string; classification?: string; buyer: string; supplier: string; deadline: 'all' | 'week'; shortlist: boolean;
   /** Exclude words (exclude.ts). Older saved searches have none. */
   exclude?: string;
+  /** BC place (places.ts): `m:<municipality>` or `rd:<regional district>`, exact; '' or absent = any place. */
+  place?: string;
 };
 export type VersionedState = { version: number; updatedAt: string; lastRunId: string };
 export type Pursuit = VersionedState & { recordId: string; sourceId: string; title: string; stage: PursuitStage; notes: string };
@@ -33,6 +35,8 @@ export type ProcurementStateInput =
 /** Pursuit and saved-search writes: versioned items read back from their list keys. */
 export type VersionedStateInput = Exclude<ProcurementStateInput, { operation: 'hidden.set' }>;
 
+/** Same shape the Opportunities list and the Zoer alert query accept; anything else would silently match nothing. */
+export const PLACE_FILTER = /^(m|rd):\S.*$/;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 function text(value: unknown, field: string, maximum: number, empty = false): string {
   if (typeof value !== 'string' || value.length > maximum || (!empty && !value.trim()) || /\u0000/.test(value)) throw Error(`Invalid ${field}.`);
@@ -45,14 +49,16 @@ export function validateSourceId(value: unknown, allowAll = false): string {
 }
 export function validateProcurementFilters(value: unknown): ProcurementFilters {
   if (!object(value)) throw Error('Invalid saved-search filters.');
-  if (Object.keys(value).some(key => !['source', 'kind', 'search', 'region', 'category', 'classification', 'buyer', 'supplier', 'deadline', 'shortlist', 'exclude'].includes(key))) throw Error('Unknown saved-search filter.');
+  if (Object.keys(value).some(key => !['source', 'kind', 'search', 'region', 'category', 'classification', 'buyer', 'supplier', 'deadline', 'shortlist', 'exclude', 'place'].includes(key))) throw Error('Unknown saved-search filter.');
   const exclude = text(value.exclude ?? '', 'exclude words', EXCLUDE_MAX_TEXT, true);
   if (allExcludeTerms(exclude).length > EXCLUDE_MAX_TERMS) throw Error(`Use at most ${EXCLUDE_MAX_TERMS} exclude words.`);
+  const place = text(value.place ?? '', 'place', 300, true);
+  if (place && !PLACE_FILTER.test(place)) throw Error('Invalid place filter.');
   if (!['all', 'opportunity', 'award'].includes(value.kind as string) || !['all', 'week'].includes(value.deadline as string) || typeof value.shortlist !== 'boolean') throw Error('Invalid saved-search filter value.');
   return { source: validateSourceId(value.source, true), kind: value.kind as ProcurementFilters['kind'],
     search: text(value.search, 'search text', 1000, true), region: text(value.region, 'region', 300, true),
     category: text(value.category, 'category', 300, true), classification: text(value.classification ?? '', 'classification', 12000, true), buyer: text(value.buyer, 'buyer', 300, true), supplier: text(value.supplier ?? '', 'supplier', 300, true),
-    deadline: value.deadline as ProcurementFilters['deadline'], shortlist: value.shortlist, exclude };
+    deadline: value.deadline as ProcurementFilters['deadline'], shortlist: value.shortlist, exclude, place };
 }
 export function validateProcurementStateInput(value: unknown): ProcurementStateInput {
   if (object(value) && value.operation === 'hidden.set') {
