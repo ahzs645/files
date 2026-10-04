@@ -1,8 +1,8 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.32.0",
-  "description": "Multi-source procurement catalog with BC Bid, CanadaBuys and bids&tenders (25 BC public buyers) collection, saved searches, pursuits and source-aware analysis.",
+  "version": "0.33.0",
+  "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, collected together on one schedule, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
     "apiVersion": "1",
