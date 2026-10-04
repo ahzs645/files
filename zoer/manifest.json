@@ -1801,7 +1801,7 @@
         "resourceLimits": {
           "timeoutMs": 600000,
           "maxMemoryMb": 1024,
-          "maxOutputBytes": 1048576
+          "maxOutputBytes": 67108864
         },
         "idempotent": true,
         "inputSchema": {
