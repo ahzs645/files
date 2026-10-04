@@ -1,13 +1,15 @@
 import { preserveSourceEnrichment } from '../dashboard/procurement/import-canadabuys';
 import { nextImportBatch } from '../dashboard/procurement/import-batches';
 import { connectorCollectionKey } from '../dashboard/procurement/source-adapters';
-import { connectorById } from './connectors';
+import { CONNECTORS, connectorById } from './connectors';
 import { ConnectorError } from './connectors/errors';
 import type { ConnectorPortal, NetFetch, PortalResult, SourceConnector } from './connectors/types';
 import { isPauseError } from './pause';
 import { catalogTransaction, collectCanadaBuys, type CollectionInput, type Host } from './procurement-collection';
 
 export interface ConnectorCollectionInput { sourceId: string; mode?: 'resume' | 'restart'; maxBatches?: number; portals?: string[] }
+/** `softDeadlineAt` (epoch ms): no portal starts after it. Defaults to 7.5 minutes after this source started. */
+export interface ConnectorRunOptions { softDeadlineAt?: number }
 const LEASE_MS = 10 * 60_000;
 /** An interrupted attempt (pause, crash, time budget) is continued by `resume` only while its listings are fresh. */
 const RESUME_WINDOW_MS = 6 * 60 * 60_000;
@@ -19,8 +21,12 @@ const encoder = new TextEncoder();
 const bytes = (value: unknown) => encoder.encode(JSON.stringify(value)).byteLength;
 const fail = (message: string, code: string): never => { throw new ConnectorError(code, message); };
 
-/** `procurement.collect` entry: CanadaBuys keeps its checksummed snapshot path; any other id is a listing connector. */
+/**
+ * `procurement.collect` entry: CanadaBuys keeps its checksummed snapshot path, `all` runs every source in turn (the
+ * one input Zoer's single schedule per action can hold), and any other id is a listing connector.
+ */
 export function collectProcurementSource(host: Host, input: any, runId: string, now = () => new Date().toISOString()) {
+  if (input?.sourceId === 'all') return collectAllSources(host, input, runId, now);
   return input?.sourceId === 'canadabuys' ? collectCanadaBuys(host, input as CollectionInput, runId, now) : collectConnectorSource(host, input, runId, now);
 }
 
@@ -84,6 +90,8 @@ const errorOf = (error: unknown) => ({
   code: typeof (error as any)?.code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test((error as any).code) ? (error as any).code : 'portal_failed',
   message: String((error as Error)?.message ?? error).slice(0, 2000),
 });
+/** Zoer's per-run request budget is shared by every portal and source, so running out ends the whole run. */
+const isBudgetError = (error: unknown) => (error as any)?.code === 'network_limit' || /budget exhausted|network_limit/i.test(String((error as Error)?.message ?? ''));
 const sameSet = (a: unknown, b: string[]) => Array.isArray(a) && a.length === b.length && b.every(id => a.includes(id));
 
 /**
@@ -91,7 +99,7 @@ const sameSet = (a: unknown, b: string[]) => Array.isArray(a) && a.length === b.
  * merged and committed in its own bounded transactions together with its state entry, so a failure or pause
  * keeps every portal saved before it. Saved records are never deleted and keep stars and enrichment.
  */
-export async function collectConnectorSource(host: Host, input: ConnectorCollectionInput, runId: string, now = () => new Date().toISOString()) {
+export async function collectConnectorSource(host: Host, input: ConnectorCollectionInput, runId: string, now = () => new Date().toISOString(), options: ConnectorRunOptions = {}) {
   const connector = typeof input?.sourceId === 'string' ? connectorById(input.sourceId) : undefined;
   const requested = input?.portals;
   if (!connector || (input.mode && !['resume', 'restart'].includes(input.mode))
@@ -113,7 +121,7 @@ export async function collectConnectorSource(host: Host, input: ConnectorCollect
     return { entries: entries({ ...previous, version: 1, sourceId: connector.id, status: 'running', ownerRunId: runId, lastAttemptedAt: attemptedAt,
       leaseUntil: lease(), error: null, portals: previous.portals ?? {}, attempt: continuing ? previous.attempt : { startedAt: attemptedAt, portals: ids, open: true } }) };
   });
-  const attempt = state.attempt.startedAt;
+  const attempt = state.attempt.startedAt, softDeadline = options.softDeadlineAt ?? Date.parse(attemptedAt) + SOFT_DEADLINE_MS;
   const done = (entry: any) => entry?.attemptStartedAt === attempt && ['complete', 'incomplete'].includes(entry.status);
   const fetch = hostNetFetch(host);
   /** Merge and commit one portal's records in bounded batches; its state entry is written with the last batch. */
@@ -165,15 +173,16 @@ export async function collectConnectorSource(host: Host, input: ConnectorCollect
   try {
     for (const portal of selected) {
       if (done(state.portals[portal.id])) continue;
-      if (Date.parse(now()) - Date.parse(attemptedAt) > SOFT_DEADLINE_MS) break;
+      if (Date.parse(now()) > softDeadline) break;
       const portalAttemptedAt = now();
       try {
         const result = await connector.collectPortal(fetch, portal, { now, runId });
         checkResult(connector, portal, result);
         state = await savePortal(portal, result, portalAttemptedAt);
       } catch (error) {
-        // A pause or a lost checkpoint ends the run; anything else (source, schema, catalog conflict) fails only this portal.
-        if (isPauseError(error) || (error as any)?.code === 'collection_conflict') throw error;
+        // A pause, a spent request budget or a lost checkpoint ends the run; anything else (source, schema, catalog
+        // conflict) fails only this portal.
+        if (isPauseError(error) || isBudgetError(error) || (error as any)?.code === 'collection_conflict') throw error;
         const failure = errorOf(error);
         state = await update(current => ({ entries: entries({ ...current, leaseUntil: lease(), portals: { ...current.portals,
           [portal.id]: { ...current.portals?.[portal.id], status: 'failed', attemptStartedAt: attempt, attemptedAt: portalAttemptedAt, error: failure } } }) }));
@@ -196,8 +205,69 @@ export async function collectConnectorSource(host: Host, input: ConnectorCollect
       await update(current => ({ entries: entries({ ...current, status: 'paused', leaseUntil: null, error: null }) })).catch(() => undefined);
       throw error;
     }
-    const failure = errorOf(error);
-    await update(current => ({ entries: entries({ ...current, status: 'failed', leaseUntil: null, error: { ...failure, code: failure.code === 'portal_failed' ? 'collection_failed' : failure.code, at: now() } }) })).catch(() => undefined);
+    const failure = errorOf(error), code = isBudgetError(error) ? 'network_budget' : failure.code === 'portal_failed' ? 'collection_failed' : failure.code;
+    await update(current => ({ entries: entries({ ...current, status: 'failed', leaseUntil: null, error: { ...failure, code, at: now() } }) })).catch(() => undefined);
     throw error;
   }
+}
+
+/** No CanadaBuys batch starts after this share of the run, so the connectors after it still run within the timeout. */
+const CANADABUYS_SHARE_MS = 4 * 60_000;
+export type SourceOutcome = 'complete' | 'partial' | 'paused' | 'failed' | 'busy' | 'not-run';
+export interface SourceRunResult {
+  sourceId: string; outcome: SourceOutcome; status?: string;
+  error?: { code: string; message: string } | null;
+  portals?: { total: number; complete: number; incomplete: number; failed: number; notRun: number };
+}
+
+/** A source state as one outcome. A connector whose every portal failed this run failed, even though it returned. */
+function connectorOutcome(state: any, portalIds: string[]): SourceRunResult['portals'] & { outcome: SourceOutcome } {
+  const statuses = portalIds.map(id => state.portals?.[id]?.status), by = (status: string) => statuses.filter(item => item === status).length;
+  const counts = { total: portalIds.length, complete: by('complete'), incomplete: by('incomplete'), failed: by('failed'), notRun: by('not-run') };
+  return { ...counts, outcome: state.status === 'complete' ? 'complete' : counts.failed === counts.total ? 'failed' : 'partial' };
+}
+
+/**
+ * `sourceId: 'all'`: CanadaBuys, then every connector in `CONNECTORS`, each under its own state key and lease
+ * (CONNECTORS.md §4). One failing source is recorded in its own state and in this output and does not stop the
+ * others. Only a Zoer pause or a spent request budget (shared by every source) ends the run early.
+ *
+ * Schedules: Zoer turns a schedule off when a run fails or when a step output has a numeric `failed` above zero.
+ * Partial failures must not do that (one portal down would stop every scheduled collection), so the output keeps
+ * its counts under `summary`, and the run fails only when every source that ran failed.
+ */
+export async function collectAllSources(host: Host, input: any, runId: string, now = () => new Date().toISOString()) {
+  if (!input || typeof input !== 'object' || Object.keys(input).some(key => !['sourceId', 'mode', 'maxBatches'].includes(key))
+    || (input.mode !== undefined && !['resume', 'restart'].includes(input.mode))
+    || (input.maxBatches !== undefined && (!Number.isInteger(input.maxBatches) || input.maxBatches < 1 || input.maxBatches > 20))) throw new Error('Invalid procurement collection request.');
+  if (!(await host('catalog.read', { ids: [] })).primary) throw new Error('Initialize the existing procurement catalog before collecting.');
+  const startedAt = now(), started = Date.parse(startedAt), softDeadlineAt = started + SOFT_DEADLINE_MS;
+  const sources: SourceRunResult[] = [];
+  const failure = (sourceId: string, error: unknown): SourceRunResult => {
+    // A pause or a spent budget is the run's, not this source's: rethrow so Zoer pauses or reports the run.
+    if (isPauseError(error) || isBudgetError(error)) throw error;
+    const { code, message } = errorOf(error);
+    return { sourceId, outcome: code === 'collection_busy' ? 'busy' : 'failed', error: { code: code === 'portal_failed' ? 'collection_failed' : code, message } };
+  };
+  try {
+    // A changed daily file restarts from its beginning; the same file continues where the last run stopped.
+    const state = await collectCanadaBuys(host, { sourceId: 'canadabuys', mode: input.mode, maxBatches: input.maxBatches ?? 20 }, runId, now,
+      { restartOnChange: true, stopAt: started + CANADABUYS_SHARE_MS });
+    sources.push({ sourceId: 'canadabuys', status: state.status, outcome: state.status === 'complete' ? 'complete' : state.status === 'paused' ? 'paused' : 'partial', error: state.error ? { code: state.error.code, message: state.error.message } : null });
+  } catch (error) { sources.push(failure('canadabuys', error)); }
+  for (const connector of CONNECTORS) {
+    if (Date.parse(now()) > softDeadlineAt) { sources.push({ sourceId: connector.id, outcome: 'not-run', error: { code: 'time_budget', message: 'Not reached before the time limit; the next run collects it.' } }); continue; }
+    try {
+      const state = await collectConnectorSource(host, { sourceId: connector.id, ...(input.mode ? { mode: input.mode } : {}) }, runId, now, { softDeadlineAt });
+      const { outcome, ...portals } = connectorOutcome(state, connector.portals.map(portal => portal.id));
+      sources.push({ sourceId: connector.id, status: state.status, outcome, error: state.error ? { code: state.error.code, message: state.error.message } : null, portals });
+    } catch (error) { sources.push(failure(connector.id, error)); }
+  }
+  const count = (outcome: SourceOutcome) => sources.filter(source => source.outcome === outcome).length;
+  const summary = { total: sources.length, complete: count('complete'), partial: count('partial'), paused: count('paused'), failedSources: count('failed'), busy: count('busy'), notRun: count('not-run') };
+  const ran = sources.filter(source => source.outcome !== 'busy' && source.outcome !== 'not-run');
+  if (ran.length && ran.every(source => source.outcome === 'failed')) {
+    throw new Error(`Every source failed: ${ran.map(source => `${source.sourceId} (${source.error?.code ?? 'failed'})`).join(', ')}. Saved notices are kept.`);
+  }
+  return { sourceId: 'all', status: summary.complete === summary.total ? 'complete' : 'incomplete', startedAt, finishedAt: now(), summary, sources };
 }

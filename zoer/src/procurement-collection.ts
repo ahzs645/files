@@ -7,6 +7,12 @@ import { CANADABUYS_DATASET_URL, CANADABUYS_DOCUMENTATION_URL, COLLECTION_KEY, c
 
 export type Host = (method: string, input: any) => Promise<any>;
 export interface CollectionInput { sourceId: 'canadabuys'; mode?: 'resume' | 'restart'; maxBatches?: number }
+/**
+ * Unattended runs (`sourceId: 'all'`): `restartOnChange` resumes only the same checksummed snapshot and otherwise
+ * starts the new one from its beginning (plain `resume` fails once the daily file changes); `stopAt` (epoch ms)
+ * starts no batch after that time, leaving the cursor for the next run so later sources still get their turn.
+ */
+export interface CanadaBuysRunOptions { restartOnChange?: boolean; stopAt?: number }
 const MAX_BYTES = 20 * 1024 * 1024;
 const LEASE_MS = 10 * 60_000;
 class CollectionError extends Error { constructor(message: string, readonly code: string) { super(message); } }
@@ -28,7 +34,7 @@ export async function catalogTransaction(host: Host, key: string, build: (state:
 }
 const transaction = (host: Host, build: (state: any, revision: number) => Promise<any>) => catalogTransaction(host, COLLECTION_KEY, build);
 
-export async function collectCanadaBuys(host: Host, input: CollectionInput, runId: string, now = () => new Date().toISOString()) {
+export async function collectCanadaBuys(host: Host, input: CollectionInput, runId: string, now = () => new Date().toISOString(), options: CanadaBuysRunOptions = {}) {
   if (input.sourceId !== 'canadabuys' || (input.mode && !['resume', 'restart'].includes(input.mode)) ||
     !Number.isInteger(input.maxBatches ?? 1) || (input.maxBatches ?? 1) < 1 || (input.maxBatches ?? 1) > 20) throw new Error('Invalid CanadaBuys collection request.');
   if (!(await host('catalog.read', { ids: [] })).primary) throw new Error('Initialize the existing procurement catalog before collecting.');
@@ -48,7 +54,8 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
     const bytes = Buffer.from(response.bodyBase64, 'base64');
     if (bytes.length > MAX_BYTES) fail('CanadaBuys source exceeds the 20 MiB collection limit.', 'source_size');
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    const resuming = input.mode !== 'restart' && state.receipt;
+    const sameSnapshot = state.receipt?.sha256 === sha256 && (state.receipt.offset === 0 || state.receipt.parserVersion === 2);
+    const resuming = input.mode !== 'restart' && state.receipt && (!options.restartOnChange || sameSnapshot);
     if (resuming && state.receipt.sha256 !== sha256) fail('The CanadaBuys snapshot changed. Restart collection to merge the new snapshot from its beginning; existing records remain saved.', 'source_changed');
     const importedAt = resuming ? state.receipt.importedAt : attemptedAt;
     let parsed: ReturnType<typeof parseCanadaBuysCsv>;
@@ -72,7 +79,7 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
       excludedCount: parsed!.excluded.length, excluded: parsed!.excluded, coverageComplete: parsed!.excluded.length === 0,
       warnings: parsed!.warnings, offset, coverage: `Downloaded federal open-tender snapshot only; ${parsed!.excluded.length} oversized notice(s) excluded. Missing and previously closed records are retained.` };
     state = await transaction(host, async current => { owned(current); return { entries: stateEntry({ ...current, receipt }) }; });
-    for (let n = 0; n < (input.maxBatches ?? 1) && state.receipt.offset < records.length; n++) {
+    for (let n = 0; n < (input.maxBatches ?? 1) && state.receipt.offset < records.length && !(options.stopAt && Date.parse(now()) >= options.stopAt); n++) {
       const start = state.receipt.offset;
       state = await transaction(host, async (current, revision) => {
         owned(current);

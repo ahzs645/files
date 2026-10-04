@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BIDSANDTENDERS_PORTALS } from '../zoer/dashboard/procurement/portals';
-import { PORTAL_COUNT_SQL, collectTarget, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, scheduleCovers, scheduledCollectInput } from '../zoer/dashboard/procurement/source-overview';
+import { PORTAL_COUNT_SQL, collectTarget, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, scheduleCovers, scheduleTargetFor, scheduledCollectInput } from '../zoer/dashboard/procurement/source-overview';
 import { findSchedule, intervalText, parseInterval, scheduleState, stopReason, type ScheduleRow } from '../zoer/dashboard/procurement/schedule-state';
 
 const now = Date.parse('2026-10-03T19:00:00Z');
@@ -101,6 +101,10 @@ describe('schedules', () => {
     // Scheduled CanadaBuys runs restart: resuming fails once the daily file changes, and a failure stops the schedule.
     expect(scheduledCollectInput('canadabuys')).toEqual({ sourceId: 'canadabuys', mode: 'restart', maxBatches: 20 });
     expect(scheduledCollectInput('bidsandtenders')).toEqual({ sourceId: 'bidsandtenders' });
+    // The collector accepts `all`, so every Schedule button schedules every source in one run.
+    expect(scheduledCollectInput('all')).toEqual({ sourceId: 'all' });
+    expect(scheduleTargetFor('canadabuys')).toBe('all');
+    expect(scheduleTargetFor('bidsandtenders')).toBe('all');
   });
 });
 

@@ -20,15 +20,19 @@ export const CONNECTOR_SOURCES: readonly ConnectorSource[] = [
 ];
 
 /**
- * Collection inputs Zoer can schedule. Zoer keeps one schedule per action, so `procurement.collect` can be
- * scheduled for one source at a time until the collector accepts `sourceId: 'all'` (proposal in CONNECTORS.md).
- * Scheduled CanadaBuys runs restart on the newest snapshot: resuming fails once the daily file changes, and any
- * failed run turns the schedule off.
+ * Collection inputs Zoer can schedule. Zoer keeps one schedule per action, so the Sources page schedules
+ * `sourceId: 'all'`: one run collects CanadaBuys (continuing the same daily file, restarting on a new one) and then
+ * every connector; a failing source is recorded and does not fail the run. Single-source inputs stay valid for
+ * schedules saved before `all` existed and for manual runs.
  */
-export const COLLECT_ALL_SUPPORTED = false; // TODO(bids&tenders collector): flip when `sourceId: 'all'` ships.
+export const COLLECT_ALL_SUPPORTED = true;
+export const COLLECT_ALL = 'all';
 export function scheduledCollectInput(sourceId: string): Record<string, unknown> {
+  if (sourceId === COLLECT_ALL) return { sourceId };
   return sourceId === 'canadabuys' ? { sourceId, mode: 'restart', maxBatches: 20 } : { sourceId };
 }
+/** What a Schedule button on a source schedules: everything when `all` is supported, else that one source. */
+export const scheduleTargetFor = (sourceId: string) => COLLECT_ALL_SUPPORTED ? COLLECT_ALL : sourceId;
 export const collectTarget = (row: ScheduleRow | undefined) => typeof row?.body?.input?.sourceId === 'string' ? row.body.input.sourceId as string : null;
 /** True when the saved collect schedule collects this source (directly or as part of "all"). */
 export const scheduleCovers = (row: ScheduleRow | undefined, sourceId: string) => { const target = collectTarget(row); return target === sourceId || target === 'all'; };

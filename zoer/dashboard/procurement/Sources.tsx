@@ -7,7 +7,7 @@ import { hostHref, navigatePlugin } from '../navigation';
 import { runProcurementAction } from './state-client';
 import { PROCUREMENT_SOURCE_ADAPTERS, COLLECTION_KEY } from './source-adapters';
 import { CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
-import { CONNECTOR_SOURCES, COLLECT_ACTION, PORTAL_COUNT_SQL, collectTarget, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, scheduleCovers, scheduledCollectInput, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
+import { CONNECTOR_SOURCES, COLLECT_ACTION, COLLECT_ALL, PORTAL_COUNT_SQL, collectTarget, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, scheduleCovers, scheduleTargetFor, scheduledCollectInput, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
 import { findSchedule, intervalText, scheduleState, type ScheduleRow } from './schedule-state';
 import { ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
 import { LINK_SOURCES } from './link-sources';
@@ -38,9 +38,9 @@ function Capabilities({ id }: { id: string }) {
 
 type OverviewRow = { id: string; name: string; region: string; tone: Tone; status: string; saved: string; lastSuccess: string; next: ReactNode; action: ReactNode };
 /** One row per source: phone shows stacked cards, desktop a table (CSS only; same markup). */
-function Overview({ rows }: { rows: OverviewRow[] }) {
+function Overview({ rows, schedule }: { rows: OverviewRow[]; schedule?: ReactNode }) {
   return <section className="rw-panel pc-overview" aria-labelledby="pc-overview-title">
-    <header className="rw-panel-head"><h2 id="pc-overview-title">Sources</h2><span className="rw-muted">{rows.length} sources · saved counts are notices in Zoer, not portal totals</span></header>
+    <header className="rw-panel-head"><h2 id="pc-overview-title">Sources</h2><span className="rw-muted">{rows.length} sources · saved counts are notices in Zoer, not portal totals</span>{schedule}</header>
     <table className="pc-rtable">
       <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Saved notices</th><th scope="col">Last successful collection</th><th scope="col">Next scheduled run</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.id}>
@@ -107,7 +107,7 @@ export function Sources() {
   return <section className="procurement-workspace pc-sources" aria-label="Sources">
     {(error || health.error || inventory.error) && <p role="alert">{error || health.error?.message || inventory.error?.message}</p>}
     {message && <p role="status">{message}</p>}
-    <Overview rows={overview} />
+    <Overview rows={overview} schedule={<div className="pc-overview-schedule"><span>Scheduled collection</span>{schedules.error ? <span className="pc-status" data-tone="warn">Unknown</span> : schedules.isPending ? <span className="pc-status">Loading…</span> : <ScheduleBadge row={collectSchedule} label={collectSchedule && collectTarget(collectSchedule) !== COLLECT_ALL ? `${scheduleState(collectSchedule).status} · ${label(collectTarget(collectSchedule))} only` : undefined} />}<Btn size="sm" variant="secondary" onClick={() => setScheduleFor(COLLECT_ALL)}>Schedule all sources</Btn></div>} />
     <div className="pc-source-grid">
       <Card id="bc-bid" name="BC Bid" region="British Columbia · browser scraping" tone={overview[0].tone} status={overview[0].status}
         stats={[['Opportunities', saved('bc-bid')], ['Awards', saved('bc-bid', 'award')], ['Last successful scrape', overview[0].lastSuccess]]}
@@ -118,7 +118,7 @@ export function Sources() {
       </Card>
       <Card id="canadabuys" name="CanadaBuys" region="Canada · official dataset" tone={overview[1].tone} status={overview[1].status}
         stats={[['Opportunities', saved('canadabuys')], ['Last collection', overview[1].lastSuccess], ['Last CSV import', when(importedAt)], ['Next scheduled run', nextRun('canadabuys')]]}
-        actions={<><Btn variant="primary" disabled={!!busy} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Collecting…' : 'Collect latest'}</Btn><Btn variant="secondary" onClick={() => setScheduleFor('canadabuys')}>Schedule</Btn><Btn variant="ghost" onClick={() => setImportOpen(true)}>Import CSV</Btn></>}>
+        actions={<><Btn variant="primary" disabled={!!busy} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Collecting…' : 'Collect latest'}</Btn><Btn variant="secondary" onClick={() => setScheduleFor(scheduleTargetFor('canadabuys'))}>Schedule</Btn><Btn variant="ghost" onClick={() => setImportOpen(true)}>Import CSV</Btn></>}>
         {collection?.error && <p role="alert">{collection.error.code}: {collection.error.message}</p>}
         <details><summary>Collection options</summary><div className="pc-collect-options"><label><span>Batches per run</span><Select aria-label="Collection batches" value={batches} onChange={e => setBatches(e.target.value)}>{[1, 5, 10, 20].map(n => <option key={n} value={n}>{n} batches</option>)}</Select></label><Btn variant="secondary" disabled={!!busy} onClick={() => void collectCanadaBuys('restart')}>Start a new snapshot</Btn></div><p className="procurement-coverage">Start a new snapshot when CanadaBuys publishes a changed dataset. Saved notices are kept.</p>
           {collection?.receipt && <><h3>Last receipt</h3><dl className="pc-detail-list">{['retrievedAt', 'importedAt', 'totalSourceRecords', 'totalRecords', 'excludedCount', 'byteCount', 'sha256'].map(key => <div key={key}><dt>{key}</dt><dd>{collection.receipt[key] ?? 'Not reported'}</dd></div>)}</dl>{collection.receipt.excluded?.length > 0 && <><p>Some notices were excluded. Find them by CSV record number in the snapshot with this SHA-256.</p><ul>{collection.receipt.excluded.map((item: any) => <li key={item.csvRecord}>CSV record {item.csvRecord}: {item.bytes.toLocaleString()} bytes · {item.reason}</li>)}</ul></>}</>}
@@ -127,13 +127,14 @@ export function Sources() {
       </Card>
       {CONNECTOR_SOURCES.map(source => <ConnectorCard key={source.id} source={source} state={connectors.get(source.id)!.state} stateError={connectors.get(source.id)!.error ?? (health.error ? (health.error as Error).message : undefined)}
         saved={saved(source.id)} next={nextRun(source.id)} busy={busy} enabled={!!model}
-        onCollect={(portals, key, done) => void collect(key, { sourceId: source.id, ...(portals ? { portals } : {}) }, done)} onSchedule={() => setScheduleFor(source.id)} />)}
+        onCollect={(portals, key, done) => void collect(key, { sourceId: source.id, ...(portals ? { portals } : {}) }, done)} onSchedule={() => setScheduleFor(scheduleTargetFor(source.id))} />)}
       {LINK_SOURCES.length > 0 && <LinkSources />}
     </div>
     <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} />
     {scheduleFor && <Modal title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
       <ScheduleControl actionId={COLLECT_ACTION} input={scheduledCollectInput(scheduleFor)} title={`Collect ${label(scheduleFor)}`} matches={row => collectTarget(row) === scheduleFor} describe={describeCollect} />
-      <p className="procurement-coverage">{scheduleFor === 'canadabuys' ? 'Each scheduled run starts from the newest daily file and saves up to 20 batches (2,000 notices). ' : 'Each scheduled run collects every portal; one failing portal does not stop the others. '}A scheduled run waits while another run of this plugin is active. Zoer turns a schedule off after any failed run or plugin update; it says so here.</p>
+      <p className="procurement-coverage">{scheduleFor === COLLECT_ALL ? `Each scheduled run collects CanadaBuys and then ${CONNECTOR_SOURCES.map(source => source.label).join(', ')}. CanadaBuys continues the same daily file where the last run stopped (up to 20 batches of 100 notices per run) and starts over when a new file is published. A source or portal that fails is shown on its card and does not stop the others; Zoer turns the schedule off only when every source fails. BC Bid is scheduled separately. `
+        : scheduleFor === 'canadabuys' ? 'Each scheduled run starts from the newest daily file and saves up to 20 batches (2,000 notices). ' : 'Each scheduled run collects every portal; one failing portal does not stop the others. '}A scheduled run waits while another run of this plugin is active. Zoer turns a schedule off after a failed run or a plugin update; it says so here.</p>
     </div></Modal>}
     {importOpen && <CanadaBuysImport onClose={() => setImportOpen(false)} onImported={() => { void client.invalidateQueries({ queryKey: ['catalog'] }); }} />}
   </section>;

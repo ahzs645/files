@@ -144,3 +144,23 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
     `connector-collection.ts` and CanadaBuys do) with `id = sourceKey`.
   - `link-sources.ts` (`LINK_SOURCES: LinkSource[]`, `{ id, label, url, region?, reason? }`) is read by the Sources
     page "Check these yourself" card; it ships empty here.
+- 2026-10-03 (`sourceId: 'all'`, `feat/bcsrc-polish`) — the proposal above, implemented in
+  `connector-collection.ts#collectAllSources`:
+  - Order: CanadaBuys, then `CONNECTORS` in registry order, each under its own state key and lease. Input
+    `{ sourceId: 'all', mode?, maxBatches? }` (`portals` is rejected); `mode` applies to every source; CanadaBuys uses
+    `maxBatches` (default 20) and "resume the same checksummed file, else restart" (`restartOnChange`).
+  - Time: one 10-minute action timeout for everything. No CanadaBuys batch starts after 4 minutes (its cursor waits for
+    the next run, status `paused`); no connector or portal starts after 7.5 minutes from the run start (a connector not
+    reached is reported `not-run`; a connector stopped part-way is `incomplete`/`time_budget` and resumes). bids&tenders
+    takes about 2 minutes for 25 portals, so new connectors fit until the sum approaches ~6 minutes.
+  - Budget: manifest `maxNetworkRequests` ≥ 1 (CanadaBuys) + Σ `requestsPerPortal × portals`; a test enforces it, so
+    a new connector must raise it. A spent budget (`network_limit`) now ends a connector run (source error code
+    `network_budget`) instead of failing every remaining portal one by one; in `all` it ends the run.
+  - Failure: a source that throws or whose every portal failed is `failed` in the output and in its own state, and the
+    others still run. A pause or spent budget is rethrown. The run fails (and Zoer turns the schedule off) only when
+    every source that ran failed; a source busy with another run is `busy`, not failed. Output:
+    `{ sourceId: 'all', status, startedAt, finishedAt, summary: { total, complete, partial, paused, failedSources, busy,
+    notRun }, sources: [{ sourceId, outcome, status?, error?, portals? }] }` — deliberately no top-level `failed`, which
+    Zoer reads as failed records and would stop the schedule.
+  - UI: `COLLECT_ALL_SUPPORTED = true`; every Schedule button on the Sources page schedules `{ sourceId: 'all' }`.
+    Per-source manual Collect is unchanged.

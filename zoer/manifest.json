@@ -1157,7 +1157,7 @@
       {
         "id": "procurement.collect",
         "title": "Collect public procurement sources",
-        "description": "Fetch the official CanadaBuys open-tender CSV, or the open-notice listings and public notice pages of 25 BC public buyers on bids&tenders, and merge them into the existing catalog. CanadaBuys resume checks the source checksum; each bids&tenders portal is saved on its own, so one failing portal does not stop the others. Saved notices are never deleted. bids&tenders search needs a per-run cookie session and form POST.",
+        "description": "Fetch the official CanadaBuys open-tender CSV, or the open-notice listings and public notice pages of 25 BC public buyers on bids&tenders, and merge them into the existing catalog. sourceId \"all\" collects every source in one run (for one schedule): CanadaBuys continues the same daily file or restarts on a new one, then every connector; a failing source or portal is recorded and does not stop the others, and the run fails only when every source fails. CanadaBuys resume checks the source checksum; each bids&tenders portal is saved on its own. Saved notices are never deleted. bids&tenders search needs a per-run cookie session and form POST.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -1172,7 +1172,7 @@
           "timeoutMs": 600000,
           "maxMemoryMb": 1024,
           "maxOutputBytes": 67108864,
-          "maxNetworkRequests": 850,
+          "maxNetworkRequests": 851,
           "maxNetworkResponseBytes": 20971520
         },
         "networkSession": {
@@ -1187,9 +1187,11 @@
             "sourceId": {
               "type": "string",
               "enum": [
+                "all",
                 "canadabuys",
                 "bidsandtenders"
-              ]
+              ],
+              "description": "\"all\" collects CanadaBuys and then every connector in one run; portals is not allowed with it."
             },
             "mode": {
               "type": "string",
