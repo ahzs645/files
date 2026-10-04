@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { validateCatalogSelect } from '../../zoer/backend/src/catalog-reader';
 // The Zoer host's alert SQL has no imports so it can be run beside the plugin's own query builder.
-import { procurementAlertQuery } from '../../zoer/backend/src/procurement-alert-query';
+import { alertRegionText, procurementAlertQuery } from '../../zoer/backend/src/procurement-alert-query';
+import { cleanRegionText } from '../zoer/dashboard/procurement/region';
 import { buildProcurementQuery, checkStatementSize, type ProcurementQueryOptions } from '../zoer/dashboard/procurement/catalog';
 import { EXCLUDE_MAX_TERMS, NOISE_TERMS, allExcludeTerms, excludeMatchSql, excludePattern, excludeSql, parseExcludeTerms, withNoiseTerms } from '../zoer/dashboard/procurement/exclude';
 import { addDays, zoneDate } from '../zoer/dashboard/procurement/deadline';
@@ -115,6 +116,10 @@ describe('saved-search alerts select exactly what the saved search lists', () =>
   c.add('opportunity:nanaimo', { description: 'Roof Nanaimo', closingDate: addDays(today, 2), place: { municipality: 'Nanaimo', regionalDistrict: 'Regional District of Nanaimo', method: 'buyer' } });
   c.add('opportunity:rdn', { description: 'Roof RDN', place: { municipality: null, regionalDistrict: 'Regional District of Nanaimo', method: 'buyer' } });
   c.add('opportunity:nanaimo-region-only', { description: 'Roof untagged', region: 'Nanaimo' });
+  // CanadaBuys regions: one saved before cleaning (bulleted), one cleaned at import, one multi-region.
+  c.add('opportunity:cb-raw', { sourceId: 'canadabuys', description: 'Federal raw', region: '*British Columbia' });
+  c.add('opportunity:cb-clean', { sourceId: 'canadabuys', description: 'Federal clean', region: 'British Columbia' });
+  c.add('opportunity:cb-multi', { sourceId: 'canadabuys', description: 'Federal multi', region: 'British Columbia, Alberta' });
   c.hide('opportunity:hidden');
   const base: ProcurementFilters = { source: '', kind: 'all', search: '', region: '', category: '', classification: '', buyer: '', supplier: '', deadline: 'all', shortlist: false, exclude: '', place: '' };
   const cases: [string, Partial<ProcurementFilters>][] = [
@@ -126,6 +131,8 @@ describe('saved-search alerts select exactly what the saved search lists', () =>
     ['combined', { deadline: 'week', kind: 'opportunity', search: 'roof', exclude: 'federal' }],
     ['place: municipality', { place: 'm:Nanaimo' }], ['place: regional district', { place: 'rd:Regional District of Nanaimo' }],
     ['place with other filters', { place: 'rd:Regional District of Nanaimo', deadline: 'week', search: 'roof' }],
+    ['region saved from bulleted CanadaBuys text', { region: '*British Columbia' }], ['cleaned region', { region: 'British Columbia' }],
+    ['multi-region saved raw', { region: '*British Columbia\n*Alberta' }],
   ];
   it.each(cases)('%s', (_, partial) => {
     const filters = { ...base, ...partial };
@@ -133,6 +140,15 @@ describe('saved-search alerts select exactly what the saved search lists', () =>
     const listed = c.plugin(options);
     expect(c.host(filters, now)).toEqual(listed);
     expect(listed).not.toContain('opportunity:hidden');
+  });
+  it('a region saved from bulleted text keeps matching after records are cleaned; a clean region is unchanged', () => {
+    expect(c.host({ ...base, region: '*British Columbia' }, now)).toEqual(['opportunity:cb-clean', 'opportunity:cb-raw']);
+    expect(c.host({ ...base, region: 'British Columbia' }, now)).toEqual(['opportunity:cb-clean']);
+    expect(c.host({ ...base, region: '*British Columbia\n*Alberta' }, now)).toEqual(['opportunity:cb-multi']);
+    for (const raw of ['*British Columbia\n*Alberta\n', '*British Columbia *Alberta', '*Ontario\r\n*Ontario', 'Victoria', '  Vancouver Island ', 'A*B', '*', ''])
+      expect(alertRegionText(raw)).toBe(cleanRegionText(raw));
+    expect(cleanRegionText('*British Columbia *Alberta')).toBe('British Columbia, Alberta');
+    expect(cleanRegionText('*National Capital Region (NCR)\n*Ontario (excluding NCR)')).toBe('National Capital Region (NCR), Ontario (excluding NCR)');
   });
   it('place filters the tagged place only, never the free-text region', () => {
     expect(c.host({ ...base, place: 'm:Nanaimo' }, now)).toEqual(['opportunity:nanaimo']);

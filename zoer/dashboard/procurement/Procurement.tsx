@@ -18,6 +18,7 @@ import { READINESS_BUCKETS, READINESS_TEXT, RELEVANCE_BUCKETS, RELEVANCE_TEXT } 
 import { captureSnapshot, manualSnapshot, setSelection, toggleSelected, useSelection, type SelectionSnapshot } from '../review-workspace/selection';
 import { SOURCES, buildProcurementQuery, checkStatementSize, deadlineLabel } from './catalog';
 import { SavedSearches } from './SavedSearches';
+import { cleanRegionText } from './region';
 import { AlertSettings } from './AlertSettings';
 import { EvidencePanel } from './EvidencePanel';
 import { NoticeView } from './NoticeView';
@@ -176,7 +177,7 @@ export function Procurement() {
         <input type="checkbox" className="pc-row-check" aria-label={`Select ${row.title || 'untitled notice'}`} checked={checked} onChange={event => toggleSelected({ id: row.id, title: row.title, updatedAt: row.catalogUpdatedAt }, event.target.checked)} />
         <div className="pc-row-main">
           <button type="button" className="pc-row-title" aria-expanded={row.id === noticeId} onClick={() => openNotice(row.id)}>{row.title || 'Untitled notice'}</button>
-          <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{row.region ? ` · ${row.region}` : ''}</p>
+          <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{cleanRegionText(row.region) ? ` · ${cleanRegionText(row.region)}` : ''}</p>
           <p className="pc-row-meta"><span className="pc-row-date pc-row-date-inline" data-tone={when.tone || undefined}>{row.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</span><span className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId)}</span><span data-kind={row.kind}>{row.kind === 'award' ? 'Award' : 'Opportunity'}</span>{status && <span className="pc-row-status" data-status={status.key} title={status.title}>{status.text}</span>}{isHidden && <span className="pc-row-hidden-tag">Hidden</span>}{row.externalId && <span>{row.externalId}</span>}<DuplicateFlag matches={duplicates.get(row.id)} /></p>
           {!!labels.get(row.id)?.length && <div className="pc-row-labels"><LabelChips labels={labels.get(row.id)!} limit={4} /></div>}
           {available && <ReviewLine review={rowReview.data?.get(row.id)} profileText={profileText} />}

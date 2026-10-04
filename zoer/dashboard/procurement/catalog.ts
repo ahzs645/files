@@ -1,6 +1,7 @@
 import { CLOSING_TODAY_TEXT, addDays, deadlineState, parseDeadline, zoneDate } from './deadline';
 import { excludeSql } from './exclude';
 import { HIDDEN_IDS_SQL } from './state-contract';
+import { cleanRegionText } from './region';
 
 export type ProcurementSource = {
   id: string;
@@ -104,7 +105,13 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
   if (options.source && options.source !== 'all') {
     filters.push(`${source}=?`); countParameters.push(options.source);
   }
-  for (const [key,expression] of [['region', `coalesce(${field('region')},${field('issuingLocation')},'')`],['category',`coalesce(${field('category')},${field('classification')},'')`],['buyer',buyer],['supplier',`coalesce(${field('successfulSupplier')},'')`],['classification', `coalesce(CASE WHEN ${field('classificationCodes')}='' OR ${field('classificationCodes')}='[]' THEN NULL ELSE ${field('classificationCodes')} END, CASE WHEN ${field('commodities')}='' OR ${field('commodities')}='[]' THEN NULL ELSE ${field('commodities')} END, ${field('sourceCategory')},${field('category')},'')`]] as const) { if (options[key] !== undefined && options[key] !== '') {filters.push(`${expression}=?`);countParameters.push(options[key]!);} }
+  if (options.region !== undefined && options.region !== '') {
+    // A region saved from bulleted CanadaBuys text (`*British Columbia`) also matches the cleaned value records now hold.
+    const region = `coalesce(${field('region')},${field('issuingLocation')},'')`, cleaned = cleanRegionText(options.region);
+    if (cleaned && cleaned !== options.region) { filters.push(`${region} IN (?,?)`); countParameters.push(options.region, cleaned); }
+    else { filters.push(`${region}=?`); countParameters.push(options.region); }
+  }
+  for (const [key,expression] of [['category',`coalesce(${field('category')},${field('classification')},'')`],['buyer',buyer],['supplier',`coalesce(${field('successfulSupplier')},'')`],['classification', `coalesce(CASE WHEN ${field('classificationCodes')}='' OR ${field('classificationCodes')}='[]' THEN NULL ELSE ${field('classificationCodes')} END, CASE WHEN ${field('commodities')}='' OR ${field('commodities')}='[]' THEN NULL ELSE ${field('commodities')} END, ${field('sourceCategory')},${field('category')},'')`]] as const) { if (options[key] !== undefined && options[key] !== '') {filters.push(`${expression}=?`);countParameters.push(options[key]!);} }
   const place = options.place?.match(/^(m|rd):(.+)$/);
   if (place) { filters.push(`${field(place[1] === 'm' ? 'place.municipality' : 'place.regionalDistrict')}=?`); countParameters.push(place[2]); }
   if (options.starred) filters.push(`${field('starred')}=1`);

@@ -10,6 +10,7 @@ import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
 import { PURSUIT_STAGES, type PursuitStage } from './state-contract';
 import { readProcurementState, runProcurementAction, saveProcurementState } from './state-client';
 import { noticeStatus, shortDate, sourceName, sql } from './display';
+import { cleanRegionText } from './region';
 import { NoticeHideButton } from './Triage';
 import { AiResult, LabelChips } from './AiResult';
 import { NoticeContacts, PossibleDuplicates, noticeSummary, placeHow, placeText } from './NoticeEnrichment';
@@ -160,12 +161,15 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
   const [editing, setEditing] = useState(false), [draft, setDraft] = useState(tags.join(', ')), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [more, setMore] = useState(false);
   const description = String(data.sourceDescriptionText || data.descriptionText || data.opportunityDescription || '');
+  const region = cleanRegionText(data.region ?? data.issuingLocation);
   const facts: [string, string, string?][] = [
     [award ? 'Awarded' : 'Closes', !award && when.tone === 'passed' ? `Closed ${when.text}` : when.text, award ? undefined : when.tone],
     ...(budget ? [[budget.label, budget.text, budget.ai ? 'ai' : undefined] as [string, string, string?], ...budget.others.map(o => [o.label, o.text, 'ai'] as [string, string, string?])] : [['Contract value', contract || 'Not disclosed'] as [string, string]]),
     ['Buyer', String(data.issuedBy || data.issuingOrganization || 'Not provided')],
     ...(award ? [['Supplier', String(data.successfulSupplier || 'Not provided')] as [string, string]] : [['Status', (status => !status ? 'Not provided' : status.title ? `${status.text} · source status: ${String(data.status || 'not given')}` : status.text)(noticeStatus(data.status, data.closingAt ?? data.closingDate, record.kind))] as [string, string]]),
     ...(award ? [] : [['Place', placeText(data.place) || 'Not identified'] as [string, string]]),
+    // The source's own region (CanadaBuys delivery regions), unless it only repeats the place.
+    ...(!award && region && !data.regionFromPlace && region !== data.place?.municipality && region !== data.place?.regionalDistrict ? [['Region', region] as [string, string]] : []),
     ['Type', String(data.type || data.opportunityType || 'Not provided')],
     ['Documents', documentSummary(documentCounts(documents, data.attachments))],
   ];

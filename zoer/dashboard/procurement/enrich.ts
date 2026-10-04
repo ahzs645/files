@@ -1,8 +1,9 @@
 import { contactsForRecord } from './contacts';
 import { placeForRecord } from './places';
+import { cleanRegionText } from './region';
 
 /** Bump when place or contact rules change, so the backfill action re-tags records tagged by older rules. */
-export const ENRICHMENT_VERSION = 1;
+export const ENRICHMENT_VERSION = 2; // 2: CanadaBuys region text without `*` bullets.
 /** Workspace state of the backfill action (procurement.enrich): cursor and running totals. */
 export const ENRICHMENT_KEY = 'procurement:enrichment:backfill';
 /** Sources whose records get `place`/`contacts` here; connectors set their own from the portal. */
@@ -17,6 +18,11 @@ const sourceOf = (data: any) => typeof data?.sourceId === 'string' && data.sourc
 export function enrichNotice<T extends Record<string, any>>(data: T): T {
   if (!data || !ENRICHED_SOURCES.has(sourceOf(data))) return data;
   const next: Record<string, any> = { ...data };
+  // CanadaBuys saved before regions were cleaned at import: same cleaning, so saved-region filters keep matching.
+  if (sourceOf(data) === 'canadabuys' && typeof next.region === 'string' && !next.regionFromPlace && /[*\r\n]/.test(next.region)) {
+    next.region = cleanRegionText(next.region);
+    for (const key of ['sourceFields', 'detailFields']) if (Array.isArray(next[key])) next[key] = next[key].map((field: any) => field?.label === 'Regions' && typeof field.value === 'string' ? { ...field, value: cleanRegionText(field.value) } : field);
+  }
   const place = placeForRecord(next), contacts = contactsForRecord(next);
   if (place) next.place = place; else delete next.place;
   if (contacts.length) next.contacts = contacts; else delete next.contacts;
