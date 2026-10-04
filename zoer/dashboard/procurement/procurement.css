@@ -155,6 +155,20 @@
   .pc-rtable td[data-label]:has(>small){flex-wrap:wrap}
   .pc-rtable-action{grid-column:2;grid-row:1;align-self:start;width:auto}
   .pc-rtable-action:empty{display:none}
+  .pc-rtable td[data-label] .pc-schedule-line{justify-content:flex-end}
+  /* Portals: four short lines (name + Collect, place, status + last collected, counts + saved). */
+  .pc-portals tr{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem}
+  .pc-portals tbody th{flex:1 1 calc(100% - 7rem);min-width:0;order:0}
+  .pc-portals .pc-rtable-action{order:1}
+  .pc-portals td[data-label]{order:2;flex:1 1 auto;justify-content:flex-start;gap:.375rem;font-size:12.5px}
+  .pc-portals td[data-label]::before{font-size:12px}
+  .pc-portals td[data-label=Status]{flex:0 0 auto}
+  .pc-portals td[data-label=Status]::before,.pc-portals td[data-label="Last run"]::before{content:none}
+  .pc-portals td[data-label=Status]:has(>small){flex:1 1 100%;flex-direction:column;align-items:flex-start}
+  .pc-portals td[data-label=Status]>small{text-align:left}
+  .pc-portals td[data-label="Last collected"],.pc-portals td[data-label=Saved]{justify-content:flex-end}
+  .pc-portals td[data-label="Last run"]{flex:1 1 55%;color:var(--text-secondary)}
+  .pc-portals td[data-label=Saved]{flex:0 0 auto}
 }
 /* Portal list tools */
 .pc-portal-tools{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem}

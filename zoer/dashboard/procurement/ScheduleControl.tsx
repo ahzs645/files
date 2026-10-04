@@ -51,7 +51,7 @@ export function ScheduleControl({ actionId, input, title, defaultHours = 24, mat
     </div>
     {schedules.error && <p role="alert">Schedules could not be read: {(schedules.error as Error).message}</p>}
     {(state.next || state.last) && <p className="pc-schedule-meta">{[state.next, state.last].filter(Boolean).join(' · ')}</p>}
-    {other && <p className="pc-schedule-note">Zoer keeps one schedule per action. It is currently set to {describe ? describe(other) : 'a different input'} ({scheduleState(other).status.toLowerCase()}). Turning this on replaces that schedule.</p>}
+    {other && <p className="pc-schedule-note">Zoer keeps one schedule per action. It is set to {describe ? describe(other) : 'a different input'} · {scheduleState(other).status}. Turning this on replaces that schedule.</p>}
     {state.stopped && <div className="pc-schedule-stopped" role="alert"><p>{state.stopped}</p><details><summary>Zoer’s message</summary><p>{state.error}</p></details></div>}
     <fieldset className="pc-presets" disabled={busy}>
       <legend>Repeat</legend>
@@ -61,7 +61,7 @@ export function ScheduleControl({ actionId, input, title, defaultHours = 24, mat
     </fieldset>
     {selected === 'custom' && hours === null && <p className="pc-schedule-note" role="alert">Use whole hours from 1 to 720 (30 days).</p>}
     <div className="procurement-actions">
-      <Btn size="sm" disabled={busy || schedules.isPending || !!schedules.error || hours === null || !changed} onClick={() => void save(true)}>{busy ? 'Saving…' : mine?.enabled ? 'Save interval' : 'Turn on'}</Btn>
+      <Btn size="sm" variant="primary" disabled={busy || schedules.isPending || !!schedules.error || hours === null || !changed} onClick={() => void save(true)}>{busy ? 'Saving…' : mine?.enabled ? 'Save interval' : 'Turn on'}</Btn>
       {mine?.enabled && <Btn size="sm" variant="secondary" disabled={busy} onClick={() => void save(false)}>Pause</Btn>}
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-schedule-meta">{message}</p>}

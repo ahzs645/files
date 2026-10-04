@@ -10,7 +10,7 @@ import { RouteLink, deadlineText } from './Home';
 import { reviewScopeHref } from './queue';
 import { LAST_VISIT_KEY, QUIET_DAYS, SOON_DAYS, quietPursuits, readClosingSoon, readNewSince, runsSince, visitWindow, type RunRow } from './today-data';
 
-const SHOW = 5;
+const SHOW = 5, PHONE_SHOW = 3; // review.css hides rows after the third on phones; the "more" links cover them.
 const at = (ms: number) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const plural = (count: number, one: string, many = one + 's') => `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
@@ -65,7 +65,7 @@ export function Today({ source, asOf }: { source: string; asOf: number }) {
     </header>
     <div className="rw-today-grid">
       <Column title={`Closing within ${SOON_DAYS} days`} count={soon.data ? soon.data.total.toLocaleString() : '–'} note="Open notices, pursued and shortlisted first."
-        footer={soon.data && soon.data.total > Math.min(SHOW, soon.data.rows.length) ? <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&deadline=week&sort=deadline'} className="rw-today-more">All upcoming deadlines →</RouteLink> : null}>
+        footer={soon.data && soon.data.total > PHONE_SHOW ? <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&deadline=week&sort=deadline'} className="rw-today-more">All upcoming deadlines →</RouteLink> : null}>
         {soon.isPending || state.isPending ? <p className="rw-muted" role="status">Loading…</p> : soon.isError ? <Failed what="closing notices" error={soon.error} retry={soon.refetch} /> : soon.data.rows.length === 0 ? <p className="rw-muted">Nothing saved closes in the next {SOON_DAYS} days.</p> :
           <ul className="rw-today-list">{soon.data.rows.slice(0, SHOW).map(row => <Row key={row.id} to={`/procurement?notice=${encodeURIComponent(row.id)}`} title={row.title || row.id} tag={row.pursued ? 'Pursuing' : row.shortlisted ? 'Shortlisted' : undefined}
             meta={[deadlineText(row.closing, asOf).text, row.buyer, source ? '' : sourceName(row.sourceId)].filter(Boolean).join(' · ')} />)}</ul>}
@@ -78,12 +78,12 @@ export function Today({ source, asOf }: { source: string; asOf: number }) {
             <ul className="rw-today-sources">{fresh.data.bySource.map(row => <li key={row.sourceId}><RouteLink to={`/procurement?source=${encodeURIComponent(row.sourceId)}`} className="rw-chip"><b>{row.count.toLocaleString()}</b> {sourceName(row.sourceId)}</RouteLink></li>)}</ul>
             {fresh.data.rows.length === 0 ? <p className="rw-muted">None of them is still open.</p> : <ul className="rw-today-list">{fresh.data.rows.slice(0, SHOW).map(row => <Row key={row.id} to={`/procurement?notice=${encodeURIComponent(row.id)}`} title={row.title || row.id}
               meta={[source ? '' : sourceName(row.sourceId), row.buyer, row.closing ? `closes ${deadlineText(row.closing, asOf).text}` : 'no deadline given'].filter(Boolean).join(' · ')} />)}</ul>}
-            {fresh.data.openTotal > Math.min(SHOW, fresh.data.rows.length) && <p className="rw-today-note">{plural(fresh.data.openTotal, 'open notice')} in all; open a source above to see them.</p>}
+            {fresh.data.openTotal > PHONE_SHOW && <p className="rw-today-note">{plural(fresh.data.openTotal, 'open notice')} in all; open a source above to see them.</p>}
           </>}
       </Column>
 
       <Column title="Pursuits gone quiet" count={state.data ? quiet.length.toLocaleString() : '–'} note={`Watching, reviewing or preparing, with no update in ${QUIET_DAYS} days.`}
-        footer={quiet.length > SHOW ? <RouteLink to="/pursuits" className="rw-today-more">All pursuits →</RouteLink> : null}>
+        footer={quiet.length > PHONE_SHOW ? <RouteLink to="/pursuits" className="rw-today-more">All pursuits →</RouteLink> : null}>
         {state.isPending ? <p className="rw-muted" role="status">Loading…</p> : state.isError ? <Failed what="pursuits" error={state.error} retry={state.refetch} /> : quiet.length === 0 ? <p className="rw-muted">{state.data.pursuits.length ? `Every active pursuit was updated in the last ${QUIET_DAYS} days.` : 'No pursuits yet.'}</p> :
           <ul className="rw-today-list">{quiet.slice(0, SHOW).map(item => <Row key={item.recordId} to={`/pursuits?notice=${encodeURIComponent(item.recordId)}`} title={item.title || item.recordId}
             meta={[item.stage, item.idleDays === null ? 'last update unknown' : `no update for ${item.idleDays} days`].join(' · ')} />)}</ul>}

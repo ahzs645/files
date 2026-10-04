@@ -437,4 +437,4 @@
 .rw-today-alerts{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem;padding-top:.625rem;border-top:1px solid var(--border-default);font-size:12.5px}
 .rw-today-alerts b{font-weight:650;margin-right:.25rem}
 .rw-today-alerts .rw-today-more{margin-left:auto}
-@media(max-width:639px){.rw-today{padding:.75rem}.rw-today .rw-today-list a{min-height:52px;padding:.5rem}.rw-today .rw-today-sources a{min-height:36px}.rw-today-alerts .rw-today-more{margin-left:0;min-height:44px}.rw-today-seen{min-height:44px}}
+@media(max-width:639px){.rw-today{padding:.75rem}.rw-today-list li:nth-child(n+4){display:none}.rw-today .rw-today-list a{min-height:52px;padding:.5rem}.rw-today .rw-today-sources a{min-height:36px}.rw-today-alerts .rw-today-more{margin-left:0;min-height:44px}.rw-today-seen{min-height:44px}}
