@@ -1,5 +1,5 @@
 import { host } from '../bridge';
-import { HIDDEN_PREFIX, PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, validateProcurementStateInput, type ProcurementStateInput, type Pursuit, type SavedSearch } from './state-contract';
+import { HIDDEN_PREFIX, PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, validateProcurementStateInput, type VersionedStateInput, type Pursuit, type SavedSearch } from './state-contract';
 import { sql } from './display';
 
 export async function readProcurementState() {
@@ -26,7 +26,7 @@ export async function runProcurementAction(actionId: string, input: unknown, sig
 }
 
 /** Read back the exact run's receipt before declaring success. */
-export async function saveProcurementState(input: ProcurementStateInput, signal?: AbortSignal) {
+export async function saveProcurementState(input: VersionedStateInput, signal?: AbortSignal) {
   const run = await runProcurementAction('procurement.state', input, signal);
   const saved = await readProcurementState();
   const item = input.operation === 'pursuit.upsert' ? saved.pursuits.find(item => item.recordId === input.recordId) : saved.searches.find(item => item.id === input.id);

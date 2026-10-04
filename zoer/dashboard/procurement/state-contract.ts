@@ -30,6 +30,8 @@ export type ProcurementStateInput =
   | { operation: 'search.archive'; expectedVersion: number; id: string }
   /** Idempotent set: hiding twice is the same as once, so no item version is needed. */
   | { operation: 'hidden.set'; recordIds: string[]; hidden: boolean };
+/** Pursuit and saved-search writes: versioned items read back from their list keys. */
+export type VersionedStateInput = Exclude<ProcurementStateInput, { operation: 'hidden.set' }>;
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 function text(value: unknown, field: string, maximum: number, empty = false): string {
@@ -88,7 +90,7 @@ export function readProcurementItems<T extends Pursuit | SavedSearch>(value: unk
     const input = kind === 'pursuits'
       ? validateProcurementStateInput({ ...item, operation: 'pursuit.upsert', expectedVersion: item.version })
       : validateProcurementStateInput({ ...item, operation: 'search.upsert', expectedVersion: item.version });
-    const id = input.operation === 'pursuit.upsert' ? input.recordId : input.id;
+    const id = input.operation === 'pursuit.upsert' ? input.recordId : input.operation === 'hidden.set' ? '' : input.id;
     if (ids.has(id) || (kind === 'searches' && typeof item.archived !== 'boolean') || (kind === 'pursuits' && (typeof item.title !== 'string' || item.title.length > 20_000))) throw Error('Saved procurement item is invalid; existing data was retained.');
     ids.add(id);
   }
