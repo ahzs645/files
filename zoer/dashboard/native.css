@@ -245,3 +245,20 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
   .research-filters:not([data-open]){display:none}
   .research-records article{padding:8px 0}
 }
+/* Scraper tab: targeted BC Bid refresh. Phone: one stacked column, full-width button. Desktop: one inline row. */
+.bid-targeted-form{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-top:10px}
+.bid-targeted-field{display:grid;gap:4px;min-width:0}
+.bid-targeted-field>label{font-size:12px;color:var(--color-text-secondary)}
+.bid-targeted-field input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-subtle);color:var(--color-text-primary);padding:8px 10px;font-size:14px}
+.bid-targeted-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:13px;color:var(--color-text-primary)}
+.bid-targeted-check input{width:18px;height:18px;flex-shrink:0}
+.bid-targeted-run{justify-content:center;width:100%;min-height:44px}
+.bid-targeted-receipt{margin-top:10px;padding-top:8px;border-top:1px solid var(--color-border-default)}
+.bid-targeted-receipt p{margin-top:2px;overflow-wrap:anywhere}
+.bid-targeted .bid-targeted-error{color:var(--color-red)}
+@media(min-width:1024px){
+  .bid-targeted-form{grid-template-columns:minmax(0,1.6fr) minmax(0,1.2fr) minmax(0,1.2fr) 76px auto auto;align-items:end}
+  .bid-targeted-field input{min-height:36px}
+  .bid-targeted-check{min-height:36px;white-space:nowrap}
+  .bid-targeted-run{width:auto;min-height:36px}
+}
