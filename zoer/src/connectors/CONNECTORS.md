@@ -156,8 +156,13 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
   - Time: one 10-minute action timeout for everything. No CanadaBuys batch starts after 4 minutes (its cursor waits for
     the next run, status `paused`); no connector or portal starts after 7.5 minutes from the run start (a connector not
     reached is reported `not-run`; a connector stopped part-way is `incomplete`/`time_budget` and resumes). bids&tenders
-    takes about 2 minutes for 25 portals, so new connectors fit until the sum approaches ~6 minutes.
-  - Budget: manifest `maxNetworkRequests` ≥ 1 (CanadaBuys) + Σ `requestsPerPortal × portals`; a test enforces it, so
+    takes about 2 minutes for 25 portals. municipal-sites (12 sites, ≤31 plain GETs each, no delay between requests in
+    the code as merged) runs after it; were a politeness delay added (2.5 s × 372 requests ≈ 15 min), the soft limit
+    would stop it between sites (one site ≤ ~80 s, inside the 10-minute timeout) with its attempt open, and the next
+    run within 6 hours continues the remaining sites. Order is fixed, so a connector late in the list is the one cut
+    short when the run is long; reorder or shorten if that becomes routine.
+  - Budget: manifest `maxNetworkRequests` ≥ 1 (CanadaBuys) + Σ `requestsPerPortal × portals` (1223 = 1 + 25×34 +
+    12×31 with municipal-sites); a test enforces it, so
     a new connector must raise it. A spent budget (`network_limit`) now ends a connector run (source error code
     `network_budget`) instead of failing every remaining portal one by one; in `all` it ends the run.
   - Failure: a source that throws or whose every portal failed is `failed` in the output and in its own state, and the
