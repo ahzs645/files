@@ -159,7 +159,7 @@ export function Sources() {
     <CollectionRuns runs={runs} error={recent.error as Error | null} loading={recent.isPending} />
     <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} />
     {scheduleFor && <Modal title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
-      <ScheduleControl actionId={COLLECT_ACTION} title={`Collect ${label(scheduleFor)}`} row={presets.isPending ? undefined : scheduleOf(scheduleFor) ?? null}
+      <ScheduleControl actionId={COLLECT_ACTION} title={`Collect ${label(scheduleFor)}`} row={scheduleOf(scheduleFor) ?? null}
         onSave={async (enabled, hours) => { await saveSourceSchedule(host, scheduleFor, label(scheduleFor), enabled, hours); await client.invalidateQueries({ queryKey: PRESETS_KEY }); await client.invalidateQueries({ queryKey: SCHEDULES_KEY }); }} />
       <p className="procurement-coverage">{scheduleFor === 'canadabuys' ? 'Each scheduled run imports the whole daily file, a few minutes at a time; it continues the same file where it stopped and starts over when CanadaBuys publishes a new one. '
         : `Each scheduled run collects every portal, one at a time, as each site’s robots.txt and Zoer’s pacing allow. A portal that asks to slow down is retried later in the same run; one failing portal does not stop the others. `}Each source has its own schedule (a saved collection in Zoer). A scheduled run waits while another run of this plugin is active. Zoer turns a schedule off after a failed run or a plugin update; this page then offers to turn it on again.</p>
