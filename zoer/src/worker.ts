@@ -11,6 +11,7 @@ import { parseCapture, type PageCapture } from './capture';
 import { collectProcurementSource } from './connector-collection';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
+import { backfillEnrichment } from './procurement-enrichment';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -66,6 +67,9 @@ try {
   } else if (request.action.id === 'procurement.classifications') {
     if (!catalogTicket) throw new Error('Procurement classification mapping requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementClassifications(catalogCall, request.input ?? {}, runId) });
+  } else if (request.action.id === 'procurement.enrich') {
+    if (!catalogTicket) throw new Error('Tagging places requires an existing catalog grant.');
+    write({ protocolVersion: '1', runId, ok: true, output: await backfillEnrichment(catalogCall, request.input ?? {}, runId) });
   } else if (request.action.id === 'procurement.state') {
     if (!catalogTicket) throw new Error('Procurement state requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementState(catalogCall, request.input ?? {}, runId) });

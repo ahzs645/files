@@ -21,6 +21,7 @@ import { SavedSearches } from './SavedSearches';
 import { AlertSettings } from './AlertSettings';
 import { EvidencePanel } from './EvidencePanel';
 import { NoticeView } from './NoticeView';
+import { DuplicateFlag, PlaceFilter, usePageDuplicates } from './NoticeEnrichment';
 import { LabelChips } from './AiResult';
 import { LABEL_GROUPS, labelGroup } from './ai';
 import { useLabelFacets, useRecordLabels } from './labels';
@@ -33,7 +34,7 @@ function useWide() { return useSyncExternalStore(listener => { const media = mat
 // Views that used to be tabs on this page now live in their own sections.
 const MOVED_VIEWS: Record<string, string> = { board: '/pursuits', market: '/analysis/sources', sources: '/sources' };
 const EXTRA_FILTERS = [['region', 'Region'], ['category', 'Category'], ['buyer', 'Buyer'], ['supplier', 'Supplier']] as const;
-const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel'];
+const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'place'];
 const PAGE = 25;
 
 function FilterSelect({ name, value, onChange, options, any }: { name: string; value: string; onChange: (value: string) => void; options: [string, string][]; any: string }) {
@@ -53,7 +54,7 @@ export function Procurement() {
   const deadline: 'all' | 'week' = view === 'deadlines' || params.get('deadline') === 'week' ? 'week' : 'all';
   const kind = deadline === 'week' ? 'opportunity' : params.get('kind') ?? 'all';
   const starred = params.get('shortlist') === '1', page = Math.max(0, Number(params.get('page')) || 0);
-  const aiLabel = params.get('aiLabel') ?? '', noticeId = params.get('notice') ?? '';
+  const aiLabel = params.get('aiLabel') ?? '', noticeId = params.get('notice') ?? '', place = params.get('place') ?? '';
   const wide = useWide();
   const { model } = useWorkspace(), client = useQueryClient();
   const workspace = useReviewWorkspace(), available = !!workspace.data?.available;
@@ -88,7 +89,7 @@ export function Procurement() {
   const asOf = Math.floor(Date.now() / 60_000) * 60_000;
   const waitForWorkspace = workspace.isPending && needsWorkspace(scope, filters);
   const review = opportunityPredicate(scope, filters, { profileVersionId: active, asOf, workspace: available });
-  const base = { source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, aiLabel, asOf } as const;
+  const base = { source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, aiLabel, place, asOf } as const;
   const query = buildProcurementQuery({ ...base, sort: sort === 'fit' ? 'updated' : sort, order: sort === 'fit' ? fitOrderSql(profile) : undefined, where: review, offset: page * PAGE, limit: PAGE + 1 });
   const list = useCachedQuery({ queryKey: ['catalog', 'procurement', query.statement, query.parameters], enabled: !!model && !waitForWorkspace && view !== 'compare',
     queryFn: async () => { const head = await host('catalog.read', { ids: [] }); const [rows, count] = await Promise.all([sql(query.statement, query.parameters), sql(query.countStatement, query.countParameters)]); await host('catalog.read', { ids: [], revision: head.revision }); return { rows, total: Number(count[0]?.total ?? 0) }; }, refetchInterval: 30000 });
@@ -97,6 +98,7 @@ export function Procurement() {
   const ids = rows.map(row => String(row.id));
   const rowReview = useCachedQuery({ queryKey: [...REVIEW_KEY, 'opportunity-rows', ids, profile, available], enabled: ids.length > 0 && !workspace.isPending && view !== 'compare' && view !== 'matrix', queryFn: () => readRowReview(ids, profile, available), refetchInterval: 60000 });
   const labels = useRecordLabels(ids, !!model && view !== 'matrix' && view !== 'compare');
+  const duplicates = usePageDuplicates(rows, !!model && view !== 'matrix' && view !== 'compare');
   const { facets, loading: facetsLoading } = useLabelFacets(panel === 'filters');
   const counts = new Map<string, number>();
   // Source counts follow the notice type, so "All sources" here matches the record pickers for the same type.
@@ -113,7 +115,7 @@ export function Procurement() {
   const applySaved = (saved: ProcurementFilters) => { filter({ ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '' }); setPanel(''); };
   const chips = reviewChips(params, profileLabel);
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
-  const extraCount = [region, category, buyer, supplier, classification, aiLabel].filter(Boolean).length + reviewCount;
+  const extraCount = [region, category, buyer, supplier, classification, aiLabel, place].filter(Boolean).length + reviewCount;
   const activeCount = extraCount + [source, kind !== 'all', deadline === 'week', starred].filter(Boolean).length;
   const clearAll = () => { setTyped(''); filter(Object.fromEntries([...BASE_PARAMS, ...REVIEW_PARAMS].map(key => [key, '']))); };
   const description = describeFilters(params, profileText, sourceName);
@@ -163,7 +165,7 @@ export function Procurement() {
         <div className="pc-row-main">
           <button type="button" className="pc-row-title" aria-expanded={row.id === noticeId} onClick={() => openNotice(row.id)}>{row.title || 'Untitled notice'}</button>
           <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{row.region ? ` · ${row.region}` : ''}</p>
-          <p className="pc-row-meta"><span className="pc-row-date pc-row-date-inline" data-tone={when.tone || undefined}>{row.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</span><span className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId)}</span><span data-kind={row.kind}>{row.kind === 'award' ? 'Award' : 'Opportunity'}</span>{row.status && <span className="pc-row-status" data-status={String(row.status).toLowerCase()}>{row.status}</span>}{row.externalId && <span>{row.externalId}</span>}</p>
+          <p className="pc-row-meta"><span className="pc-row-date pc-row-date-inline" data-tone={when.tone || undefined}>{row.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</span><span className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId)}</span><span data-kind={row.kind}>{row.kind === 'award' ? 'Award' : 'Opportunity'}</span>{row.status && <span className="pc-row-status" data-status={String(row.status).toLowerCase()}>{row.status}</span>}{row.externalId && <span>{row.externalId}</span>}<DuplicateFlag matches={duplicates.get(row.id)} /></p>
           {!!labels.get(row.id)?.length && <div className="pc-row-labels"><LabelChips labels={labels.get(row.id)!} limit={4} /></div>}
           {available && <ReviewLine review={rowReview.data?.get(row.id)} profileText={profileText} />}
         </div>
@@ -213,7 +215,8 @@ export function Procurement() {
       <Btn variant="secondary" aria-haspopup="dialog" aria-label="Saved searches" tooltip="Saved searches and alerts" onClick={() => setPanel('saved')}><Bookmark aria-hidden="true" className="h-4 w-4" /><span className="pc-label-saved">Saved</span></Btn>
     </div>
     {scope.profile !== undefined && <p className="rw-warn">This link shows {profileText}; your chosen profile is ignored until you remove it.</p>}
-    {(aiLabel || chips.length > 0) && <div className="pc-active-filters">
+    {(aiLabel || place || chips.length > 0) && <div className="pc-active-filters">
+      {place && <button type="button" className="pc-label" aria-label={`Remove place filter: ${place.replace(/^(m|rd):/, '')}`} onClick={() => filter({ place: '' })}>Place: {place.replace(/^(m|rd):/, '')} ×</button>}
       {aiLabel && <button type="button" className="pc-label" data-group={labelGroup(aiLabel)} aria-label={`Remove AI category filter: ${aiLabel}`} onClick={() => filter({ aiLabel: '' })}>✦ {aiLabel} ×</button>}
       {chips.map(([keys, text]) => <button key={keys.join()} type="button" className="pc-label" aria-label={`Remove filter: ${text}`} onClick={() => filter(Object.fromEntries(keys.map(key => [key, ''])))}>{text} ×</button>)}
     </div>}
@@ -237,10 +240,11 @@ export function Procurement() {
         <div className="pc-sheet-only"><label><span>Source</span>{sourceSelect}</label><label><span>Notice type</span>{typeSelect}</label><div className="procurement-actions">{closingChip}{shortlistChip}</div></div>
         {reviewFields}
         {aiFacets}
+        <PlaceFilter value={place} onChange={value => filter({ place: value })} />
         {extraFields}
       </div>
     </Modal>}
-    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || reviewCount > 0) && <p className="procurement-coverage">AI category and review filters aren’t included in saved searches or alerts yet.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
+    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || place || reviewCount > 0) && <p className="procurement-coverage">AI category, place and review filters aren’t included in saved searches or alerts yet.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
     {noticeId && (!wide || view === 'compare' || view === 'matrix') && <NoticeView id={noticeId} layout="dialog" onClose={closeNotice} />}
     {evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
   </section>;
