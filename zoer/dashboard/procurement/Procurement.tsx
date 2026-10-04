@@ -105,6 +105,8 @@ export function Procurement() {
   const labels = useRecordLabels(ids, !!model && view !== 'matrix' && view !== 'compare');
   const profileFilter = useProfileFilterHits(ids, profile, available && view !== 'matrix' && view !== 'compare');
   const hide = useHideNotices(setError);
+  // The hide/undo line belongs to the list it was made in; another search or filter starts clean.
+  useEffect(() => { hide.dismiss(); }, [query.where, query.countParameters.join('\u0000')]);
   const { facets, loading: facetsLoading } = useLabelFacets(panel === 'filters');
   const counts = new Map<string, number>();
   // Source counts follow the notice type, so "All sources" here matches the record pickers for the same type.

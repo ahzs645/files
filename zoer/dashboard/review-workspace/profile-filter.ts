@@ -41,10 +41,10 @@ export function hitText(hit: ProfileFilterHit): string {
 }
 export const filterReason = (hits: ProfileFilterHit[]) => hits.length ? `Filtered by profile: ${hits.map(hitText).join('; ')}` : '';
 
-/** First matching excluded keyword per record (1-based term index, 0 = none). ≤150 ids and ≤25 terms keep it under 200 parameters. */
+/** First matching excluded keyword per opportunity (1-based term index, 0 = none); awards are never pursued. ≤150 ids and ≤15 terms stay under 200 parameters. */
 export function keywordHitsSql(terms: string[], count: number) {
   const match = excludeMatchSql(terms);
-  return { sql: `SELECT id, ${match.sql} AS term FROM records WHERE id IN (${placeholders(count)})`, parameters: match.parameters };
+  return { sql: `SELECT id, ${match.sql} AS term FROM records WHERE kind='opportunity' AND id IN (${placeholders(count)})`, parameters: match.parameters };
 }
 /** Stated buyer budget / estimated value facts from the current extraction, with any reviewer state. */
 export const VALUE_FACTS_SQL = (count: number) => `SELECT f.record_id AS id, f.value, rs.state AS reviewState, rs.value AS reviewValue FROM procurement_facts f JOIN procurement_stage_runs s ON s.id=f.stage_run_id LEFT JOIN procurement_review_state rs ON rs.target_type='fact' AND rs.target_id=f.id WHERE s.stage='extract' AND s.is_current=1 AND f.status='stated' AND f.semantic_type IN ('money:buyer_budget','money:buyer_estimated_value') AND f.record_id IN (${placeholders(count)})`;

@@ -45,7 +45,8 @@ export function useHideNotices(onError: (message: string) => void) {
       await client.invalidateQueries({ queryKey: REVIEW_KEY });
     } catch (e) { onError((e as Error).message); } finally { setBusy([]); }
   };
-  const undo = () => last && apply(last.ids.map((id, i) => ({ id, title: last.titles[i] })), !last.hidden, false);
+  // Undo is itself undoable, so a mis-tap on Undo is one more tap away from being fixed.
+  const undo = () => last && apply(last.ids.map((id, i) => ({ id, title: last.titles[i] })), !last.hidden);
   return { busy, last, apply, undo, dismiss: () => setLast(null) };
 }
 
