@@ -38,7 +38,7 @@ describe('CanadaBuys host-mediated collection', () => {
   it('fetches only the declared official source and atomically saves checksummed records/cursor without deleting existing data', async () => {
     const db = fixture(), prior = structuredClone([...db.records]);
     const result = await collectCanadaBuys(db.host, { sourceId: 'canadabuys' }, 'collect-one', () => timestamp);
-    expect(db.requests).toEqual([{ url: CANADABUYS_DATASET_URL, method: 'GET', headers: { accept: 'text/csv', 'user-agent': 'ZoerProcurement/0.24' } }]);
+    expect(db.requests).toEqual([{ url: CANADABUYS_DATASET_URL, method: 'GET', headers: { accept: 'text/csv' } }]);
     expect(result).toMatchObject({ status: 'complete', lastAttemptedAt: timestamp, lastSuccessAt: timestamp, receipt: { offset: 1, totalRecords: 1, byteCount: Buffer.byteLength(csv()), importedAt: timestamp } });
     expect(result.receipt.sha256).toMatch(/^[a-f0-9]{64}$/);
     for (const [id, value] of prior) expect(db.records.get(id)).toEqual(value);

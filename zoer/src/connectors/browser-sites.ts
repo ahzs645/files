@@ -1,24 +1,19 @@
 import { BROWSER_SITES, BROWSER_SOURCE_ID, BROWSER_PAGES_PER_SITE, type BrowserSite } from '../../dashboard/procurement/browser-sites';
 import { isPauseError } from '../pause';
 import { browserCheckMessage, detectBrowserCheck } from './browser-check';
-import { ConnectorError } from './errors';
+import { CRAWL_CODES, ConnectorError, isBudgetError, transientFailure } from './errors';
 import { decodeEntities, htmlToText } from './html';
 import { leadingNumber, parseTable, parseWallClock, readMoment, resolveUrl, type SiteRow } from './municipal-sites';
-import type { Pacer } from './pacing';
-import { insideVisitTime, robotsAllows, robotsPolicy, robotsTextFromCapture, visitTimeText, type RobotsPolicy } from './robots';
 import type { ConnectorPortal, PortalResult, SourceConnector } from './types';
 
 /**
  * Sites collected through the person's Zoer browser (`procurement.collect.browser`, see browser-sites.ts in the
- * dashboard for the list). Per site and run:
- *
- * 1. Outside the site's visiting hours (robots Visit-time) nothing is loaded: the site is `not-run`.
- * 2. robots.txt is read through the browser unless it was read in the last 24 hours. A path it disallows is not
- *    loaded; robots.txt that cannot be read (a check page, an error page) means the site is not collected.
- * 3. One listing page is loaded, at least the larger of the site's floor and robots Crawl-delay/Request-rate after the
- *    previous load on that host (in this run or an earlier one).
- * 4. A browser check, an access-denied page or an empty page stops the site as `waiting` with what the person should
- *    do. Nothing on a check page is clicked or answered.
+ * dashboard for the list). Per site and run, one listing page is loaded. Zoer's crawl policy (manifest
+ * `crawlPolicy`, host service S4) decides first: outside a site's visiting hours nothing is loaded (`not-run`), a page
+ * its robots.txt disallows (including every group naming an AI crawler) is never loaded, unreadable robots.txt means
+ * not collected, and loads per host are spaced by the larger of the manifest floor and Crawl-delay/Request-rate. A
+ * browser check, an access-denied page or an empty page stops the site as `waiting` with what the person should do.
+ * Nothing on a check page is clicked or answered.
  *
  * Listing pages are parsed as a table with title and closing columns (the municipal-sites reader), else as labelled
  * blocks (one block per notice with a link and a closing date), else as tables headed by a plain row of cells
@@ -28,13 +23,8 @@ import type { ConnectorPortal, PortalResult, SourceConnector } from './types';
 export const SOURCE_ID = BROWSER_SOURCE_ID;
 export interface CapturedPage { url: string; title: string; html: string; capturedAt?: string; status?: number }
 export type BrowserCapture = (url: string) => Promise<CapturedPage>;
-export interface RobotsCacheEntry { checkedAt: string; status: 'ok' | 'missing'; text?: string }
 export interface BrowserSitesContext {
   capture: BrowserCapture;
-  pacer: Pacer;
-  /** robots.txt per host, read this run or within ROBOTS_TTL_MS; updated in place. */
-  robots: Record<string, RobotsCacheEntry>;
-  nowMs: () => number;
   /**
    * Pages whose layout no reader understood, kept with the source state (bounded, scripts and styles removed) so the
    * reader can be fixed from what Zoer's browser actually saw instead of fetching the site again from elsewhere.
@@ -48,8 +38,6 @@ export function layoutSample(page: CapturedPage, at: string): LayoutSample {
   const body = contentOf(String(page.html ?? '').replace(/<(script|style|svg|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, '')).replace(/\s+/g, ' ').trim();
   return { url: page.url, title: page.title, capturedAt: page.capturedAt ?? at, page: body.slice(0, MAX_SAMPLE_CHARS), truncated: body.length > MAX_SAMPLE_CHARS };
 }
-export const ROBOTS_TTL_MS = 24 * 60 * 60_000;
-const MAX_ROBOTS_BYTES = 64_000;
 
 const oneLine = (html: string) => htmlToText(html).replace(/\s*\n\s*/g, ' ').trim();
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
@@ -283,69 +271,33 @@ export function browserRecord(row: BrowserRow, site: BrowserSite, pageUrl: strin
 // One site
 // ---------------------------------------------------------------------------------------------
 
-const isBudgetError = (error: unknown) => (error as any)?.code === 'network_limit' || (error as any)?.code === 'browser_limit' || /budget exhausted|network_limit|browser_limit/i.test(String((error as Error)?.message ?? ''));
 const UNAVAILABLE = /unavailable or under manual control|resume the agent|a selected browser is required|select a running zoer browser/i;
 
-function outsideHours(site: BrowserSite, window: string, url: string): ConnectorError {
-  return new ConnectorError('outside_visit_window', `${site.label} asks automated visitors to come only between ${visitTimeText(window)} (its robots.txt Visit-time). Nothing was loaded; collect it again inside that window. ${url}`, 'not-run');
-}
-
-/** robots.txt for the site's host, read through the browser unless a reading from the last 24 hours is kept. */
-async function robotsFor(ctx: BrowserSitesContext, site: BrowserSite, load: (url: string) => Promise<CapturedPage>): Promise<RobotsPolicy> {
-  const cached = ctx.robots[site.host];
-  if (cached && ctx.nowMs() - Date.parse(cached.checkedAt) < ROBOTS_TTL_MS && Date.parse(cached.checkedAt) <= ctx.nowMs()) {
-    return cached.status === 'missing' ? { group: 'none', rules: [] } : robotsPolicy(cached.text ?? '');
-  }
-  const url = `https://${site.host}/robots.txt`, page = await load(url);
-  const checkedAt = new Date(ctx.nowMs()).toISOString();
-  // A missing robots.txt (404/410) allows everything; any other error status means the rules are unknown.
-  if (page.status === 404 || page.status === 410) { ctx.robots[site.host] = { checkedAt, status: 'missing' }; return { group: 'none', rules: [] }; }
-  const text = page.status === undefined || page.status === 200 ? robotsTextFromCapture(page.html) : undefined;
-  if (text === undefined) {
-    const check = detectBrowserCheck(page);
-    if (check && check.kind !== 'empty') throw new ConnectorError('browser_check', browserCheckMessage(site.label, url, check), 'waiting');
-    throw new ConnectorError('robots_unreadable', `${site.label}'s robots.txt could not be read${page.status ? ` (HTTP ${page.status})` : ''}, so Procurement does not know what the site allows and did not load its bids page. Saved records are kept.`);
-  }
-  ctx.robots[site.host] = { checkedAt, status: 'ok', text: text.slice(0, MAX_ROBOTS_BYTES) };
-  return robotsPolicy(text);
-}
-
+/**
+ * One site: its bids page through the person's Zoer browser. robots.txt, the visiting window and page spacing are
+ * Zoer's crawl policy (host service S4): a refused load arrives as a `crawl_*` error, which the collection maps to the
+ * site's state (`robots_disallowed`, `outside_visit_window`, `browser_check`) or retries later in the run.
+ */
 export async function collectBrowserSite(ctx: BrowserSitesContext, portal: ConnectorPortal, context: { now: () => string }): Promise<PortalResult> {
   const site = BROWSER_SITES.find(candidate => candidate.id === portal.id);
   if (!site) throw new ConnectorError('source_config', `Unknown browser site ${portal.id}.`);
-  let delaySeconds = site.minDelaySeconds, window = site.visitTimeUtc;
-  // Static and cached windows are checked before anything is loaded, robots.txt included.
-  const cachedWindow = ctx.robots[site.host]?.text ? robotsPolicy(ctx.robots[site.host].text!).visitTimeUtc : undefined;
-  for (const value of [window, cachedWindow]) if (value && !insideVisitTime(value, ctx.nowMs())) throw outsideHours(site, value, site.url);
-  const load = async (url: string): Promise<CapturedPage> => {
-    await ctx.pacer.wait(site.host, delaySeconds);
-    // A wait can cross the end of the window.
-    if (window && !insideVisitTime(window, ctx.nowMs())) throw outsideHours(site, window, url);
-    try {
-      const page = await ctx.capture(url);
-      if (!page || typeof page.html !== 'string' || typeof page.url !== 'string') throw new ConnectorError('browser_capture', `Zoer returned no page for ${url}.`);
-      return page;
-    } catch (error) {
-      if (isPauseError(error) || isBudgetError(error) || error instanceof ConnectorError) throw error;
-      const message = String((error as Error)?.message ?? error);
-      if (UNAVAILABLE.test(message)) throw new ConnectorError('browser_unavailable', `Zoer's browser was not available to Procurement (${message.slice(0, 160)}). If you are using it, return control to Procurement; otherwise start the browser chosen in Procurement's settings. Then collect again.`, 'waiting');
-      throw new ConnectorError('browser_capture', `${site.label} could not be loaded in Zoer's browser: ${message.slice(0, 300)}`);
-    }
-  };
-  const robots = await robotsFor(ctx, site, load);
-  delaySeconds = Math.max(site.minDelaySeconds, robots.delaySeconds ?? 0);
-  if (robots.visitTimeUtc) {
-    window = robots.visitTimeUtc;
-    if (!insideVisitTime(window, ctx.nowMs())) throw outsideHours(site, window, site.url);
+  let page: CapturedPage;
+  try {
+    page = await ctx.capture(site.url);
+    if (!page || typeof page.html !== 'string' || typeof page.url !== 'string') throw new ConnectorError('browser_capture', `Zoer returned no page for ${site.url}.`);
+  } catch (error) {
+    // Pauses, spent budgets, crawl refusals and temporary failures go to the collection unchanged.
+    if (isPauseError(error) || isBudgetError(error) || error instanceof ConnectorError || (CRAWL_CODES as readonly string[]).includes((error as any)?.code) || transientFailure(error)) throw error;
+    const message = String((error as Error)?.message ?? error);
+    if (UNAVAILABLE.test(message)) throw new ConnectorError('browser_unavailable', `Zoer's browser was not available to Procurement (${message.slice(0, 160)}). If you are using it, return control to Procurement; otherwise start the browser chosen in Procurement's settings. Then collect again.`, 'waiting');
+    throw new ConnectorError('browser_capture', `${site.label} could not be loaded in Zoer's browser: ${message.slice(0, 300)}`);
   }
-  if (!robotsAllows(robots, site.url)) throw new ConnectorError('robots_disallowed', `${site.label}'s robots.txt does not allow ${new URL(site.url).pathname}, so its bids page was not loaded. Check it yourself: ${site.url}`);
-  const page = await load(site.url);
   const check = detectBrowserCheck(page);
   if (check) throw new ConnectorError('browser_check', browserCheckMessage(site.label, site.url, check), 'waiting');
   const final = new URL(page.url);
+  // Zoer withholds a redirect target its robots.txt disallows; a page from another host is still not this site.
   if (final.hostname !== site.host) throw new ConnectorError('source_redirect', `${site.label} sent the browser to ${final.hostname} instead of its bids page. Saved records are kept.`);
-  if (!robotsAllows(robots, page.url)) throw new ConnectorError('robots_disallowed', `${site.label} redirected to ${final.pathname}, which its robots.txt does not allow. Nothing from it was saved.`);
-  if (page.status !== undefined && page.status !== 200) throw new ConnectorError(page.status === 404 ? 'source_not_found' : 'source_http_error', `${site.label}'s bids page answered HTTP ${page.status}. Saved records are kept.`);
+  if (page.status !== undefined && page.status !== 200) throw new ConnectorError(page.status === 404 ? 'source_not_found' : 'source_http_error', `${site.label}'s bids page answered HTTP ${page.status}. Saved records are kept.`, undefined, { status: page.status });
   const retrievedAt = page.capturedAt && Number.isFinite(Date.parse(page.capturedAt)) ? new Date(Date.parse(page.capturedAt)).toISOString() : context.now();
   let parsed: ReturnType<typeof parseBrowserListing>;
   try { parsed = parseBrowserListing(site, page.html, page.url); delete ctx.layoutSamples?.[site.id]; }

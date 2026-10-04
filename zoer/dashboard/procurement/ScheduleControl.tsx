@@ -18,16 +18,19 @@ export function ScheduleBadge({ row, label }: { row: ScheduleRow | undefined; la
 
 /**
  * Interval schedule for one action with a fixed input: presets (6 h, 12 h, daily, weekly) or custom whole hours,
- * turn on, pause, next run, last result and, when Zoer stopped it, why in plain words. Zoer keeps one schedule per
- * action, so when the saved schedule runs a different input (`matches` false) saving here replaces it and pausing
- * is left to the owner of that schedule.
+ * turn on, pause, next run, last result and, when Zoer stopped it, why in plain words. Without `row`/`onSave` it
+ * edits the action's own schedule (one per action: when that runs a different input, `matches` false, saving here
+ * replaces it). With them it edits one preset-backed schedule (S6), e.g. one source's collection: `row` is that
+ * schedule (null when none is saved) and `onSave` saves it.
  */
-export function ScheduleControl({ actionId, input, title, defaultHours = 24, matches = () => true, describe }: {
-  actionId: string; input: Record<string, unknown>; title: string; defaultHours?: number;
+export function ScheduleControl({ actionId, input = {}, title, defaultHours = 24, matches = () => true, describe, row, onSave }: {
+  actionId: string; input?: Record<string, unknown>; title: string; defaultHours?: number;
   matches?: (row: ScheduleRow) => boolean; describe?: (row: ScheduleRow) => string;
+  row?: ScheduleRow | null; onSave?: (enabled: boolean, intervalHours: number) => Promise<unknown>;
 }) {
   const client = useQueryClient(), schedules = useSchedules();
-  const saved = findSchedule(schedules.data, actionId), mine = saved && matches(saved) ? saved : undefined, other = saved && !mine ? saved : undefined;
+  const own = row !== undefined, saved = own ? row ?? undefined : findSchedule(schedules.data, actionId);
+  const mine = own ? saved : saved && matches(saved) ? saved : undefined, other = !own && saved && !mine ? saved : undefined;
   const initial = mine?.intervalHours ?? defaultHours;
   const [choice, setChoice] = useState<number | 'custom' | null>(null), [custom, setCustom] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
@@ -38,12 +41,13 @@ export function ScheduleControl({ actionId, input, title, defaultHours = 24, mat
     if (enabled && hours === null) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      await host('schedules.save', { actionId, enabled, intervalHours: enabled ? hours : mine?.intervalHours ?? defaultHours, input });
+      const intervalHours = enabled ? hours! : mine?.intervalHours ?? defaultHours;
+      if (onSave) await onSave(enabled, intervalHours); else await host('schedules.save', { actionId, enabled, intervalHours, input });
       await client.invalidateQueries({ queryKey: SCHEDULES_KEY });
       setMessage(enabled ? `${title}: ${intervalText(hours!).toLowerCase()}.` : `${title} paused.`); setChoice(null); setCustom('');
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
-  const id = `pc-schedule-${actionId.replace(/\W/g, '-')}-${String(input.sourceId ?? 'all')}`;
+  const id = `pc-schedule-${actionId.replace(/\W/g, '-')}-${String(input.sourceId ?? mine?.presetId ?? 'own')}`;
   return <div className="pc-schedule" role="group" aria-labelledby={`${id}-title`}>
     <div className="pc-schedule-head">
       <strong id={`${id}-title`}>{title}</strong>
@@ -61,7 +65,7 @@ export function ScheduleControl({ actionId, input, title, defaultHours = 24, mat
     </fieldset>
     {selected === 'custom' && hours === null && <p className="pc-schedule-note" role="alert">Use whole hours from 1 to 720 (30 days).</p>}
     <div className="procurement-actions">
-      <Btn size="sm" variant="primary" disabled={busy || schedules.isPending || !!schedules.error || hours === null || !changed} onClick={() => void save(true)}>{busy ? 'Saving…' : mine?.enabled ? 'Save interval' : 'Turn on'}</Btn>
+      <Btn size="sm" variant="primary" disabled={busy || schedules.isPending || !!schedules.error || hours === null || !changed} onClick={() => void save(true)}>{busy ? 'Saving…' : mine?.enabled ? 'Save interval' : state.stopped ? 'Turn on again' : 'Turn on'}</Btn>
       {mine?.enabled && <Btn size="sm" variant="secondary" disabled={busy} onClick={() => void save(false)}>Pause</Btn>}
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-schedule-meta">{message}</p>}

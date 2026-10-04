@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileText, FileWarning, RefreshCw, X } from 'lucide-react';
+import { Archive, Download, FileText, FileWarning, RefreshCw, X } from 'lucide-react';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { setStar } from '../backend';
+import { downloadDocumentBundle, sizeText } from '../document-bundle';
 import { patchPluginQuery, usePluginLocation } from '../navigation';
 import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
 import { PURSUIT_STAGES, type PursuitStage } from './state-contract';
@@ -213,6 +214,11 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
   useEffect(() => { if (cite) { setSelected(cite.documentId); setMode(cite.quote ? 'text' : initialMode(documents.find(item => item.id === cite.documentId))); } }, [cite]);
   const doc = documents.find(item => item.id === selected);
   const choose = (value: string) => { setSelected(value); setMode(initialMode(documents.find(item => item.id === value))); };
+  const downloadAll = async () => {
+    setBusy(true); setError(''); setMessage('');
+    try { const bundle = await downloadDocumentBundle(host, [id], { scope: 'one notice' }); setMessage(`Downloaded ${bundle.name}: ${bundle.documents} file${bundle.documents === 1 ? '' : 's'} (${sizeText(bundle.bytes)}) with the notice as CSV.`); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
   const getAttachments = async () => {
     setBusy(true); setError(''); setMessage('');
     try { await runProcurementAction('documents.download', { recordIds: [id] }); setMessage('Attachments downloaded.'); onRefresh(); }
@@ -232,6 +238,7 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
       {doc && isPdf(doc) && <span className="pc-preview-modes" role="group" aria-label="Preview as"><button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')}>PDF</button><button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>Text</button></span>}
       <span className="pc-doc-tools">
         {doc?.status === 'downloaded' && <Btn size="sm" variant="ghost" aria-label={`Download ${doc.name}`} tooltip="Download" icon={<Download aria-hidden="true" className="h-4 w-4" />} onClick={() => void host('catalog.download', { id: doc.id, name: doc.name }).catch(e => setError(e.message))}><span className="sr-only">Download</span></Btn>}
+        {saved.length > 1 && <Btn size="sm" variant="ghost" aria-label={`Download all ${saved.length} documents as one zip`} tooltip="Download all documents (zip)" disabled={busy} icon={<Archive aria-hidden="true" className="h-4 w-4" />} onClick={() => void downloadAll()}><span className="sr-only">Download all documents</span></Btn>}
         {source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
       </span>
     </div>

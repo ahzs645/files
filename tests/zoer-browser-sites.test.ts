@@ -1,12 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { collectBrowserSources, validBrowserCollectionInput } from '../zoer/src/browser-collection';
-import { collectProcurementSource } from '../zoer/src/connector-collection';
+import { collectBrowserSources, collectProcurementSource, collectionSlice, validBrowserCollectionInput } from '../zoer/src/collection-run';
 import { CONNECTORS } from '../zoer/src/connectors';
 import { browserCheckMessage, detectBrowserCheck } from '../zoer/src/connectors/browser-check';
 import { browserNoticeId, browserRecord, contentOf, layoutSample, parseBlocks, parseBrowserListing, parseCellHeaderTables, parseViewRows, type CapturedPage } from '../zoer/src/connectors/browser-sites';
-import { createPacer } from '../zoer/src/connectors/pacing';
-import { insideVisitTime, parseRobots, robotsAllows, robotsPolicy, robotsTextFromCapture } from '../zoer/src/connectors/robots';
 import { BROWSER_COLLECT_ACTION, BROWSER_PAGES_PER_SITE, BROWSER_SITES, browserSiteById } from '../zoer/dashboard/procurement/browser-sites';
 import { browserSiteRows, browserSummaryText } from '../zoer/dashboard/procurement/browser-source-overview';
 import { LINK_SOURCES, ROBOTS_REASON } from '../zoer/dashboard/procurement/link-sources';
@@ -21,53 +18,6 @@ import manifest from '../zoer/manifest.json';
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/browser-sites/${name}`, import.meta.url), 'utf8');
 const KEY = connectorCollectionKey('browser-sites');
 const site = (id: string) => browserSiteById(id)!;
-
-describe('robots.txt', () => {
-  const text = robotsTextFromCapture(fixture('synthetic-robots.html'))!;
-  it('reads robots.txt from the browser’s text view and nothing else', () => {
-    expect(text).toContain('Crawl-delay: 5');
-    expect(robotsTextFromCapture(fixture('synthetic-cloudflare.html'))).toBeUndefined();
-    expect(robotsTextFromCapture('<body><h1>Page not found</h1><pre>code</pre></body>')).toBeUndefined();
-    expect(robotsTextFromCapture('<body><pre></pre></body>')).toBe('');
-    expect(robotsTextFromCapture('<body><pre>User-agent: *\nDisallow: /a&amp;b</pre></body>')).toBe('User-agent: *\nDisallow: /a&b');
-  });
-  it('applies the * group, longest match, Allow on ties, wildcards and $', () => {
-    const policy = robotsPolicy(text);
-    expect(policy).toMatchObject({ group: '*', delaySeconds: 5 });
-    expect(robotsAllows(policy, 'https://x.ca/bids')).toBe(true);
-    expect(robotsAllows(policy, 'https://x.ca/admin/login')).toBe(false);
-    expect(robotsAllows(policy, 'https://x.ca/bids?print=1')).toBe(false);
-    expect(robotsAllows(policy, 'https://x.ca/robots.txt')).toBe(true);
-    const mixed = robotsPolicy('User-agent: *\nDisallow: /docs/\nAllow: /docs/public\nDisallow: /*.pdf$\nAllow: /same\nDisallow: /same');
-    expect(robotsAllows(mixed, 'https://x.ca/docs/public/a')).toBe(true);
-    expect(robotsAllows(mixed, 'https://x.ca/docs/private')).toBe(false);
-    expect(robotsAllows(mixed, 'https://x.ca/file.pdf')).toBe(false);
-    expect(robotsAllows(mixed, 'https://x.ca/file.pdf?x=1')).toBe(true);
-    expect(robotsAllows(mixed, 'https://x.ca/same')).toBe(true);
-  });
-  it('uses a group naming ZoerProcurement over *, and reads Request-rate and Visit-time', () => {
-    const policy = robotsPolicy('User-agent: *\nDisallow: /\n\nUser-agent: zoerprocurement\nUser-agent: other\nDisallow: /private\nRequest-rate: 1/10\nCrawl-delay: 4\nVisit-time: 0900-1200 # UTC');
-    expect(policy).toMatchObject({ group: 'agent', delaySeconds: 10, visitTimeUtc: '0900-1200' });
-    expect(robotsAllows(policy, 'https://x.ca/bids')).toBe(true);
-    expect(robotsAllows(robotsPolicy('User-agent: *\nDisallow: /'), 'https://x.ca/bids')).toBe(false);
-    expect(robotsAllows(robotsPolicy(''), 'https://x.ca/bids')).toBe(true);
-    // Groups naming AI crawlers bind this collector too, and their disallows win over a longer * allow.
-    const ai = robotsPolicy('User-agent: *\nAllow: /business\n\nUser-agent: anthropic-ai\nUser-agent: ClaudeBot\nDisallow: /');
-    expect(robotsAllows(ai, 'https://x.ca/business/rfps')).toBe(false);
-    expect(robotsAllows(ai, 'https://x.ca/robots.txt')).toBe(true);
-    expect(robotsAllows(robotsPolicy('User-agent: GPTBot\nDisallow: /private\n\nUser-agent: *\nAllow: /'), 'https://x.ca/bids')).toBe(true);
-    expect(parseRobots('Disallow: /orphan\nUser-agent: a\nUser-agent: b\nDisallow: /x')).toEqual([{ agents: ['a', 'b'], rules: [{ allow: false, pattern: '/x' }] }]);
-  });
-  it('checks visiting windows in UTC, including windows past midnight', () => {
-    expect(insideVisitTime('0900-1200', Date.parse('2026-10-04T09:00:00Z'))).toBe(true);
-    expect(insideVisitTime('0900-1200', Date.parse('2026-10-04T11:59:00Z'))).toBe(true);
-    expect(insideVisitTime('0900-1200', Date.parse('2026-10-04T12:00:00Z'))).toBe(false);
-    expect(insideVisitTime('0900-1200', Date.parse('2026-10-04T02:45:00Z'))).toBe(false);
-    expect(insideVisitTime('2200-0200', Date.parse('2026-10-04T23:30:00Z'))).toBe(true);
-    expect(insideVisitTime('2200-0200', Date.parse('2026-10-04T03:00:00Z'))).toBe(false);
-    expect(insideVisitTime('nonsense', Date.now())).toBe(false);
-  });
-});
 
 describe('browser check detection', () => {
   it('recognises check pages, access-denied pages and empty pages', () => {
@@ -90,29 +40,6 @@ describe('browser check detection', () => {
     expect(text).toContain('Open the Zoer browser');
     expect(text).toContain('https://www.civicinfo.bc.ca/bids');
     expect(text).toContain('does not answer checks');
-  });
-});
-
-describe('pacing', () => {
-  const fakeClock = (start: number) => {
-    let at = start; const sleeps: number[] = [];
-    return { sleeps, now: () => at, sleep: async (ms: number) => { sleeps.push(ms); at += ms; }, advance: (ms: number) => { at += ms; } };
-  };
-  it('spaces loads per host and remembers loads from earlier runs', async () => {
-    const clock = fakeClock(Date.parse('2026-10-04T10:00:00Z'));
-    const pacer = createPacer(clock, { 'www.chilliwack.com': '2026-10-04T09:59:56Z', 'ignored.example': 'not a date' });
-    expect(await pacer.wait('www.chilliwack.com', 10)).toBe(6000);
-    expect(await pacer.wait('www.whistler.ca', 10)).toBe(0);
-    clock.advance(3000);
-    expect(await pacer.wait('www.whistler.ca', 10)).toBe(7000);
-    expect(await pacer.wait('www.chilliwack.com', 10)).toBe(0);
-    expect(clock.sleeps).toEqual([6000, 7000]);
-    expect(pacer.snapshot()).toEqual({ 'www.chilliwack.com': '2026-10-04T10:00:16.000Z', 'www.whistler.ca': '2026-10-04T10:00:16.000Z' });
-  });
-  it('never waits longer than one delay for a seed in the future', async () => {
-    const clock = fakeClock(Date.parse('2026-10-04T10:00:00Z'));
-    const pacer = createPacer(clock, { 'a.ca': '2026-10-05T10:00:00Z' });
-    expect(await pacer.wait('a.ca', 5)).toBe(5000);
   });
 });
 
@@ -253,20 +180,22 @@ function catalog(prior?: any) {
   };
   return { host, states, records, commits };
 }
-/** A fake Zoer browser: robots.txt and listing pages by URL, with a clock that only moves when the run sleeps. */
+/**
+ * A fake Zoer browser behind Zoer's crawl policy: listing pages by URL; `refuse` makes the host refuse a URL the way
+ * the S4 crawl policy does (coded error with the hint Zoer appends). robots.txt is never loaded by the plugin.
+ */
 function browser(start: string, pages: Record<string, Partial<CapturedPage> | Error>) {
   let at = Date.parse(start);
-  const loads: Array<{ url: string; at: string }> = [], sleeps: number[] = [];
+  const loads: Array<{ url: string; at: string }> = [];
   return {
-    loads, sleeps,
+    loads,
     set: (iso: string) => { at = Date.parse(iso); },
     deps: {
       now: () => new Date(at).toISOString(),
-      sleep: async (ms: number) => { sleeps.push(ms); at += ms; },
       capture: async (url: string): Promise<CapturedPage> => {
         loads.push({ url, at: new Date(at).toISOString() });
         at += 1000;
-        const page = pages[url] ?? pages[new URL(url).pathname === '/robots.txt' ? 'robots' : 'listing'];
+        const page = pages[url] ?? pages.listing;
         if (page instanceof Error) throw page;
         if (!page) throw new Error('No page for ' + url);
         return { url, title: '', html: '', status: 200, capturedAt: new Date(at).toISOString(), ...page };
@@ -274,7 +203,7 @@ function browser(start: string, pages: Record<string, Partial<CapturedPage> | Er
     },
   };
 }
-const ROBOTS = { html: fixture('synthetic-robots.html') };
+const refuse = (code: string, message: string) => Object.assign(new Error(message), { code });
 const CIVIC = 'https://www.civicinfo.bc.ca/bids', CHILLIWACK = site('chilliwack').url;
 
 describe('procurement.collect.browser', () => {
@@ -286,7 +215,7 @@ describe('procurement.collect.browser', () => {
   });
   it('a site showing a check waits for the person while the others are saved; the next run collects it', async () => {
     const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', {
-      robots: ROBOTS, [CIVIC]: { html: fixture('synthetic-blocks.html'), title: 'Current Opportunities' },
+      [CIVIC]: { html: fixture('synthetic-blocks.html'), title: 'Current Opportunities' },
       [CHILLIWACK]: { html: fixture('synthetic-cloudflare.html'), title: 'Just a moment...', status: 403 },
     });
     const output = await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['civicinfo', 'chilliwack'] }, 'run-1', web.deps);
@@ -298,88 +227,82 @@ describe('procurement.collect.browser', () => {
     expect(state.portals.chilliwack.error.message).toContain('Open the Zoer browser');
     expect(state.error).toMatchObject({ code: 'waiting_for_user' });
     expect([...db.records.keys()].sort()).toEqual(['opportunity:browser-sites:civicinfo:bids-bidid-9001', 'opportunity:browser-sites:civicinfo:bids-bidid-9002', 'opportunity:browser-sites:civicinfo:bids-bidid-9003']);
-    // robots.txt first on each host, then the listing no sooner than the host's delay (CivicInfo 5 s, Chilliwack 10 s).
-    expect(web.loads.map(load => load.url)).toEqual(['https://www.civicinfo.bc.ca/robots.txt', CIVIC, 'https://www.chilliwack.com/robots.txt', CHILLIWACK]);
-    expect(Date.parse(web.loads[1].at) - Date.parse(web.loads[0].at)).toBeGreaterThanOrEqual(5000);
-    expect(Date.parse(web.loads[3].at) - Date.parse(web.loads[2].at)).toBeGreaterThanOrEqual(10_000);
-    expect(state.browser.robots['www.civicinfo.bc.ca']).toMatchObject({ status: 'ok' });
-    // The person completed the check; a run 3 s later reuses robots.txt and waits out the crawl delay first.
+    // Only the listings: robots.txt and pacing are Zoer's crawl policy now, and nothing about them is kept in the state.
+    expect(web.loads.map(load => load.url)).toEqual([CIVIC, CHILLIWACK]);
+    expect(state.browser).toEqual({ layoutSamples: {} });
     const rows = browserSiteRows(readConnectorCollection(state, 'browser-sites'), new Map([['civicinfo', 3]]));
     expect(rows.find(row => row.site.id === 'chilliwack')).toMatchObject({ status: 'waiting', statusText: 'Waiting for you', listed: null });
-    const next = browser(new Date(Date.parse(web.loads[3].at) + 3000).toISOString(), { robots: new Error('robots.txt must come from the 24-hour cache'), [CHILLIWACK]: { html: fixture('synthetic-table.html'), title: 'Bid / Tenders' } });
+    // The person completed the check; the next run collects it.
+    const next = browser('2026-10-04T10:05:00.000Z', { [CHILLIWACK]: { html: fixture('synthetic-table.html'), title: 'Bid / Tenders' } });
     const second = await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['chilliwack'] }, 'run-2', next.deps);
     expect(second.summary).toMatchObject({ collected: 1, waitingForYou: 0 });
     expect(next.loads.map(load => load.url)).toEqual([CHILLIWACK]);
-    expect(next.sleeps).toEqual([7000]);
     const after = db.states.get(KEY);
     expect(after.portals.chilliwack).toMatchObject({ status: 'complete', recordCount: 2 });
     expect(after.portals.civicinfo).toMatchObject({ status: 'complete', recordCount: 3 });
   });
-  it('outside BC Ferries’ visiting hours nothing is loaded and the site is not counted as empty', async () => {
-    const db = catalog(), web = browser('2026-10-04T02:45:00.000Z', { robots: ROBOTS, listing: { html: fixture('synthetic-table.html') } });
+  it('outside BC Ferries’ visiting hours (Zoer refuses the load) the site is skipped, not counted as empty', async () => {
+    const db = catalog(), web = browser('2026-10-04T02:45:00.000Z', {
+      [site('bcferries').url]: refuse('crawl_outside_window', 'www.bcferries.com may be visited 0900-1200 UTC only; nothing was requested. [crawl nextWindowAt=2026-10-04T09:00:00.000Z]'),
+    });
     const output = await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['bcferries'] }, 'run-1', web.deps);
-    expect(web.loads).toEqual([]);
     expect(output.summary).toMatchObject({ outsideVisitingHours: 1, collected: 0 });
     expect(output.sites[0]).not.toHaveProperty('recordCount');
     const state = db.states.get(KEY);
     expect(state.portals.bcferries).toMatchObject({ status: 'not-run', error: { code: 'outside_visit_window' } });
     expect(state.portals.bcferries.error.message).toContain('09:00–12:00 UTC');
+    expect(state.portals.bcferries.error.message).toContain('2026-10-04T09:00:00.000Z');
     expect(state.error).toMatchObject({ code: 'portals_skipped' });
     expect(state.attempt.open).toBe(false);
     expect(browserSiteRows(readConnectorCollection(state, 'browser-sites')).find(row => row.site.id === 'bcferries')).toMatchObject({ status: 'outside-hours', statusText: 'Outside visiting hours', listed: null });
-    // Inside the window it is collected.
-    web.set('2026-10-04T10:00:00.000Z');
-    const inside = await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['bcferries'] }, 'run-2', web.deps);
-    expect(inside.summary.collected).toBe(1);
+    const inside = browser('2026-10-04T10:00:00.000Z', { listing: { html: fixture('synthetic-table.html') } });
+    expect((await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['bcferries'] }, 'run-2', inside.deps)).summary.collected).toBe(1);
   });
-  it('stops when the pacing wait runs past the end of the visiting window', async () => {
-    const db = catalog(), web = browser('2026-10-04T11:59:55.000Z', { robots: ROBOTS, listing: { html: fixture('synthetic-table.html') } });
-    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['bcferries'] }, 'run-1', web.deps);
-    expect(web.loads.map(load => new URL(load.url).pathname)).toEqual(['/robots.txt']);
-    expect(db.states.get(KEY).portals.bcferries).toMatchObject({ status: 'not-run', error: { code: 'outside_visit_window' } });
-  });
-  it('obeys robots.txt read at run time: a disallowed listing is never loaded, and Visit-time from robots applies', async () => {
-    const db = catalog(), web = browser('2026-10-04T02:00:00.000Z', {
-      'https://www.civicinfo.bc.ca/robots.txt': { html: '<body><pre>User-agent: *\nDisallow: /bids</pre></body>' },
-      'https://rdkb.com/robots.txt': { html: '<body><pre>User-agent: *\nCrawl-delay: 20\nVisit-time: 0600-0800</pre></body>' },
-      'https://www.chilliwack.com/robots.txt': { html: '<body><h1>Not found</h1></body>', status: 404 },
-      'https://www.cranbrook.ca/robots.txt': new Error('unused'),
-      'https://cranbrook.ca/robots.txt': { html: '<body><h1>Server error</h1></body>', status: 500 },
+  it('maps Zoer’s robots.txt refusals: disallowed is reported as such, unreadable through the browser waits for the person', async () => {
+    const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', {
+      [CIVIC]: refuse('crawl_robots_disallowed', "www.civicinfo.bc.ca's robots.txt does not allow /bids; nothing was requested."),
+      [site('kelowna').url]: refuse('crawl_robots_unreadable', "www.kelowna.ca's robots.txt could not be read, so what the site allows is unknown and nothing was requested."),
+      [site('rdkb').url]: new Error('Selected browser is unavailable or under manual control. Resume the agent before capturing.'),
       listing: { html: fixture('synthetic-table.html') },
     });
-    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['civicinfo', 'rdkb', 'chilliwack', 'cranbrook'] }, 'run-1', web.deps);
+    const output = await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['civicinfo', 'kelowna', 'rdkb', 'chilliwack'] }, 'run-1', web.deps);
     const portals = db.states.get(KEY).portals;
-    expect(portals.civicinfo).toMatchObject({ status: 'failed', error: { code: 'robots_disallowed' } });
-    expect(portals.rdkb).toMatchObject({ status: 'not-run', error: { code: 'outside_visit_window' } });
-    expect(portals.chilliwack).toMatchObject({ status: 'complete' });
-    expect(portals.cranbrook).toMatchObject({ status: 'failed', error: { code: 'robots_unreadable' } });
-    expect(web.loads.map(load => load.url)).toEqual(['https://www.civicinfo.bc.ca/robots.txt', 'https://rdkb.com/robots.txt', 'https://cranbrook.ca/robots.txt', 'https://www.chilliwack.com/robots.txt', site('chilliwack').url]);
-    // The cached Visit-time is honoured before loading anything on the next run.
-    const again = browser('2026-10-04T03:00:00.000Z', {});
-    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['rdkb'] }, 'run-2', again.deps);
-    expect(again.loads).toEqual([]);
-  });
-  it('a check on robots.txt itself waits for the person; an unavailable browser waits too', async () => {
-    const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', {
-      'https://www.kelowna.ca/robots.txt': { html: fixture('synthetic-cloudflare.html'), title: 'Just a moment...', status: 403 },
-      'https://rdkb.com/robots.txt': new Error('Selected browser is unavailable or under manual control. Resume the agent before capturing.'),
-    });
-    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['kelowna', 'rdkb'] }, 'run-1', web.deps);
-    const portals = db.states.get(KEY).portals;
+    expect(portals.civicinfo).toMatchObject({ status: 'not-run', error: { code: 'robots_disallowed' } });
+    expect(portals.civicinfo.error.message).toContain('Check it yourself: https://www.civicinfo.bc.ca/bids');
     expect(portals.kelowna).toMatchObject({ status: 'waiting', error: { code: 'browser_check' } });
+    expect(portals.kelowna.error.message).toContain('https://www.kelowna.ca/robots.txt');
     expect(portals.rdkb).toMatchObject({ status: 'waiting', error: { code: 'browser_unavailable' } });
+    expect(portals.chilliwack).toMatchObject({ status: 'complete' });
+    expect(output.summary).toMatchObject({ disallowedByRobots: 1, waitingForYou: 2, collected: 1, failedSites: 0 });
   });
   it('a Zoer pause saves progress as paused and is rethrown; a spent page budget ends the run', async () => {
-    const paused = catalog(), web = browser('2026-10-04T10:00:00.000Z', { robots: ROBOTS, [CIVIC]: { html: fixture('synthetic-blocks.html') }, [CHILLIWACK]: Object.assign(new Error('Paused for Zoer update'), { code: 'ZOER_PAUSED' }) });
+    const paused = catalog(), web = browser('2026-10-04T10:00:00.000Z', { [CIVIC]: { html: fixture('synthetic-blocks.html') }, [CHILLIWACK]: Object.assign(new Error('Paused for Zoer update'), { code: 'ZOER_PAUSED' }) });
     await expect(collectBrowserSources(paused.host, { sourceId: 'browser-sites', sites: ['civicinfo', 'chilliwack'] }, 'run-1', web.deps)).rejects.toThrow(/Paused/);
     expect(paused.states.get(KEY)).toMatchObject({ status: 'paused', portals: { civicinfo: { status: 'complete' } }, attempt: { open: true } });
-    const budget = catalog(), spent = browser('2026-10-04T10:00:00.000Z', { robots: new Error('Browser page budget exhausted or not granted.') });
+    const budget = catalog(), spent = browser('2026-10-04T10:00:00.000Z', { listing: refuse('browser_limit', 'Browser page budget exhausted or not granted.') });
     await expect(collectBrowserSources(budget.host, { sourceId: 'browser-sites', sites: ['civicinfo'] }, 'run-1', spent.deps)).rejects.toThrow(/budget/);
     expect(budget.states.get(KEY)).toMatchObject({ status: 'failed', error: { code: 'network_budget' } });
   });
+  it('a site Zoer asks to wait for (pacing) is retried later in the same run, as a resumable retry', async () => {
+    const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', { listing: refuse('crawl_wait', 'www.chilliwack.com may be requested again in 40 s (one request per 10 s), longer than this request may wait; nothing was requested. [crawl retryAfterMs=40000]') });
+    const envelope: any = await collectionSlice(db.host, BROWSER_COLLECT_ACTION, { sourceId: 'browser-sites', sites: ['chilliwack'] }, 'run-1',
+      { step: 1, checkpoint: null, attempt: 0, deadlineAt: '2026-10-04T10:05:00.000Z' }, web.deps);
+    expect(envelope).toMatchObject({ resumable: 'retry', retryAfterMs: 40000, error: { code: 'crawl_wait' }, checkpoint: { sourceId: 'browser-sites', portalIndex: 0 } });
+    expect(db.states.get(KEY).portals.chilliwack).toBeUndefined();
+  });
+  it('reads a state an older version wrote (robots.txt readings and pacing) and stops writing those fields', async () => {
+    const db = catalog({ version: 1, sourceId: 'browser-sites', status: 'complete', portals: {}, browser: {
+      pacing: { 'www.chilliwack.com': '2026-10-04T09:00:00Z' }, robots: { 'www.chilliwack.com': { checkedAt: '2026-10-04T09:00:00Z', status: 'ok', text: 'User-agent: *' } },
+      layoutSamples: { kelowna: { url: 'https://www.kelowna.ca/x', title: 'x', capturedAt: '2026-10-04T09:00:00Z', page: '<p>x</p>', truncated: false } } } });
+    const web = browser('2026-10-04T10:00:00.000Z', { listing: { html: fixture('synthetic-table.html') } });
+    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['chilliwack'] }, 'run-1', web.deps);
+    const state = db.states.get(KEY);
+    expect(state.browser.robots).toBeUndefined(); expect(state.browser.pacing).toBeUndefined();
+    expect(state.browser.layoutSamples.kelowna).toMatchObject({ page: '<p>x</p>' });
+  });
   it('collects the captured Chilliwack, Kelowna and RDKB pages: verified sites without the unconfirmed-layout warning', async () => {
     const db = catalog(), web = browser('2026-10-04T04:31:00.000Z', {
-      robots: ROBOTS, [CHILLIWACK]: { html: fixture('zoer-chilliwack.html'), title: 'Bid / Tenders - City of Chilliwack' },
+      [CHILLIWACK]: { html: fixture('zoer-chilliwack.html'), title: 'Bid / Tenders - City of Chilliwack' },
       [site('kelowna').url]: { html: fixture('zoer-kelowna.html'), title: 'Current bidding opportunities | City of Kelowna' },
       [site('rdkb').url]: { html: fixture('zoer-rdkb.html'), title: 'Public Notices and Opportunities' },
     });
@@ -393,9 +316,10 @@ describe('procurement.collect.browser', () => {
     expect(db.records.get('opportunity:browser-sites:kelowna:reference-12682-name-security-services-city-and-transit-facilities')?.data).toMatchObject({ externalId: '12682', status: 'Open' });
   });
   it('a page the parser does not understand fails that site with a layout error, not 0 notices', async () => {
-    const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', { robots: ROBOTS, listing: { html: fixture('synthetic-unknown-layout.html'), title: 'Doing business' } });
+    const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', { listing: { html: fixture('synthetic-unknown-layout.html'), title: 'Doing business' } });
     await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['kelowna'] }, 'run-1', web.deps);
     expect(db.states.get(KEY).portals.kelowna).toMatchObject({ status: 'failed', error: { code: 'source_layout' } });
+    expect(db.states.get(KEY).browser.layoutSamples.kelowna).toBeTruthy();
     expect(browserSummaryText(browserSiteRows(readConnectorCollection(db.states.get(KEY), 'browser-sites')))).toContain('1 failed');
   });
 });
@@ -418,9 +342,27 @@ describe('browser-sites registration', () => {
     expect(allowlist).not.toContain('westvancouver.ca');
     expect(action.inputSchema.properties.sites.maxItems).toBe(BROWSER_SITES.length);
     expect(action).toMatchObject({ effect: 'local_write', approval: 'when_configured', requiredCapabilities: expect.arrayContaining(['browser-session', 'artifact-store']) });
-    expect(action.resourceLimits.maxBrowserPages).toBeGreaterThanOrEqual(BROWSER_SITES.length * BROWSER_PAGES_PER_SITE);
+    // One site per resumable step: its listing plus one page Zoer may spend reading robots.txt behind a bot wall.
+    expect(action.resourceLimits.maxBrowserPages).toBeGreaterThanOrEqual(BROWSER_PAGES_PER_SITE);
+    expect(action.resumable).toMatchObject({ lock: { input: 'sourceId', group: 'collect' }, autoResume: 'after-restart' });
     expect(action.inputSchema.properties.sites.items.enum).toEqual(BROWSER_SITES.map(item => item.id));
     expect(action.inputSchema.additionalProperties).toBe(false);
+  });
+  it('Zoer’s crawl policy carries every site floor: respect-ai everywhere, robots off only for the CanadaBuys open-data file', () => {
+    const policy = (manifest as any).integration.crawlPolicy;
+    expect(policy).toMatchObject({ product: 'ZoerProcurement', robots: 'respect-ai', minDelaySeconds: 5, maxWaitSeconds: 60 });
+    for (const item of BROWSER_SITES) {
+      const host = policy.hosts[item.host] ?? {};
+      expect(host.minDelaySeconds ?? policy.minDelaySeconds).toBe(item.minDelaySeconds);
+      expect(host.visitWindowUtc).toBe(item.visitTimeUtc);
+    }
+    for (const [host, rules] of Object.entries<any>(policy.hosts)) {
+      expect(allowlist).toContain(host);
+      if (host === 'canadabuys.canada.ca') { expect(rules).toEqual({ robots: 'off', minDelaySeconds: 0 }); continue; }
+      // Nothing else relaxes the policy: every other host keeps robots.txt and at least 5 s between requests.
+      expect(rules.robots).toBeUndefined();
+      expect(rules.minDelaySeconds ?? 5).toBeGreaterThanOrEqual(5);
+    }
   });
   it('robots compliance list: paced sites keep their floors, robots-disallowed sources stay link-only', () => {
     expect(site('civicinfo').minDelaySeconds).toBeGreaterThanOrEqual(5);

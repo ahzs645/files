@@ -8,8 +8,7 @@ import { scrapeTargeted, writeTargetedReceipt } from './targeted-scrape';
 import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
 import { createInterface } from 'node:readline';
 import { parseCapture, type PageCapture } from './capture';
-import { collectProcurementSource } from './connector-collection';
-import { collectBrowserSources } from './browser-collection';
+import { collectionSlice, runCollection } from './collection-run';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
 import { backfillEnrichment } from './procurement-enrichment';
@@ -64,14 +63,19 @@ try {
     if (!catalogTicket || !networkTicket) throw new Error('Procurement collection requires catalog and network grants.');
     const collectCall = (method: string, input: any) => method === 'network.fetch'
       ? call(method, { ...input, ticket: networkTicket }) : catalogCall(method, input);
-    write({ protocolVersion: '1', runId, ok: true, output: await collectProcurementSource(collectCall, request.input ?? {}, runId) });
+    // Zoer runs collection as a resumable action (one portal or CanadaBuys pass per slice); a host without that runs it whole.
+    const output = request.resumable ? await collectionSlice(collectCall, request.action.id, request.input ?? {}, runId, request.resumable)
+      : await runCollection(collectCall, request.action.id, request.input ?? {}, runId);
+    write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'procurement.collect.browser') {
     if (!browserTicket) throw new Error('Select a running Zoer browser session.');
     if (!catalogTicket) throw new Error('Browser collection requires an existing catalog grant.');
     // `settle`: Zoer lets the page finish loading on its own (a check that clears itself, a list drawn by script)
     // and reports the HTTP status. Nothing on the page is clicked. Older Zoer ignores it and returns the loaded page.
     const capture = (url: string) => call('browser.capture-url', { ticket: browserTicket, url, settle: true });
-    write({ protocolVersion: '1', runId, ok: true, output: await collectBrowserSources(catalogCall, request.input ?? {}, runId, { capture }) });
+    const output = request.resumable ? await collectionSlice(catalogCall, request.action.id, request.input ?? {}, runId, request.resumable, { capture })
+      : await runCollection(catalogCall, request.action.id, request.input ?? {}, runId, { capture });
+    write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'procurement.classifications') {
     if (!catalogTicket) throw new Error('Procurement classification mapping requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementClassifications(catalogCall, request.input ?? {}, runId) });
@@ -166,6 +170,7 @@ try {
   // A pause is never a failure: actions without their own checkpoint re-run safely (upserts) on resume.
   if (isPauseError(error)) write({ protocolVersion: '1', runId, ok: true, output: paused(null) });
   else write({ protocolVersion: '1', runId, ok: false, error: { code: 'capture_failed', message: error instanceof Error ? error.message : 'BC Bid capture failed.' } });
+  // A resumable slice that fails here fails the run; temporary source failures were already returned as `retry`.
 } finally {
   lines.close();
 }

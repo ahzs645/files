@@ -204,7 +204,8 @@ describe('connector registry and manifest', () => {
     expect(allowlist.length).toBeLessThanOrEqual(64);
     for (const connector of CONNECTORS) {
       for (const item of connector.portals) { expect(allowlist).toContain(item.host); expect(new URL(item.url).hostname).toBe(item.host); }
-      expect(action.resourceLimits.maxNetworkRequests).toBeGreaterThanOrEqual(connector.portals.length * connector.requestsPerPortal);
+      // Resumable: one portal per step, and the request budget applies to each step.
+      expect(action.resourceLimits.maxNetworkRequests).toBeGreaterThanOrEqual(connector.requestsPerPortal);
       expect(action.inputSchema.properties.sourceId.enum).toContain(connector.id);
       if (connector.needsSession) expect(action.networkSession).toEqual({ cookies: 'run', formPost: true });
     }

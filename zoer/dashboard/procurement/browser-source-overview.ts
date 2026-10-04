@@ -7,11 +7,11 @@ import { sourceErrorText } from './source-errors';
  * `readConnectorCollection`). Honest states: an unreadable state is "Unknown"; a site that waited, was skipped or
  * failed keeps its earlier count and last success, and none of them is ever shown as 0 notices.
  */
-export type BrowserSiteStatus = 'collected' | 'waiting' | 'not-run' | 'failed' | 'outside-hours' | 'unknown';
+export type BrowserSiteStatus = 'collected' | 'waiting' | 'not-run' | 'failed' | 'outside-hours' | 'disallowed' | 'unknown';
 export const BROWSER_STATUS_TEXT: Record<BrowserSiteStatus, string> = {
-  collected: 'Collected', waiting: 'Waiting for you', 'not-run': 'Not run', failed: 'Failed', 'outside-hours': 'Outside visiting hours', unknown: 'Unknown',
+  collected: 'Collected', waiting: 'Waiting for you', 'not-run': 'Not run', failed: 'Failed', 'outside-hours': 'Outside visiting hours', disallowed: 'robots.txt disallows collection', unknown: 'Unknown',
 };
-const TONE: Record<BrowserSiteStatus, Tone> = { collected: 'good', waiting: 'warn', 'not-run': 'idle', failed: 'warn', 'outside-hours': 'idle', unknown: 'idle' };
+const TONE: Record<BrowserSiteStatus, Tone> = { collected: 'good', waiting: 'warn', 'not-run': 'idle', failed: 'warn', 'outside-hours': 'idle', disallowed: 'idle', unknown: 'idle' };
 
 export interface BrowserSiteRow {
   site: BrowserSite; status: BrowserSiteStatus; statusText: string; tone: Tone;
@@ -37,6 +37,8 @@ export function browserSiteRows(state: ConnectorCollection | null | undefined, s
     if (!entry) return make('not-run');
     if (entry.status === 'complete' || entry.status === 'incomplete') return make('collected');
     if (entry.status === 'waiting') return make('waiting');
+    // Disallowed by robots.txt: older versions saved it as `failed`, 0.34+ as `not-run` (deliberately not loaded).
+    if (entry.error?.code === 'robots_disallowed') return make('disallowed');
     if (entry.status === 'failed') return make('failed');
     return make(entry.error?.code === 'outside_visit_window' ? 'outside-hours' : 'not-run');
   });
@@ -46,7 +48,7 @@ export function browserSummaryText(rows: BrowserSiteRow[]): string {
   if (rows.every(row => row.status === 'unknown')) return `${rows.length} sites · status unknown`;
   const by = (status: BrowserSiteStatus) => rows.filter(row => row.status === status).length;
   return [`${by('collected')} of ${rows.length} collected`, by('waiting') && `${by('waiting')} waiting for you`, by('failed') && `${by('failed')} failed`,
-    by('outside-hours') && `${by('outside-hours')} outside visiting hours`, by('not-run') && `${by('not-run')} not run`].filter(Boolean).join(' · ');
+    by('outside-hours') && `${by('outside-hours')} outside visiting hours`, by('disallowed') && `${by('disallowed')} disallowed by robots.txt`, by('not-run') && `${by('not-run')} not run`].filter(Boolean).join(' · ');
 }
 
 /** A `HHMM-HHMM` UTC window in the reader's own time, e.g. "2:00 a.m.–5:00 a.m." (date-independent enough for a hint). */

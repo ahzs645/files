@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { collectAllSources, collectConnectorSource, collectProcurementSource } from '../zoer/src/connector-collection';
+import { collectConnectorSource } from '../zoer/src/connector-collection';
+import { collectAllSources, collectProcurementSource, collectionSlice, PORTAL_RETRIES, type SliceEnvelope } from '../zoer/src/collection-run';
 import { bidsAndTenders } from '../zoer/src/connectors/bidsandtenders';
 import { CONNECTORS } from '../zoer/src/connectors';
 import { SITE_PORTALS } from '../zoer/dashboard/procurement/site-portals';
@@ -94,7 +95,7 @@ describe('connector collection (bids&tenders)', () => {
     // Only GET and form POST; headers within Zoer's allowed set; cookies are the host's business.
     for (const request of db.requests) {
       expect(['GET', 'POST']).toContain(request.method);
-      expect(Object.keys(request.headers).every(name => ['accept', 'content-type', 'user-agent'].includes(name))).toBe(true);
+      expect(Object.keys(request.headers).every(name => ['accept', 'content-type'].includes(name))).toBe(true);
     }
     expect(db.states.get(KEY)).toEqual(result);
     const recordCommits = db.commits.filter(commit => commit.records?.length);
@@ -204,18 +205,6 @@ describe('connector collection (bids&tenders)', () => {
     expect(db.requests.some(request => request.url.includes('nanaimo'))).toBe(true);
   });
 
-  it('stops starting portals near the action timeout and leaves the rest for resume', async () => {
-    const db = stack();
-    let current = Date.parse(t0);
-    db.onFetch = url => { if (url.includes('burnaby')) current = Date.parse(t0) + 8 * 60_000; };
-    const result = await collectConnectorSource(db.host, { sourceId: 'bidsandtenders', portals: ['nanaimo', 'burnaby', 'princegeorge'] }, 'run-1', () => new Date(current).toISOString());
-    expect(result).toMatchObject({ status: 'incomplete', error: { code: 'time_budget' }, attempt: { open: true }, portals: { burnaby: { status: 'complete' }, nanaimo: { status: 'not-run' }, princegeorge: { status: 'not-run' } } });
-    db.requests.length = 0; db.onFetch = undefined;
-    const resumed = await collectConnectorSource(db.host, { sourceId: 'bidsandtenders', portals: ['nanaimo', 'burnaby', 'princegeorge'] }, 'run-2', clock('2026-10-03T19:00:00Z'));
-    expect(resumed.status).toBe('complete');
-    expect(db.requests.some(request => request.url.includes('burnaby'))).toBe(false);
-  });
-
   it('refuses to run beside a live lease, and takes over an expired one', async () => {
     const live = stack({ prior: { status: 'running', ownerRunId: 'other', leaseUntil: '2026-10-03T18:05:00Z', portals: {} } });
     await expect(collectConnectorSource(live.host, { sourceId: 'bidsandtenders', portals: ['nanaimo'] }, 'run-1', clock())).rejects.toThrow('already running');
@@ -244,14 +233,16 @@ describe('connector collection (bids&tenders)', () => {
     await expect(collectConnectorSource(async () => ({ primary: false }), { sourceId: 'bidsandtenders' }, 'run-1')).rejects.toThrow('Initialize');
   });
 
-  it('collects all 25 portals by default within the manifest request budget', async () => {
+  it('collects all 25 portals by default, each portal within the per-step request budget', async () => {
     const db = stack();
     const result = await collectConnectorSource(db.host, { sourceId: 'bidsandtenders' }, 'run-1', clock());
     expect(Object.keys(result.portals)).toHaveLength(25);
     expect(result.status).toBe('complete');
     const action = (manifest as any).integration.actions.find((item: any) => item.id === 'procurement.collect');
-    expect(db.requests.length).toBeLessThanOrEqual(action.resourceLimits.maxNetworkRequests);
-    expect(db.requests.length).toBeLessThanOrEqual(25 * bidsAndTenders.requestsPerPortal);
+    const perPortal = new Map<string, number>();
+    for (const request of db.requests) { const host = new URL(request.url).hostname; perPortal.set(host, (perPortal.get(host) ?? 0) + 1); }
+    // One portal is one resumable step, and Zoer's request budget applies per step.
+    expect(Math.max(...perPortal.values())).toBeLessThanOrEqual(Math.min(action.resourceLimits.maxNetworkRequests, bidsAndTenders.requestsPerPortal));
   });
 
   it('routes CanadaBuys to its own checksummed path', async () => {
@@ -281,9 +272,8 @@ describe("collect all sources (sourceId: 'all', one schedule)", () => {
     expect((result as any).failed).toBeUndefined();
     const action = (manifest as any).integration.actions.find((item: any) => item.id === 'procurement.collect');
     expect(action.inputSchema.properties.sourceId.enum).toContain('all');
-    expect(db.requests.length).toBeLessThanOrEqual(action.resourceLimits.maxNetworkRequests);
-    // The budget covers the worst case of every source: CanadaBuys' one download plus each connector's portals.
-    expect(action.resourceLimits.maxNetworkRequests).toBeGreaterThanOrEqual(1 + CONNECTORS.reduce((sum, connector) => sum + connector.requestsPerPortal * connector.portals.length, 0));
+    // The per-step budget covers the largest step: CanadaBuys' one download, or one portal of any connector.
+    expect(action.resourceLimits.maxNetworkRequests).toBeGreaterThanOrEqual(Math.max(1, ...CONNECTORS.map(connector => connector.requestsPerPortal)));
   });
 
   it('records a failing source and still collects the others without failing the run', async () => {
@@ -319,29 +309,25 @@ describe("collect all sources (sourceId: 'all', one schedule)", () => {
     expect(db.records.get('opportunity:canadabuys:tender:1:').title).toBe('Tender 1 (amended)');
   });
 
-  it('shares the time limit: CanadaBuys yields after its share, and sources not reached are left for the next run', async () => {
+  it('imports the whole CanadaBuys file across steps, then every connector: no source is left for a later run', async () => {
     const db = stack(); db.canadabuys = cbCsv(250);
     let current = Date.parse(t0);
-    // Each CanadaBuys batch "takes" 3 minutes; the first portal then runs past the run's soft limit.
+    // Each CanadaBuys batch "takes" 3 minutes, so a 4-minute pass imports two batches and hands over.
     const host = async (method: string, input: any) => {
       if (method === 'catalog.commit' && input.records?.length && input.records[0].data.sourceId === 'canadabuys') current += 3 * 60_000;
       return db.host(method, input);
     };
-    db.onFetch = url => { if (url.includes('abbotsford')) current = Date.parse(t0) + 8 * 60_000; };
-    const result = await collectAllSources(host, { sourceId: 'all' }, 'run-1', () => new Date(current).toISOString());
-    expect(db.states.get(COLLECTION_KEY)).toMatchObject({ status: 'paused', receipt: { offset: 200 } });
-    expect(result.sources[0]).toMatchObject({ outcome: 'paused' });
-    expect(result.sources[1]).toMatchObject({ sourceId: 'bidsandtenders', outcome: 'partial', error: { code: 'time_budget' } });
-    // Connectors after the soft limit do not start; their state is untouched and the next run collects them.
-    expect(result.sources[2]).toMatchObject({ sourceId: 'municipal-sites', outcome: 'not-run', error: { code: 'time_budget' } });
-    expect(db.states.has(connectorCollectionKey('municipal-sites'))).toBe(false);
-    expect(result.summary.failedSources).toBe(0);
+    const result = await collectAllSources(host, { sourceId: 'all' }, 'run-1', () => new Date(current += 1000).toISOString());
+    expect(db.states.get(COLLECTION_KEY)).toMatchObject({ status: 'complete', receipt: { offset: 250 } });
+    expect(db.requests.filter(request => request.url === CANADABUYS_DATASET_URL)).toHaveLength(2);
+    expect(result.sources.map((source: any) => source.outcome)).toEqual(['complete', 'complete', 'complete']);
+    expect(result.summary).toMatchObject({ total: 3, complete: 3, notRun: 0, failedSources: 0 });
   });
 
   it('ends the run on a Zoer pause or a spent request budget, and leaves a busy source to its owner', async () => {
     const pause = Object.assign(new Error('Paused for Zoer update'), { code: 'ZOER_PAUSED' });
     const paused = stack(); paused.canadabuys = cbCsv(1); paused.search.nanaimo = pause;
-    await expect(collectAllSources(paused.host, { sourceId: 'all' }, 'run-1', clock())).rejects.toBe(pause);
+    await expect(collectAllSources(paused.host, { sourceId: 'all' }, 'run-1', clock())).rejects.toThrow('Paused for Zoer update');
     expect(paused.states.get(KEY).status).toBe('paused');
     const spent = stack(); spent.canadabuys = new Error('Network request budget exhausted.');
     await expect(collectAllSources(spent.host, { sourceId: 'all' }, 'run-1', clock())).rejects.toThrow('budget exhausted');
@@ -360,5 +346,170 @@ describe("collect all sources (sourceId: 'all', one schedule)", () => {
       await expect(collectProcurementSource(db.host, input, 'run-1')).rejects.toThrow('Invalid');
     }
     expect(db.requests).toHaveLength(0); expect(db.commits).toHaveLength(0);
+  });
+});
+
+/**
+ * Zoer's resumable dispatcher in miniature (S1): runs slices with the last checkpoint, counts consecutive retries in
+ * `attempt`, enforces the 64 KiB checkpoint cap and stops at `done`, a pause or `maxSlices`.
+ */
+async function drive(host: (method: string, input: any) => Promise<any>, input: any, options: { now?: () => string; checkpoint?: unknown; maxSlices?: number; resumedAfter?: string } = {}) {
+  const envelopes: SliceEnvelope[] = [];
+  let checkpoint: unknown = options.checkpoint ?? null, attempt = 0;
+  for (let step = 1; step <= (options.maxSlices ?? 500); step++) {
+    const envelope = await collectionSlice(host, 'procurement.collect', input, 'run-r', { step, checkpoint, attempt, deadlineAt: '2026-10-03T19:00:00.000Z', ...(options.resumedAfter && step === 1 ? { resumedAfter: options.resumedAfter } : {}) }, { now: options.now ?? clock() });
+    envelopes.push(structuredClone(envelope));
+    if ('paused' in envelope) return { envelopes, checkpoint: envelope.checkpoint, output: undefined as any };
+    expect(Buffer.byteLength(JSON.stringify((envelope as any).checkpoint ?? null))).toBeLessThanOrEqual(64 * 1024);
+    if (envelope.resumable === 'done') return { envelopes, checkpoint, output: envelope.output as any };
+    if (envelope.resumable === 'retry') { attempt++; checkpoint = envelope.checkpoint ?? checkpoint; continue; }
+    attempt = 0; checkpoint = JSON.parse(JSON.stringify(envelope.checkpoint));
+  }
+  return { envelopes, checkpoint, output: undefined as any };
+}
+const kinds = (envelopes: SliceEnvelope[]) => envelopes.map(envelope => 'paused' in envelope ? 'paused' : envelope.resumable);
+const refuse = (code: string, message: string) => Object.assign(new Error(message), { code });
+/** db.host with per-URL overrides for network.fetch (a response object or an error to throw). */
+const withFetch = (db: ReturnType<typeof stack>, override: (url: string, input: any) => any) => async (method: string, input: any) => {
+  if (method === 'network.fetch') { const value = override(input.url, input); if (value instanceof Error) { db.requests.push(input); throw value; } if (value) { db.requests.push(input); return value; } }
+  return db.host(method, input);
+};
+const PORTALS3 = { sourceId: 'bidsandtenders', portals: ['nanaimo', 'burnaby', 'princegeorge'] };
+
+describe('resumable collection (one portal per slice, S1)', () => {
+  it('collects one portal per slice with a small checkpoint, writes the slice deadline as the lease and returns the final state', async () => {
+    const db = stack();
+    const run = await drive(db.host, PORTALS3, { now: clock() });
+    expect(kinds(run.envelopes)).toEqual(['continue', 'continue', 'done']);
+    for (const envelope of run.envelopes) if (envelope.resumable === 'continue') expect(Buffer.byteLength(JSON.stringify(envelope.checkpoint))).toBeLessThan(1024);
+    expect(run.envelopes.map(envelope => (envelope as any).progress?.phase)).toEqual(['bids&tenders (BC): City of Burnaby', 'bids&tenders (BC): City of Nanaimo', 'bids&tenders (BC): done']);
+    expect(run.envelopes[0]).toMatchObject({ progress: { done: 1, total: 3, unit: 'items' } });
+    expect(run.output).toMatchObject({ sourceId: 'bidsandtenders', status: 'complete', leaseUntil: null, ownerRunId: 'run-r' });
+    // While the run works, older readers see it running until the slice deadline.
+    const leases = db.commits.map(commit => commit.entries?.[0]?.value).filter(value => value?.status === 'running').map(value => value.leaseUntil);
+    expect(new Set(leases)).toEqual(new Set(['2026-10-03T19:00:00.000Z']));
+  });
+
+  it('retries a portal the site asks to slow down for (429 Retry-After), leaving it untouched, then collects it', async () => {
+    const db = stack(); let refusals = 1;
+    const host = withFetch(db, url => url.includes('burnaby') && url.includes('/Tender/Search/') && refusals-- > 0 ? { status: 429, headers: {}, bodyBase64: '', retryAfterMs: 30_000 } : undefined);
+    const run = await drive(host, PORTALS3);
+    expect(kinds(run.envelopes)).toEqual(['retry', 'continue', 'continue', 'done']);
+    expect(run.envelopes[0]).toMatchObject({ resumable: 'retry', retryAfterMs: 30_000, error: { code: 'source_rate_limited' }, checkpoint: { portalIndex: 0 } });
+    expect(run.output.portals.burnaby).toMatchObject({ status: 'complete' });
+    expect(run.output.status).toBe('complete');
+  });
+
+  it(`after ${PORTAL_RETRIES} retries a lasting server error fails only that portal; the run carries on and succeeds`, async () => {
+    const db = stack();
+    const host = withFetch(db, url => url.includes('burnaby') && url.includes('/Tender/Search/') ? { status: 503, headers: {}, bodyBase64: '' } : undefined);
+    const run = await drive(host, PORTALS3);
+    expect(kinds(run.envelopes)).toEqual([...Array(PORTAL_RETRIES).fill('retry'), 'continue', 'continue', 'done']);
+    expect(run.output).toMatchObject({ status: 'incomplete', error: { code: 'portals_failed' }, portals: { burnaby: { status: 'failed', error: { code: 'source_http_error' } }, nanaimo: { status: 'complete' } } });
+    // 403 is not temporary: no retry.
+    const forbidden = stack();
+    const refused = await drive(withFetch(forbidden, url => url.includes('burnaby') && url.includes('/Tender/Search/') ? { status: 403, headers: {}, bodyBase64: '' } : undefined), PORTALS3);
+    expect(kinds(refused.envelopes)).toEqual(['continue', 'continue', 'done']);
+    expect(refused.output.portals.burnaby).toMatchObject({ status: 'failed', error: { code: 'source_forbidden' } });
+  });
+
+  it('maps Zoer crawl refusals: pacing waits retry with the host hint; robots.txt disallowing the search is an honest not-collected state', async () => {
+    const db = stack(); let waits = 1;
+    const host = withFetch(db, url => {
+      if (url.includes('nanaimo') && url.includes('/Tender/Search/')) return refuse('crawl_robots_disallowed', "nanaimo.bidsandtenders.ca's robots.txt does not allow /Module/Tenders/en/Tender/Search/1; nothing was requested.");
+      if (url.includes('princegeorge') && waits-- > 0) return refuse('crawl_wait', 'princegeorge.bidsandtenders.ca may be requested again in 12 s (one request per 5 s), longer than this request may wait; nothing was requested. [crawl retryAfterMs=12000]');
+      return undefined;
+    });
+    const run = await drive(host, PORTALS3);
+    expect(run.envelopes.find(envelope => !('paused' in envelope) && envelope.resumable === 'retry')).toMatchObject({ retryAfterMs: 12_000, error: { code: 'crawl_wait', message: expect.not.stringContaining('[crawl') } });
+    expect(run.output.portals.nanaimo).toMatchObject({ status: 'not-run', error: { code: 'robots_disallowed' } });
+    expect(run.output.portals.nanaimo.error.message).toContain("Nanaimo's robots.txt does not allow automated collection");
+    expect(run.output).toMatchObject({ status: 'incomplete', error: { code: 'robots_disallowed', message: '1 disallowed by robots.txt of 3 portal(s). Other portals were saved.' } });
+    expect(run.output.portals.princegeorge.status).toBe('complete');
+    // Unreadable robots.txt is a failure of that portal (Zoer reads it again within the hour).
+    const unreadable = stack();
+    const second = await drive(withFetch(unreadable, url => url.includes('burnaby') ? refuse('crawl_robots_unreadable', "burnaby.bidsandtenders.ca's robots.txt could not be read.") : undefined), PORTALS3);
+    expect(second.output.portals.burnaby).toMatchObject({ status: 'failed', error: { code: 'robots_unreadable' } });
+  });
+
+  it('pauses between portals for a deploy or the user and continues from the checkpoint without refetching saved portals', async () => {
+    const db = stack(), pause = refuse('ZOER_PAUSED', 'Paused for Zoer update');
+    let paused = false;
+    const host = withFetch(db, url => url.includes('nanaimo') && !paused ? (paused = true, pause) : undefined);
+    const first = await drive(host, PORTALS3);
+    expect(kinds(first.envelopes)).toEqual(['continue', 'paused']);
+    expect(db.states.get(KEY)).toMatchObject({ status: 'paused', leaseUntil: null, portals: { burnaby: { status: 'complete' } } });
+    db.requests.length = 0;
+    const resumed = await drive(host, PORTALS3, { checkpoint: first.checkpoint, resumedAfter: 'maintenance' });
+    expect(kinds(resumed.envelopes)).toEqual(['continue', 'done']);
+    expect(db.requests.some(request => request.url.includes('burnaby'))).toBe(false);
+    expect(resumed.output).toMatchObject({ status: 'complete', attempt: { startedAt: db.states.get(KEY).attempt.startedAt } });
+  });
+
+  it('is replay-safe: a slice run again after a restart skips what it already saved and saves each notice once', async () => {
+    const db = stack();
+    const one = await drive(db.host, PORTALS3, { maxSlices: 1 });
+    await drive(db.host, PORTALS3, { checkpoint: one.checkpoint, maxSlices: 1 });
+    // Zoer restarted after slice 2 committed but before it recorded its envelope: slice 2 runs again from slice 1's
+    // checkpoint. Nanaimo is already saved in this attempt (catalog state), so the replay goes straight to the next portal.
+    db.requests.length = 0;
+    const replay = await drive(db.host, PORTALS3, { checkpoint: one.checkpoint, resumedAfter: 'restart' });
+    expect(kinds(replay.envelopes)).toEqual(['done']);
+    expect(db.requests.some(request => request.url.includes('nanaimo') || request.url.includes('burnaby'))).toBe(false);
+    expect(replay.output.status).toBe('complete');
+    expect(saved(db, 'nanaimo')).toHaveLength(7); expect(saved(db, 'burnaby')).toHaveLength(9);
+  });
+
+  it('a cancel runs one cleanup slice that marks the source paused with the reason; the next run continues the attempt', async () => {
+    const db = stack();
+    const one = await drive(db.host, PORTALS3, { maxSlices: 1 });
+    const cleanup = await collectionSlice(db.host, 'procurement.collect', PORTALS3, 'run-r', { step: 2, checkpoint: one.checkpoint, attempt: 0, deadlineAt: '2026-10-03T19:00:00.000Z', cancelling: true }, { now: clock() });
+    expect(cleanup).toMatchObject({ resumable: 'done', output: { status: 'cancelled' } });
+    expect(db.states.get(KEY)).toMatchObject({ status: 'paused', leaseUntil: null, error: { code: 'cancelled' }, attempt: { open: true }, portals: { burnaby: { status: 'complete' } } });
+    db.requests.length = 0;
+    const next = await collectConnectorSource(db.host, PORTALS3, 'run-2', clock('2026-10-03T18:30:00Z'));
+    expect(next.status).toBe('complete');
+    expect(db.requests.some(request => request.url.includes('burnaby'))).toBe(false);
+  });
+
+  it('refuses a source another run is collecting under a different lock (all beside a single source)', async () => {
+    const live = stack({ prior: { status: 'running', ownerRunId: 'other', leaseUntil: '2026-10-03T18:30:00Z', portals: {} } });
+    await expect(drive(live.host, PORTALS3)).rejects.toThrow('already running');
+    expect(live.requests).toHaveLength(0);
+  });
+
+  it('CanadaBuys without maxBatches imports the whole daily file pass by pass; with maxBatches it does exactly that in one slice', async () => {
+    const db = stack(); db.canadabuys = cbCsv(250);
+    let current = Date.parse(t0);
+    const host = async (method: string, input: any) => {
+      if (method === 'catalog.commit' && input.records?.length) current += 3 * 60_000;
+      return db.host(method, input);
+    };
+    const run = await drive(host, { sourceId: 'canadabuys' }, { now: () => new Date(current += 1000).toISOString() });
+    expect(kinds(run.envelopes)).toEqual(['continue', 'done']);
+    expect(run.envelopes[0]).toMatchObject({ progress: { phase: 'CanadaBuys: importing the daily file', done: 200, total: 250, unit: 'rows' } });
+    expect(run.output).toMatchObject({ status: 'complete', receipt: { offset: 250 } });
+    const bounded = stack(); bounded.canadabuys = cbCsv(250);
+    const manual = await drive(bounded.host, { sourceId: 'canadabuys', mode: 'restart', maxBatches: 1 });
+    expect(kinds(manual.envelopes)).toEqual(['done']);
+    expect(manual.output).toMatchObject({ status: 'paused', receipt: { offset: 100 } });
+  });
+
+  it('retries a CanadaBuys server error without marking the source failed, and in `all` records a lasting failure and goes on', async () => {
+    const db = stack(); db.canadabuys = 503;
+    const run = await drive(db.host, { sourceId: 'all' });
+    expect(kinds(run.envelopes).slice(0, PORTAL_RETRIES + 1)).toEqual([...Array(PORTAL_RETRIES).fill('retry'), 'continue']);
+    expect(run.output).toMatchObject({ sourceId: 'all', status: 'incomplete', summary: { failedSources: 1, complete: 2 }, sources: [{ sourceId: 'canadabuys', outcome: 'failed', error: { code: 'source_http_error' } }, { outcome: 'complete' }, { outcome: 'complete' }] });
+    expect(db.states.get(COLLECTION_KEY).status).toBe('failed');
+    expect(run.output).not.toHaveProperty('failed');
+  });
+
+  it('keeps the `all` checkpoint far below 64 KiB even with long source errors', async () => {
+    const db = stack(); db.canadabuys = 404;
+    for (const portal of bidsAndTenders.portals) db.search[portal.id] = new Error('x'.repeat(5000));
+    const run = await drive(db.host, { sourceId: 'all' });
+    const largest = Math.max(...run.envelopes.map(envelope => Buffer.byteLength(JSON.stringify((envelope as any).checkpoint ?? null))));
+    expect(largest).toBeLessThan(4096);
+    expect(run.output.sources.map((source: any) => source.outcome)).toEqual(['failed', 'failed', 'complete']);
   });
 });

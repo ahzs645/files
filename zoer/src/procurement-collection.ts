@@ -12,10 +12,16 @@ export interface CollectionInput { sourceId: 'canadabuys'; mode?: 'resume' | 're
  * starts the new one from its beginning (plain `resume` fails once the daily file changes); `stopAt` (epoch ms)
  * starts no batch after that time, leaving the cursor for the next run so later sources still get their turn.
  */
-export interface CanadaBuysRunOptions { restartOnChange?: boolean; stopAt?: number; /** Batch cap for time-bounded runs (with `stopAt`); replaces `input.maxBatches`. */ batchLimit?: number }
+export interface CanadaBuysRunOptions {
+  restartOnChange?: boolean; stopAt?: number; /** Batch cap for time-bounded runs (with `stopAt`); replaces `input.maxBatches`. */ batchLimit?: number;
+  /** `leaseUntil` to write while this run works (the resumable slice deadline); defaults to 10 minutes from now. */
+  leaseUntil?: () => string;
+  /** A failure the caller retries later in the run: the state is left running instead of being marked failed. */
+  deferFailure?: (error: unknown) => boolean;
+}
 const MAX_BYTES = 20 * 1024 * 1024;
 const LEASE_MS = 10 * 60_000;
-class CollectionError extends Error { constructor(message: string, readonly code: string) { super(message); } }
+class CollectionError extends Error { constructor(message: string, readonly code: string, readonly detail: { status?: number; retryAfterMs?: number } = {}) { super(message); } }
 const fail = (message: string, code: string): never => { throw new CollectionError(message, code); };
 
 /** A state-only or record+cursor transaction on one workspace state key, retried against current catalog revision. */
@@ -38,18 +44,22 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
   if (input.sourceId !== 'canadabuys' || (input.mode && !['resume', 'restart'].includes(input.mode)) ||
     !Number.isInteger(input.maxBatches ?? 1) || (input.maxBatches ?? 1) < 1 || (input.maxBatches ?? 1) > 20) throw new Error('Invalid CanadaBuys collection request.');
   if (!(await host('catalog.read', { ids: [] })).primary) throw new Error('Initialize the existing procurement catalog before collecting.');
-  const attemptedAt = now();
+  const attemptedAt = now(), lease = () => options.leaseUntil?.() ?? new Date(Date.parse(now()) + LEASE_MS).toISOString();
   const stateEntry = (value: any) => [{ key: COLLECTION_KEY, value }];
   const owned = (state: any) => { if (state.ownerRunId !== runId) fail('Another collection owns this checkpoint; resume after it finishes.', 'collection_conflict'); };
   let state = await transaction(host, async previous => {
     if (previous.status === 'running' && previous.ownerRunId !== runId && Date.parse(previous.leaseUntil) > Date.parse(attemptedAt)) fail('A CanadaBuys collection is already running.', 'collection_busy');
     const value = { ...previous, version: 1, sourceId: 'canadabuys', status: 'running', ownerRunId: runId,
-      lastAttemptedAt: attemptedAt, leaseUntil: new Date(Date.parse(attemptedAt) + LEASE_MS).toISOString(), error: null };
+      lastAttemptedAt: attemptedAt, leaseUntil: lease(), error: null };
     return { entries: stateEntry(value) };
   });
   try {
-    const response = await host('network.fetch', { url: CANADABUYS_DATASET_URL, method: 'GET', headers: { accept: 'text/csv', 'user-agent': 'ZoerProcurement/0.24' } });
-    if (response.status !== 200) fail(`CanadaBuys returned HTTP ${response.status}. Saved records and the previous checkpoint are retained.`, response.status === 403 ? 'source_forbidden' : 'source_http_error');
+    // No User-Agent: Zoer's crawl policy sets it (robots.txt is off for this open-data file; see the manifest).
+    const response = await host('network.fetch', { url: CANADABUYS_DATASET_URL, method: 'GET', headers: { accept: 'text/csv' } });
+    if (response.status !== 200) {
+      throw new CollectionError(`CanadaBuys returned HTTP ${response.status}. Saved records and the previous checkpoint are retained.`, response.status === 403 ? 'source_forbidden' : response.status === 429 ? 'source_rate_limited' : 'source_http_error',
+        { status: response.status, ...(Number.isInteger(response.retryAfterMs) ? { retryAfterMs: response.retryAfterMs } : {}) });
+    }
     if (typeof response.bodyBase64 !== 'string' || response.bodyBase64.length > Math.ceil(MAX_BYTES / 3) * 4 + 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(response.bodyBase64)) fail('Source response is malformed or exceeds 20 MiB.', 'source_size');
     const bytes = Buffer.from(response.bodyBase64, 'base64');
     if (bytes.length > MAX_BYTES) fail('CanadaBuys source exceeds the 20 MiB collection limit.', 'source_size');
@@ -96,8 +106,7 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
         });
         // These exact rows and cursor are committed together; a failed batch never advances its receipt.
         verifyCanadaBuysImportReceipt(batch, saved);
-        const timestamp = now(), value = { ...current, receipt: { ...current.receipt, offset: start + batch.length },
-          leaseUntil: new Date(Date.parse(timestamp) + LEASE_MS).toISOString() };
+        const value = { ...current, receipt: { ...current.receipt, offset: start + batch.length }, leaseUntil: lease() };
         return { records: saved, history: saved.map(row => ({ runId, id: row.data.sourceKey, data: row.data })), entries: stateEntry(value) };
       });
     }
@@ -113,7 +122,8 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
       await transaction(host, async current => { owned(current); return { entries: stateEntry({ ...current, status: 'paused', leaseUntil: null, error: null }) }; }).catch(() => undefined);
       throw error;
     }
-    const message = (error as Error).message.slice(0, 2000), code = error instanceof CollectionError ? error.code : 'collection_failed';
+    if (options.deferFailure?.(error)) throw error;
+    const message = (error as Error).message.slice(0, 2000), code = error instanceof CollectionError ? error.code : typeof (error as any)?.code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test((error as any).code) ? (error as any).code : 'collection_failed';
     await transaction(host, async current => { owned(current); return { entries: stateEntry({ ...current, status: 'failed', leaseUntil: null, error: { code, message, at: now() } }) }; });
     throw error;
   }

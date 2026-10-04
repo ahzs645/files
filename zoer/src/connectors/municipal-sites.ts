@@ -1,6 +1,5 @@
 import { SITE_PORTALS, type SitePortal } from '../../dashboard/procurement/site-portals';
-import { isPauseError } from '../pause';
-import { ConnectorError, httpFailure } from './errors';
+import { ConnectorError, httpFailure, rethrowRunLimits } from './errors';
 import { decodeEntities, htmlToText } from './html';
 import type { ConnectorPortal, NetFetch, NoticeContact, PortalResult, SourceConnector } from './types';
 
@@ -443,10 +442,6 @@ export function listedAsClosed(row: SiteRow & { html: Partial<Record<Role, strin
   return closing.precision === 'date' && closing.at! < zonedIso(Date.parse(now), portal.timeZone).slice(0, 10);
 }
 
-const rethrowHostLimits = (error: unknown) => {
-  // A Zoer pause or an exhausted request budget ends the portal; any other notice-page problem is only a warning.
-  if (isPauseError(error) || /budget exhausted|network_limit/i.test(String((error as Error)?.message ?? '')) || (error as any)?.code === 'network_limit') throw error;
-};
 
 export async function collectSitePortal(fetch: NetFetch, base: ConnectorPortal, context: { now: () => string }): Promise<PortalResult> {
   const portal = SITE_PORTALS.find(candidate => candidate.id === base.id);
@@ -458,7 +453,7 @@ export async function collectSitePortal(fetch: NetFetch, base: ConnectorPortal, 
     let url: string | undefined = first;
     for (let n = 0; url && n < MAX_PAGES; n++) {
       const response = await fetch({ url, accept: 'text/html' });
-      if (response.status !== 200) throw httpFailure(`${portal.label} bids page`, response.status);
+      if (response.status !== 200) throw httpFailure(`${portal.label} bids page`, response.status, response.retryAfterMs);
       const parsed = parseListing(portal, response.text);
       for (const row of parsed.rows) {
         const id = noticeId(portal, row);
@@ -480,7 +475,7 @@ export async function collectSitePortal(fetch: NetFetch, base: ConnectorPortal, 
         const response = await fetch({ url, accept: 'text/html' });
         const page = response.status === 200 ? parseNoticePage(response.text, url) : undefined;
         if (page) pages.set(id, page); else failures.push(response.status === 200 ? 'unrecognized page' : `HTTP ${response.status}`);
-      } catch (error) { rethrowHostLimits(error); failures.push((error as Error)?.message?.slice(0, 120) || 'request failed'); }
+      } catch (error) { rethrowRunLimits(error); failures.push((error as Error)?.message?.slice(0, 120) || 'request failed'); }
     }
     if (open.length > MAX_DETAILS) warnings.push(`Only the first ${MAX_DETAILS} of ${open.length} notice pages were read this run; the rest carry listing fields only.`);
   }

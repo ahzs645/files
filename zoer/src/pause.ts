@@ -53,7 +53,10 @@ export function createHostChannel(read: () => Promise<any>, write: (value: unkno
   };
   const failure = (response: any) => {
     const message = response?.error?.message ?? 'Zoer host call failed.';
-    return response?.error?.code === PAUSE_CODE || /paused for zoer update/i.test(message) ? new ZoerPausedError(message) : new Error(message);
+    if (response?.error?.code === PAUSE_CODE || /paused for zoer update/i.test(message)) return new ZoerPausedError(message);
+    // Keep the host's code (`crawl_robots_disallowed`, `network_limit`, …) so collection can map it to a portal state.
+    const code = response?.error?.code;
+    return typeof code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(code) ? Object.assign(new Error(message), { code }) : new Error(message);
   };
   return { next, request, failure, pauseRequested: () => pauseRequested };
 }

@@ -5,6 +5,7 @@ import { Btn, Modal } from '@zoer/plugin-ui/controls';
 import { ReviewModelSelector } from '@zoer/plugin-ui/analysis';
 import { host } from '../bridge';
 import { downloadCsvWithManifest, downloadText, manifestNote } from '../export';
+import { BUNDLE_MAX_NOTICES, downloadDocumentBundle, sizeText } from '../document-bundle';
 import { REVIEW_KEY, startPipeline, useReviewInvalidate } from './actions';
 import { toneOf } from './DimensionChips';
 import { evidenceScopeOf, type RowReview } from './opportunity-queries';
@@ -79,12 +80,21 @@ export function SelectionActions({ snapshot, workspace, onError }: { snapshot: S
       setNote(manifestNote(manifest));
     } catch (e) { onError((e as Error).message); } finally { setBusy(''); }
   };
+  /** S2: the saved files of the selected notices and the selection as CSV, in one zip built and verified by Zoer. */
+  const bundle = async () => {
+    setBusy('zip'); setNote('');
+    try {
+      const result = await downloadDocumentBundle(host, snapshot.ids, { scope: snapshot.origin === 'manual' ? 'ticked notices' : 'all matching notices' });
+      setNote(`Downloaded ${result.name}: ${result.documents} file${result.documents === 1 ? '' : 's'} (${sizeText(result.bytes)})${result.withoutFiles ? `; ${result.withoutFiles} notice${result.withoutFiles === 1 ? ' has' : 's have'} no saved files and ${result.withoutFiles === 1 ? 'is' : 'are'} in the CSV only` : ''}.`);
+    } catch (e) { onError((e as Error).message); } finally { setBusy(''); }
+  };
   const pipelineBlocker = workspace ? '' : 'Triage and extraction need the review workspace.';
   return <>
     <Btn size="sm" variant="secondary" disabled={!!pipelineBlocker} tooltip={pipelineBlocker || 'Classify from the saved notice only'} onClick={() => start('triage')}>Triage from notice</Btn>
     <Btn size="sm" variant="secondary" disabled={!!pipelineBlocker} tooltip={pipelineBlocker || 'Extract requirements and facts from the notice and readable documents'} onClick={() => start('extract')}>Extract requirements</Btn>
     <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void download('csv')}>{busy === 'csv' ? 'Exporting…' : 'Export CSV'}</Btn>
     <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void download('json')}>{busy === 'json' ? 'Exporting…' : 'Export JSON'}</Btn>
+    <Btn size="sm" variant="secondary" disabled={!!busy || snapshot.ids.length > BUNDLE_MAX_NOTICES} tooltip={snapshot.ids.length > BUNDLE_MAX_NOTICES ? `Select at most ${BUNDLE_MAX_NOTICES} notices` : 'Saved documents of these notices and a CSV, as one zip'} onClick={() => void bundle()}>{busy === 'zip' ? 'Building zip…' : 'Download all documents'}</Btn>
     {note && <span role="status" className="rw-o-muted">{note}</span>}
     {open && <PipelinePreflight snapshot={open.snapshot} stage={open.stage} onClose={() => setOpen(null)} />}
   </>;

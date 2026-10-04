@@ -4,12 +4,13 @@ import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { useWorkspace } from '../backend';
 import { hostHref, navigatePlugin } from '../navigation';
-import { runProcurementAction } from './state-client';
 import { PROCUREMENT_SOURCE_ADAPTERS, COLLECTION_KEY } from './source-adapters';
 import { CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
-import { CONNECTOR_SOURCES, COLLECT_ACTION, COLLECT_ALL, PORTAL_COUNT_SQL, collectTarget, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, scheduleCovers, scheduleTargetFor, scheduledCollectInput, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
-import { findSchedule, intervalText, scheduleState, type ScheduleRow } from './schedule-state';
-import { ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
+import { CONNECTOR_SOURCES, COLLECT_ACTION, PORTAL_COUNT_SQL, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
+import { findSchedule, scheduleState, type ScheduleRow } from './schedule-state';
+import { SCHEDULES_KEY, ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
+import { SCHEDULED_SOURCES, isLive, liveRunFor, runRetryPreset, saveSourceSchedule, sourceSchedule, type RecentRun } from './source-schedules';
+import { CollectionRuns, PRESETS_KEY, RUNS_KEY, ScheduleNotice, usePresets, useRecentRuns } from './CollectionRuns';
 import { LINK_SOURCES } from './link-sources';
 import { CanadaBuysImport } from './CanadaBuysImport';
 import { BrowserSourcesCard } from './BrowserSourcesCard';
@@ -17,11 +18,11 @@ import { INVENTORY_SQL, sourceName, sql } from './display';
 import { shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 
+const BC_BID_ACTIONS = ['scrape.full', 'scrape.targeted', 'scrape.sample', 'awards.history'];
 const BC_CHECKPOINTS = [['checkpoint:full', 'Current opportunities'], ['checkpoint:awards', 'Historical awards'], ['checkpoint:awards:recent', 'Recent awards']] as const;
 const when = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : typeof value === 'number' ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
-const label = (id: string | null) => id === 'all' ? 'all sources' : id ? CONNECTOR_SOURCES.find(source => source.id === id)?.label ?? sourceName(id) : 'an unknown source';
-/** "every day for CanadaBuys", for the one-schedule-per-action notice. */
-const describeCollect = (row: ScheduleRow) => `collect ${label(collectTarget(row))} ${intervalText(row.intervalHours).toLowerCase()}`;
+const label = (id: string | null) => id === 'all' ? 'all sources' : id === 'canadabuys' ? 'CanadaBuys' : id ? CONNECTOR_SOURCES.find(source => source.id === id)?.label ?? sourceName(id) : 'an unknown source';
+const LABELS: Record<string, string> = Object.fromEntries(SCHEDULED_SOURCES.map(id => [id, label(id)]));
 const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
 function Card({ id, name, region, status, tone, stats, actions, children, wide }: { id: string; name: string; region: string; status: string; tone: Tone; stats: [string, ReactNode][]; actions: ReactNode; children?: ReactNode; wide?: boolean }) {
@@ -63,7 +64,8 @@ export function Sources() {
   const inventory = useQuery({ queryKey: ['catalog', 'procurement-inventory'], enabled: !!model, queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60000 });
   const keys = [COLLECTION_KEY, ...BC_CHECKPOINTS.map(([key]) => key), ...CONNECTOR_SOURCES.map(source => collectionKey(source.id))];
   const health = useQuery({ queryKey: ['catalog', 'procurement-health', keys], queryFn: () => host('catalog.workspace', { keys }), refetchInterval: 5000 });
-  const schedules = useSchedules();
+  const schedules = useSchedules(), presets = usePresets(), recent = useRecentRuns();
+  const runs: RecentRun[] | undefined = recent.data;
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState(''), [batches, setBatches] = useState('5'), [importOpen, setImportOpen] = useState(false);
   const [scheduleFor, setScheduleFor] = useState('');
   const saved = (source: string, kind = 'opportunity') => inventory.error ? 'Unknown' : !inventory.data ? 'Loading…' : (inventory.data ?? []).filter(row => row.sourceId === source && row.kind === kind).reduce((sum, row) => sum + Number(row.count), 0).toLocaleString();
@@ -71,7 +73,9 @@ export function Sources() {
   const entry = (key: string) => entries.find((item: any) => item.key === key)?.value;
   const collection = entry(COLLECTION_KEY);
   const checkpoints = BC_CHECKPOINTS.map(([key, label]) => ({ key, label, ...bcCheckpointHealth(key, entry(key)) }));
-  const runs = model?.runs ?? [], active = runs.find((run: any) => ['running', 'stopping'].includes(run.status)), lastGood = runs.find((run: any) => run.status === 'succeeded');
+  // BC Bid status from Zoer's run history of its scrape actions (`runs.recent`); older Zoer: the workspace run list.
+  const bcRuns: any[] = runs ? runs.filter(run => BC_BID_ACTIONS.includes(run.actionId)).map(run => ({ status: run.status, live: isLive(run), completedAt: run.finishedAt, startedAt: run.createdAt })) : (model?.runs ?? []).map((run: any) => ({ ...run, live: ['running', 'stopping'].includes(run.status) }));
+  const active = bcRuns.find(run => run.live), lastGood = bcRuns.find(run => run.status === 'succeeded');
   const bcIssue = checkpoints.some(item => item.error);
   const importedAt = (inventory.data ?? []).filter(row => row.sourceId === 'canadabuys').map(row => row.importedAt).filter(Boolean).sort().at(-1);
   // Per-connector state; `undefined` while unread or unreadable (shown as unknown), `null` when never collected.
@@ -79,31 +83,43 @@ export function Sources() {
     if (!health.data) return [source.id, { state: undefined }];
     try { return [source.id, { state: readConnectorCollection(entry(collectionKey(source.id)), source.id) }]; } catch (e) { return [source.id, { state: undefined, error: (e as Error).message }]; }
   }));
-  const collectSchedule = findSchedule(schedules.data, COLLECT_ACTION), bcSchedule = findSchedule(schedules.data, 'scrape.full');
-  const nextRun = (sourceId: string): ReactNode => schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : scheduleCovers(collectSchedule, sourceId) ? <ScheduleBadge row={collectSchedule} /> : 'Not scheduled';
-  const collect = async (key: string, input: Record<string, unknown>, done: string) => {
+  const bcSchedule = findSchedule(schedules.data, 'scrape.full');
+  const scheduleOf = (sourceId: string) => sourceSchedule(schedules.data, presets.data, sourceId);
+  const nextRun = (sourceId: string): ReactNode => schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : scheduleOf(sourceId) ? <ScheduleBadge row={scheduleOf(sourceId)} /> : 'Not scheduled';
+  const scheduledCount = SCHEDULED_SOURCES.filter(id => scheduleOf(id)?.enabled).length;
+  /** Starts a run and returns at once: collection is a resumable job; its progress shows on the source and under Collection runs. */
+  const start = async (key: string, begin: () => Promise<unknown>, done: string) => {
     setBusy(key); setError(''); setMessage('');
-    try { await runProcurementAction(COLLECT_ACTION, input); await client.invalidateQueries({ queryKey: ['catalog'] }); setMessage(done); }
+    try { await begin(); setMessage(done); await client.invalidateQueries({ queryKey: RUNS_KEY }); }
     catch (e) { setError((e as Error).message); await health.refetch(); } finally { setBusy(''); }
   };
-  const collectCanadaBuys = (mode: 'resume' | 'restart') => collect('canadabuys', { sourceId: 'canadabuys', mode, maxBatches: Number(batches) }, 'CanadaBuys collection finished. Check the receipt for coverage.');
+  const collect = (key: string, input: Record<string, unknown>, what: string) => start(key, () => host('action', { actionId: COLLECT_ACTION, input }), `${what} collection started. Progress shows below; you can leave this page.`);
+  const collectCanadaBuys = (mode: 'resume' | 'restart') => collect('canadabuys', { sourceId: 'canadabuys', mode, maxBatches: Number(batches) }, 'CanadaBuys');
+  const live = (sourceId: string) => liveRunFor(runs, sourceId);
+  const canadaBuysRun = live('canadabuys');
 
   // A run that stopped part-way through the day's file (batch limit or time share) is not "Collected" yet.
   const cursor = collection?.receipt, canadaBuysPaused = collection?.status === 'paused'
     ? Number.isInteger(cursor?.offset) && Number.isInteger(cursor?.totalRecords) ? `Part-way · ${cursor.offset.toLocaleString()} of ${cursor.totalRecords.toLocaleString()}` : 'Part-way; continues next run'
     : undefined;
+  const canadaBuysStatus = (): { tone: Tone; status: string } => {
+    if (busy === 'canadabuys') return { tone: 'busy', status: 'Starting' };
+    const state = canadaBuysRun ? connectorStatus(null, Date.now(), canadaBuysRun) : null;
+    if (state) return { tone: state.tone, status: state.text };
+    return { tone: collection?.error ? 'warn' : canadaBuysPaused ? 'idle' : collection?.lastSuccessAt ? 'good' : 'idle', status: !health.data ? 'Status unknown' : collection?.error ? 'Needs attention' : canadaBuysPaused ?? (collection?.lastSuccessAt ? 'Collected' : 'Not collected') };
+  };
   const overview: OverviewRow[] = [
     { id: 'bc-bid', name: 'BC Bid', region: 'British Columbia · browser scraping', tone: active ? 'busy' : bcIssue ? 'warn' : lastGood ? 'good' : 'idle', status: active ? 'Scraping now' : bcIssue ? 'Needs attention' : lastGood ? 'Up to date' : 'Not scraped yet',
       saved: saved('bc-bid'), lastSuccess: when(lastGood?.completedAt ?? lastGood?.startedAt), next: schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : bcSchedule ? <ScheduleBadge row={bcSchedule} /> : 'Not scheduled',
       action: <Btn size="sm" variant="secondary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn> },
-    { id: 'canadabuys', name: 'CanadaBuys', region: 'Canada · official dataset', tone: busy === 'canadabuys' ? 'busy' : collection?.error ? 'warn' : canadaBuysPaused ? 'idle' : collection?.lastSuccessAt ? 'good' : 'idle', status: busy === 'canadabuys' ? 'Collecting' : !health.data ? 'Status unknown' : collection?.error ? 'Needs attention' : canadaBuysPaused ?? (collection?.lastSuccessAt ? 'Collected' : 'Not collected'),
+    { id: 'canadabuys', name: 'CanadaBuys', region: 'Canada · official dataset', ...canadaBuysStatus(),
       saved: saved('canadabuys'), lastSuccess: health.data ? when(collection?.lastSuccessAt) : 'Unknown', next: nextRun('canadabuys'),
-      action: <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Collecting…' : 'Collect'}</Btn> },
+      action: <Btn size="sm" variant="secondary" disabled={!!busy || !!canadaBuysRun} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Starting…' : 'Collect'}</Btn> },
     ...CONNECTOR_SOURCES.map((source): OverviewRow => {
-      const { state } = connectors.get(source.id)!, status = connectorStatus(state), running = busy.startsWith(source.id);
-      return { id: source.id, name: source.label, region: `${source.region} · ${source.portals.length} portals`, tone: running ? 'busy' : status.tone, status: running ? 'Collecting' : status.text,
+      const { state } = connectors.get(source.id)!, run = live(source.id), status = connectorStatus(state, Date.now(), run), starting = busy.startsWith(source.id);
+      return { id: source.id, name: source.label, region: `${source.region} · ${source.portals.length} portals`, tone: starting ? 'busy' : status.tone, status: starting ? 'Starting' : status.text,
         saved: saved(source.id), lastSuccess: state === undefined ? 'Unknown' : when(state?.lastSuccessAt), next: nextRun(source.id),
-        action: <Btn size="sm" variant="secondary" disabled={!!busy || status.text === 'Collecting'} onClick={() => void collect(source.id, { sourceId: source.id }, `${source.label} collection finished. Check each portal below.`)}>{running ? 'Collecting…' : 'Collect'}</Btn> };
+        action: <Btn size="sm" variant="secondary" disabled={!!busy || !!run} onClick={() => void collect(source.id, { sourceId: source.id }, source.label)}>{starting ? 'Starting…' : 'Collect'}</Btn> };
     }),
     // Saved notices from a source this version has no card for still get a row, so nothing saved goes unseen.
     ...[...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))].filter(id => id !== 'bc-bid' && id !== 'canadabuys' && id !== 'browser-sites' && !CONNECTOR_SOURCES.some(source => source.id === id)).map((id): OverviewRow => ({
@@ -113,7 +129,8 @@ export function Sources() {
   return <section className="procurement-workspace pc-sources" aria-label="Sources">
     {(error || health.error || inventory.error) && <p role="alert">{error || health.error?.message || inventory.error?.message}</p>}
     {message && <p role="status">{message}</p>}
-    <Overview rows={overview} schedule={<div className="pc-overview-schedule"><span>Scheduled collection</span>{schedules.error ? <span className="pc-status" data-tone="warn">Unknown</span> : schedules.isPending ? <span className="pc-status">Loading…</span> : <ScheduleBadge row={collectSchedule} label={collectSchedule && collectTarget(collectSchedule) !== COLLECT_ALL ? `${scheduleState(collectSchedule).status} · ${label(collectTarget(collectSchedule))} only` : undefined} />}<Btn size="sm" variant="secondary" onClick={() => setScheduleFor(COLLECT_ALL)}>Schedule all sources</Btn></div>} />
+    <ScheduleNotice rows={schedules.data} presets={presets.data} labels={LABELS} />
+    <Overview rows={overview} schedule={<div className="pc-overview-schedule"><span>Scheduled collection</span>{schedules.error || presets.error ? <span className="pc-status" data-tone="warn">Unknown</span> : schedules.isPending || presets.isPending ? <span className="pc-status">Loading…</span> : <span className="pc-status" data-tone={scheduledCount ? 'good' : 'idle'}>{scheduledCount} of {SCHEDULED_SOURCES.length} sources on</span>}</div>} />
     <div className="pc-source-grid">
       <Card id="bc-bid" name="BC Bid" region="British Columbia · browser scraping" tone={overview[0].tone} status={overview[0].status}
         stats={[['Opportunities', saved('bc-bid')], ['Awards', saved('bc-bid', 'award')], ['Last successful scrape', overview[0].lastSuccess]]}
@@ -124,24 +141,28 @@ export function Sources() {
       </Card>
       <Card id="canadabuys" name="CanadaBuys" region="Canada · official dataset" tone={overview[1].tone} status={overview[1].status}
         stats={[['Opportunities', saved('canadabuys')], ['Last collection', overview[1].lastSuccess], ['Last CSV import', when(importedAt)], ['Next scheduled run', nextRun('canadabuys')]]}
-        actions={<><Btn variant="primary" disabled={!!busy} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Collecting…' : 'Collect latest'}</Btn><Btn variant="secondary" onClick={() => setScheduleFor(scheduleTargetFor('canadabuys'))}>Schedule</Btn><Btn variant="ghost" onClick={() => setImportOpen(true)}>Import CSV</Btn></>}>
+        actions={<><Btn variant="primary" disabled={!!busy || !!canadaBuysRun} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Starting…' : 'Collect latest'}</Btn><Btn variant="secondary" onClick={() => setScheduleFor('canadabuys')}>Schedule</Btn><Btn variant="ghost" onClick={() => setImportOpen(true)}>Import CSV</Btn></>}>
         <SourceError error={collection?.error} />
-        <details><summary>Collection options</summary><div className="pc-collect-options"><label><span>Batches per run</span><Select aria-label="Collection batches" value={batches} onChange={e => setBatches(e.target.value)}>{[1, 5, 10, 20].map(n => <option key={n} value={n}>{n} batches</option>)}</Select></label><Btn variant="secondary" disabled={!!busy} onClick={() => void collectCanadaBuys('restart')}>Start a new snapshot</Btn></div><p className="procurement-coverage">Start a new snapshot when CanadaBuys publishes a changed dataset. Saved notices are kept.</p>
+        <details><summary>Collection options</summary><div className="pc-collect-options"><label><span>Batches per run</span><Select aria-label="Collection batches" value={batches} onChange={e => setBatches(e.target.value)}>{[1, 5, 10, 20].map(n => <option key={n} value={n}>{n} batches</option>)}</Select></label><Btn variant="secondary" disabled={!!busy || !!canadaBuysRun} onClick={() => void collectCanadaBuys('restart')}>Start a new snapshot</Btn></div><p className="procurement-coverage">Start a new snapshot when CanadaBuys publishes a changed dataset. Saved notices are kept.</p>
           {collection?.receipt && <><h3>Last receipt</h3><dl className="pc-detail-list">{['retrievedAt', 'importedAt', 'totalSourceRecords', 'totalRecords', 'excludedCount', 'byteCount', 'sha256'].map(key => <div key={key}><dt>{key}</dt><dd>{collection.receipt[key] ?? 'Not reported'}</dd></div>)}</dl>{collection.receipt.excluded?.length > 0 && <><p>Some notices were excluded. Find them by CSV record number in the snapshot with this SHA-256.</p><ul>{collection.receipt.excluded.map((item: any) => <li key={item.csvRecord}>CSV record {item.csvRecord}: {item.bytes.toLocaleString()} bytes · {item.reason}</li>)}</ul></>}</>}
         </details>
         <Capabilities id="canadabuys" />
       </Card>
       {CONNECTOR_SOURCES.map(source => <ConnectorCard key={source.id} source={source} state={connectors.get(source.id)!.state} stateError={connectors.get(source.id)!.error ?? (health.error ? (health.error as Error).message : undefined)}
-        saved={saved(source.id)} next={nextRun(source.id)} busy={busy} enabled={!!model}
-        onCollect={(portals, key, done) => void collect(key, { sourceId: source.id, ...(portals ? { portals } : {}) }, done)} onSchedule={() => setScheduleFor(scheduleTargetFor(source.id))} />)}
-      <BrowserSourcesCard />
+        saved={saved(source.id)} next={nextRun(source.id)} busy={busy} enabled={!!model} run={live(source.id)}
+        onCollect={(portals, key, what) => void collect(key, { sourceId: source.id, ...(portals ? { portals } : {}) }, what)}
+        onRetry={problems => void start(`${source.id}:problems`, () => runRetryPreset(host, source.id, source.label, problems), `Retrying ${problems.length} problem portal${problems.length === 1 ? '' : 's'} of ${source.label}. Progress shows below.`)}
+        onSchedule={() => setScheduleFor(source.id)} />)}
+      <BrowserSourcesCard run={live('browser-sites')} />
       {LINK_SOURCES.length > 0 && <LinkSources />}
     </div>
+    <CollectionRuns runs={runs} error={recent.error as Error | null} loading={recent.isPending} />
     <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} />
     {scheduleFor && <Modal title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
-      <ScheduleControl actionId={COLLECT_ACTION} input={scheduledCollectInput(scheduleFor)} title={`Collect ${label(scheduleFor)}`} matches={row => collectTarget(row) === scheduleFor} describe={describeCollect} />
-      <p className="procurement-coverage">{scheduleFor === COLLECT_ALL ? `Each scheduled run collects CanadaBuys and then ${listText(CONNECTOR_SOURCES.map(source => source.label))}. CanadaBuys continues the same daily file where the last run stopped, for up to about four minutes per run (a typical daily file fits), and starts over when a new file is published. A source or portal that fails is shown on its card and does not stop the others; Zoer turns the schedule off only when every source fails. BC Bid is scheduled separately. `
-        : scheduleFor === 'canadabuys' ? 'Each scheduled run starts from the newest daily file and saves up to 20 batches (2,000 notices). ' : 'Each scheduled run collects every portal; one failing portal does not stop the others. '}A scheduled run waits while another run of this plugin is active. Zoer turns a schedule off after a failed run or a plugin update; it says so here.</p>
+      <ScheduleControl actionId={COLLECT_ACTION} title={`Collect ${label(scheduleFor)}`} row={presets.isPending ? undefined : scheduleOf(scheduleFor) ?? null}
+        onSave={async (enabled, hours) => { await saveSourceSchedule(host, scheduleFor, label(scheduleFor), enabled, hours); await client.invalidateQueries({ queryKey: PRESETS_KEY }); await client.invalidateQueries({ queryKey: SCHEDULES_KEY }); }} />
+      <p className="procurement-coverage">{scheduleFor === 'canadabuys' ? 'Each scheduled run imports the whole daily file, a few minutes at a time; it continues the same file where it stopped and starts over when CanadaBuys publishes a new one. '
+        : `Each scheduled run collects every portal, one at a time, as each site’s robots.txt and Zoer’s pacing allow. A portal that asks to slow down is retried later in the same run; one failing portal does not stop the others. `}Each source has its own schedule (a saved collection in Zoer). A scheduled run waits while another run of this plugin is active. Zoer turns a schedule off after a failed run or a plugin update; this page then offers to turn it on again.</p>
     </div></Modal>}
     {importOpen && <CanadaBuysImport onClose={() => setImportOpen(false)} onImported={() => { void client.invalidateQueries({ queryKey: ['catalog'] }); }} />}
   </section>;
@@ -167,20 +188,20 @@ function BcBidSchedules({ rows, error }: { rows?: ScheduleRow[]; error: Error | 
 }
 
 /** A platform with many portals: totals first, then a searchable portal list that can be narrowed to problems. */
-function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, onCollect, onSchedule }: {
-  source: ConnectorSource; state: ConnectorCollection | null | undefined; stateError?: string; saved: string; next: ReactNode; busy: string; enabled: boolean;
-  onCollect: (portals: string[] | null, key: string, done: string) => void; onSchedule: () => void;
+function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, run, onCollect, onRetry, onSchedule }: {
+  source: ConnectorSource; state: ConnectorCollection | null | undefined; stateError?: string; saved: string; next: ReactNode; busy: string; enabled: boolean; run?: RecentRun;
+  onCollect: (portals: string[] | null, key: string, what: string) => void; onRetry: (portals: string[]) => void; onSchedule: () => void;
 }) {
   const counts = useQuery({ queryKey: ['catalog', 'procurement-portal-counts', source.id], enabled, queryFn: async () => new Map((await sql(PORTAL_COUNT_SQL, [source.id])).map(row => [String(row.portalId), Number(row.count)])), refetchInterval: 60_000 });
   const [query, setQuery] = useState(''), [problemsOnly, setProblemsOnly] = useState(false), [all, setAll] = useState(false);
-  const rows = portalRows(source.portals, state, counts.data), summary = portalSummary(rows), status = connectorStatus(state);
+  const rows = portalRows(source.portals, state, counts.data), summary = portalSummary(rows), status = connectorStatus(state, Date.now(), run);
   const shown = filterPortals(rows, query, problemsOnly), limit = all || query || problemsOnly ? shown.length : 8;
-  const running = busy.startsWith(source.id) || status.text === 'Collecting', problems = rows.filter(row => row.problem).map(row => row.id);
-  return <Card id={source.id} wide name={source.label} region={source.region} tone={running ? 'busy' : status.tone} status={running ? 'Collecting' : status.text}
+  const running = busy.startsWith(source.id) || !!run, problems = rows.filter(row => row.problem).map(row => row.id);
+  return <Card id={source.id} wide name={source.label} region={source.region} tone={busy.startsWith(source.id) ? 'busy' : status.tone} status={busy.startsWith(source.id) ? 'Starting' : status.text}
     stats={[['Opportunities', saved], ['Portals', state === undefined ? `${rows.length} · status unknown` : portalSummaryText(rows)], ['Last successful collection', state === undefined ? 'Unknown' : when(state?.lastSuccessAt)], ['Next scheduled run', next]]}
     actions={<>
-      <Btn variant="primary" disabled={!!busy || running} onClick={() => onCollect(null, source.id, `${source.label} collection finished. Check each portal below.`)}>{busy === source.id ? 'Collecting…' : `Collect all ${rows.length} portals`}</Btn>
-      {problems.length > 0 && problems.length < rows.length && <Btn variant="secondary" disabled={!!busy || running} onClick={() => onCollect(problems, `${source.id}:problems`, `Retried ${problems.length} portals. Check their status below.`)}>{busy === `${source.id}:problems` ? 'Collecting…' : `Retry ${problems.length} problem portal${problems.length === 1 ? '' : 's'}`}</Btn>}
+      <Btn variant="primary" disabled={!!busy || running} onClick={() => onCollect(null, source.id, source.label)}>{busy === source.id ? 'Starting…' : `Collect all ${rows.length} portals`}</Btn>
+      {problems.length > 0 && problems.length < rows.length && <Btn variant="secondary" disabled={!!busy || running} onClick={() => onRetry(problems)}>{busy === `${source.id}:problems` ? 'Starting…' : `Retry ${problems.length} problem portal${problems.length === 1 ? '' : 's'}`}</Btn>}
       <Btn variant="secondary" onClick={onSchedule}>Schedule</Btn>
     </>}>
     {stateError && <p role="alert">Collection state could not be read: {stateError}</p>}
@@ -199,7 +220,7 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
         <td data-label="Last collected">{row.status === 'unknown' ? 'Unknown' : when(row.lastSuccessAt)}</td>
         <td data-label="Last run">{row.counts}</td>
         <td data-label="Saved">{row.saved === null ? (counts.error ? 'Unknown' : '…') : row.saved.toLocaleString()}</td>
-        <td className="pc-rtable-action"><Btn size="sm" variant="ghost" disabled={!!busy || running} aria-label={`Collect ${row.label}`} onClick={() => onCollect([row.id], `${source.id}:${row.id}`, `${row.label} collected. Check its status below.`)}>{busy === `${source.id}:${row.id}` ? 'Collecting…' : 'Collect'}</Btn></td>
+        <td className="pc-rtable-action"><Btn size="sm" variant="ghost" disabled={!!busy || running} aria-label={`Collect ${row.label}`} onClick={() => onCollect([row.id], `${source.id}:${row.id}`, row.label)}>{busy === `${source.id}:${row.id}` ? 'Starting…' : 'Collect'}</Btn></td>
       </tr>)}</tbody>
     </table>}
     {shown.length > limit && <Btn size="sm" variant="ghost" onClick={() => setAll(true)}>Show all {shown.length} portals</Btn>}
@@ -207,7 +228,6 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
   </Card>;
 }
 
-const listText = (items: string[]) => items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 
 /** Sites we do not collect from; people check them directly. */
 function LinkSources() {

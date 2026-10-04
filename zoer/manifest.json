@@ -1,8 +1,8 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.33.0",
-  "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, collected together on one schedule, plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
+  "version": "0.34.0",
+  "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
     "apiVersion": "1",
@@ -62,7 +62,8 @@
       "browser:pages:capture",
       "browser:search",
       "workspace:downloads",
-      "workspace:catalog"
+      "workspace:catalog",
+      "workspace:filesets"
     ],
     "workspace": {
       "title": "Procurement",
@@ -307,7 +308,7 @@
           "timeoutMs": 120000,
           "maxMemoryMb": 256,
           "maxOutputBytes": 2097152,
-          "maxBrowserPages": 4
+          "maxBrowserPages": 5
         },
         "idempotent": false,
         "id": "scrape.sample",
@@ -1176,7 +1177,7 @@
       {
         "id": "procurement.collect",
         "title": "Collect public procurement sources",
-        "description": "Fetch the official CanadaBuys open-tender CSV, or the open-notice listings and public notice pages of 25 BC public buyers on bids&tenders and 12 BC local-government websites, and merge them into the existing catalog. sourceId \"all\" collects every source in one run (for one schedule): CanadaBuys continues the same daily file or restarts on a new one, then every connector; a failing source or portal is recorded and does not stop the others, and the run fails only when every source fails. CanadaBuys resume checks the source checksum; each bids&tenders portal is saved on its own. Saved notices are never deleted. bids&tenders search needs a per-run cookie session and form POST.",
+        "description": "Fetch the official CanadaBuys open-tender CSV, or the open-notice listings and public notice pages of 25 BC public buyers on bids&tenders and 12 BC local-government websites, and merge them into the existing catalog. Runs as a resumable job: one portal (or one CanadaBuys import pass) per step, so a Zoer restart, update or pause continues where it stopped; a site that asks to slow down is retried later in the same run. Zoer's crawl policy reads each site's robots.txt (including rules for AI crawlers) and spaces requests; a portal whose robots.txt disallows collection is reported, not collected. sourceId \"all\" collects every source in one run; schedules use one saved preset per source. Saved notices are never deleted. bids&tenders search needs a per-run cookie session and form POST.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -1191,7 +1192,7 @@
           "timeoutMs": 600000,
           "maxMemoryMb": 1024,
           "maxOutputBytes": 67108864,
-          "maxNetworkRequests": 1223,
+          "maxNetworkRequests": 64,
           "maxNetworkResponseBytes": 20971520
         },
         "networkSession": {
@@ -1211,7 +1212,7 @@
                 "bidsandtenders",
                 "municipal-sites"
               ],
-              "description": "\"all\" collects CanadaBuys and then every connector in one run; portals is not allowed with it."
+              "description": "\"all\" collects CanadaBuys and then every connector in one run; portals is not allowed with it. Each value is also the run's lock: one run per source at a time."
             },
             "mode": {
               "type": "string",
@@ -1225,7 +1226,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 20,
-              "default": 1
+              "description": "CanadaBuys only: import exactly this many batches in one step (manual runs). Omit it to import the whole daily file across steps."
             },
             "portals": {
               "type": "array",
@@ -1242,12 +1243,34 @@
           "required": [
             "sourceId"
           ]
+        },
+        "resumable": {
+          "stepTimeoutMs": 600000,
+          "maxSteps": 2000,
+          "maxRunHours": 24,
+          "retry": {
+            "delaysMs": [
+              5000,
+              30000,
+              120000
+            ],
+            "maxConsecutive": 6
+          },
+          "lock": {
+            "input": "sourceId",
+            "group": "collect"
+          },
+          "autoResume": "after-restart",
+          "cleanup": true
+        },
+        "presets": {
+          "max": 20
         }
       },
       {
         "id": "procurement.collect.browser",
         "title": "Collect BC sites in your browser",
-        "description": "Load the bids page of BC procurement sites that block plain automated requests (CivicInfo BC, Kelowna, RDKB, Cranbrook, Chilliwack, Whistler, BC Ferries) in the selected Zoer browser, one page at a time, and merge the notices into the existing catalog. robots.txt is read through the browser first and obeyed: disallowed pages are not loaded, page loads per host are spaced by its Crawl-delay or Request-rate, and a site with a Visit-time is skipped outside that window. When a site shows a browser check the run does not answer it: that site waits for you to complete the check in the Zoer browser, and the other sites still run. Saved notices are never deleted.",
+        "description": "Load the bids page of BC procurement sites that block plain automated requests (CivicInfo BC, Kelowna, RDKB, Cranbrook, Chilliwack, Whistler, BC Ferries) in the selected Zoer browser, one site per step, and merge the notices into the existing catalog. Zoer's crawl policy reads each site's robots.txt (through the browser when a bot wall blocks it) and obeys it, including rules for AI crawlers: disallowed pages are not loaded, loads per site are spaced by its Crawl-delay (at least 5 s; 10 s for Chilliwack, Whistler and BC Ferries) and BC Ferries is visited only 09:00-12:00 UTC. When a site shows a browser check the run does not answer it: that site waits for you to complete the check in the Zoer browser, and the other sites still run. Resumable: a restart, update or pause continues with the next site. Saved notices are never deleted.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -1262,7 +1285,7 @@
           "timeoutMs": 1200000,
           "maxMemoryMb": 512,
           "maxOutputBytes": 67108864,
-          "maxBrowserPages": 30
+          "maxBrowserPages": 2
         },
         "idempotent": true,
         "inputSchema": {
@@ -1317,6 +1340,28 @@
               "route": "/sources"
             }
           ]
+        },
+        "resumable": {
+          "stepTimeoutMs": 300000,
+          "maxSteps": 200,
+          "maxRunHours": 24,
+          "retry": {
+            "delaysMs": [
+              5000,
+              30000,
+              120000
+            ],
+            "maxConsecutive": 6
+          },
+          "lock": {
+            "input": "sourceId",
+            "group": "collect"
+          },
+          "autoResume": "after-restart",
+          "cleanup": true
+        },
+        "presets": {
+          "max": 10
         }
       },
       {
@@ -2135,7 +2180,29 @@
           }
         ]
       }
-    ]
+    ],
+    "crawlPolicy": {
+      "product": "ZoerProcurement",
+      "robots": "respect-ai",
+      "minDelaySeconds": 5,
+      "maxWaitSeconds": 60,
+      "hosts": {
+        "www.chilliwack.com": {
+          "minDelaySeconds": 10
+        },
+        "www.whistler.ca": {
+          "minDelaySeconds": 10
+        },
+        "www.bcferries.com": {
+          "minDelaySeconds": 10,
+          "visitWindowUtc": "0900-1200"
+        },
+        "canadabuys.canada.ca": {
+          "robots": "off",
+          "minDelaySeconds": 0
+        }
+      }
+    }
   },
   "config": {
     "browser_session_id": {

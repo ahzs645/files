@@ -305,3 +305,19 @@ p.pc-source-crumb{margin-bottom:.75rem}
   .procurement-board .procurement-board-column[data-empty]{gap:0;padding:.5rem .75rem}
   .procurement-board .procurement-board-column[data-empty]>.procurement-coverage{display:none}
 }
+/* Schedules turned off by an update, per-source schedule offer (S6), and collection runs (S1): phone first. */
+.pc-schedule-notice{display:flex;flex-direction:column;gap:.75rem;border:1px solid color-mix(in srgb,var(--status-warning) 40%,transparent);background:color-mix(in srgb,var(--status-warning) 8%,transparent);border-radius:.5rem;padding:.75rem 1rem;font-size:13px;line-height:1.5;color:var(--text-primary)}
+.pc-schedule-notice>div{display:flex;flex-direction:column;align-items:flex-start;gap:.5rem}
+.pc-schedule-notice p{margin:0;overflow-wrap:anywhere}
+@media(min-width:1024px){.pc-schedule-notice>div{flex-direction:row;align-items:center;justify-content:space-between;gap:1rem}.pc-schedule-notice>div>button{flex:none}}
+@media(pointer:coarse),(max-width:640px){.pc-schedule-notice button{min-height:44px;width:100%}}
+.pc-run-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.pc-run-list>li{display:grid;grid-template-columns:minmax(0,1fr);gap:.375rem;padding:.625rem 0;border-top:1px solid var(--border-default);min-width:0}
+.pc-run-list>li:first-child{border-top:0}
+.pc-run-main{display:flex;flex-direction:column;min-width:0}
+.pc-run-main strong{font-size:13px;overflow-wrap:anywhere}
+.pc-run-main small,.pc-run-state small{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
+.pc-run-state{display:flex;flex-direction:column;align-items:flex-start;gap:.125rem;min-width:0}
+.pc-run-actions{display:flex;flex-wrap:wrap;gap:.375rem}
+@media(pointer:coarse),(max-width:640px){.pc-run-actions button{min-height:44px;flex:1 1 6rem}}
+@media(min-width:1024px){.pc-run-list>li{grid-template-columns:minmax(12rem,1fr) minmax(14rem,1.5fr) auto;align-items:center;gap:1rem}.pc-run-actions{justify-content:flex-end}}

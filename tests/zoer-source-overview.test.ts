@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BIDSANDTENDERS_PORTALS } from '../zoer/dashboard/procurement/portals';
-import { PORTAL_COUNT_SQL, collectTarget, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, scheduleCovers, scheduleTargetFor, scheduledCollectInput } from '../zoer/dashboard/procurement/source-overview';
+import { PORTAL_COUNT_SQL, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection } from '../zoer/dashboard/procurement/source-overview';
 import { findSchedule, intervalText, parseInterval, scheduleState, stopReason, type ScheduleRow } from '../zoer/dashboard/procurement/schedule-state';
 
 const now = Date.parse('2026-10-03T19:00:00Z');
@@ -90,21 +90,11 @@ describe('schedules', () => {
     expect(stopReason('Scheduled batch has failed records. Review its batch history.')).toMatch(/failed items/);
     expect(stopReason('Restored from backup. Choose destination connections and review before enabling.')).toMatch(/backup/);
   });
-  it('one collect schedule per action: tells which source it covers', () => {
-    const rows = [row({}), row({ actionId: 'procurement.alerts', body: { input: {} } })];
-    expect(findSchedule(rows, 'procurement.collect')).toBe(rows[0]);
-    expect(collectTarget(rows[0])).toBe('canadabuys');
-    expect(scheduleCovers(rows[0], 'canadabuys')).toBe(true);
-    expect(scheduleCovers(rows[0], 'bidsandtenders')).toBe(false);
-    expect(scheduleCovers(row({ body: { input: { sourceId: 'all' } } }), 'bidsandtenders')).toBe(true);
-    expect(scheduleCovers(undefined, 'canadabuys')).toBe(false);
-    // Scheduled CanadaBuys runs restart: resuming fails once the daily file changes, and a failure stops the schedule.
-    expect(scheduledCollectInput('canadabuys')).toEqual({ sourceId: 'canadabuys', mode: 'restart', maxBatches: 20 });
-    expect(scheduledCollectInput('bidsandtenders')).toEqual({ sourceId: 'bidsandtenders' });
-    // The collector accepts `all`, so every Schedule button schedules every source in one run.
-    expect(scheduledCollectInput('all')).toEqual({ sourceId: 'all' });
-    expect(scheduleTargetFor('canadabuys')).toBe('all');
-    expect(scheduleTargetFor('bidsandtenders')).toBe('all');
+  it('finds the action’s own schedule, not one bound to a preset', () => {
+    const rows = [row({ presetId: 'pr_' + 'a'.repeat(32) }), row({}), row({ actionId: 'procurement.alerts', body: { input: {} } })];
+    expect(findSchedule(rows, 'procurement.collect')).toBe(rows[1]);
+    expect(findSchedule(rows, 'procurement.alerts')).toBe(rows[2]);
+    expect(stopReason('Preset changed or removed. Review this schedule.')).toMatch(/saved collection it runs was changed or removed/);
   });
 });
 

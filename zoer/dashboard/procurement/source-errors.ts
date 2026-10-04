@@ -16,9 +16,10 @@ const portals = (count: number) => `${count} portal${count === 1 ? '' : 's'}`;
 function portalProblems(message: string): string | null {
   const total = n(message, /of (\d+) portal/);
   if (!total) return null;
-  const failed = n(message, /(\d+) failed/), partly = n(message, /(\d+) incomplete/), notRun = n(message, /(\d+) not reached/);
+  const failed = n(message, /(\d+) failed/), partly = n(message, /(\d+) incomplete/), notRun = n(message, /(\d+) not reached/), disallowed = n(message, /(\d+) disallowed by robots/);
   const verb = (count: number) => count === 1 ? 'was' : 'were';
   const parts = [failed && ['could not be collected', failed], partly && [`${verb(partly)} only partly collected`, partly],
+    disallowed && [`${verb(disallowed)} not collected because ${disallowed === 1 ? 'its' : 'their'} robots.txt disallows it`, disallowed],
     notRun && [`${verb(notRun)} not reached before the time limit (the next run continues ${notRun === 1 ? 'it' : 'them'})`, notRun]]
     .filter(Boolean).map((part, index) => { const [what, count] = part as [string, number]; return index === 0 ? `${count} of ${portals(total)} ${what}` : `${count} ${what}`; });
   if (!parts.length) return null;
@@ -54,6 +55,12 @@ const TEXT: Record<string, (message: string) => string> = {
   waiting_for_user: () => 'Some sites showed a browser check and are waiting for you. Complete the check in the Zoer browser, then collect those sites again. The other sites were saved.',
   portals_skipped: () => 'Some sites were skipped on purpose (outside the hours their robots.txt allows). The other sites were saved.',
   outside_visit_window: message => message || 'Outside the hours this site allows automated visits. Nothing was loaded; collect it inside that window.',
+  // Zoer's crawl policy (0.34+): robots.txt, pacing and Retry-After are applied by Zoer itself.
+  robots_disallowed: message => portalProblems(message) ?? 'robots.txt disallows collection: this site asks automated visitors (including AI crawlers) not to load this page, so Procurement does not collect it. Notices saved earlier are kept; open the site to check it yourself.',
+  robots_unreadable: () => 'The site’s robots.txt could not be read, so what it allows is unknown and nothing was collected. Zoer reads it again within the hour; saved notices are kept.',
+  crawl_wait: () => 'Zoer spaces requests to this site as its robots.txt asks, and the next allowed request did not fit this run. Saved notices are kept; the next run collects it.',
+  cancelled: () => 'The collection was cancelled. Saved notices are kept; the next run continues where it stopped.',
+  network_limit: () => 'The run used up its network request allowance before finishing. Notices saved so far are kept; the next run continues.',
 };
 
 /** Sentence plus raw detail for an error saved in collection state; null when there is no error. */

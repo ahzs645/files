@@ -6,9 +6,11 @@ import type { ConnectorPortal } from '../../src/connectors/types';
  * (`procurement.collect.browser`): one listing page per site, spaced per host, and when a site shows a check the run
  * stops for that site and asks the person to complete it in the Zoer browser.
  *
- * - robots.txt is read through Zoer's browser on each run (kept for 24 hours) and decides whether the listing may be
- *   read and how far apart page loads must be. `minDelaySeconds`/`visitTimeUtc` are floors from the earlier survey
- *   notes (SOURCES-RESEARCH.md) and only ever make a run slower.
+ * - Zoer's crawl policy (manifest `crawlPolicy`, host service S4) reads robots.txt (through the browser when a bot wall
+ *   answers 401/403, kept 24 hours, shared with every plugin) and decides whether the listing may be loaded and how far
+ *   apart page loads must be. `minDelaySeconds`/`visitTimeUtc` are the floors from the earlier survey notes
+ *   (SOURCES-RESEARCH.md); the manifest's `crawlPolicy.hosts` must carry them (a test checks), and robots.txt can only
+ *   make a run slower.
  * - `verified: true`: the listing was read from a page Zoer's own browser captured (2026-10-04, kept as
  *   tests/fixtures/browser-sites/zoer-<id>.html). `verified: false`: not confirmed against a captured listing yet; the
  *   parsers read defensively (a page they do not understand is reported, never "0 notices").
@@ -26,7 +28,7 @@ export interface BrowserSite extends ConnectorPortal {
   layout: 'auto' | 'blocks' | 'views';
   /** The buyer's IANA zone, for "local time" and printed zone abbreviations. */
   timeZone: string;
-  /** Floor for seconds between page loads on this host; robots.txt read at run time can raise it, never lower it. */
+  /** Floor for seconds between page loads on this host (manifest `crawlPolicy`); robots.txt can raise it, never lower it. */
   minDelaySeconds: number;
   /** `HHMM-HHMM` UTC window the site asks visitors to keep to (robots Visit-time); also read from robots.txt. */
   visitTimeUtc?: string;
@@ -60,5 +62,5 @@ export const BROWSER_SITES: readonly BrowserSite[] = [
 ];
 
 export const browserSiteById = (id: string) => BROWSER_SITES.find(item => item.id === id);
-/** Page loads one site may use in a run: robots.txt (when not read in the last 24 hours) and the listing. */
+/** Browser pages one site (one resumable step) may use: the listing, plus one page Zoer may spend reading robots.txt behind a bot wall. */
 export const BROWSER_PAGES_PER_SITE = 2;

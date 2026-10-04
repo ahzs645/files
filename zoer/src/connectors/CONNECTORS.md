@@ -76,8 +76,10 @@ BC Bid and CanadaBuys records gain `place` and `contacts` (enrichment stream) wi
 
 ## 4. Collection
 
-`procurement.collect` input: `{ sourceId: 'canadabuys' | <connector id>, mode?: 'resume' | 'restart', maxBatches?, portals?: string[] }`
-(`portals` defaults to every portal of the connector). Workspace state key per source:
+`procurement.collect` input: `{ sourceId: 'all' | 'canadabuys' | <connector id>, mode?: 'resume' | 'restart', maxBatches?, portals?: string[] }`
+(`portals` defaults to every portal of the connector; `maxBatches` is CanadaBuys only: that many batches in one step,
+omitted = the whole daily file across steps). Since 0.34 it is a Zoer resumable action (one portal or CanadaBuys pass
+per step, lock `sourceId` in group `collect`); see Changes, 2026-10-04 (shared services). Workspace state key per source:
 `procurement:source:<sourceId>:collection`:
 
 ```ts
@@ -204,3 +206,69 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
   -08:00, Bun's says -07:00). The label is the portal's own clock, i.e. when it actually stops accepting
   submissions; `closingDate` keeps the printed text. Zone-less local times (municipal-sites) resolve with
   `America/Vancouver` in the runtime's tz data.
+- 2026-10-04 (shared services, `feat/shared-services-procurement`, plugin 0.34.0; needs Zoer with S1/S2/S4/S6,
+  docs/plugin-shared-services.md §15.1). State keys, record kinds, history rows and the run output contract are unchanged.
+  - **Resumable collection (S1).** `procurement.collect` and `procurement.collect.browser` declare
+    `resumable: { stepTimeoutMs: 600000 | 300000, maxSteps: 2000 | 200, maxRunHours: 24, retry: { delaysMs: [5000, 30000, 120000],
+    maxConsecutive: 6 }, lock: { input: 'sourceId', group: 'collect' }, autoResume: 'after-restart', cleanup: true }`.
+    One step = one portal of a connector, one browser site, or one CanadaBuys pass (download + import batches for at
+    most 4 minutes). `src/collection-run.ts` holds the step logic; `connector-collection.ts` keeps the per-portal pieces
+    (`beginConnectorAttempt`, `claimConnectorSource`, `collectConnectorPortal`, `finishConnectorAttempt`).
+    Checkpoint `{ v: 1, action, sourceId, startedAt, sources, index, attemptStartedAt, portalIndex, cbSlices, results }`
+    (< 1 KiB for one source, a few KiB for `all`); the real cursors stay in the §4 state and the CanadaBuys `receipt`,
+    committed with the records, so a replayed step skips portals already saved in its attempt. A checkpoint this
+    version cannot read starts the run over (the state keeps the progress).
+  - **Removed:** the 7.5/15-minute soft deadlines, `stopAt`/time shares in `all`, the lease *acquisition and stealing*
+    as the concurrency guard (Zoer's lock does it), `browser-collection.ts`, `connectors/robots.ts`, `connectors/pacing.ts`,
+    the plugin's robots.txt reads through `browser.capture-url`, and every worker `user-agent` header.
+    **Kept for older readers:** `status`, `ownerRunId`, `leaseUntil` (= the step deadline; on a retry, until the retry is due
+    plus 10 minutes), `attempt`; `collection_busy` is still raised for one release when a run under another lock key
+    (`all` beside a single source) holds a live lease. `browser.robots`/`browser.pacing` are no longer written (readers
+    ignore missing fields); `browser.layoutSamples` stays.
+  - **Retries.** HTTP 429 (with the host's `retryAfterMs`), 408/5xx, a dropped connection, `crawl_wait` and
+    `crawl_rate_limited` return `{ resumable: 'retry', retryAfterMs }` without touching the portal, at most
+    `PORTAL_RETRIES = 3` times per portal (below `maxConsecutive` 6, so the plugin, not the host, decides); after that the
+    portal is recorded as failed and the run goes on, so one busy site never fails a scheduled run. Notice-page fetches
+    end the portal on `crawl_wait`/`crawl_rate_limited` (retried) instead of becoming warnings. A pause or a spent
+    budget still ends the step; budgets are per step now (`maxNetworkRequests` 64 ≥ the largest `requestsPerPortal`;
+    `maxBrowserPages` 2 = listing + one robots.txt page behind a bot wall). The cleanup step after a cancel marks the
+    source `paused` with error `cancelled`; the attempt stays open for the next run.
+  - **CanadaBuys.** Without `maxBatches` (per-source schedules, `all`): pass after pass until the file is in; the first
+    pass uses the input `mode`, later passes continue the same checksummed file and start over on a new one. With
+    `maxBatches` (the Sources page's manual Collect): exactly that many batches in one step, `paused` if unfinished.
+  - **Crawl policy (S4, Q1 decided).** `crawlPolicy: { product: 'ZoerProcurement', robots: 'respect-ai', minDelaySeconds: 5,
+    maxWaitSeconds: 60, hosts: { chilliwack/whistler: 10 s, www.bcferries.com: 10 s + 0900-1200 UTC,
+    canadabuys.canada.ca: { robots: 'off', minDelaySeconds: 0 } } }`; a test keeps the hosts equal to `BROWSER_SITES`
+    floors and refuses any other relaxation. Mapping (`connectors/errors.ts#crawlRefusal`): `crawl_robots_disallowed` →
+    portal `not-run`, code `robots_disallowed` (shown as "robots.txt disallows collection", not a problem to retry; source
+    error code `robots_disallowed` when that is the only problem); `crawl_robots_unreadable` → `failed` `robots_unreadable`,
+    or for browser sites `waiting` `browser_check` (the host read robots.txt through the browser and got a check page);
+    `crawl_outside_window` → `not-run` `outside_visit_window` (message carries `nextWindowAt`); `crawl_wait` /
+    `crawl_rate_limited` after the retries → `failed` `crawl_wait` / `source_rate_limited`. Browser sites disallowed by
+    robots.txt are now `not-run` (were `failed`); the UI reads both. The worker keeps host error codes on refused host
+    calls (`pause.ts#failure`).
+  - **Ambiguity, safest reading:** `bcbid.gov.bc.ca` is not named in Q1 and has no override, so BC Bid captures
+    (`scrape.*`, `awards.history`, `listing/detail.capture` excluded: they read the open page) get the policy defaults:
+    its robots.txt with AI rules, 5 s between page loads. A full scrape (≤ 3,200 pages) still fits its 6-hour limit but
+    is slower; if bcbid.gov.bc.ca's robots.txt disallows the pages for AI crawlers, BC Bid scraping stops with
+    `crawl_robots_disallowed` (nothing is collected around it). `scrape.sample` gets one more page (5) for a robots.txt
+    read behind a bot wall; `scrape.full`/`awards.history` are at the host's 8,192-page cap with ample slack.
+    `scrape.full`/`scrape.targeted`/`awards.history` stay ordinary actions: §15.1 does not list them (the validator only
+    refuses `execution.kind: 'browser-session'`, so they could opt in later).
+  - **Pacing cost.** bids&tenders and municipal sites are paced 5 s per host: a portal with 30 notice pages takes about
+    3 minutes, 25 portals roughly an hour (they used to take about 2 minutes). Steps of 10 minutes fit the largest portal.
+  - **Presets and schedules (S6).** `presets: { max: 20 }` on `procurement.collect` (10 on the browser action). Each source
+    has a preset `{ name: 'Collect <label>', input: { sourceId }, externalRef: 'source:<id>' }` created on first use and
+    its own schedule bound by `presetId` (`dashboard/procurement/source-schedules.ts`). "Retry problem portals" saves or
+    updates `externalRef: 'retry:<id>'` with `{ sourceId, portals }` and runs it by `presetId`. The 0.33 `{ sourceId: 'all' }`
+    schedule still works if turned on in Zoer's settings; Sources offers "Schedule each source …" at the same interval
+    and turns the old row off. An upgrade disables every schedule ("Plugin or settings changed"); Sources shows a notice
+    with "Turn them on again" for collection and alert schedules and points browser schedules (BC Bid, browser sites)
+    to Zoer's plugin settings. Run status comes from `runs.recent` (Collection runs: progress, waiting to retry,
+    paused, resume needed; Pause/Resume/Cancel via `run.pause`/`run.resume`/`cancel`); collect buttons start the run and
+    return at once.
+  - **Archives (S2).** Permission `workspace:filesets` (for `archive.create`). "Download all documents" (a notice's
+    documents tab, the Documents page selection, the notices list selection; ≤ 200 notices, ≤ 48 MiB of files, under
+    the 50 MiB catalog-file cap) zips each saved file under `<sourceKey>/<name>` plus `opportunities.csv` and
+    `opportunities.manifest.json` into a temporary catalog file, downloads it, and deletes the temporary files.
+

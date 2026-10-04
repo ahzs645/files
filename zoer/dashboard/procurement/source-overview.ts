@@ -4,7 +4,7 @@ import { SITE_PORTALS } from './site-portals';
 import { regionalDistrictShort } from './place-data';
 import { SOURCES } from './catalog';
 import { connectorCollectionKey } from './source-adapters';
-import type { ScheduleRow } from './schedule-state';
+import { isLive, runState, type RecentRun } from './source-schedules';
 import { sourceErrorText } from './source-errors';
 
 /**
@@ -13,7 +13,7 @@ import { sourceErrorText } from './source-errors';
  */
 
 export const collectionKey = connectorCollectionKey;
-export const COLLECT_ACTION = 'procurement.collect';
+export { COLLECT_ACTION } from './source-schedules';
 
 /** A source collected by `procurement.collect` from portals on one platform. Other connectors add rows here. */
 export interface ConnectorSource { id: string; label: string; region: string; portals: readonly ConnectorPortal[]; coverage: string }
@@ -23,24 +23,6 @@ export const CONNECTOR_SOURCES: readonly ConnectorSource[] = [
   { id: 'municipal-sites', label: SOURCES.find(source => source.id === 'municipal-sites')?.label ?? 'BC local government websites', region: 'British Columbia · local governments’ own websites', portals: SITE_PORTALS,
     coverage: 'The bids page of each website below, and the page of each open notice. Each site lists what it chooses (some show recently closed notices, some only open ones). Files are not downloaded. A notice missing from a later listing is kept; missing is not proof of closure.' },
 ];
-
-/**
- * Collection inputs Zoer can schedule. Zoer keeps one schedule per action, so the Sources page schedules
- * `sourceId: 'all'`: one run collects CanadaBuys (continuing the same daily file, restarting on a new one) and then
- * every connector; a failing source is recorded and does not fail the run. Single-source inputs stay valid for
- * schedules saved before `all` existed and for manual runs.
- */
-export const COLLECT_ALL_SUPPORTED = true;
-export const COLLECT_ALL = 'all';
-export function scheduledCollectInput(sourceId: string): Record<string, unknown> {
-  if (sourceId === COLLECT_ALL) return { sourceId };
-  return sourceId === 'canadabuys' ? { sourceId, mode: 'restart', maxBatches: 20 } : { sourceId };
-}
-/** What a Schedule button on a source schedules: everything when `all` is supported, else that one source. */
-export const scheduleTargetFor = (sourceId: string) => COLLECT_ALL_SUPPORTED ? COLLECT_ALL : sourceId;
-export const collectTarget = (row: ScheduleRow | undefined) => typeof row?.body?.input?.sourceId === 'string' ? row.body.input.sourceId as string : null;
-/** True when the saved collect schedule collects this source (directly or as part of "all"). */
-export const scheduleCovers = (row: ScheduleRow | undefined, sourceId: string) => { const target = collectTarget(row); return target === sourceId || target === 'all'; };
 
 /** `incomplete`: records saved, but fewer than the portal reported or some too large to save. `waiting`: a person must act first (browser check). */
 export type PortalStatus = 'complete' | 'incomplete' | 'failed' | 'not-run' | 'waiting';
@@ -73,22 +55,29 @@ export function readConnectorCollection(value: unknown, sourceId: string): Conne
 }
 
 export type Tone = 'good' | 'busy' | 'warn' | 'idle';
-/** Source-level status for the overview. A running lease that expired is a stopped run, not "collecting". */
-export function connectorStatus(state: ConnectorCollection | null | undefined, now = Date.now()): { tone: Tone; text: string } {
+/**
+ * Source-level status for the overview. A live run of this source (`runs.recent`, S1/S6) says what it is doing now:
+ * collecting, waiting to retry, paused, resume needed. Without one, a running lease that expired is a stopped run.
+ */
+export function connectorStatus(state: ConnectorCollection | null | undefined, now = Date.now(), run?: RecentRun): { tone: Tone; text: string } {
+  const live = run && isLive(run) ? runState(run) : null;
+  if (live) return { tone: live.tone, text: live.text };
   if (state === undefined) return { tone: 'idle', text: 'Status unknown' };
   if (state === null) return { tone: 'idle', text: 'Not collected yet' };
   switch (state.status) {
     case 'running': return state.leaseUntil && Date.parse(state.leaseUntil) < now ? { tone: 'warn', text: 'Stopped unexpectedly' } : { tone: 'busy', text: 'Collecting' };
     case 'complete': return { tone: 'good', text: 'Collected' };
     case 'incomplete': return { tone: 'warn', text: state.error?.code === 'time_budget' ? 'Stopped at the time limit; next run continues' : state.error?.code === 'portals_incomplete' ? 'Some portals partly collected'
-      : state.error?.code === 'waiting_for_user' ? 'Waiting for you' : state.error?.code === 'portals_skipped' ? 'Some sites skipped' : 'Some portals failed' };
+      : state.error?.code === 'waiting_for_user' ? 'Waiting for you' : state.error?.code === 'portals_skipped' ? 'Some sites skipped'
+      : state.error?.code === 'robots_disallowed' ? 'Some portals disallow collection (robots.txt)' : 'Some portals failed' };
     case 'failed': return { tone: 'warn', text: 'Last collection failed' };
-    case 'paused': return { tone: 'idle', text: 'Paused; resumes on next run' };
+    case 'paused': return { tone: 'idle', text: state.error?.code === 'cancelled' ? 'Cancelled; the next run continues' : 'Paused; resumes on next run' };
   }
 }
 
 export interface PortalRow {
-  id: string; label: string; place: string; url: string; status: PortalStatus | 'unknown';
+  /** `disallowed`: the portal's robots.txt does not allow collecting it (Zoer's crawl policy); not a failure, not retried. */
+  id: string; label: string; place: string; url: string; status: PortalStatus | 'disallowed' | 'unknown';
   statusText: string; tone: Tone; problem: boolean; counts: string; saved: number | null;
   retrievedAt?: string; lastSuccessAt?: string;
   /** Raw `code: message` (for a tooltip) and the same error in plain words (shown). */
@@ -109,6 +98,11 @@ export function portalRows(portals: readonly ConnectorPortal[], state: Connector
     const base = { id: portal.id, label: portal.label, place: placeText(portal), url: portal.url, saved: saved ? saved.get(portal.id) ?? 0 : null, retrievedAt: entry?.retrievedAt, lastSuccessAt: entry?.lastSuccessAt ?? (entry?.status === 'complete' || entry?.status === 'incomplete' ? entry.retrievedAt : undefined) };
     if (state === undefined) return { ...base, status: 'unknown' as const, statusText: 'Unknown', tone: 'idle' as const, problem: false, counts: 'Unknown' };
     // `not-run` only means the last attempt skipped this portal (e.g. a single-portal collect); earlier success stands.
+    if (entry?.status === 'not-run' && entry.error?.code === 'robots_disallowed') {
+      const explained = sourceErrorText(entry.error);
+      return { ...base, status: 'disallowed' as const, statusText: 'robots.txt disallows collection', tone: 'idle' as const, problem: false,
+        counts: base.lastSuccessAt ? (entry.recordCount === undefined ? 'Earlier notices kept' : `${entry.recordCount.toLocaleString()} listed earlier`) : 'Not collected', error: explained?.detail, errorText: explained?.text };
+    }
     if (!entry || (entry.status === 'not-run' && !base.lastSuccessAt)) return { ...base, status: 'not-run' as const, statusText: 'Not collected yet', tone: 'idle' as const, problem: true, counts: 'Not collected' };
     if (entry.status === 'not-run') return { ...base, status: 'not-run' as const, statusText: 'Not in last run', tone: 'idle' as const, problem: false, counts: entry.recordCount === undefined ? 'Count not recorded' : `${entry.recordCount.toLocaleString()} listed` };
     const listed = entry.recordCount === undefined ? 'Count not recorded' : `${entry.recordCount.toLocaleString()} listed`;
@@ -123,13 +117,13 @@ export function portalRows(portals: readonly ConnectorPortal[], state: Connector
 
 export function portalSummary(rows: PortalRow[]) {
   const by = (status: string) => rows.filter(row => row.status === status).length;
-  return { total: rows.length, complete: by('complete'), incomplete: by('incomplete'), failed: by('failed'), waiting: by('waiting'), notRun: by('not-run'), unknown: by('unknown'), problems: rows.filter(row => row.problem).length };
+  return { total: rows.length, complete: by('complete'), incomplete: by('incomplete'), failed: by('failed'), waiting: by('waiting'), notRun: by('not-run'), disallowed: by('disallowed'), unknown: by('unknown'), problems: rows.filter(row => row.problem).length };
 }
 export function portalSummaryText(rows: PortalRow[]): string {
   const s = portalSummary(rows);
   if (s.unknown === s.total) return `${s.total} portals · status unknown`;
   const never = rows.filter(row => row.status === 'not-run' && row.problem).length;
-  return [`${s.complete + s.incomplete} of ${s.total} portals collected in the last run`, s.incomplete ? `${s.incomplete} partly` : '', s.failed ? `${s.failed} failed` : '', never ? `${never} not collected yet` : ''].filter(Boolean).join(' · ');
+  return [`${s.complete + s.incomplete} of ${s.total} portals collected in the last run`, s.incomplete ? `${s.incomplete} partly` : '', s.failed ? `${s.failed} failed` : '', s.disallowed ? `${s.disallowed} disallowed by robots.txt` : '', never ? `${never} not collected yet` : ''].filter(Boolean).join(' · ');
 }
 
 /** Case-insensitive match on buyer, portal id and place; `problemsOnly` keeps failed, partly and never-collected portals. */

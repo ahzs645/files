@@ -38,7 +38,8 @@ export interface NetRequest {
   form?: Record<string, string>;
   accept?: string;
 }
-export interface NetResponse { status: number; headers: Record<string, string>; text: string }
+/** `retryAfterMs`: the site's Retry-After (429/503), as Zoer reports it, capped at 5 minutes. */
+export interface NetResponse { status: number; headers: Record<string, string>; text: string; retryAfterMs?: number }
 /** network.fetch with the per-run cookie jar kept host-side; the connector never sees cookie values. */
 export type NetFetch = (request: NetRequest) => Promise<NetResponse>;
 

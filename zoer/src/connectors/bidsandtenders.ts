@@ -1,6 +1,5 @@
 import { BIDSANDTENDERS_PORTALS } from '../../dashboard/procurement/portals';
-import { isPauseError } from '../pause';
-import { ConnectorError, httpFailure } from './errors';
+import { ConnectorError, httpFailure, rethrowRunLimits } from './errors';
 import { decodeEntities, htmlToText } from './html';
 import type { ConnectorPortal, NetFetch, PortalResult, SourceConnector } from './types';
 
@@ -153,15 +152,11 @@ export function listingRecord(row: ListingRow, portal: ConnectorPortal, retrieve
   };
 }
 
-const rethrowHostLimits = (error: unknown) => {
-  // A Zoer pause or an exhausted request budget ends the portal; any other notice-page problem is only a warning.
-  if (isPauseError(error) || /budget exhausted|network_limit/i.test(String((error as Error)?.message ?? '')) || (error as any)?.code === 'network_limit') throw error;
-};
 
 export async function collectBidsAndTendersPortal(fetch: NetFetch, portal: ConnectorPortal, context: { now: () => string }): Promise<PortalResult> {
   const retrievedAt = context.now(), warnings: string[] = [];
   const home = await fetch({ url: portal.url, accept: 'text/html' });
-  if (home.status !== 200) throw httpFailure(`${portal.label} bids homepage`, home.status);
+  if (home.status !== 200) throw httpFailure(`${portal.label} bids homepage`, home.status, home.retryAfterMs);
   const form = readSearchForm(home.text);
   const rows = new Map<string, ListingRow>();
   let total = -1;
@@ -170,7 +165,7 @@ export async function collectBidsAndTendersPortal(fetch: NetFetch, portal: Conne
     if (response.status >= 300 && response.status < 400) {
       throw new ConnectorError('source_session', `${portal.label} refused the search (HTTP ${response.status}): the session cookie from its homepage was not sent back. This needs Zoer's networkSession support.`);
     }
-    if (response.status !== 200) throw httpFailure(`${portal.label} search`, response.status);
+    if (response.status !== 200) throw httpFailure(`${portal.label} search`, response.status, response.retryAfterMs);
     const parsed = parseListingPage(response.text);
     if (total < 0) total = parsed.total;
     else if (parsed.total !== total) warnings.push(`Open-notice total changed from ${total} to ${parsed.total} while paging.`);
@@ -185,7 +180,7 @@ export async function collectBidsAndTendersPortal(fetch: NetFetch, portal: Conne
       const response = await fetch({ url: detailUrl(portal, id), accept: 'text/html' });
       const page = response.status === 200 ? parseNoticePage(response.text) : undefined;
       if (page) pages.set(id, page); else failures.push(response.status === 200 ? 'unrecognized page' : `HTTP ${response.status}`);
-    } catch (error) { rethrowHostLimits(error); failures.push((error as Error)?.message?.slice(0, 120) || 'request failed'); }
+    } catch (error) { rethrowRunLimits(error); failures.push((error as Error)?.message?.slice(0, 120) || 'request failed'); }
   }
   if (failures.length) warnings.push(`Notice pages could not be read for ${failures.length} notice(s) (${[...new Set(failures)].slice(0, 3).join('; ')}); those records carry listing fields only.`);
   if (rows.size > MAX_DETAILS) warnings.push(`Only the first ${MAX_DETAILS} of ${rows.size} notice pages were read this run; the rest carry listing fields only.`);

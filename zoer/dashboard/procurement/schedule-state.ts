@@ -1,11 +1,13 @@
 /**
  * Plain-language state for Zoer plugin schedules (host `schedules.read` rows). Zoer schedules are an interval in
- * whole hours (1–720), keep one row per action, turn themselves off after any failed run or when the plugin or the
- * saved input changes, and wait while another run of this plugin is active.
+ * whole hours (1–720), one row per action and saved preset, turn themselves off after any failed run or when the
+ * plugin, the saved input or the preset changes, and wait while another run of this plugin is active.
  */
 
 export interface ScheduleRow {
   actionId: string; enabled: boolean; intervalHours: number; nextRunAt?: string;
+  /** Zoer 0.34+ (presets, S6): one schedule per `(actionId, presetId)`; absent on the action's own schedule. */
+  presetId?: string;
   body?: { input?: Record<string, unknown> }; lastRunId?: string; lastStatus?: string; error?: string;
 }
 
@@ -33,6 +35,7 @@ const RUN_STATUS: Record<string, string> = { succeeded: 'succeeded', failed: 'fa
 
 /** Why Zoer turned a schedule off, in words a person can act on. The host's own message is kept alongside. */
 export function stopReason(error: string): string {
+  if (/preset changed or removed/i.test(error)) return 'Zoer turned this schedule off because the saved collection it runs was changed or removed. Turn it on again here to use the current one.';
   if (/plugin or settings changed/i.test(error)) return 'Zoer turned this schedule off because the plugin was updated or the scheduled settings changed. It pauses schedules on any change so a new version never runs unattended before you look. Check the settings and turn it on again.';
   if (/restored from backup/i.test(error)) return 'This schedule was restored from a backup and left off. Check it and turn it on again when you are ready.';
   if (/failed records/i.test(error)) return 'Zoer turned this schedule off because the last scheduled run finished with failed items. Check the failures, then turn it on again.';
@@ -62,5 +65,5 @@ export function scheduleState(row: ScheduleRow | undefined, now = Date.now()): S
   return { tone: row.lastStatus === 'pending' ? 'busy' : 'good', status: `On · ${intervalText(row.intervalHours).toLowerCase()}`, next, last, stopped: null, error: null };
 }
 
-/** The schedule saved for an action, if any (Zoer keeps at most one per action). */
-export const findSchedule = (rows: ScheduleRow[] | undefined, actionId: string) => rows?.find(row => row.actionId === actionId);
+/** The action's own schedule (not one bound to a preset), if any. */
+export const findSchedule = (rows: ScheduleRow[] | undefined, actionId: string) => rows?.find(row => row.actionId === actionId && !row.presetId);

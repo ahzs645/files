@@ -4,6 +4,7 @@ import { BatchHistory, BatchProgress, useCatalogState } from './BatchHistory';
 import { BulkDocuments } from './BulkDocuments';
 import { RecordPicker } from './RecordPicker';
 import { host } from './bridge';
+import { BUNDLE_MAX_NOTICES, downloadDocumentBundle, sizeText } from './document-bundle';
 import { usePluginQuery } from './navigation';
 import { DocumentFiles, DocumentStats } from './DocumentInventory';
 import { NoticeView } from './procurement/NoticeView';
@@ -29,6 +30,11 @@ export function Documents() {
       await refresh();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
+  const bundle = async () => {
+    setBusy(true); setError(''); setMessage('');
+    try { const result = await downloadDocumentBundle(host, [...selection], { scope: 'selected notices' }); setMessage(`Downloaded ${result.name}: ${result.documents} file${result.documents === 1 ? '' : 's'} (${sizeText(result.bytes)}).`); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
   const current = TABS.some(([id]) => id === tab) ? tab : '';
   return <section className="research doc-page">
     {/* Download · Files · History are the section's tabs (Shell); the page itself has no heading. */}
@@ -40,7 +46,7 @@ export function Documents() {
       <BulkDocuments running={downloads.some((batch: any) => batch.status === 'running')} onStarted={refresh} />
       <h2 className="doc-subhead">Or pick opportunities</h2>
       <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} more={[{ label: 'Open database viewer', onClick: () => void host('catalog.open') }]}
-        actions={<Button disabled={busy || !selection.size} onClick={() => void download()}>Download selected</Button>} />
+        actions={<><Button disabled={busy || !selection.size} onClick={() => void download()}>Download selected</Button><Button variant="ghost" disabled={busy || !selection.size || selection.size > BUNDLE_MAX_NOTICES} title="Saved files of the selected notices and a CSV, as one zip" onClick={() => void bundle()}>Save files as zip</Button></>} />
     </>}
     {current === 'files' && <DocumentFiles onDetails={setRecordId} refreshKey={refreshKey} running={running} />}
     {current === 'history' && <BatchHistory title="Download history" kind="download" batches={state.batches} tasks={state.tasks} onChanged={refresh} onError={setError} />}
