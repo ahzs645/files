@@ -146,7 +146,7 @@
 .pc-rtable small{display:block;font-weight:400;font-size:11.5px;line-height:1.4;color:var(--text-secondary);margin-top:.125rem}
 .pc-rtable .pc-portal-error{color:var(--status-warning);max-width:24rem}
 .pc-rtable-action{text-align:right;white-space:nowrap;width:1%}
-.pc-rtable .pc-status{white-space:normal}
+.pc-rtable .pc-status,.pc-source-card>header .pc-status{white-space:normal}
 /* Stacked up to 899px: with Zoer's sidebar a 768–899px window leaves too little width for six columns. */
 @media(max-width:899px){
   .pc-rtable thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
