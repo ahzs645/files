@@ -246,9 +246,9 @@ export function Procurement() {
         <div className="pc-resultbar">{bar}</div>
         {(error || list.error || inventory.error) && <p role="alert">{error || list.error?.message || inventory.error?.message} <Btn size="sm" variant="secondary" onClick={() => void client.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></p>}
         {!list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching notices</h2>
-          <p>{review.unavailable ?? (source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? 'No saved notice matches every filter below. Remove a filter, or collect more notices from Sources.' : 'No notices are saved yet. Collect notices from Sources.')}</p>
+          <p>{review.unavailable ?? (search.trim() ? `No saved notice matches “${search.trim()}”${activeCount ? ' with the filters below' : ''}.${hidden === 'exclude' ? ' Hidden notices are left out of lists.' : ''}` : source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? 'No saved notice matches every filter below. Remove a filter, or collect more notices from Sources.' : 'No notices are saved yet. Collect notices from Sources.')}</p>
           {activeCount > 0 && <ul className="pc-empty-filters">{description.map(line => <li key={line}>{line}</li>)}</ul>}
-          <div className="procurement-actions">{activeCount > 0 && <Btn variant="secondary" onClick={clearAll}>Clear filters</Btn>}<Btn variant="secondary" onClick={() => navigatePlugin('/sources')}>Open Sources</Btn></div></div>}
+          <div className="procurement-actions">{(activeCount > 0 || !!search.trim()) && <Btn variant="secondary" onClick={clearAll}>{activeCount ? 'Clear filters' : 'Clear search'}</Btn>}<Btn variant="secondary" onClick={() => navigatePlugin('/sources')}>Open Sources</Btn></div></div>}
         {noticeId && wide ? <div className="pc-search-split"><div className="pc-search-list">{results}</div><NoticeView id={noticeId} layout="panel" onClose={closeNotice} /></div> : results}
       </>}
 

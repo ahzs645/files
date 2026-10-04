@@ -59,9 +59,15 @@ export function HideButton({ row, hidden, busy, onToggle }: { row: { id: string;
 
 /** Status line after a hide/show, with Undo. */
 export function HiddenNotice({ change, busy, onUndo, onDismiss, onShowHidden }: { change: HiddenChange | null; busy: boolean; onUndo(): void; onDismiss(): void; onShowHidden?: () => void }) {
+  const bar = useRef<HTMLParagraphElement>(null);
+  // Hiding removes the row and its focused Hide button; keyboard users continue from Undo instead of the page start.
+  useEffect(() => {
+    const active = document.activeElement;
+    if (!busy && change && (!active || active === document.body)) bar.current?.querySelector('button')?.focus();
+  }, [busy, change]);
   if (!change && !busy) return null;
   const what = change ? change.ids.length === 1 ? `“${change.titles[0]}”` : `${change.ids.length} notices` : '';
-  return <p className="pc-hidden-status" role="status">
+  return <p ref={bar} className="pc-hidden-status" role="status">
     {busy ? 'Saving…' : change!.hidden ? <>Hidden {what}. It stays saved and can be shown again with “Show hidden”.</> : <>Showing {what} in lists again.</>}
     {!busy && change && <><Btn size="sm" variant="secondary" onClick={onUndo}>Undo</Btn>{change.hidden && onShowHidden && <Btn size="sm" variant="ghost" onClick={onShowHidden}>Show hidden</Btn>}<Btn size="sm" variant="ghost" aria-label="Dismiss" onClick={onDismiss}>×</Btn></>}
   </p>;
