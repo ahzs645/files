@@ -199,3 +199,8 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
     `source_layout`, never "0 notices". An aggregator (CivicInfo) leaves `issuedBy` empty unless the notice names a buyer.
   - Output has no top-level `failed`, so a waiting site never turns a Zoer schedule off. Schedules are set in Zoer's
     plugin settings (they need a browser); the dashboard's `schedules.save` cannot attach one.
+- 2026-10-04 (coordinator): bids&tenders `closingAt` keeps the portal's printed zone label (`PST` → -08:00, `PDT` →
+  -07:00) even if BC's legal offset changes (tz databases disagree about BC after Nov 2026: Node's tz 2026a says
+  -08:00, Bun's says -07:00). The label is the portal's own clock, i.e. when it actually stops accepting
+  submissions; `closingDate` keeps the printed text. Zone-less local times (municipal-sites) resolve with
+  `America/Vancouver` in the runtime's tz data.
