@@ -18,7 +18,7 @@ for people to check), **skip** (covered by another source or not procurement).
 | Fraser Valley RD | fvrd.ca/EN/main/government/tenders-rfps.html | FVRD | eSolutions table (open + recently closed) + notice pages | no zone → date only | column | notice page | notice page files, incl. addenda |
 | City of Courtenay | courtenay.ca/business-and-building/business-resources/doing-business-city/bid-opportunities | Courtenay | Up&Up Drupal table (title header empty) + notice pages | `<time datetime="…Z">` → instant | column | notice page (name, email) | notice page files |
 | Township of Esquimalt | esquimalt.ca/business-development/bids-tenders | Esquimalt | Up&Up Drupal table + notice pages | `<time datetime>` → instant | column (incl. "Evaluating") | — | — |
-| City of Quesnel | quesnel.ca/business-services/doing-business-city/bid-opportunities | Quesnel | Up&Up Drupal **list** view + notice pages | `<time datetime>` → instant ("Application deadline"; its second "Application deadline" is the open-until-filled switch and is ignored) | field | — | — |
+| City of Quesnel | quesnel.ca/business-services/doing-business-city/bid-opportunities?bid_status=54 (Open; unfiltered it pages closed notices 8 at a time) | Quesnel | Up&Up Drupal **list** view + notice pages | `<time datetime>` → instant ("Application deadline"; its second "Application deadline" is the open-until-filled switch and is ignored) | field | — | — |
 | Town of Comox | comox.ca/opportunities | Comox | CiviKit Drupal list view + notice pages | `<time datetime>` → instant | not printed; derived from the verified instant | — | notice page `/media/<id>` links; most also on BC Bid |
 | District of Saanich | saanich.ca/EN/main/business/selling-to-saanich/bid-opportunities.html | Saanich | eSolutions table (62 rows incl. closed) + notice pages; RSS `…/data/tenders.rss` exists but the table has more fields | no zone → date only | column | notice page (purchasing email) | documents and submissions on Saanich's Bonfire (link only) |
 | City of Dawson Creek | dawsoncreek.ca/business-development/tenders/ | Dawson Creek | GovStack table with separate closing date and time columns (joined) | no zone → date only (Dawson Creek is MST all year) | column (some "N/A") | — | links go to `/news/posts/…` |
@@ -70,6 +70,30 @@ Ferries' visit window; the connector does not touch those hosts.
 | BC Ferries business-ops | Behind a BC Ferries login in the old code. |
 | Pitt Meadows | Its table's only link column is "BC Bid Link": covered by BC Bid. |
 | Kamloops, Delta, New Westminster, Township of Langley, Maple Ridge, Port Moody, Merritt, Summerland, Interior Health, Fraser Health, BC Hydro, BC Housing, PHSA, Osoyoos, TNRD, RDEK, Prince Rupert, Colwood, Castlegar, Harrison, SD61, VSB, UBC, BCIT, VCC, North Cowichan, North Saanich, Victoria, Mission, Fort St. John, Powell River | Their bid pages point to BC Bid, bids&tenders or Bonfire (by links on the page, 2026-10-03), which are covered or listed above. |
+
+| Not classified in this pass | Bowen Island, Cariboo RD, City of North Vancouver, Duncan, Gibsons, Golden, Kimberley, Ladysmith, Langford, Parksville, Qualicum Beach, PRRD, Trail, View Royal, Surrey Schools, TransLink, VCH answered 200 without a link to a known platform; each needs its own look. City of Langley, Kitimat and RDCK bid URLs returned 404. |
+
+## Live check of the connector (2026-10-03)
+
+One `collectPortal` run per portal against the live sites, 2.5 s between requests, no redirects followed:
+
+| Portal | Requests | Records | Status Open | Zoned `closingAt` | With contacts | Warnings |
+|---|---|---|---|---|---|---|
+| rdn | 4 | 11 | 3 | 11 | 3 | — |
+| srd | 2 | 0 | 0 | 0 | 0 | — (nothing open) |
+| penticton | 4 | 3 | 3 | 3 | 0 | — |
+| fernie | 2 | 1 | 1 | 0 | 1 | — |
+| fvrd | 3 | 6 | 2 | 0 | 2 | — |
+| courtenay | 4 | 7 | 3 | 7 | 3 | — |
+| esquimalt | 4 | 16 | 5 | 16 | 0 | — |
+| quesnel | 6 | 24 | 6 | 24 | 0 | more than 3 pages (fixed: list URL now filters to Open) |
+| comox | 3 | 2 | 2 | 2 | 0 | — |
+| saanich | 6 | 62 | 9 | 0 | 5 | — |
+| dawsoncreek | 3 | 23 | 1 | 0 | 0 | 2 `/news/posts` notice pages unrecognized |
+| surrey | 15 | 13 | 13 | 8 | 13 | — |
+
+Some sites keep "Open" on notices whose closing date passed long ago (Quesnel lists two from December 2025); the
+dashboard's deadline judgement uses `closingAt`, and no notice page is fetched for them.
 
 ## Appendix: survey method
 

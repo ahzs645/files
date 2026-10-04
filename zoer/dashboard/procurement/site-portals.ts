@@ -51,7 +51,8 @@ export const SITE_PORTALS: readonly SitePortal[] = [
     listUrls: ['https://www.esquimalt.ca/business-development/bids-tenders'], place: place('Esquimalt', 'Capital'),
     layout: 'table', timeZone: PACIFIC, keyBy: 'link', details: true },
   { id: 'quesnel', label: 'City of Quesnel', host: 'www.quesnel.ca', url: 'https://www.quesnel.ca/business-services/doing-business-city/bid-opportunities',
-    listUrls: ['https://www.quesnel.ca/business-services/doing-business-city/bid-opportunities'], place: place('Quesnel', 'Cariboo'),
+    // Unfiltered, the list pages through closed notices 8 at a time; "Open" (54) fits on one page.
+    listUrls: ['https://www.quesnel.ca/business-services/doing-business-city/bid-opportunities?bid_status=54'], place: place('Quesnel', 'Cariboo'),
     layout: 'list', timeZone: PACIFIC, keyBy: 'link', details: true },
   { id: 'comox', label: 'Town of Comox', host: 'www.comox.ca', url: 'https://www.comox.ca/opportunities',
     listUrls: ['https://www.comox.ca/opportunities'], place: place('Comox', 'Comox Valley'),
