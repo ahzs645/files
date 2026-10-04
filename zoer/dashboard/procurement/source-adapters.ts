@@ -1,7 +1,14 @@
+import { BIDSANDTENDERS_PORTALS } from './portals';
+
 export const CANADABUYS_DATASET_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 export const CANADABUYS_DOCUMENTATION_URL = 'https://donnees-data.tpsgc-pwgsc.gc.ca/ba2/ac-cb/soutien-support-eng.html';
 export const CANADABUYS_CATALOG_URL = 'https://open.canada.ca/data/en/dataset/6abd20d4-7a1c-4b38-baa2-9525d0bb2fd2';
 export const COLLECTION_KEY = 'procurement:source:canadabuys:collection';
+/**
+ * Workspace state key of a connector's collection (CONNECTORS.md §4): status, lease, last success and a
+ * `portals` record per portal. Read it with `catalog.workspace`. CanadaBuys keeps its own shape under the same pattern.
+ */
+export const connectorCollectionKey = (sourceId: string) => `procurement:source:${sourceId}:collection`;
 
 export interface ProcurementSourceAdapter {
   id: string; label: string;
@@ -23,6 +30,14 @@ export const PROCUREMENT_SOURCE_ADAPTERS: ProcurementSourceAdapter[] = [
       attachments: { status: 'unavailable', method: 'Original attachment fields retained as data; files are not downloaded by this connector' },
       awards: { status: 'unavailable', method: 'Official award dataset exists but is not connected' },
       auth: { status: 'unavailable', method: 'Public CSV requires no credentials; HTTP 403 is reported without bypass' },
+    } },
+  { id: 'bidsandtenders', label: 'bids&tenders (BC)',
+    coverage: `Open notices listed by ${BIDSANDTENDERS_PORTALS.length} BC public buyers on bids&tenders, one portal at a time; a failed portal does not stop the others. Closed and awarded notices are not listed; absence is not proof of closure. Saved records are retained.`, capabilities: {
+      listing: { status: 'available', method: 'procurement.collect: each portal\'s open-notice search (homepage session, then form search), paged' },
+      detail: { status: 'partial', method: 'Public notice page per notice (up to 30 per portal per run): type, classification, categories, question deadline, zoned published date. Buyer contacts and document lists need a vendor login and are not read' },
+      attachments: { status: 'unavailable', method: 'Document and addenda counts from the listing only; files need a vendor login and are not downloaded' },
+      awards: { status: 'unavailable', method: 'Awarded and closed notices are not collected' },
+      auth: { status: 'unavailable', method: 'Public pages only; no vendor login. The search needs a per-run cookie session kept by Zoer (networkSession)' },
     } },
 ];
 
