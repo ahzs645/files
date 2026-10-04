@@ -255,3 +255,14 @@ describe('connector portal places', () => {
     expect(tagPlace({ buyer: 'City of Nanaimo' })).toEqual({ ...nanaimo.place, method: 'buyer' });
   });
 });
+
+describe('place options', () => {
+  it('give one option per municipality when saved notices name its district two ways', () => {
+    const options = placeOptions([
+      { regionalDistrict: 'Metro Vancouver', municipality: 'Burnaby', count: 9 },
+      { regionalDistrict: 'Metro Vancouver Regional District', municipality: 'Burnaby', count: 7 },
+    ]);
+    expect(options.filter(option => option.value === 'm:Burnaby')).toEqual([{ value: 'm:Burnaby', label: 'Burnaby · 16', description: 'Metro Vancouver Regional District' }]);
+    expect(new Set(options.map(option => option.value)).size).toBe(options.length);
+  });
+});
