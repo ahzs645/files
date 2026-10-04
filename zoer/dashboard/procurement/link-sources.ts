@@ -37,6 +37,8 @@ export const LINK_SOURCES: readonly LinkSource[] = [
     reason: ROBOTS, detail: 'Server-rendered list with zoned closing times and contacts, but bids.sciquest.com robots.txt is "Disallow: /" for every agent.' },
   { id: 'portvancouver', label: 'Vancouver Fraser Port Authority', url: 'https://www.portvancouver.com/business-and-projects/rfps-and-procurement', region: 'Metro Vancouver',
     reason: 'robots.txt disallows AI crawlers', detail: 'Its robots.txt disallows anthropic-ai and ClaudeBot by name. Procurement is built and run with AI help, so it does not collect this site, even through your browser. Many of its notices are also on BC Bid.' },
+  { id: 'yvr', label: 'Vancouver Airport Authority (YVR)', url: 'https://www.yvr.ca/en/business/work-with-yvr/airport-suppliers', region: 'Richmond',
+    reason: 'Bids are on an external platform', detail: 'The supplier page (captured through Zoer\'s browser on 2026-10-04) has no listing; its "latest bidding opportunities" link goes to an external bidding platform (Bonfire per the earlier survey, whose robots.txt disallows collection).' },
   bonfire('victoria', 'City of Victoria', 'Victoria'),
   bonfire('saanich', 'District of Saanich', 'Saanich'),
   bonfire('centralsaanich', 'District of Central Saanich', 'Central Saanich'),

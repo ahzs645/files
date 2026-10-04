@@ -2,7 +2,7 @@
   "id": "bc-bid-monitor",
   "name": "Procurement",
   "version": "0.33.0",
-  "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, collected together on one schedule, plus 8 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
+  "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, collected together on one schedule, plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
     "apiVersion": "1",
@@ -49,7 +49,6 @@
       "www.civicinfo.bc.ca",
       "www.kelowna.ca",
       "rdkb.com",
-      "www.yvr.ca",
       "cranbrook.ca",
       "www.chilliwack.com",
       "www.whistler.ca",
@@ -1248,7 +1247,7 @@
       {
         "id": "procurement.collect.browser",
         "title": "Collect BC sites in your browser",
-        "description": "Load the bids page of BC procurement sites that block plain automated requests (CivicInfo BC, Kelowna, RDKB, YVR, Cranbrook, Chilliwack, Whistler, BC Ferries) in the selected Zoer browser, one page at a time, and merge the notices into the existing catalog. robots.txt is read through the browser first and obeyed: disallowed pages are not loaded, page loads per host are spaced by its Crawl-delay or Request-rate, and a site with a Visit-time is skipped outside that window. When a site shows a browser check the run does not answer it: that site waits for you to complete the check in the Zoer browser, and the other sites still run. Saved notices are never deleted.",
+        "description": "Load the bids page of BC procurement sites that block plain automated requests (CivicInfo BC, Kelowna, RDKB, Cranbrook, Chilliwack, Whistler, BC Ferries) in the selected Zoer browser, one page at a time, and merge the notices into the existing catalog. robots.txt is read through the browser first and obeyed: disallowed pages are not loaded, page loads per host are spaced by its Crawl-delay or Request-rate, and a site with a Visit-time is skipped outside that window. When a site shows a browser check the run does not answer it: that site waits for you to complete the check in the Zoer browser, and the other sites still run. Saved notices are never deleted.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -1280,7 +1279,7 @@
               "type": "array",
               "description": "Site ids to collect; every site when omitted.",
               "minItems": 1,
-              "maxItems": 8,
+              "maxItems": 7,
               "uniqueItems": true,
               "items": {
                 "type": "string",
@@ -1288,7 +1287,6 @@
                   "civicinfo",
                   "kelowna",
                   "rdkb",
-                  "yvr",
                   "cranbrook",
                   "chilliwack",
                   "whistler",

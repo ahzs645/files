@@ -50,8 +50,6 @@ export const BROWSER_SITES: readonly BrowserSite[] = [
   site('kelowna', 'City of Kelowna', 'www.kelowna.ca', 'https://www.kelowna.ca/business-services/business-city/bidding-opportunities/current-bidding-opportunities', place('Kelowna', 'Central Okanagan'), { layout: 'views', verified: true }),
   // Zoer's capture of 2026-10-04 showed "Opportunities" / "None at the Moment"; no posted notice has been seen yet.
   site('rdkb', 'Regional District of Kootenay Boundary', 'rdkb.com', 'https://rdkb.com/Regional-Government/Organization/Opportunities', place(null, 'Kootenay Boundary')),
-  // URL taken from the Zoer capture of https://www.yvr.ca/en/business/work-with-yvr on 2026-10-04; listing not yet captured.
-  site('yvr', 'Vancouver Airport Authority (YVR)', 'www.yvr.ca', 'https://www.yvr.ca/en/business/work-with-yvr/airport-suppliers', place('Richmond', 'Metro Vancouver')),
   // Cranbrook prints times as "MT" (Mountain Time).
   site('cranbrook', 'City of Cranbrook', 'cranbrook.ca', 'https://cranbrook.ca/business/city-tenders', place('Cranbrook', 'East Kootenay'), { timeZone: 'America/Edmonton' }),
   // Paced: the earlier survey noted Crawl-delay 10 for these three and Visit-time 0900-1200 (UTC) for BC Ferries.

@@ -219,17 +219,17 @@ describe('listing parsers (pages captured through Zoer on 2026-10-04)', () => {
     expect(() => parseBrowserListing(rdkb, '<body><h2>Road closures</h2><p>None at the moment</p></body>', rdkb.url)).toThrow(expect.objectContaining({ code: 'source_layout' }));
     expect(rdkb.verified).toBe(false);
   });
-  it('landing pages are not read as listings: West Vancouver is link-only (BC Bid), YVR points at its supplier page', () => {
+  it('landing pages are not read as listings: West Vancouver (BC Bid) and YVR (external platform) are link-only', () => {
     const west = 'https://westvancouver.ca/business-development/information-businesses', page = fixture('zoer-westvancouver.html');
     expect(() => parseBrowserListing(site('cranbrook'), page, west)).toThrow(expect.objectContaining({ code: 'source_layout' }));
     expect(page).toContain('all postings are available on <a>BC Bid</a>');
     expect(browserSiteById('westvancouver')).toBeUndefined();
     expect(LINK_SOURCES.find(source => source.id === 'westvancouver')).toMatchObject({ url: west, reason: 'Posts on BC Bid', region: 'West Vancouver' });
-    const yvr = site('yvr'), landing = fixture('zoer-yvr.html');
-    expect(() => parseBrowserListing(yvr, landing, 'https://www.yvr.ca/en/business/work-with-yvr')).toThrow(expect.objectContaining({ code: 'source_layout' }));
-    // The new URL is the same-host link the capture shows for active bidding opportunities; its layout is unconfirmed.
-    expect(landing).toContain('<a href="/en/business/work-with-yvr/airport-suppliers">Supplier page</a>');
-    expect(yvr).toMatchObject({ url: 'https://www.yvr.ca/en/business/work-with-yvr/airport-suppliers', host: 'www.yvr.ca', verified: false });
+    const landing = fixture('zoer-yvr.html');
+    expect(() => parseBrowserListing(site('cranbrook'), landing, 'https://www.yvr.ca/en/business/work-with-yvr')).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    // The supplier page captured through Zoer on 2026-10-04 only links out to an external bidding platform.
+    expect(browserSiteById('yvr')).toBeUndefined();
+    expect(LINK_SOURCES.find(source => source.id === 'yvr')).toMatchObject({ url: 'https://www.yvr.ca/en/business/work-with-yvr/airport-suppliers', region: 'Richmond' });
   });
 });
 
@@ -342,18 +342,18 @@ describe('procurement.collect.browser', () => {
     const db = catalog(), web = browser('2026-10-04T02:00:00.000Z', {
       'https://www.civicinfo.bc.ca/robots.txt': { html: '<body><pre>User-agent: *\nDisallow: /bids</pre></body>' },
       'https://rdkb.com/robots.txt': { html: '<body><pre>User-agent: *\nCrawl-delay: 20\nVisit-time: 0600-0800</pre></body>' },
-      'https://www.yvr.ca/robots.txt': { html: '<body><h1>Not found</h1></body>', status: 404 },
+      'https://www.chilliwack.com/robots.txt': { html: '<body><h1>Not found</h1></body>', status: 404 },
       'https://www.cranbrook.ca/robots.txt': new Error('unused'),
       'https://cranbrook.ca/robots.txt': { html: '<body><h1>Server error</h1></body>', status: 500 },
       listing: { html: fixture('synthetic-table.html') },
     });
-    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['civicinfo', 'rdkb', 'yvr', 'cranbrook'] }, 'run-1', web.deps);
+    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['civicinfo', 'rdkb', 'chilliwack', 'cranbrook'] }, 'run-1', web.deps);
     const portals = db.states.get(KEY).portals;
     expect(portals.civicinfo).toMatchObject({ status: 'failed', error: { code: 'robots_disallowed' } });
     expect(portals.rdkb).toMatchObject({ status: 'not-run', error: { code: 'outside_visit_window' } });
-    expect(portals.yvr).toMatchObject({ status: 'complete' });
+    expect(portals.chilliwack).toMatchObject({ status: 'complete' });
     expect(portals.cranbrook).toMatchObject({ status: 'failed', error: { code: 'robots_unreadable' } });
-    expect(web.loads.map(load => load.url)).toEqual(['https://www.civicinfo.bc.ca/robots.txt', 'https://rdkb.com/robots.txt', 'https://www.yvr.ca/robots.txt', site('yvr').url, 'https://cranbrook.ca/robots.txt']);
+    expect(web.loads.map(load => load.url)).toEqual(['https://www.civicinfo.bc.ca/robots.txt', 'https://rdkb.com/robots.txt', 'https://cranbrook.ca/robots.txt', 'https://www.chilliwack.com/robots.txt', site('chilliwack').url]);
     // The cached Visit-time is honoured before loading anything on the next run.
     const again = browser('2026-10-04T03:00:00.000Z', {});
     await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['rdkb'] }, 'run-2', again.deps);
@@ -394,8 +394,8 @@ describe('procurement.collect.browser', () => {
   });
   it('a page the parser does not understand fails that site with a layout error, not 0 notices', async () => {
     const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', { robots: ROBOTS, listing: { html: fixture('synthetic-unknown-layout.html'), title: 'Doing business' } });
-    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['yvr'] }, 'run-1', web.deps);
-    expect(db.states.get(KEY).portals.yvr).toMatchObject({ status: 'failed', error: { code: 'source_layout' } });
+    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['kelowna'] }, 'run-1', web.deps);
+    expect(db.states.get(KEY).portals.kelowna).toMatchObject({ status: 'failed', error: { code: 'source_layout' } });
     expect(browserSummaryText(browserSiteRows(readConnectorCollection(db.states.get(KEY), 'browser-sites')))).toContain('1 failed');
   });
 });
