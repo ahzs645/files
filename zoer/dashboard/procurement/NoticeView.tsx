@@ -14,7 +14,7 @@ import { cleanRegionText } from './region';
 import { NoticeHideButton } from './Triage';
 import { AiResult, LabelChips } from './AiResult';
 import { NoticeContacts, PossibleDuplicates, noticeSummary, placeHow, placeText } from './NoticeEnrichment';
-import { CATEGORY_PROMPT, CATEGORY_PROMPT_NAME, ago, buyerValue, coverageText, documentCounts, documentSummary, hasUsableText, latestEvidence, latestReview, verdictText, verdictTone } from './ai';
+import { CATEGORY_PROMPT, CATEGORY_PROMPT_NAME, ago, buyerValue, coverageText, documentCounts, documentSummary, listedDocumentsText, hasUsableText, latestEvidence, latestReview, verdictText, verdictTone } from './ai';
 import { useReviewWorkspace } from '../review-workspace/actions';
 import { label } from '../review-workspace/queries';
 import { DecisionHeader } from '../review-workspace/DecisionHeader';
@@ -171,7 +171,7 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
     // The source's own region (CanadaBuys delivery regions), unless it only repeats the place.
     ...(!award && region && !data.regionFromPlace && region !== data.place?.municipality && region !== data.place?.regionalDistrict ? [['Region', region] as [string, string]] : []),
     ['Type', String(data.type || data.opportunityType || 'Not provided')],
-    ['Documents', documentSummary(documentCounts(documents, data.attachments))],
+    ['Documents', listedDocumentsText(data, documents) ?? documentSummary(documentCounts(documents, data.attachments))],
   ];
   const saveTags = async (next = draft.split(',')) => {
     setSaving(true); setError('');

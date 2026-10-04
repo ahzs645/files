@@ -180,6 +180,7 @@
 .pc-portal-search{flex:1 1 16rem;min-width:0;max-width:28rem}
 .pc-portal-search input{width:100%;min-height:36px;padding:.375rem .75rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);color:var(--text-primary);font-size:14px}
 .pc-portal-tools .rw-check{min-height:36px}
+@media(pointer:coarse),(max-width:640px){.pc-portal-tools .rw-check{min-height:44px}}
 .pc-link-sources{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr));gap:.25rem 1rem}
 /* A column card would turn the search box's 16rem flex-basis into height. */
 .pc-source-card>.pc-portal-search{flex:none}
