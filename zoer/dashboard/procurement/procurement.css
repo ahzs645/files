@@ -112,7 +112,7 @@
 .pc-source-stats dt{font-size:12px;color:var(--text-secondary)}
 .pc-source-stats dd{margin-top:.125rem;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .pc-source-card details{border-top:1px solid var(--border-default);padding-top:.25rem;font-size:13px}
-.pc-source-card details summary{cursor:pointer;min-height:40px;display:flex;align-items:center;color:var(--text-secondary)}
+.pc-source-card details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--text-secondary)}
 .pc-source-card details[open]>summary{color:var(--text-primary)}
 .pc-checkpoints{display:flex;flex-direction:column;gap:.625rem;margin-bottom:.5rem}
 .pc-checkpoints li>div{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
@@ -134,6 +134,7 @@
 @media(min-width:1024px){.pc-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .pc-link-button{font:inherit;font-weight:600;color:var(--text-primary);text-align:left;min-height:0;padding:0;background:none;border:0;cursor:pointer}
 .pc-link-button:hover{text-decoration:underline}
+@media(pointer:coarse),(max-width:640px){.pc-link-button{display:flex;align-items:center;min-height:44px}}
 /* Responsive table: a table from 768px, stacked labelled rows below (no horizontal scroll on phones). */
 .pc-rtable{width:100%;border-collapse:collapse;font-size:12.5px}
 .pc-rtable th,.pc-rtable td{padding:.5rem;border-bottom:1px solid var(--border-default);text-align:left;vertical-align:middle;overflow-wrap:anywhere}
@@ -180,8 +181,12 @@
 .pc-portal-search input{width:100%;min-height:36px;padding:.375rem .75rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);color:var(--text-primary);font-size:14px}
 .pc-portal-tools .rw-check{min-height:36px}
 .pc-link-sources{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr));gap:.25rem 1rem}
-.pc-link-sources li{display:flex;flex-direction:column;justify-content:center;min-height:44px}
-.pc-link-sources a{color:var(--accent);font-size:13.5px;font-weight:550}
+/* A column card would turn the search box's 16rem flex-basis into height. */
+.pc-source-card>.pc-portal-search{flex:none}
+/* The whole entry (name and why) is the link, so the target is at least 44px tall. */
+.pc-link-sources a{display:flex;flex-direction:column;justify-content:center;min-height:44px;border-radius:.375rem;text-decoration:none}
+.pc-link-sources a>span{color:var(--accent);font-size:13.5px;font-weight:550}
+.pc-link-sources a:hover>span{text-decoration:underline}
 .pc-link-sources small{font-size:12px;color:var(--text-secondary)}
 /* Schedules */
 .pc-schedule{display:flex;flex-direction:column;gap:.625rem;min-width:0;font-size:13px}
