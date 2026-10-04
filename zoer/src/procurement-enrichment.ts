@@ -1,8 +1,8 @@
-import { ENRICHMENT_VERSION, enrichNotice, enrichmentChanged } from '../dashboard/procurement/enrich';
+import { ENRICHMENT_KEY, ENRICHMENT_VERSION, enrichNotice, enrichmentChanged } from '../dashboard/procurement/enrich';
 import { isPauseError } from './pause';
 
 type Host = (method: string, input: any) => Promise<any>;
-export const ENRICHMENT_KEY = 'procurement:enrichment:backfill';
+export { ENRICHMENT_KEY };
 export interface EnrichmentInput { mode?: 'resume' | 'restart'; maxBatches?: number }
 const PAGE = 50;
 /** Stay well under the host's 4 MiB catalog transaction; records may be up to 250 kB each. */

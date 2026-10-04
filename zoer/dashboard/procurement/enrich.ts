@@ -3,6 +3,8 @@ import { placeForRecord } from './places';
 
 /** Bump when place or contact rules change, so the backfill action re-tags records tagged by older rules. */
 export const ENRICHMENT_VERSION = 1;
+/** Workspace state of the backfill action (procurement.enrich): cursor and running totals. */
+export const ENRICHMENT_KEY = 'procurement:enrichment:backfill';
 /** Sources whose records get `place`/`contacts` here; connectors set their own from the portal. */
 export const ENRICHED_SOURCES = new Set(['bc-bid', 'canadabuys']);
 const sourceOf = (data: any) => typeof data?.sourceId === 'string' && data.sourceId ? data.sourceId : 'bc-bid';

@@ -147,3 +147,16 @@ export function placeForRecord(data: any): Place | null {
   // A region we filled from an earlier tag is not evidence; re-tagging must not confirm itself.
   return tagPlace({ buyer: [data?.issuedFor, data?.issuedBy], region: data?.regionFromPlace ? null : data?.region, text });
 }
+
+/** Place filter options: every tagged place among saved opportunities (≤ 160 municipalities + 27 districts). */
+export type PlaceRow = { regionalDistrict: string | null; municipality: string | null; count: number };
+export const PLACE_OPTIONS_SQL = "SELECT json_extract(data,'$.place.regionalDistrict') AS regionalDistrict, json_extract(data,'$.place.municipality') AS municipality, count(*) AS count FROM records WHERE kind='opportunity' AND json_extract(data,'$.place') IS NOT NULL GROUP BY regionalDistrict, municipality ORDER BY regionalDistrict, municipality LIMIT 200";
+/** `rd:` options summed over their municipalities, then each municipality; values are the `place` URL parameter. */
+export function placeOptions(rows: readonly PlaceRow[]): { value: string; label: string; description?: string }[] {
+  const districts = new Map<string, number>();
+  for (const row of rows) if (row.regionalDistrict) districts.set(row.regionalDistrict, (districts.get(row.regionalDistrict) ?? 0) + Number(row.count));
+  const options: { value: string; label: string; description?: string }[] = [];
+  for (const [district, count] of districts) options.push({ value: `rd:${district}`, label: `${district} · ${count.toLocaleString()}`, description: 'Whole regional district' });
+  for (const row of rows) if (row.municipality) options.push({ value: `m:${row.municipality}`, label: `${row.municipality} · ${Number(row.count).toLocaleString()}`, description: row.regionalDistrict ?? 'No regional district' });
+  return options.sort((a, b) => a.label.localeCompare(b.label));
+}

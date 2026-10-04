@@ -1,0 +1,29 @@
+/* Notice enrichment: buyer contacts, possible duplicates, list-row duplicate flag and the Place filter. */
+.pc-contacts ul,.pc-dup-list{display:flex;flex-direction:column;gap:.625rem}
+.pc-contacts li+li,.pc-dup-list li+li{border-top:1px solid var(--border-default);padding-top:.625rem}
+.pc-contact-name{font-weight:600}
+.pc-contact-name span{font-weight:400;color:var(--text-secondary)}
+.pc-contact-line{display:flex;align-items:center;gap:.25rem;min-width:0}
+.pc-contact-link{display:inline-flex;align-items:center;gap:.5rem;min-height:32px;min-width:0;color:var(--accent)}
+.pc-contact-link span{overflow-wrap:anywhere}
+a.pc-contact-link:hover span{text-decoration:underline}
+.pc-contact-link svg{flex:none;color:var(--text-secondary)}
+.pc-contact-copy{display:inline-flex;align-items:center;gap:.25rem;min-width:32px;min-height:32px;justify-content:center;border-radius:.375rem;color:var(--text-secondary);flex:none}
+.pc-contact-copy:hover{background:var(--surface-secondary);color:var(--text-primary)}
+.pc-contact-copied{font-size:11.5px}
+.pc-contact-copied:empty{display:none}
+.pc-dup-open{text-align:left;font-weight:600;color:var(--accent);overflow-wrap:anywhere}
+.pc-dup-open:hover{text-decoration:underline}
+.pc-dup-meta{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .625rem;margin-top:.25rem;font-size:12px;color:var(--text-secondary)}
+.pc-dup-why{margin-top:.125rem;font-size:12px;color:var(--text-secondary)}
+.pc-dup-why strong{color:var(--text-primary)}
+.pc-dup-flag{font-size:11.5px;padding:0 .4375rem;border-radius:999px;border:1px dashed color-mix(in srgb,var(--status-warning) 55%,transparent);color:var(--status-warning);white-space:nowrap}
+.pc-place-filter h3{display:flex;align-items:center;gap:.375rem}
+.pc-place-filter .ui-select-trigger{width:100%}
+/* Phone: whole-row touch targets (≥ 44px) for call/email/copy and the duplicate links. */
+@media(pointer:coarse),(max-width:640px){
+  .pc-contact-link,.pc-contact-copy{min-height:44px}
+  .pc-contact-copy{min-width:44px}
+  .pc-contact-line{justify-content:space-between}
+  .pc-dup-open{min-height:44px;display:flex;align-items:center}
+}
