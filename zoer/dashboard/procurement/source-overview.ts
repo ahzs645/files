@@ -1,5 +1,6 @@
 import type { ConnectorPortal } from '../../src/connectors/types';
 import { BIDSANDTENDERS_PORTALS } from './portals';
+import { SITE_PORTALS } from './site-portals';
 import { SOURCES } from './catalog';
 import { connectorCollectionKey } from './source-adapters';
 import type { ScheduleRow } from './schedule-state';
@@ -18,6 +19,8 @@ export interface ConnectorSource { id: string; label: string; region: string; po
 export const CONNECTOR_SOURCES: readonly ConnectorSource[] = [
   { id: 'bidsandtenders', label: SOURCES.find(source => source.id === 'bidsandtenders')?.label ?? 'bids&tenders', region: 'British Columbia · municipal and regional portals', portals: BIDSANDTENDERS_PORTALS,
     coverage: 'Public listings of each portal below. Documents and addenda stay on the portal (sign-in required there). A notice missing from a later listing is kept; missing is not proof of closure.' },
+  { id: 'municipal-sites', label: SOURCES.find(source => source.id === 'municipal-sites')?.label ?? 'BC local government websites', region: 'British Columbia · local governments’ own websites', portals: SITE_PORTALS,
+    coverage: 'The bids page of each website below, and the page of each open notice. Each site lists what it chooses (some show recently closed notices, some only open ones). Files are not downloaded. A notice missing from a later listing is kept; missing is not proof of closure.' },
 ];
 
 /**
