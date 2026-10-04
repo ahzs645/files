@@ -94,7 +94,7 @@ describe('bids&tenders records', () => {
       type: 'Request for Proposal', category: 'Services', closingDate: 'Wed Oct 7, 2026 3:00 PM (PDT)', closingAt: '2026-10-07T15:00:00-07:00',
       publishedAt: '2026-09-11T14:00:00-07:00', detailUrl: 'https://nanaimo.bidsandtenders.ca/Module/Tenders/en/Tender/Detail/3d527422-9423-47e4-86a2-38c8fe7f94b7',
       sourceUrl: 'https://nanaimo.bidsandtenders.ca/Module/Tenders/en/Home/BidsHomepage', region: 'Nanaimo',
-      place: { municipality: 'Nanaimo', regionalDistrict: 'Nanaimo', method: 'portal' }, documentsCount: 3, addendaCount: 1,
+      place: { municipality: 'Nanaimo', regionalDistrict: 'Regional District of Nanaimo', method: 'portal' }, documentsCount: 3, addendaCount: 1,
       sourceRetrievedAt: at, noticePageRetrievedAt: at, rawSourceData: row, attachments: [], addenda: [], detailFields: [], commodities: [],
     });
     expect(record.descriptionText).toBe('The purpose of this RFP is to obtain maintenance services for existing SCBA filling stations at various fire stations located within City of Nanaimo limits by a qualified Contractor.\nThis Request for Proposal is subject to the New West Partnership Trade Agreement, the Canadian Free Trade Agreement (Chapter 5), and the Canada-European Union Comprehensive Economic and Trade Agreement (Chapter 19).');
@@ -106,7 +106,7 @@ describe('bids&tenders records', () => {
   });
   it('without a notice page keeps listing fields, a date-only published value and no invented type', () => {
     const record = listingRecord(listing('metrovancouver').data.find((row: any) => row.Title.startsWith('26-0227')), portal('metrovancouver'), at);
-    expect(record).toMatchObject({ externalId: '26-0227', type: '', closingDate: 'Fri Jan 29, 2027 2:00:00 PM (PST)', closingAt: '2027-01-29T14:00:00-08:00', publishedAt: '2026-03-03', region: 'Metro Vancouver' });
+    expect(record).toMatchObject({ externalId: '26-0227', type: '', closingDate: 'Fri Jan 29, 2027 2:00:00 PM (PST)', closingAt: '2027-01-29T14:00:00-08:00', publishedAt: '2026-03-03', region: 'Metro Vancouver Regional District' });
     expect(record).not.toHaveProperty('category'); expect(record).not.toHaveProperty('noticePageRetrievedAt');
   });
   it('keeps unknown counts and places unknown rather than zero', () => {

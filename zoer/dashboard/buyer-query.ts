@@ -41,3 +41,8 @@ export function buyerQuery(sources: string[], kind: 'award' | 'opportunity', lev
     search: `coalesce(json_extract(${value}, '$[2]'), 0)=1`,
     order: sorting ? `coalesce(json_extract(${value}, '$[0]'), ${labels.length}) ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : null };
 }
+
+const BUYER_NAME = "json_extract(data,'$.issuedBy')", BUYER_SOURCE = "json_extract(data,'$.sourceId')";
+/** BC Bid buyers seen in saved notices, most notices first (at most 200 rows). No keyword directly before `(`: Zoer's catalog reader reads `AND (` as a function named AND. */
+export const SAVED_BC_BID_BUYERS_QUERY = { parameters: ['opportunity', 'bc-bid'], statement:
+  `SELECT ${BUYER_NAME} name,count(*) count FROM records WHERE kind=? AND coalesce(${BUYER_SOURCE},'') IN ('',?) AND ${BUYER_NAME} IS NOT NULL AND ${BUYER_NAME}<>'' GROUP BY ${BUYER_NAME} ORDER BY count(*) DESC,${BUYER_NAME} LIMIT 200` };

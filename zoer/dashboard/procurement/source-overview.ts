@@ -1,6 +1,7 @@
 import type { ConnectorPortal } from '../../src/connectors/types';
 import { BIDSANDTENDERS_PORTALS } from './portals';
 import { SITE_PORTALS } from './site-portals';
+import { regionalDistrictShort } from './place-data';
 import { SOURCES } from './catalog';
 import { connectorCollectionKey } from './source-adapters';
 import type { ScheduleRow } from './schedule-state';
@@ -93,7 +94,10 @@ export interface PortalRow {
   /** Raw `code: message` (for a tooltip) and the same error in plain words (shown). */
   error?: string; errorText?: string;
 }
-const placeText = (portal: ConnectorPortal) => [portal.place.municipality, portal.place.regionalDistrict && portal.place.regionalDistrict !== portal.place.municipality ? `${portal.place.regionalDistrict} RD` : null].filter(Boolean).join(' · ') || 'Place not recorded';
+const placeText = (portal: ConnectorPortal) => {
+  const district = portal.place.regionalDistrict && regionalDistrictShort(portal.place.regionalDistrict);
+  return [portal.place.municipality, district && district !== portal.place.municipality ? `${district} RD` : null].filter(Boolean).join(' · ') || 'Place not recorded';
+};
 
 /**
  * One row per portal. A portal is a problem when its last attempt failed or it has never been collected

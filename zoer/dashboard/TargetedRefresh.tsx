@@ -73,7 +73,7 @@ export function TargetedRefreshPanel() {
       <Button className="bid-targeted-run" loading={pending} disabled={!ready || !!active} onClick={() => void start()}>{pending ? 'Starting…' : 'Refresh'}</Button>
     </div>
     {buyers === null && !buyersError && <p role="status">Loading buyers from saved notices…</p>}
-    {buyersError && <p role="alert">Saved buyers could not be loaded: {buyersError}. You can still type a buyer name.</p>}
+    {buyersError && <p role="alert">Saved buyers could not be loaded: {buyersError.replace(/\.+$/, '')}. You can still type a buyer name.</p>}
     {buyers?.length === 0 && <p>No saved BC Bid notices yet. Type a buyer name as BC Bid lists it.</p>}
     {active && !run && <p role="status">{active.paused ? PAUSED_FOR_UPDATE : 'A scrape is using the browser. Refresh when it finishes.'}</p>}
     {status && <p role={run?.status === 'failed' ? 'alert' : 'status'}>{status}</p>}

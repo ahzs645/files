@@ -29,6 +29,12 @@ describe('plain-language source errors', () => {
     expect(sourceErrorText(null)).toBeNull();
     expect(sourceErrorText({})).toBeNull();
   });
+  it('errors that had no code of their own get a plain sentence; the raw text stays in detail', () => {
+    expect(sourceErrorText({ code: 'portal_failed', message: 'Unexpected token < in JSON at position 0' })).toEqual({
+      text: 'This portal could not be collected because of an unexpected error. Notices saved earlier are kept; try again later.',
+      detail: 'portal_failed: Unexpected token < in JSON at position 0' });
+    expect(sourceErrorText({ code: 'collection_failed', message: 'boom' })!.text).toMatch(/^The collection stopped because of an unexpected error\./);
+  });
   it('portal rows carry the sentence for display and the raw text for the tooltip', () => {
     const state = readConnectorCollection({ version: 1, sourceId: 'bidsandtenders', status: 'incomplete', portals: { burnaby: { status: 'failed', error: { code: 'source_http_error', message: 'burnaby.bidsandtenders.ca returned HTTP 503. Saved records are kept.' } } } }, 'bidsandtenders');
     const row = portalRows(BIDSANDTENDERS_PORTALS, state).find(item => item.id === 'burnaby')!;

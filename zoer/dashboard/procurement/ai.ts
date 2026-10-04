@@ -113,6 +113,17 @@ export function documentSummary(c: DocumentCounts): string {
 }
 
 /**
+ * Connector notices whose listing reports documents we have not captured (bids&tenders asks for a login to download):
+ * "3 documents and 1 addendum listed on the source site; none saved here". Null when the count is unknown or files exist.
+ */
+export function listedDocumentsText(data: any, documents: readonly unknown[]): string | null {
+  const count = Number(data?.documentsCount), addenda = Number(data?.addendaCount);
+  if (documents.length || (Array.isArray(data?.attachments) && data.attachments.length) || !Number.isInteger(count) || count <= 0) return null;
+  const extra = Number.isInteger(addenda) && addenda > 0 ? ` and ${addenda} addend${addenda === 1 ? 'um' : 'a'}` : '';
+  return `${count} document${count === 1 ? '' : 's'}${extra} listed on the source site; none saved here`;
+}
+
+/**
  * How much of the notice the review actually read, as separate denominators. The host's `readable` is not
  * trusted beyond `downloaded` minus the files it listed as unreadable.
  */

@@ -31,7 +31,7 @@ describe('municipal-sites listings', () => {
       description: '26-036 GNPCC Wastewater DAFT Polymer RFP', issuedBy: 'Regional District of Nanaimo',
       closingDate: 'October 27, 2026 at 3:00 PM', closingAt: '2026-10-27T15:00:00-07:00', publishedAt: '2026-09-29',
       detailUrl: 'https://rdn.bc.ca/node/28806', sourceUrl: 'https://rdn.bc.ca/current-bid-opportunities',
-      region: 'Nanaimo', place: { municipality: null, regionalDistrict: 'Nanaimo', method: 'portal' },
+      region: 'Regional District of Nanaimo', place: { municipality: null, regionalDistrict: 'Regional District of Nanaimo', method: 'portal' },
       attachments: [], addenda: [], detailFields: [], commodities: [],
     });
     expect(daft.processId).toBe(daft.sourceKey);

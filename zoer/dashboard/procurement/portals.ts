@@ -1,4 +1,5 @@
 import type { ConnectorPortal } from '../../src/connectors/types';
+import { regionalDistrictName } from './place-data';
 
 /**
  * BC buyers publishing on bids&tenders, each checked on 2026-10-03 (BidsHomepage answered 200). Surrey's portal
@@ -6,7 +7,7 @@ import type { ConnectorPortal } from '../../src/connectors/types';
  */
 const portal = (id: string, label: string, municipality: string | null, regionalDistrict: string | null): ConnectorPortal => ({
   id, label, host: `${id}.bidsandtenders.ca`, url: `https://${id}.bidsandtenders.ca/Module/Tenders/en/Home/BidsHomepage`,
-  place: { municipality, regionalDistrict, method: 'portal' },
+  place: { municipality, regionalDistrict: regionalDistrict && regionalDistrictName(regionalDistrict), method: 'portal' },
 });
 
 export const BIDSANDTENDERS_PORTALS: readonly ConnectorPortal[] = [

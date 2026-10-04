@@ -35,6 +35,9 @@ const TEXT: Record<string, (message: string) => string> = {
   source_session: () => 'The site’s search session did not start. Try again later; saved notices are kept.',
   source_encoding: () => 'The site sent text that could not be decoded. Saved notices are kept.',
   source_size: () => 'The site’s response was too large or malformed to read. Saved notices are kept.',
+  // Fallbacks for errors that carried no code of their own; the raw text stays in `detail`.
+  portal_failed: () => 'This portal could not be collected because of an unexpected error. Notices saved earlier are kept; try again later.',
+  collection_failed: () => 'The collection stopped because of an unexpected error. Notices saved earlier are kept; try again later.',
   connector_invalid: () => 'The connector returned data that failed its checks, so nothing new was saved. The connector needs an update.',
   source_records_excluded: message => { const count = /^(\d+)/.exec(message)?.[1]; return `${count ? `${count} notice${count === '1' ? ' was' : 's were'}` : 'Some notices were'} too large to save (over 250 kB). The rest were saved.`; },
   source_incomplete: message => { const m = /reported (\d+) open notices; (\d+) were saved/.exec(message); return m ? `The portal reports ${m[1]} open notices but listed ${m[2]}; those were saved.` : 'The portal listed fewer notices than it reports; the ones listed were saved.'; },

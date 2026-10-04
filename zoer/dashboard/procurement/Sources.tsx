@@ -88,11 +88,15 @@ export function Sources() {
   };
   const collectCanadaBuys = (mode: 'resume' | 'restart') => collect('canadabuys', { sourceId: 'canadabuys', mode, maxBatches: Number(batches) }, 'CanadaBuys collection finished. Check the receipt for coverage.');
 
+  // A run that stopped part-way through the day's file (batch limit or time share) is not "Collected" yet.
+  const cursor = collection?.receipt, canadaBuysPaused = collection?.status === 'paused'
+    ? Number.isInteger(cursor?.offset) && Number.isInteger(cursor?.totalRecords) ? `Part-way · ${cursor.offset.toLocaleString()} of ${cursor.totalRecords.toLocaleString()}` : 'Part-way; continues next run'
+    : undefined;
   const overview: OverviewRow[] = [
     { id: 'bc-bid', name: 'BC Bid', region: 'British Columbia · browser scraping', tone: active ? 'busy' : bcIssue ? 'warn' : lastGood ? 'good' : 'idle', status: active ? 'Scraping now' : bcIssue ? 'Needs attention' : lastGood ? 'Up to date' : 'Not scraped yet',
       saved: saved('bc-bid'), lastSuccess: when(lastGood?.completedAt ?? lastGood?.startedAt), next: schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : bcSchedule ? <ScheduleBadge row={bcSchedule} /> : 'Not scheduled',
       action: <Btn size="sm" variant="secondary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn> },
-    { id: 'canadabuys', name: 'CanadaBuys', region: 'Canada · official dataset', tone: busy === 'canadabuys' ? 'busy' : collection?.error ? 'warn' : collection?.lastSuccessAt ? 'good' : 'idle', status: busy === 'canadabuys' ? 'Collecting' : !health.data ? 'Status unknown' : collection?.error ? 'Needs attention' : collection?.lastSuccessAt ? 'Collected' : 'Not collected',
+    { id: 'canadabuys', name: 'CanadaBuys', region: 'Canada · official dataset', tone: busy === 'canadabuys' ? 'busy' : collection?.error ? 'warn' : canadaBuysPaused ? 'idle' : collection?.lastSuccessAt ? 'good' : 'idle', status: busy === 'canadabuys' ? 'Collecting' : !health.data ? 'Status unknown' : collection?.error ? 'Needs attention' : canadaBuysPaused ?? (collection?.lastSuccessAt ? 'Collected' : 'Not collected'),
       saved: saved('canadabuys'), lastSuccess: health.data ? when(collection?.lastSuccessAt) : 'Unknown', next: nextRun('canadabuys'),
       action: <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Collecting…' : 'Collect'}</Btn> },
     ...CONNECTOR_SOURCES.map((source): OverviewRow => {
@@ -136,7 +140,7 @@ export function Sources() {
     <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} />
     {scheduleFor && <Modal title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
       <ScheduleControl actionId={COLLECT_ACTION} input={scheduledCollectInput(scheduleFor)} title={`Collect ${label(scheduleFor)}`} matches={row => collectTarget(row) === scheduleFor} describe={describeCollect} />
-      <p className="procurement-coverage">{scheduleFor === COLLECT_ALL ? `Each scheduled run collects CanadaBuys and then ${CONNECTOR_SOURCES.map(source => source.label).join(', ')}. CanadaBuys continues the same daily file where the last run stopped (up to 20 batches of 100 notices per run) and starts over when a new file is published. A source or portal that fails is shown on its card and does not stop the others; Zoer turns the schedule off only when every source fails. BC Bid is scheduled separately. `
+      <p className="procurement-coverage">{scheduleFor === COLLECT_ALL ? `Each scheduled run collects CanadaBuys and then ${listText(CONNECTOR_SOURCES.map(source => source.label))}. CanadaBuys continues the same daily file where the last run stopped (up to 20 batches of at most 500 kB per run, usually 400–500 notices) and starts over when a new file is published, so with a long interval the end of a large file may not be reached. A source or portal that fails is shown on its card and does not stop the others; Zoer turns the schedule off only when every source fails. BC Bid is scheduled separately. `
         : scheduleFor === 'canadabuys' ? 'Each scheduled run starts from the newest daily file and saves up to 20 batches (2,000 notices). ' : 'Each scheduled run collects every portal; one failing portal does not stop the others. '}A scheduled run waits while another run of this plugin is active. Zoer turns a schedule off after a failed run or a plugin update; it says so here.</p>
     </div></Modal>}
     {importOpen && <CanadaBuysImport onClose={() => setImportOpen(false)} onImported={() => { void client.invalidateQueries({ queryKey: ['catalog'] }); }} />}
@@ -203,6 +207,8 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
   </Card>;
 }
 
+const listText = (items: string[]) => items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+
 /** Sites we do not collect from; people check them directly. */
 function LinkSources() {
   const [query, setQuery] = useState('');
@@ -211,7 +217,7 @@ function LinkSources() {
   return <article id="pc-src-links" className="pc-source-card" data-wide aria-label="Check these yourself">
     <header><div><h2>Check these yourself</h2><p>{LINK_SOURCES.length} sites Zoer does not collect from. Open them to look for new notices.</p></div></header>
     {LINK_SOURCES.length > 8 && <label className="pc-portal-search"><span className="sr-only">Search sites</span><input type="search" placeholder={`Search ${LINK_SOURCES.length} sites`} value={query} onChange={e => setQuery(e.target.value)} /></label>}
-    <ul className="pc-link-sources">{shown.map(item => <li key={item.id}><a href={item.url} target="_blank" rel="noreferrer">{item.label} ↗</a><small>{[item.region, item.reason].filter(Boolean).join(' · ')}</small></li>)}</ul>
+    <ul className="pc-link-sources">{shown.map(item => <li key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><span>{item.label} ↗</span><small>{[item.region, item.reason].filter(Boolean).join(' · ')}</small></a></li>)}</ul>
   </article>;
 }
 
