@@ -31,6 +31,10 @@ async function run(actionId:string,input:any={}) {
         if(actionId==='awards.history') {
           assert.equal(value.searchFields[0].value,'2015-01-01');assert.equal(value.searchFields[1].value,'2015-01-31');
           result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:pages===1,visiblePages:[1]},html:`<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">${value.searchFields[0].value}</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">${value.searchFields[1].value}</li></ul></div><table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>2015-01-01</td><td>100</td></tr></tbody></table>`};
+        } else if(actionId==='scrape.targeted'&&value.url===LISTING_URL) {
+          // BC Bid echoes an applied buyer filter in its summary; the closing reset search shows none.
+          const tags=value.pickFields?'<div class="iv-filter-summary"><span class="tag-label">Organization :</span><ul><li class="tag-value"><span class="tag-text">Ministry of Health</span></li></ul></div>':'';
+          result={url:LISTING_URL,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:1,hasNext:false,visiblePages:[1]},html:tags+readFileSync(resolve(import.meta.dir,'../tests/fixtures/listing/page1.html'),'utf8')};
         } else if(actionId==='detail.capture') {
           result={url:'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/231457',title:'BC Bid',capturedAt:'2026-09-28T02:00:00Z',html:readFileSync(resolve(import.meta.dir,'../tests/fixtures/detail/bc-transit-231457.html'),'utf8')};
         } else {
@@ -46,6 +50,9 @@ async function run(actionId:string,input:any={}) {
 await run('catalog.migrate');assert.equal(primary,true);
 await run('listing.capture');assert.equal(records.size,2);
 const full=await run('scrape.full');assert.equal(full.detailCount,2);assert.equal(state.get('checkpoint:full').complete,true);
+const fullBefore=structuredClone(state.get('checkpoint:full'));
+const targeted=await run('scrape.targeted',{organization:'Ministry of Health'});assert.equal(targeted.listingCount,2);assert.equal(targeted.filtersCleared,true);
+assert.deepEqual(state.get('checkpoint:full'),fullBefore);assert.equal(state.get('checkpoint:targeted').status,'complete');assert.equal(state.get('checkpoint:targeted').filters.organization,'Ministry of Health');
 const sample=await run('scrape.sample',{detailLimit:1});assert.equal(sample.detailCount,1);
 const opportunity=[...records.values()][0];await run('stars.set',{entity:'opportunity',key:opportunity.data.sourceKey,starred:true});assert.equal(records.get(opportunity.id).data.starred,true);
 await run('opportunities.import',{records:[opportunity.data],fileName:'roundtrip.json'});assert.equal(records.size,2);
@@ -61,4 +68,4 @@ assert.ok(rich.descriptionText.length>2500);
 assert.ok(rich.descriptionText.includes('do not need to resubmit'));
 assert.ok(rich.detailFields.find((field:any)=>field.label==='Delivery of Submissions').value.includes('Submissions by other methods will not be accepted.'));
 console.log('Bundled detail.capture passed: long summary, rich-text submission instructions, explicit status, capture time and preserved star.');
-console.log('Bundled worker passed: migration, listing, full/sample scrape, stars, both imports, award history; rotating catalog/browser tickets; zero artifact writes.');
+console.log('Bundled worker passed: migration, listing, full/targeted/sample scrape, stars, both imports, award history; rotating catalog/browser tickets; zero artifact writes.');

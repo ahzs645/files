@@ -5,6 +5,8 @@ import { buildMarketView } from './market/model';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
 import { buildContractAwardAnalysisOverview, buildContractAwardEntityProfile, buildContractAwardEntityOptions } from '../../convex/contractAwardsAnalysisHelpers';
 
+/** `buyer City of Nanaimo · keyword "paving"` for a targeted refresh's saved filters. */
+export const targetedLabel = (filters: any) => [filters?.organization && `buyer ${filters.organization}`, filters?.region && `region ${filters.region}`, filters?.keyword && `keyword "${filters.keyword}"`].filter(Boolean).join(' · ') || 'targeted refresh';
 export interface WorkspaceState { runs: any[]; artifacts: any[]; runsTruncated?: boolean }
 const TERMINAL = ['succeeded', 'failed', 'cancelled', 'outcome_unknown'];
 /**
@@ -61,7 +63,7 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
       }
     }
   }
-  const runs = state.runs.filter(run => ['scrape.full', 'scrape.sample', 'listing.capture', 'detail.capture'].includes(run.actionId)).map(run => {
+  const runs = state.runs.filter(run => ['scrape.full', 'scrape.targeted', 'scrape.sample', 'listing.capture', 'detail.capture'].includes(run.actionId)).map(run => {
     const doc = byRun.get(run.id);
     const full = doc?.scope === 'all-current-public-opportunities';
     const rows = [...(history.get(run.id)?.values() ?? [])];
@@ -73,7 +75,7 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
     const phase = paused ? 'paused' : status === 'succeeded' ? 'complete' : status === 'failed' ? 'failed' : status === 'cancelled' ? 'cancelled' : status === 'stopping' ? 'stopping' : doc?.phase ?? (doc ? 'detail' : 'listing');
     const interrupted = run.status === 'outcome_unknown';
     const savedSoFar = doc && full ? ` Saved so far: ${counts.listingCount} listings · ${counts.detailCount} details · ${doc.pending?.length ?? 0} remaining.` : '';
-    const message = paused ? PAUSED_FOR_UPDATE + savedSoFar : run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved progress is retained; resume the saved scrape to continue.' : run.error) || (status === 'succeeded' ? `${counts.listingCount} listings · ${counts.detailCount} details · ${full ? 'all current public opportunities' : 'bounded capture'}` : status === 'cancelled' ? 'Stopped by operator' : doc ? `Saved ${counts.listingCount} listings across ${doc.currentPage ?? 1} pages · ${counts.detailCount} details${full ? ` · ${doc.pending?.length ?? 0} remaining` : ""}` : 'Opening BC Bid and collecting the listing page');
+    const message = paused ? PAUSED_FOR_UPDATE + savedSoFar : run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved progress is retained; resume the saved scrape to continue.' : run.error) || (status === 'succeeded' ? `${counts.listingCount} listings · ${counts.detailCount} details · ${full ? 'all current public opportunities' : doc?.scope === 'bcbid-targeted' ? targetedLabel(doc.filters) : 'bounded capture'}` : status === 'cancelled' ? 'Stopped by operator' : doc ? `Saved ${counts.listingCount} listings across ${doc.currentPage ?? 1} pages · ${counts.detailCount} details${full ? ` · ${doc.pending?.length ?? 0} remaining` : ""}` : 'Opening BC Bid and collecting the listing page');
     return { _id: run.id, status, paused, trigger: 'manual', startedAt: Date.parse(run.createdAt), completedAt: run.completedAt ? Date.parse(run.completedAt) : null,
       cancellationRequested: !!run.cancelRequestedAt, counts, errorMessage: interrupted || paused ? null : run.error || doc?.error, errorCode: interrupted ? 'scrape_interrupted' : status === 'failed' ? 'scrape_failed' : null,
       progress: { phase, message, percent: status === 'succeeded' ? 100 : full ? (doc.phase === "listing" ? 10 : 30 + 69 * counts.detailCount / Math.max(1, counts.listingCount)) : doc ? Math.min(90, 20 + counts.detailCount * 20) : 0, current: counts.detailCount, total: full ? counts.listingCount : doc?.detailLimit ?? 3,
