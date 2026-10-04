@@ -7,6 +7,7 @@ import { buildContractAwardImportKey } from '../../packages/shared/src/contractA
 import { buildModel, queryModel, type Model, type SavedDocument, type WorkspaceState } from './model';
 import { host } from './bridge';
 import { queryCatalog, readAll, resetCatalogCache } from './queries';
+import { SAVED_BC_BID_BUYERS_QUERY } from './buyer-query';
 export { readAll } from './queries';
 let snapshot: { model?: Model; error?: string; notice?: string } = {};
 const listeners = new Set<() => void>();
@@ -206,11 +207,8 @@ export async function startTargetedRefresh(input: { organization?: string; regio
   await refresh();
   return run.id as string;
 }
-/** BC Bid buyers seen in saved notices, most notices first (the catalog console returns at most 200 rows). */
 export async function savedBcBidBuyers(): Promise<{ name: string; count: number }[]> {
-  const name = "json_extract(data,'$.issuedBy')", source = "json_extract(data,'$.sourceId')";
-  const { rows } = await host('catalog.query', { parameters: ['opportunity', 'bc-bid'], statement:
-    `SELECT ${name} name,count(*) count FROM records WHERE kind=? AND (${source} IS NULL OR ${source}='' OR ${source}=?) AND ${name} IS NOT NULL AND ${name}<>'' GROUP BY ${name} ORDER BY count(*) DESC,${name} LIMIT 200` });
+  const { rows } = await host('catalog.query', SAVED_BC_BID_BUYERS_QUERY);
   return rows.map((row: any) => ({ name: String(row.name), count: Number(row.count) }));
 }
 
