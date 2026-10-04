@@ -631,7 +631,7 @@
         "resourceLimits": {
           "timeoutMs": 3600000,
           "maxMemoryMb": 512,
-          "maxOutputBytes": 2097152,
+          "maxOutputBytes": 67108864,
           "maxBrowserPages": 320
         },
         "idempotent": false,
@@ -1263,7 +1263,7 @@
         "resourceLimits": {
           "timeoutMs": 1200000,
           "maxMemoryMb": 512,
-          "maxOutputBytes": 2097152,
+          "maxOutputBytes": 67108864,
           "maxBrowserPages": 30
         },
         "idempotent": true,
