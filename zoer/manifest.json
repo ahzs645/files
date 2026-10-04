@@ -1,14 +1,39 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.31.0",
-  "description": "Multi-source procurement catalog with BC Bid, CanadaBuys collection, saved searches, pursuits and source-aware analysis.",
+  "version": "0.32.0",
+  "description": "Multi-source procurement catalog with BC Bid, CanadaBuys and bids&tenders (25 BC public buyers) collection, saved searches, pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
     "apiVersion": "1",
     "networkAllowlist": [
       "bcbid.gov.bc.ca",
-      "canadabuys.canada.ca"
+      "canadabuys.canada.ca",
+      "abbotsford.bidsandtenders.ca",
+      "burnaby.bidsandtenders.ca",
+      "campbellriver.bidsandtenders.ca",
+      "comoxvalleyrd.bidsandtenders.ca",
+      "coquitlam.bidsandtenders.ca",
+      "dnv.bidsandtenders.ca",
+      "fortstjohn.bidsandtenders.ca",
+      "islandhealthfdc.bidsandtenders.ca",
+      "lakecountry.bidsandtenders.ca",
+      "mapleridge.bidsandtenders.ca",
+      "metrovancouver.bidsandtenders.ca",
+      "nanaimo.bidsandtenders.ca",
+      "oakbay.bidsandtenders.ca",
+      "portmoody.bidsandtenders.ca",
+      "princegeorge.bidsandtenders.ca",
+      "rdco.bidsandtenders.ca",
+      "richmond.bidsandtenders.ca",
+      "salmonarm.bidsandtenders.ca",
+      "sd72.bidsandtenders.ca",
+      "sechelt.bidsandtenders.ca",
+      "sidney.bidsandtenders.ca",
+      "squamish.bidsandtenders.ca",
+      "surrey.bidsandtenders.ca",
+      "vernon.bidsandtenders.ca",
+      "westkelowna.bidsandtenders.ca"
     ],
     "permissions": [
       "browser:page:read",
@@ -970,8 +995,8 @@
       },
       {
         "id": "procurement.collect",
-        "title": "Collect CanadaBuys tenders",
-        "description": "Fetch the official federal open-tender CSV and merge bounded batches into the existing catalog. Resume checks the source checksum; no saved notices are deleted.",
+        "title": "Collect public procurement sources",
+        "description": "Fetch the official CanadaBuys open-tender CSV, or the open-notice listings and public notice pages of 25 BC public buyers on bids&tenders, and merge them into the existing catalog. CanadaBuys resume checks the source checksum; each bids&tenders portal is saved on its own, so one failing portal does not stop the others. Saved notices are never deleted. bids&tenders search needs a per-run cookie session and form POST.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -986,8 +1011,12 @@
           "timeoutMs": 600000,
           "maxMemoryMb": 1024,
           "maxOutputBytes": 67108864,
-          "maxNetworkRequests": 1,
+          "maxNetworkRequests": 850,
           "maxNetworkResponseBytes": 20971520
+        },
+        "networkSession": {
+          "cookies": "run",
+          "formPost": true
         },
         "idempotent": true,
         "inputSchema": {
@@ -997,7 +1026,8 @@
             "sourceId": {
               "type": "string",
               "enum": [
-                "canadabuys"
+                "canadabuys",
+                "bidsandtenders"
               ]
             },
             "mode": {
@@ -1013,6 +1043,17 @@
               "minimum": 1,
               "maximum": 20,
               "default": 1
+            },
+            "portals": {
+              "type": "array",
+              "description": "bids&tenders portal ids to collect; all portals when omitted.",
+              "minItems": 1,
+              "maxItems": 25,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,63}$"
+              }
             }
           },
           "required": [

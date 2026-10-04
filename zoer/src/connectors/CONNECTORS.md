@@ -101,3 +101,27 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
 ## Changes
 
 - 2026-10-03: initial contract.
+- 2026-10-03 (bids&tenders connector, `feat/bcsrc-bidsandtenders`):
+  - `NetFetch` over Zoer: `zoer/src/connector-collection.ts#hostNetFetch` sends `{ url, method, headers, bodyBase64 }`;
+    `form` becomes a `URLSearchParams` body with `content-type: application/x-www-form-urlencoded`; `user-agent` is
+    `ZoerProcurement/0.32`; bodies are decoded as strict UTF-8 (`source_encoding` otherwise). Connectors never set headers.
+  - Portal failures: throw `ConnectorError(code, message)` from `zoer/src/connectors/errors.ts` (`httpFailure()` maps
+    403/429/other). Codes used: `source_http_error`, `source_forbidden`, `source_rate_limited`, `source_layout`,
+    `source_schema`, `source_session`, `source_encoding`, `connector_invalid`; anything without a code is `portal_failed`.
+    A pause error or an exhausted request budget must be rethrown, never turned into a warning.
+  - §4 state additions: source `attempt: { startedAt, portals, open }`. `resume` continues an attempt that is still
+    `open` (paused, crashed or stopped by the 7.5-minute soft time limit) for the same portal set within 6 hours and skips
+    portals already saved in it; otherwise every selected portal is fetched. Source `error.code`: `time_budget`,
+    `portals_failed`, `portals_incomplete`, or the run-level code. Portal entries add `attemptStartedAt`, `attemptedAt`,
+    `warnings` (≤ 10) and `excluded`, and a fourth status `incomplete` (records saved, but fewer than `totalReported` or
+    some over 250 kB). A failed portal keeps its previous `retrievedAt`, `recordCount` and `lastSuccessAt`.
+  - Merge: `descriptionText` is kept from the saved record only when it differs from the saved `sourceDescriptionText`
+    (i.e. it was enriched), so unenriched text follows the source. A saved `place` whose `method` is not `portal` is kept.
+    `contacts` is never written by a listing connector that has none, so enrichment's contacts survive.
+  - Records may carry `category`/`sourceCategory` (bids&tenders "Bid Classification") and `noticePageRetrievedAt`.
+    `publishedAt` is a date (`YYYY-MM-DD`) when the source prints a published time without a zone.
+  - bids&tenders notice pages (`/Module/Tenders/en/Tender/Detail/<Id>`) answer 200 to a fresh browser without the
+    session (checked on six portals), so `detailUrl` is that page; unknown ids 302 to the module root.
+  - bids&tenders sets its cookies with `domain=bidsandtenders.ca`; the host jar must store a parent-domain cookie
+    host-only for the requesting host (the networkSession branch does).
+  - `connectorCollectionKey(sourceId)` in `dashboard/procurement/source-adapters.ts` gives the §4 state key for the UI.
