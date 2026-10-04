@@ -21,8 +21,9 @@ import type { ConnectorPortal, PortalResult, SourceConnector } from './types';
  *    do. Nothing on a check page is clicked or answered.
  *
  * Listing pages are parsed as a table with title and closing columns (the municipal-sites reader), else as labelled
- * blocks (one block per notice with a link and a closing date). No layout was confirmed against a captured page yet,
- * so a page neither reader understands is a layout error, never "no notices".
+ * blocks (one block per notice with a link and a closing date), else as tables headed by a plain row of cells
+ * (Chilliwack); Kelowna's Drupal view has its own reader (`views`). Chilliwack and Kelowna were confirmed against pages
+ * Zoer's browser captured on 2026-10-04; a page no reader understands is a layout error, never "no notices".
  */
 export const SOURCE_ID = BROWSER_SOURCE_ID;
 export interface CapturedPage { url: string; title: string; html: string; capturedAt?: string; status?: number }
@@ -70,7 +71,8 @@ export function contentOf(html: string): string {
   return /<main\b[^>]*>([\s\S]*)<\/main>/i.exec(page)?.[1] ?? page;
 }
 
-const EMPTY = /there are (?:currently )?no (?:open |current |active )?(?:bid|tender|procurement|opportunit|rfp|rfq|solicitation)|no (?:open |current |active )?(?:bid|tender|procurement|opportunit|rfp|rfq|solicitation)[a-z ]*(?:at this time|currently|posted|available|to display)|nothing (?:is )?(?:currently )?(?:open|posted)/i;
+// RDKB (Zoer capture 2026-10-04): an "Opportunities" heading followed by "None at the Moment".
+const EMPTY = /there are (?:currently )?no (?:open |current |active )?(?:bid|tender|procurement|opportunit|rfp|rfq|solicitation)|no (?:open |current |active )?(?:bid|tender|procurement|opportunit|rfp|rfq|solicitation)[a-z ]*(?:at this time|currently|posted|available|to display)|nothing (?:is )?(?:currently )?(?:open|posted)|(?:opportunities|bids|tenders)\s*:?\s*none at (?:the|this) (?:moment|time)\b/i;
 const BLOCK_START = /(?=<(?:li|article|tr|dl)\b)|(?=<div\b[^>]*\bclass="(?:[^"]*\s)?(?:views-row|card|item|list-item|listing-item|result|search-result|entry|post|opportunity|tender|bid)(?=[\s"]))/i;
 const CLOSING = /^(?:(?:bid|tender|proposal|submission|quote|rfp|rfq)s?\s+)?(closing(?:\s+date)?(?:\s*(?:and|&)\s*time)?|closes(?:\s+on)?|closed|deadline|submission deadline|due(?:\s+date)?|expires|expiry(?:\s+date)?|expiration(?:\s+date)?)\s*:?\s*(.*)$/i;
 const POSTED = /^(posted|issued|published|issue date|date posted|posting date|date issued|release date)\s*(?:date|on)?\s*:?\s*(.*)$/i;
@@ -133,15 +135,97 @@ export function parseBlocks(html: string, pageUrl: string): { rows: BrowserRow[]
   throw new ConnectorError('source_layout', 'The page has no notice list Procurement can read (no table with title and closing columns, and no blocks with a link and a closing date). This site\'s layout has not been confirmed yet; saved records are kept.');
 }
 
-/** `auto`: a titled table with a closing column first (municipal-sites reader), then labelled blocks. */
+const isLayoutError = (error: unknown) => (error as ConnectorError)?.code === 'source_layout';
+/** Status implied by the section a notice is listed under ("Current Bid Opportunities", "Recently Closed"). */
+const sectionStatus = (section: string) => /^(?:current|open)\b/i.test(section) ? 'Open' : /\bclosed\b/i.test(section) ? 'Closed' : undefined;
+
+/**
+ * Tables whose column headings are an ordinary row of `<td>` cells (Chilliwack: `Title | Type | Closes`, and
+ * `Title | Type | Status | Closed` for recently closed bids), every such table read with the municipal-sites table
+ * reader. A one-cell row above the headings names the section; a row without a status column takes its status
+ * from that name ("Current …" → Open).
+ */
+export function parseCellHeaderTables(html: string): BrowserRow[] {
+  const rows: BrowserRow[] = [];
+  for (const [table] of contentOf(html).matchAll(/<table\b[\s\S]*?<\/table>/gi)) {
+    if (/<th\b/i.test(table)) continue;
+    const trs = [...table.matchAll(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi)].map(match => match[0]);
+    for (let i = 0; i < trs.length; i++) {
+      // Headings are plain text in two or more cells; data rows carry the notice links.
+      if (/<a\b/i.test(trs[i]) || (trs[i].match(/<td\b/gi) ?? []).length < 2) continue;
+      let parsed: ReturnType<typeof parseTable>;
+      try { parsed = parseTable(`<table>${trs[i].replace(/<(\/?)td\b/gi, '<$1th')}${trs.slice(i + 1).join('')}</table>`); }
+      catch (error) { if (isLayoutError(error)) continue; throw error; }
+      const caption = i > 0 && (trs[i - 1].match(/<td\b/gi) ?? []).length === 1 ? oneLine(trs[i - 1]) : '';
+      for (const row of parsed.rows) {
+        const status = row.status ?? sectionStatus(caption);
+        rows.push({ ...row, ...(status ? { status } : {}), cells: { ...(caption ? { Section: caption } : {}), ...row.cells }, html: { closing: row.html.closing, posted: row.html.posted } });
+      }
+      break;
+    }
+  }
+  return rows;
+}
+
+/**
+ * A Drupal view of bids without closing dates (Kelowna, Zoer capture 2026-10-04): one `views-row` per notice with a
+ * `views-field-title` link (`Reference #: 13158. Name: Mechanical Contractor Services`) and a `views-field-body`
+ * summary. Rows take their status from the view's heading ("Current opportunities" → Open); closing dates are only on
+ * the notice pages, which are not read, so records carry none.
+ */
+export function parseViewRows(html: string, pageUrl: string): { rows: BrowserRow[]; empty: boolean } {
+  const content = contentOf(html), start = content.search(/class="[^"]*\bview-id-[a-z_]*bid[a-z_]*\b/i);
+  if (start < 0) {
+    if (EMPTY.test(htmlToText(content))) return { rows: [], empty: true };
+    throw new ConnectorError('source_layout', 'The page no longer has its bid list (a Drupal view of bids). This site\'s layout changed; saved records are kept.');
+  }
+  // The view ends at its footer or at the next view (Kelowna's contact box is a view too).
+  const rest = content.slice(start + 1), end = rest.search(/class="view-footer"|class="view view-/i);
+  const view = end < 0 ? rest : rest.slice(0, end);
+  const heading = [...content.slice(0, start).matchAll(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/gi)].at(-1)?.[1];
+  const listStatus = heading ? sectionStatus(oneLine(heading)) : undefined;
+  const field = (part: string, name: string) => new RegExp(`<div\\b[^>]*class="[^"]*\\bviews-field-${name}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/div>`, 'i').exec(part)?.[1];
+  const rows = new Map<string, BrowserRow>();
+  for (const part of view.split(/<div\b[^>]*class="(?:[^"]*\s)?views-row(?=[\s"])[^"]*"[^>]*>/i).slice(1)) {
+    const titleHtml = field(part, 'title') ?? '';
+    const link = /<a\b([^>]*)>([\s\S]*?)<\/a>/i.exec(titleHtml);
+    const published = oneLine(link ? link[2] : titleHtml);
+    const named = /^Reference\s*#?\s*:?\s*([A-Z0-9][A-Z0-9-]*)\s*\.?\s*Name\s*:\s*(.+)$/i.exec(published);
+    const title = named ? named[2].trim() : published;
+    if (!title) continue;
+    const summary = oneLine(field(part, 'body') ?? '').replace(/^Description\s*:\s*/i, '') || undefined;
+    const number = named?.[1] ?? leadingNumber(title);
+    const row: BrowserRow = {
+      title, href: link ? resolveUrl(attr(link[1], 'href'), pageUrl) : undefined, number, status: listStatus, summary,
+      cells: { Title: published, ...(summary ? { Description: summary } : {}) }, html: {},
+    };
+    const key = row.href ?? `${row.number ?? ''}|${row.title}`;
+    if (!rows.has(key)) rows.set(key, row);
+  }
+  if (rows.size) return { rows: [...rows.values()], empty: false };
+  if (/class="view-empty"/i.test(view) || EMPTY.test(htmlToText(view))) return { rows: [], empty: true };
+  throw new ConnectorError('source_layout', 'The bid list shows no notice Procurement can read (no titled rows) and does not say it is empty. This site\'s layout changed; saved records are kept.');
+}
+
+/**
+ * `auto`: a titled table with a closing column first (municipal-sites reader), then labelled blocks, then tables
+ * headed by a plain row of cells (only when they hold notices, so pages the block reader already read are unchanged).
+ */
 export function parseBrowserListing(site: BrowserSite, html: string, pageUrl: string): { rows: BrowserRow[]; empty: boolean } {
+  if (site.layout === 'views') return parseViewRows(html, pageUrl);
   if (site.layout === 'auto') {
     try {
       const table = parseTable(contentOf(html));
       return { rows: table.rows.map(row => ({ ...row, html: { closing: row.html.closing, posted: row.html.posted } })), empty: table.empty };
-    } catch (error) { if ((error as ConnectorError)?.code !== 'source_layout') throw error; }
+    } catch (error) { if (!isLayoutError(error)) throw error; }
   }
-  return parseBlocks(html, pageUrl);
+  try { return parseBlocks(html, pageUrl); }
+  catch (error) {
+    if (site.layout !== 'auto' || !isLayoutError(error)) throw error;
+    const rows = parseCellHeaderTables(html);
+    if (rows.length) return { rows, empty: false };
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

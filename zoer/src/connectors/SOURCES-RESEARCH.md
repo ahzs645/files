@@ -38,22 +38,28 @@ only from a verified instant and marked `statusDerivedFrom: 'closingAt'`; otherw
 
 ## Collected in the person's Zoer browser (`browser-sites`, `procurement.collect.browser`)
 
-Moved out of the link-only list on 2026-10-03. Status of every row: **robots verdict pending, fixture pending — to be
-captured through Zoer** (no page of these sites was saved for tests; parsers are tested with synthetic pages and are
-unverified). The action reads robots.txt through the browser on each run (kept 24 h) and obeys what it finds; the floors
-below come from the earlier survey notes in this file and only ever slow a run down.
+Moved out of the link-only list on 2026-10-03. The action reads robots.txt through the browser on each run (kept 24 h)
+and obeys what it finds; the floors below come from the earlier survey notes in this file and only ever slow a run down.
 
-| Site | Listing URL | Why the browser | Pacing floor | Layout read as |
-|---|---|---|---|---|
-| CivicInfo BC (aggregator) | civicinfo.bc.ca/bids | Cloudflare challenge for non-browser requests | 5 s (survey: Crawl-delay 5) | blocks (unverified) |
-| City of Kelowna | kelowna.ca/…/current-bidding-opportunities | Cloudflare challenge | 5 s | table, else blocks (unverified) |
-| District of West Vancouver | westvancouver.ca/business-development/information-businesses | Cloudflare challenge | 5 s | table, else blocks (unverified; the URL may be a landing page) |
-| Regional District of Kootenay Boundary | rdkb.com/Regional-Government/Organization/Opportunities | Cloudflare challenge | 5 s | table, else blocks (unverified) |
-| Vancouver Airport Authority (YVR) | yvr.ca/en/business/work-with-yvr | HTTP 403 to non-browser requests | 5 s | table, else blocks (unverified; may only link elsewhere) |
-| City of Cranbrook | cranbrook.ca/business/city-tenders | bot-challenge script; times printed "MT" | 5 s | table, else blocks (unverified) |
-| City of Chilliwack | chilliwack.com/main/page.cfm?id=400 | robots Crawl-delay 10 | 10 s | table, else blocks (unverified) |
-| Resort Municipality of Whistler | whistler.ca/business-development/bid-opportunities/ | robots Crawl-delay 10; PDFs disallowed (never loaded) | 10 s | table, else blocks (unverified) |
-| BC Ferries | bcferries.com/our-company/procurement | robots Crawl-delay 10, Visit-time 0900-1200 UTC | 10 s, 09:00–12:00 UTC only | table, else blocks (unverified) |
+**Zoer captures of 2026-10-04** (~04:31 UTC, Zoer's own Clearcote browser; the five pages that failed with
+`source_layout` were read from the plugin's `layoutSample` — nothing was fetched from a workstation). The trimmed
+samples are the test fixtures `tests/fixtures/browser-sites/zoer-<id>.html`; `verified: true` only where a listing
+was read from one of them.
+
+| Site | Listing URL | Why the browser | Pacing floor | What the Zoer capture showed | Layout read as |
+|---|---|---|---|---|---|
+| CivicInfo BC (aggregator) | civicinfo.bc.ca/bids | Cloudflare challenge for non-browser requests | 5 s (survey: Crawl-delay 5) | Cloudflare check; waits for the person | blocks (unverified) |
+| City of Kelowna | kelowna.ca/…/current-bidding-opportunities | Cloudflare challenge | 5 s | Drupal view "Current opportunities", 6 rows (`Reference #: 13158. Name: Mechanical Contractor Services` + truncated description, footer "Showing 1 - 6 of 6 Results"); **no closing dates** on the listing | `views` (**verified**): number + title from the link, description as summary, status Open from the view heading, no `closingAt`. Closing dates are only on notice pages (not read) |
+| Regional District of Kootenay Boundary | rdkb.com/Regional-Government/Organization/Opportunities | Cloudflare challenge | 5 s | "Opportunities" heading, then "None at the Moment" | empty (the wording is recognised right after a bids heading); layout of a posted notice not seen yet (unverified) |
+| Vancouver Airport Authority (YVR) | yvr.ca/en/business/work-with-yvr/airport-suppliers | HTTP 403 to non-browser requests | 5 s | The old URL (yvr.ca/en/business/work-with-yvr) is a landing page; it sends suppliers to the same-host "Supplier page" for active bidding opportunities | URL taken from that capture; listing not captured yet (unverified) |
+| City of Cranbrook | cranbrook.ca/business/city-tenders | bot-challenge script; times printed "MT" | 5 s | collected 1 notice (no sample kept, the reader understood it) | table, else blocks (unverified) |
+| City of Chilliwack | chilliwack.com/main/page.cfm?id=400 | robots Crawl-delay 10 | 10 s | Two tables headed by plain `<td>` rows: "Current Bid Opportunities" (Title / Type / Closes, 5 rows) and "Recently Closed" (Title / Type / Status / Closed, 12 rows: Reviewing, Awarded). Closing printed `Oct 7, 2026` + `3:00 PM` with no zone; links `page.cfm?id=400&…&bidid=<n>` | auto → plain-cell tables (**verified**): 17 records, `closingAt` the date alone, status Open for the current table and the published status for closed rows; both tables give the same notice id (`bidid`) |
+| Resort Municipality of Whistler | whistler.ca/business-development/bid-opportunities/ | robots Crawl-delay 10; PDFs disallowed (never loaded) | 10 s | skipped: robots.txt read through Zoer disallowed the page | table, else blocks (unverified) |
+| BC Ferries | bcferries.com/our-company/procurement | robots Crawl-delay 10, Visit-time 0900-1200 UTC | 10 s, 09:00–12:00 UTC only | not loaded (outside its visit window) | table, else blocks (unverified) |
+
+District of West Vancouver moved to link only on 2026-10-04: the configured page (westvancouver.ca/business-development/
+information-businesses) is "Information for Businesses", whose "Doing business with us" section says all postings are on
+BC Bid. It lists no notices, so it is no longer loaded (host dropped from the allowlist and from the action's site list).
 
 ## Link only (`link-sources.ts`)
 
@@ -63,7 +69,8 @@ Every URL below loaded for a person on 2026-10-03 (curl 200, or system Chrome fo
 |---|---|---|
 | City of Vancouver (Jaggaer, bids.sciquest.com) | Vancouver | Server-rendered with every field incl. PDT/PST closing times and contacts, but robots.txt is `Disallow: /` for all agents; vancouver.ca blocks automated requests. |
 | Bonfire portals (`<org>.bonfirehub.ca`) | Victoria, Saanich, Central Saanich, North Cowichan, CVRD, Courtenay, Comox, Vernon, Kelowna, UVic, VIU, BC Transit, ICBC, Island Health, Fraser Health, PHSA, FNHA | Open-list JSON (`/PublicPortal/getOpenPublicOpportunitiesSectionData`) answers without login, but robots.txt is `Disallow: /`. The old code needed login + Cloudflare bypass for details; not done. |
-| (moved) CivicInfo BC, Kelowna site, West Vancouver, RDKB, YVR, Port of Vancouver, Cranbrook, BC Ferries, Chilliwack, Whistler | those buyers | Now collected in the person's Zoer browser (section above). |
+| (moved) CivicInfo BC, Kelowna site, RDKB, YVR, Port of Vancouver, Cranbrook, BC Ferries, Chilliwack, Whistler | those buyers | Now collected in the person's Zoer browser (section above). |
+| District of West Vancouver | West Vancouver | Posts on BC Bid: its business page (read from Zoer's capture of 2026-10-04) says all postings are on BC Bid and lists none itself. |
 | Port Alberni, Port Hardy, qathet, Terrace | those buyers | No closing times or no closing dates, hand-edited lists, or no notice pages. |
 | SCRD, Hope ("Pacific Time"), Smithers ("PST"), ACRD, Pemberton | those buyers | One-off WordPress/custom pages; feasible later as single-portal parsers, not built in this pass. |
 | SLRD | SLRD | One notice in a table whose only date column is headed "Date" (closing vs posted unclear). |
