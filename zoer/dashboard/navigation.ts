@@ -11,6 +11,8 @@ const emit = () => listeners.forEach(listener => listener());
 export function usePluginLocation() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => location); }
 export function useNavigationReady() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => ready); }
 export const pluginHref = (path: string) => baseUrl + '#/plugins/bc-bid-monitor' + (path === '/' ? '' : path);
+/** A Zoer page outside the plugin (e.g. `#/settings/plugins`). */
+export const hostHref = (hash: string) => baseUrl + hash;
 const internal = (value: string) => {
   const [path, query] = value.split('?');
   return (path === '/documents' || path === '/ai-review' || path === '/settings' || path === '/procurement' || path === '/pursuits' || path === '/sources' || path === '/bc-bid-dashboard' || path === '/home' || path === '/insights' || path === '/evidence' || path === '/profiles' || path === '/workbench' ? '/' : path === '/analysis' || path.startsWith('/analysis/') ? '/contract-awards/analysis' : path) + (query ? '?' + query : '');

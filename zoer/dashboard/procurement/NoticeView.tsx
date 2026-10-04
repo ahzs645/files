@@ -9,8 +9,10 @@ import { patchPluginQuery, usePluginLocation } from '../navigation';
 import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
 import { PURSUIT_STAGES, type PursuitStage } from './state-contract';
 import { readProcurementState, runProcurementAction, saveProcurementState } from './state-client';
-import { shortDate, sourceName, sql } from './display';
+import { noticeStatus, shortDate, sourceName, sql } from './display';
+import { NoticeHideButton } from './Triage';
 import { AiResult, LabelChips } from './AiResult';
+import { NoticeContacts, PossibleDuplicates, noticeSummary, placeHow, placeText } from './NoticeEnrichment';
 import { CATEGORY_PROMPT, CATEGORY_PROMPT_NAME, ago, buyerValue, coverageText, documentCounts, documentSummary, hasUsableText, latestEvidence, latestReview, verdictText, verdictTone } from './ai';
 import { useReviewWorkspace } from '../review-workspace/actions';
 import { label } from '../review-workspace/queries';
@@ -71,6 +73,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { i
     <p className="pc-notice-meta">{sourceName(source)} · {award ? 'Award' : 'Opportunity'}{data.externalId || data.opportunityId ? ` · ${data.externalId || data.opportunityId}` : ''}{url && <> · <a className="procurement-link" href={url} target="_blank" rel="noopener noreferrer">Open on {sourceName(source)} ↗</a></>}</p>
     {record && <div className="pc-notice-actions">
       <Btn size="sm" variant="secondary" disabled={!!busy} aria-pressed={!!data.starred} onClick={() => void act('star', () => setStar(record.kind, award ? data.importKey : data.sourceKey, !data.starred))}>{busy === 'star' ? 'Saving…' : data.starred ? '★ Shortlisted' : '☆ Shortlist'}</Btn>
+      <NoticeHideButton id={id} title={title} />
       <label className="pc-notice-stage"><span className="sr-only">Pursuit stage</span><Select aria-label="Pursuit stage" presentation="dropdown" searchable={false} value={pursuit?.stage ?? ''} disabled={!!busy || state.isPending || !!state.error} onChange={event => void setStage(event.target.value as PursuitStage)}><option value="" disabled>{busy === 'pursuit' ? 'Saving…' : 'Add to pursuits'}</option>{PURSUIT_STAGES.map(stage => <option key={stage} value={stage}>Pursuit: {stage}</option>)}</Select></label>
     </div>}
     <div className="pc-notice-tabs" role="tablist" aria-label="Notice sections" onKeyDown={tabKeys}>
@@ -161,7 +164,8 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
     [award ? 'Awarded' : 'Closes', !award && when.tone === 'passed' ? `Closed ${when.text}` : when.text, award ? undefined : when.tone],
     ...(budget ? [[budget.label, budget.text, budget.ai ? 'ai' : undefined] as [string, string, string?], ...budget.others.map(o => [o.label, o.text, 'ai'] as [string, string, string?])] : [['Contract value', contract || 'Not disclosed'] as [string, string]]),
     ['Buyer', String(data.issuedBy || data.issuingOrganization || 'Not provided')],
-    ...(award ? [['Supplier', String(data.successfulSupplier || 'Not provided')] as [string, string]] : [['Status', String(data.status || 'Not provided')] as [string, string]]),
+    ...(award ? [['Supplier', String(data.successfulSupplier || 'Not provided')] as [string, string]] : [['Status', (status => !status ? 'Not provided' : status.title ? `${status.text} · source status: ${String(data.status || 'not given')}` : status.text)(noticeStatus(data.status, data.closingAt ?? data.closingDate, record.kind))] as [string, string]]),
+    ...(award ? [] : [['Place', placeText(data.place) || 'Not identified'] as [string, string]]),
     ['Type', String(data.type || data.opportunityType || 'Not provided')],
     ['Documents', documentSummary(documentCounts(documents, data.attachments))],
   ];
@@ -171,7 +175,7 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
     catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
   return <div className="pc-notice-section">
-    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd title={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate) : undefined}>{text}</dd></div>)}</dl>
+    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd title={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate) : label === 'Place' && data.place ? placeHow(data.place) : undefined}>{text}</dd></div>)}</dl>
     {review ? <section className="pc-card" aria-label="AI summary">
       <header><h3>AI summary</h3><span className="pc-card-links">{(review.result.labels ?? []).some((label: string) => !tags.includes(label)) && <button type="button" className="pc-link-btn" disabled={saving} onClick={() => void saveTags([...tags, ...(review.result.labels ?? [])])}>Save as tags</button>}<button type="button" className="pc-link-btn" onClick={() => onTab('ai')}>Details</button></span></header>
       <p>{review.result.summary}</p><LabelChips labels={review.result.labels ?? []} />
@@ -179,6 +183,8 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
     </section> : <section className="pc-card pc-card-empty" aria-label="AI summary"><header><h3>No AI summary yet</h3></header><p>Summarize this notice and its documents, and tag it with AI categories.</p><Btn size="sm" onClick={() => onTab('ai')}>Summarize &amp; categorize</Btn></section>}
     {verdict && <section className="pc-card" aria-label="Bid or no-bid"><header><h3>Bid / no-bid</h3><span className="pc-card-meta">{ago(verdict.created_at)}</span></header><p className="pc-verdict" data-verdict={verdictTone(verdict.result.fields?.recommendation)}>{verdictText(verdict.result.fields?.recommendation)}</p><p>{verdict.result.summary}</p></section>}
     {description && <section className="pc-description"><p data-clamped={!more && description.length > 600 || undefined}>{description}</p>{description.length > 600 && <button type="button" className="pc-link-btn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}</section>}
+    <NoticeContacts contacts={data.contacts} />
+    {!award && <PossibleDuplicates notice={noticeSummary(id, record)} />}
     <section className="pc-tags" aria-label="Your tags"><h3>Your tags</h3>
       {editing ? <div className="pc-tag-editor"><input aria-label="Tags, comma-separated" value={draft} onChange={e => setDraft(e.target.value)} placeholder="e.g. shortlist-q4, partner: Dominion" /><Btn size="sm" disabled={saving} onClick={() => void saveTags()}>{saving ? 'Saving…' : 'Save'}</Btn><Btn size="sm" variant="ghost" onClick={() => { setEditing(false); setDraft(tags.join(', ')); }}>Cancel</Btn></div>
         : <div className="pc-tag-list">{tags.map(tag => <span key={tag} className="pc-tag">{tag}</span>)}<button type="button" className="pc-link-btn" onClick={() => setEditing(true)}>{tags.length ? 'Edit' : 'Add tags'}</button></div>}

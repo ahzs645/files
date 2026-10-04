@@ -125,3 +125,22 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
   - bids&tenders sets its cookies with `domain=bidsandtenders.ca`; the host jar must store a parent-domain cookie
     host-only for the requesting host (the networkSession branch does).
   - `connectorCollectionKey(sourceId)` in `dashboard/procurement/source-adapters.ts` gives the §4 state key for the UI.
+- 2026-10-03 (Sources page, schedules and Home "Today", `feat/bcsrc-sources-home`) — **proposal, UI side only**:
+  - Zoer keeps **one schedule row per action** (`plugin-schedules.ts` replaces the row keyed by `pluginId`+`actionId`),
+    so `procurement.collect` can be scheduled for CanadaBuys *or* bids&tenders, not both with different inputs. Proposed
+    input `sourceId: 'all'` (owner: collection stream): one run collects CanadaBuys and then every connector in
+    `CONNECTORS`, each under its own §4 state key and lease, in a fixed order; `mode` applies per source, with
+    CanadaBuys using "resume if the checksum matches, else restart" (plain `resume` fails once the daily file changes,
+    and any failed run turns the schedule off). A source that fails is recorded in its own state and does **not**
+    fail the run (only pause errors, conflicts or an exhausted budget do), otherwise one bad source stops every
+    scheduled collection. `maxNetworkRequests` must cover the sum (CanadaBuys 1 + connectors' `requestsPerPortal` ×
+    portals) and the run keeps the existing soft time limit, leaving later sources `paused` for the next run.
+  - Until then the UI schedules one source at a time: CanadaBuys with `{ sourceId: 'canadabuys', mode: 'restart',
+    maxBatches: 20 }`, a connector with `{ sourceId }`. It says which source holds the schedule and that turning one
+    on replaces the other. `COLLECT_ALL_SUPPORTED` in `dashboard/procurement/source-overview.ts` switches the UI to
+    `sourceId: 'all'`.
+  - Home "Today" counts a notice as new when every `record_history` row for its `sourceKey` belongs to collection runs
+    after the reader's last visit. Collectors must keep writing one history row per saved record per run (as
+    `connector-collection.ts` and CanadaBuys do) with `id = sourceKey`.
+  - `link-sources.ts` (`LINK_SOURCES: LinkSource[]`, `{ id, label, url, region?, reason? }`) is read by the Sources
+    page "Check these yourself" card; it ships empty here.

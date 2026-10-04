@@ -1,5 +1,6 @@
 import { host } from '../bridge';
-import { PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, type ProcurementStateInput, type Pursuit, type SavedSearch } from './state-contract';
+import { HIDDEN_PREFIX, PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, validateProcurementStateInput, type VersionedStateInput, type Pursuit, type SavedSearch } from './state-contract';
+import { sql } from './display';
 
 export async function readProcurementState() {
   const state = await host('catalog.workspace', { keys: [PURSUITS_KEY, SEARCHES_KEY] });
@@ -25,10 +26,24 @@ export async function runProcurementAction(actionId: string, input: unknown, sig
 }
 
 /** Read back the exact run's receipt before declaring success. */
-export async function saveProcurementState(input: ProcurementStateInput, signal?: AbortSignal) {
+export async function saveProcurementState(input: VersionedStateInput, signal?: AbortSignal) {
   const run = await runProcurementAction('procurement.state', input, signal);
   const saved = await readProcurementState();
   const item = input.operation === 'pursuit.upsert' ? saved.pursuits.find(item => item.recordId === input.recordId) : saved.searches.find(item => item.id === input.id);
   if (!item || item.lastRunId !== run.id || item.version !== input.expectedVersion + 1) throw Error('The save finished, but its current value changed or could not be verified. Refresh and review it.');
   return saved;
+}
+
+/**
+ * Hide (or show again) notices in default lists, then read the hidden keys back by record id and require this run's
+ * receipt on every one before reporting success.
+ */
+export async function setHiddenNotices(recordIds: string[], hidden: boolean, signal?: AbortSignal) {
+  const input = validateProcurementStateInput({ operation: 'hidden.set', recordIds, hidden });
+  if (input.operation !== 'hidden.set') throw Error('Invalid hidden-notice change.');
+  const run = await runProcurementAction('procurement.state', input, signal);
+  const rows = await sql(`SELECT json_extract(data,'$.recordId') AS recordId, json_extract(data,'$.hidden') AS hidden, json_extract(data,'$.lastRunId') AS runId FROM workspace_state WHERE key LIKE '${HIDDEN_PREFIX}%' AND json_extract(data,'$.recordId') IN (${input.recordIds.map(() => '?').join(',')})`, input.recordIds);
+  const verified = input.recordIds.every(id => rows.some(row => row.recordId === id && Number(row.hidden) === (hidden ? 1 : 0) && row.runId === run.id));
+  if (!verified) throw Error('The change finished, but it could not be verified. Refresh and check the list.');
+  return input.recordIds;
 }

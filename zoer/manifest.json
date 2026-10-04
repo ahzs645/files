@@ -39,7 +39,13 @@
       "www.penticton.ca",
       "www.fernie.ca",
       "www.fvrd.ca",
-      "www.surrey.ca"
+      "www.surrey.ca",
+      "www.courtenay.ca",
+      "www.esquimalt.ca",
+      "www.quesnel.ca",
+      "www.comox.ca",
+      "www.saanich.ca",
+      "www.dawsoncreek.ca"
     ],
     "permissions": [
       "browser:page:read",
@@ -600,6 +606,167 @@
         }
       },
       {
+        "id": "scrape.targeted",
+        "title": "Refresh one BC Bid buyer or region",
+        "description": "Search BC Bid's public opportunities for one buyer (organization), region or keyword, confirm BC Bid applied that filter, and save up to 20 result pages plus details for new or changed notices (at most 40). Aborts without saving if the filter is not confirmed; clears the search afterwards. Browser checks require manual completion.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 3600000,
+          "maxMemoryMb": 512,
+          "maxOutputBytes": 2097152,
+          "maxBrowserPages": 320
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "organization": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+            },
+            "region": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+            },
+            "keyword": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+            },
+            "maxPages": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 5
+            },
+            "details": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "anyOf": [
+            {
+              "properties": {
+                "organization": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+                }
+              },
+              "required": [
+                "organization"
+              ]
+            },
+            {
+              "properties": {
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+                }
+              },
+              "required": [
+                "region"
+              ]
+            },
+            {
+              "properties": {
+                "keyword": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+                }
+              },
+              "required": [
+                "keyword"
+              ]
+            }
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "bcbid-targeted"
+              ]
+            },
+            "limited": {
+              "type": "boolean"
+            },
+            "pageCount": {
+              "type": "integer"
+            },
+            "listingCount": {
+              "type": "integer"
+            },
+            "newCount": {
+              "type": "integer"
+            },
+            "changedCount": {
+              "type": "integer"
+            },
+            "detailCount": {
+              "type": "integer"
+            },
+            "detailsSkipped": {
+              "type": "integer"
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "scope",
+            "pageCount",
+            "listingCount",
+            "detailCount"
+          ]
+        },
+        "stopNotification": {
+          "title": "BC Bid targeted refresh stopped",
+          "actionLabel": "Open scraper",
+          "route": "/scraper",
+          "cases": [
+            {
+              "match": "browser check|verification",
+              "title": "BC Bid needs a browser check",
+              "actionLabel": "Open scraper",
+              "route": "/scraper"
+            },
+            {
+              "match": "did not confirm|not trusted|shows the|still has",
+              "title": "BC Bid did not apply the requested filter",
+              "actionLabel": "Open scraper",
+              "route": "/scraper"
+            }
+          ]
+        }
+      },
+      {
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -1096,7 +1263,7 @@
       {
         "id": "procurement.state",
         "title": "Save procurement workflow state",
-        "description": "Version-checked saved search and pursuit changes in the existing workspace catalog.",
+        "description": "Version-checked saved search and pursuit changes, and notices hidden as not relevant, in the existing workspace catalog.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -1236,6 +1403,10 @@
                     "classification": {
                       "type": "string",
                       "maxLength": 12000
+                    },
+                    "exclude": {
+                      "type": "string",
+                      "maxLength": 2000
                     }
                   },
                   "required": [
@@ -1282,6 +1453,36 @@
                 "operation",
                 "expectedVersion",
                 "id"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "hidden.set"
+                  ]
+                },
+                "recordIds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 10000,
+                    "pattern": "^(opportunity|award):"
+                  }
+                },
+                "hidden": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "operation",
+                "recordIds",
+                "hidden"
               ]
             }
           ]
@@ -1489,6 +1690,44 @@
               ]
             }
           ]
+        }
+      },
+      {
+        "id": "procurement.enrich",
+        "title": "Tag places and contacts on saved notices",
+        "description": "Adds BC place (municipality, regional district) and published buyer contacts to saved BC Bid and CanadaBuys opportunities in resumable batches. Only those fields change; unchanged records are not rewritten.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 600000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 1048576
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "resume",
+                "restart"
+              ]
+            },
+            "maxBatches": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
         }
       },
       {

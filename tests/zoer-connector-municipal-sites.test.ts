@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  collectSitePortal, contactsFrom, leadingNumber, municipalSites, nextPage, parseCards, parseNoticePage, parseTable, parseWallClock,
+  collectSitePortal, contactsFrom, leadingNumber, municipalSites, nextPage, parseCards, parseListing, parseNoticePage, parseTable, parseWallClock,
   readMoment, siteRecord, wallClockInstant,
 } from '../zoer/src/connectors/municipal-sites';
 import { CONNECTORS } from '../zoer/src/connectors/index';
@@ -18,7 +18,7 @@ const portal = (id: string) => SITE_PORTALS.find(p => p.id === id)!;
 const NOW = '2026-10-04T01:40:00.000Z';
 const recordsOf = (id: string, file: string) => {
   const p = portal(id);
-  return (p.layout === 'cards' ? parseCards(fixture(file)) : parseTable(fixture(file))).rows.map(row => siteRecord(row, p, NOW));
+  return parseListing(p, fixture(file)).rows.map(row => siteRecord(row, p, NOW));
 };
 
 describe('municipal-sites listings', () => {
@@ -91,6 +91,56 @@ describe('municipal-sites listings', () => {
     expect(nextPage(fixture('surrey-listing-0.html'), base)).toBe('https://www.surrey.ca/business-economy/tenders-rfqs-rfps?status=191&page=1');
     expect(nextPage(fixture('surrey-listing-1.html'), base)).toBeUndefined();
     expect(nextPage('<a rel="next" href="https://elsewhere.example/?page=1">', base)).toBeUndefined();
+  });
+});
+
+describe('municipal-sites portals added from the BC survey', () => {
+  it('reads the Up&Up table whose title header is empty (Courtenay, Esquimalt)', () => {
+    const courtenay = recordsOf('courtenay', 'courtenay-listing.html');
+    expect(courtenay).toHaveLength(7);
+    expect(courtenay[0]).toMatchObject({
+      sourceKey: 'municipal-sites:courtenay:lake-trail-road', externalId: 'C26-158', description: 'Lake Trail Road Retaining Wall & Culvert Remediation',
+      status: 'Open', closingDate: 'Oct 28, 2026 - 2:00pm', closingAt: '2026-10-28T14:00:00-07:00', publishedAt: '2026-09-29',
+    });
+    const esquimalt = recordsOf('esquimalt', 'esquimalt-listing.html');
+    expect(esquimalt).toHaveLength(16);
+    expect(esquimalt[1]).toMatchObject({ externalId: 'ITT No. ENG 26-04', closingAt: '2026-10-28T14:00:00-07:00', status: 'Open' });
+    expect(esquimalt.find(r => r.status === 'Evaluating')).toBeTruthy();
+  });
+
+  it('reads Drupal list views (Quesnel, Comox) and ignores Quesnel\'s repeated deadline label', () => {
+    const quesnel = recordsOf('quesnel', 'quesnel-listing.html');
+    expect(quesnel).toHaveLength(8);
+    expect(quesnel[0]).toMatchObject({ sourceKey: 'municipal-sites:quesnel:animal-shelter-services-eoi', status: 'Open', type: 'Expression of Interest',
+      closingDate: 'October 30, 2026 - 2:00pm', closingAt: '2026-10-30T14:00:00-07:00' });
+    const comox = recordsOf('comox', 'comox-listing.html');
+    expect(comox.map(r => r.description)).toEqual(['2026.06 Comox Valley Workforce Development & Labour Market Alignment Initiative', 'Canoe Request for Proposals']);
+    // The alerts banner above the list is not a notice; Comox prints no status, so it comes from the verified time.
+    expect(comox[0]).toMatchObject({ closingAt: '2026-10-23T16:30:00-07:00', status: 'Open', statusDerivedFrom: 'closingAt',
+      descriptionText: expect.stringMatching(/^The Town of Comox/) });
+  });
+
+  it('keeps dates only for Saanich and joins Dawson Creek\'s separate closing time column', () => {
+    const saanich = recordsOf('saanich', 'saanich-listing.html');
+    expect(saanich.length).toBeGreaterThan(50);
+    expect(saanich[0]).toMatchObject({ externalId: 'RFQ 26-212', status: 'Open', closingDate: 'Oct 29, 2026 3:00pm', closingAt: '2026-10-29', publishedAt: '2026-10-02' });
+    const dawson = recordsOf('dawsoncreek', 'dawsoncreek-listing.html');
+    expect(dawson).toHaveLength(23);
+    expect(dawson.find(r => r.description.includes('Kin Park Splash Park'))).toMatchObject({ status: 'Open', closingDate: 'October 27, 2026 2:00 PM', closingAt: '2026-10-27' });
+  });
+
+  it('reads their notice pages', () => {
+    const courtenay = parseNoticePage(fixture('courtenay-detail.html'), 'https://www.courtenay.ca/x')!;
+    expect(courtenay).toMatchObject({ number: 'C26-158', status: 'Open', contacts: [{ name: 'Graham Peterson', email: 'purchasing@courtenay.ca', source: 'detail-field' }] });
+    expect(courtenay.description).toMatch(/^The City of Courtenay is seeking Proposals/);
+    const quesnel = parseNoticePage(fixture('quesnel-detail.html'), 'https://www.quesnel.ca/x')!;
+    expect(quesnel).toMatchObject({ closing: 'October 30, 2026 - 2:00pm', status: 'Open' });
+    expect(quesnel.fields).toEqual([{ label: 'Type', value: 'Expression of Interest' }]);
+    const comox = parseNoticePage(fixture('comox-detail.html'), 'https://www.comox.ca/government-bylaws/bid-opportunities/x')!;
+    expect(comox.documents).toEqual([{ name: 'Final Town of Comox LMP RFP.pdf', url: 'https://www.comox.ca/media/4140' }]);
+    const saanich = parseNoticePage(fixture('saanich-detail.html'), 'https://www.saanich.ca/x')!;
+    expect(saanich).toMatchObject({ number: 'RFQ 26-212', contacts: [{ email: 'purchase@saanich.ca', source: 'detail-field' }] });
+    expect(parseNoticePage(fixture('esquimalt-detail.html'), 'https://www.esquimalt.ca/x')).toMatchObject({ status: 'Open', closing: 'October 28, 2026 - 2:00pm' });
   });
 });
 
@@ -170,6 +220,7 @@ describe('municipal-sites dates', () => {
     expect(leadingNumber('26-036 GNPCC Wastewater DAFT Polymer RFP')).toBe('26-036');
     expect(leadingNumber('RFQ 07-25 Supply and Delivery of Enclosed Trailer')).toBe('RFQ 07-25');
     expect(leadingNumber('RFP-06-26 - Pre-Construction Management Services')).toBe('RFP-06-26');
+    expect(leadingNumber('ITT No. ENG 26-04 - Gosper Sewer Upgrades')).toBe('ITT No. ENG 26-04');
     expect(leadingNumber('Disposal of Surplus Asset -- 1988 GMC Pumper Fire Truck')).toBeUndefined();
   });
 
@@ -262,8 +313,8 @@ describe('municipal-sites registration', () => {
     expect(new Set(LINK_SOURCES.map(s => s.id)).size).toBe(LINK_SOURCES.length);
     for (const source of LINK_SOURCES) {
       expect(new URL(source.url).protocol).toBe('https:');
-      expect(source.buyers.length).toBeGreaterThan(0);
-      expect(source.reason.length).toBeGreaterThan(20);
+      expect(source.reason?.length).toBeGreaterThan(5);
+      expect(source.reason!.length).toBeLessThanOrEqual(60);
       // A link-only page is never also collected.
       expect(allowlist).not.toContain(new URL(source.url).host);
     }

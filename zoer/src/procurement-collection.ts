@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { parseCanadaBuysCsv, preserveCanadaBuysEnrichment, verifyCanadaBuysImportReceipt } from '../dashboard/procurement/import-canadabuys';
 import { nextImportBatch } from '../dashboard/procurement/import-batches';
+import { enrichNotice } from '../dashboard/procurement/enrich';
 import { isPauseError } from './pause';
 import { CANADABUYS_DATASET_URL, CANADABUYS_DOCUMENTATION_URL, COLLECTION_KEY, canadaBuysClosingAt } from '../dashboard/procurement/source-adapters';
 
@@ -82,9 +83,9 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
         const previous = new Map(existing.map(row => [row.id, row.data]));
         const saved = batch.map(row => {
           const old = previous.get(`opportunity:${row.sourceKey}`);
-          return { id: `opportunity:${row.sourceKey}`, kind: 'opportunity', title: row.description, data: { ...old, ...row,
+          return { id: `opportunity:${row.sourceKey}`, kind: 'opportunity', title: row.description, data: enrichNotice({ ...old, ...row,
             ...(old ? { descriptionText: old.descriptionText, detailFields: old.detailFields, attachments: old.attachments, addenda: old.addenda } : {}),
-            starred: old?.starred ?? false, lastRunId: runId } };
+            starred: old?.starred ?? false, lastRunId: runId }) };
         });
         // These exact rows and cursor are committed together; a failed batch never advances its receipt.
         verifyCanadaBuysImportReceipt(batch, saved);

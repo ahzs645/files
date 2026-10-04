@@ -15,6 +15,7 @@ export function analysisRevision() { return databaseRevision; }
 
 let savedEntries: any[] = [];
 let fullCheckpoint: any = null;
+let targetedCheckpoint: any = null;
 const loadedHistory = new Set<string>();
 let migrationStarted = false;
 let pending: Promise<void> | undefined;
@@ -40,7 +41,7 @@ export function refresh() {
       }
       if (head.revision !== databaseRevision) {
         const entries: any[] = [];
-        const keys = ['checkpoint:awards', 'checkpoint:awards:recent', 'checkpoint:full', ...state.runs.map(run => 'run:' + run.id)];
+        const keys = ['checkpoint:awards', 'checkpoint:awards:recent', 'checkpoint:full', 'checkpoint:targeted', ...state.runs.map(run => 'run:' + run.id)];
         for (let i = 0; i < keys.length; i += 20) {
           const page = await host('catalog.workspace', { keys: keys.slice(i, i + 20) });
           entries.push(...page.entries);
@@ -54,6 +55,7 @@ export function refresh() {
       model.awardCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:awards')?.value??null;
       model.awardRecentCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:awards:recent')?.value??null;
       fullCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:full')?.value??null;
+      targetedCheckpoint=savedEntries.find(entry=>entry.key==='checkpoint:targeted')?.value??null;
       if(snapshot.model && databaseRevision===head.revision) for(const id of loadedHistory) model.history.set(id,snapshot.model.history.get(id)??new Map());
       snapshot = { model };
     } catch (error) { if (current !== generation) return; snapshot = { ...snapshot, error: error instanceof Error ? error.message : 'Unable to read Zoer data.' }; }
@@ -76,7 +78,7 @@ export function startWorkspace() {
   return () => {
     clearInterval(timer); document.removeEventListener('visibilitychange', visible);
     generation++; pending = undefined; snapshot = {}; databaseRevision = -1;
-    savedEntries = []; fullCheckpoint = null; loadedHistory.clear(); migrationStarted = false;
+    savedEntries = []; fullCheckpoint = null; targetedCheckpoint = null; loadedHistory.clear(); migrationStarted = false;
     rawState = { runs: [], artifacts: [] }; queryClient.clear(); resetCatalogCache(); starPending.clear(); emit();
   };
 }
@@ -190,6 +192,26 @@ export async function testScraperBrowser() {
   const { run } = await host('action', { actionId: 'scrape.sample', input: { detailLimit: 1 } });
   await refresh();
   return run.id as string;
+}
+
+/** Last targeted refresh receipt (`checkpoint:targeted`), or null before the first one. */
+export function targetedReceipt() { return targetedCheckpoint ? structuredClone(targetedCheckpoint) : null; }
+export async function startTargetedRefresh(input: { organization?: string; region?: string; keyword?: string; maxPages: number; details: boolean }) {
+  await refresh();
+  if (snapshot.error) throw new Error(snapshot.error);
+  // One browser: a filtered search would also narrow a running full crawl's pages.
+  if (snapshot.model && queryModel(snapshot.model, 'scrapeRuns.active')) throw new Error('Wait for the active scrape to finish before refreshing one buyer or region.');
+  const clean = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== '' && value !== undefined));
+  const { run } = await host('action', { actionId: 'scrape.targeted', input: clean });
+  await refresh();
+  return run.id as string;
+}
+/** BC Bid buyers seen in saved notices, most notices first (the catalog console returns at most 200 rows). */
+export async function savedBcBidBuyers(): Promise<{ name: string; count: number }[]> {
+  const name = "json_extract(data,'$.issuedBy')", source = "json_extract(data,'$.sourceId')";
+  const { rows } = await host('catalog.query', { parameters: ['opportunity', 'bc-bid'], statement:
+    `SELECT ${name} name,count(*) count FROM records WHERE kind=? AND (${source} IS NULL OR ${source}='' OR ${source}=?) AND ${name} IS NOT NULL AND ${name}<>'' GROUP BY ${name} ORDER BY count(*) DESC,${name} LIMIT 200` });
+  return rows.map((row: any) => ({ name: String(row.name), count: Number(row.count) }));
 }
 
 const starPending = new Map<string, Promise<void>>();

@@ -1,5 +1,6 @@
 import { MONEY_KIND_LABELS, SUGGESTED_ACTIONS, partitionMoney, type Money, type MoneyKind } from '@bcbid/procurement-core';
 import { sql } from '../procurement/display';
+import { parseExcludeTerms } from '../procurement/exclude';
 import { CELL_TEXT, formatFactValue } from './evidence-queries';
 import { json, label, placeholders, readCurrentAssessments, readLatestDecisions, type AssessmentRow, type DecisionRow } from './queries';
 import { QUEUE_TEXT, READINESS_TEXT, RELEVANCE_TEXT, acquireParts, and, assessmentScope, fitSql, readReviewScope, recordColumns, reviewPredicate, type Fragment, type ReadinessBucket, type RelevanceBucket, type ReviewScope } from './queue';
@@ -101,6 +102,9 @@ export function describeFilters(params: URLSearchParams, profileText: string, so
   if (get('shortlist') === '1') out.push('Shortlisted');
   for (const key of ['region', 'category', 'buyer', 'supplier', 'classification']) if (get(key)) out.push(`${key[0].toUpperCase()}${key.slice(1)}: ${get(key)}`);
   if (get('aiLabel')) out.push(`AI category: ${get('aiLabel')}`);
+  const exclude = parseExcludeTerms(get('exclude'));
+  if (exclude.length) out.push(`Excluding: ${exclude.join(', ')}`);
+  if (get('hidden') === 'include') out.push('Including hidden notices'); else if (get('hidden') === 'only') out.push('Hidden notices only');
   if (scope.queue) out.push(`Queue: ${QUEUE_TEXT[scope.queue].title}`);
   if (scope.open) out.push('Open opportunities only');
   if (scope.relevance) out.push(`Work fit: ${RELEVANCE_TEXT[scope.relevance as RelevanceBucket]}`);

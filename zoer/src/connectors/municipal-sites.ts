@@ -258,6 +258,10 @@ export function parseList(html: string): { rows: Array<SiteRow & { html: Partial
   throw new ConnectorError('source_layout', 'The bid list no longer shows titled notices. The site layout changed; saved records are kept.');
 }
 
+/** The listing parser for the portal's layout. */
+export const parseListing = (portal: SitePortal, html: string) =>
+  portal.layout === 'cards' ? parseCards(html) : portal.layout === 'list' ? parseList(html) : parseTable(html);
+
 /** `rel="next"` page on the same host, if any. */
 export function nextPage(html: string, current: string): string | undefined {
   const tag = /<a\b[^>]*\brel="next"[^>]*>/i.exec(html)?.[0];
@@ -455,7 +459,7 @@ export async function collectSitePortal(fetch: NetFetch, base: ConnectorPortal, 
     for (let n = 0; url && n < MAX_PAGES; n++) {
       const response = await fetch({ url, accept: 'text/html' });
       if (response.status !== 200) throw httpFailure(`${portal.label} bids page`, response.status);
-      const parsed = portal.layout === 'cards' ? parseCards(response.text) : portal.layout === 'list' ? parseList(response.text) : parseTable(response.text);
+      const parsed = parseListing(portal, response.text);
       for (const row of parsed.rows) {
         const id = noticeId(portal, row);
         if (id) rows.set(id, row); else unkeyed++;

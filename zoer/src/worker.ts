@@ -4,12 +4,14 @@ import { awardRangeCapture, AWARD_DATE_FIELDS } from './award-range-capture';
 import { scrapeFull, fullScrapeResume } from './full-scrape';
 import { createHostChannel, isPauseError, paused } from './pause';
 import { scrapeSample } from './scrape';
+import { scrapeTargeted, writeTargetedReceipt } from './targeted-scrape';
 import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
 import { createInterface } from 'node:readline';
 import { parseCapture, type PageCapture } from './capture';
 import { collectProcurementSource } from './connector-collection';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
+import { backfillEnrichment } from './procurement-enrichment';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -65,6 +67,9 @@ try {
   } else if (request.action.id === 'procurement.classifications') {
     if (!catalogTicket) throw new Error('Procurement classification mapping requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementClassifications(catalogCall, request.input ?? {}, runId) });
+  } else if (request.action.id === 'procurement.enrich') {
+    if (!catalogTicket) throw new Error('Tagging places requires an existing catalog grant.');
+    write({ protocolVersion: '1', runId, ok: true, output: await backfillEnrichment(catalogCall, request.input ?? {}, runId) });
   } else if (request.action.id === 'procurement.state') {
     if (!catalogTicket) throw new Error('Procurement state requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementState(catalogCall, request.input ?? {}, runId) });
@@ -126,6 +131,15 @@ try {
       return state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;
     }, resumedFromPause);
     const output = await scrapeFull({ captureUrl: (url, pageNumber) => call('browser.capture-url', { ticket: browserTicket, url, pageNumber, ...(pageNumber ? {} : { readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }) }) }, save, resume, { runId });
+    write({ protocolVersion: '1', runId, ok: true, output });
+  } else if (request.action.id === 'scrape.targeted') {
+    if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+    if (!catalogTicket) throw new Error('Update Zoer to use the unified database plugin.');
+    const output = await scrapeTargeted({ capture: options => call('browser.capture-url', { ...options, ticket: browserTicket }) }, {
+      save,
+      existing: async keys => new Map((await catalogCall('catalog.read', { ids: keys.map(key => 'opportunity:' + key) })).records.map((row: any) => [row.data.sourceKey, row.data])),
+      receipt: value => writeTargetedReceipt(catalogCall, value),
+    }, request.input ?? {}, { runId, resume: request.resumeCheckpoint ?? undefined });
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.sample') {
     if (!browserTicket) throw new Error('Select a running Zoer browser session.');
