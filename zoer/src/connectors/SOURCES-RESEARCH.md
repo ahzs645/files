@@ -36,18 +36,35 @@ words). When only the date can be trusted, `closingAt` is the date alone (`YYYY-
 as "closing date; time unverified"; `closingDate` always keeps the source text. Status, when a site prints none, is derived
 only from a verified instant and marked `statusDerivedFrom: 'closingAt'`; otherwise it is `Unknown`.
 
+## Collected in the person's Zoer browser (`browser-sites`, `procurement.collect.browser`)
+
+Moved out of the link-only list on 2026-10-03. Status of every row: **robots verdict pending, fixture pending — to be
+captured through Zoer** (no page of these sites was saved for tests; parsers are tested with synthetic pages and are
+unverified). The action reads robots.txt through the browser on each run (kept 24 h) and obeys what it finds; the floors
+below come from the earlier survey notes in this file and only ever slow a run down.
+
+| Site | Listing URL | Why the browser | Pacing floor | Layout read as |
+|---|---|---|---|---|
+| CivicInfo BC (aggregator) | civicinfo.bc.ca/bids | Cloudflare challenge for non-browser requests | 5 s (survey: Crawl-delay 5) | blocks (unverified) |
+| City of Kelowna | kelowna.ca/…/current-bidding-opportunities | Cloudflare challenge | 5 s | table, else blocks (unverified) |
+| District of West Vancouver | westvancouver.ca/business-development/information-businesses | Cloudflare challenge | 5 s | table, else blocks (unverified; the URL may be a landing page) |
+| Regional District of Kootenay Boundary | rdkb.com/Regional-Government/Organization/Opportunities | Cloudflare challenge | 5 s | table, else blocks (unverified) |
+| Vancouver Airport Authority (YVR) | yvr.ca/en/business/work-with-yvr | HTTP 403 to non-browser requests | 5 s | table, else blocks (unverified; may only link elsewhere) |
+| Vancouver Fraser Port Authority | portvancouver.com/business-and-projects/rfps-and-procurement | Cloudflare challenge | 5 s | table, else blocks (unverified) |
+| City of Cranbrook | cranbrook.ca/business/city-tenders | bot-challenge script; times printed "MT" | 5 s | table, else blocks (unverified) |
+| City of Chilliwack | chilliwack.com/main/page.cfm?id=400 | robots Crawl-delay 10 | 10 s | table, else blocks (unverified) |
+| Resort Municipality of Whistler | whistler.ca/business-development/bid-opportunities/ | robots Crawl-delay 10; PDFs disallowed (never loaded) | 10 s | table, else blocks (unverified) |
+| BC Ferries | bcferries.com/our-company/procurement | robots Crawl-delay 10, Visit-time 0900-1200 UTC | 10 s, 09:00–12:00 UTC only | table, else blocks (unverified) |
+
 ## Link only (`link-sources.ts`)
 
 Every URL below loaded for a person on 2026-10-03 (curl 200, or system Chrome for challenge-blocked pages).
 
 | Source | Buyers | Why not collected |
 |---|---|---|
-| CivicInfo BC (civicinfo.bc.ca/bids) | BC local governments that post there (23 current, e.g. Penticton, Vernon, Esquimalt, Victoria, Surrey) | Cloudflare managed challenge on every page including `/bids-rss` for non-browser clients. robots.txt itself would allow `/bids` (Crawl-delay 5). |
 | City of Vancouver (Jaggaer, bids.sciquest.com) | Vancouver | Server-rendered with every field incl. PDT/PST closing times and contacts, but robots.txt is `Disallow: /` for all agents; vancouver.ca blocks automated requests. |
 | Bonfire portals (`<org>.bonfirehub.ca`) | Victoria, Saanich, Central Saanich, North Cowichan, CVRD, Courtenay, Comox, Vernon, Kelowna, UVic, VIU, BC Transit, ICBC, Island Health, Fraser Health, PHSA, FNHA | Open-list JSON (`/PublicPortal/getOpenPublicOpportunitiesSectionData`) answers without login, but robots.txt is `Disallow: /`. The old code needed login + Cloudflare bypass for details; not done. |
-| Kelowna site, West Vancouver, RDKB, YVR, Port of Vancouver, Cranbrook | those buyers | Cloudflare or bot-challenge (403 / challenge script) for non-browser requests. |
-| BC Ferries procurement | BC Ferries | robots.txt `Crawl-delay: 10` and `Visit-time: 0900-1200` UTC. A collection run reads a listing then notice pages back to back and runs on the user's schedule, so it cannot honour either; the old code also needed a BC Ferries login. |
-| Chilliwack, Whistler | those buyers | robots.txt `Crawl-delay: 10` (Whistler also disallows its PDFs). Same reason as BC Ferries. |
+| (moved) CivicInfo BC, Kelowna site, West Vancouver, RDKB, YVR, Port of Vancouver, Cranbrook, BC Ferries, Chilliwack, Whistler | those buyers | Now collected in the person's Zoer browser (section above). |
 | Port Alberni, Port Hardy, qathet, Terrace | those buyers | No closing times or no closing dates, hand-edited lists, or no notice pages. |
 | SCRD, Hope ("Pacific Time"), Smithers ("PST"), ACRD, Pemberton | those buyers | One-off WordPress/custom pages; feasible later as single-portal parsers, not built in this pass. |
 | SLRD | SLRD | One notice in a table whose only date column is headed "Date" (closing vs posted unclear). |

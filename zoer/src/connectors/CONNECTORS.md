@@ -173,3 +173,29 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
     Zoer reads as failed records and would stop the schedule.
   - UI: `COLLECT_ALL_SUPPORTED = true`; every Schedule button on the Sources page schedules `{ sourceId: 'all' }`.
     Per-source manual Collect is unchanged.
+- 2026-10-03 (browser-collected sites, `feat/bcsrc-browser-sources`):
+  - New source `browser-sites` (sourceKey `browser-sites:<siteId>:<notice id>`), collected by its own action
+    `procurement.collect.browser` (`browser-session`, `local_write`, input `{ sourceId: 'browser-sites', sites?: string[] }`)
+    through the person's Zoer browser profile, for sites that block plain HTTP (CivicInfo BC, Kelowna, West Vancouver,
+    RDKB, YVR, Port of Vancouver, Cranbrook) or ask for slow pacing (Chilliwack, Whistler, BC Ferries). It is **not** in
+    `CONNECTORS`, so `sourceId: 'all'` (plain HTTP) never runs it; `procurement.collect` rejects `browser-sites`.
+  - §4 state under `procurement:source:browser-sites:collection` (same shape, written by `collectConnectorSource` with
+    `options.connector`). **Portal status `waiting`** (new): a person must act first (a browser check, or Zoer's browser
+    under the person's control); earlier counts and `lastSuccessAt` are kept as for `failed`. A site skipped on purpose is
+    `not-run` with `error.code: 'outside_visit_window'` (robots Visit-time). Source `error.code` adds `waiting_for_user`
+    and `portals_skipped`; `time_budget` now counts only portals the attempt never reached. `ConnectorError` takes an
+    optional third argument `portalStatus` (`'waiting' | 'not-run'`). The state also carries
+    `browser: { pacing: Record<host, ISO>, robots: Record<host, { checkedAt, status: 'ok' | 'missing', text? }> }`.
+  - robots.txt is read through the browser per host (kept 24 h) and obeyed: a disallowed listing is never loaded
+    (`robots_disallowed`), unreadable robots means not collected (`robots_unreadable`), a check on robots.txt is `waiting`.
+    Page loads per host are spaced by max(site floor, Crawl-delay, Request-rate) across runs; Visit-time is checked
+    before any load and again after a pacing wait. Group selection: `ZoerProcurement`, else `*`.
+  - A check page (title/markup/short text), an access-denied page or an empty page makes the site `waiting` with a
+    plain instruction; nothing on it is clicked or answered. Captures use Zoer's `browser.capture-url` with
+    `settle: true` (zoer `feat/procurement-browser-sources`): the page may finish on its own (bounded 15 s, no input),
+    `<time datetime>` is kept and the HTTP status is reported when the browser exposes it.
+  - One listing page per site, no notice pages. Layouts are unverified (no page was captured through Zoer yet): a table
+    with title and closing columns (municipal-sites `parseTable`), else labelled blocks; anything else is
+    `source_layout`, never "0 notices". An aggregator (CivicInfo) leaves `issuedBy` empty unless the notice names a buyer.
+  - Output has no top-level `failed`, so a waiting site never turns a Zoer schedule off. Schedules are set in Zoer's
+    plugin settings (they need a browser); the dashboard's `schedules.save` cannot attach one.

@@ -1,5 +1,6 @@
 import { BIDSANDTENDERS_PORTALS } from './portals';
 import { SITE_PORTALS } from './site-portals';
+import { BROWSER_SITES } from './browser-sites';
 
 export const CANADABUYS_DATASET_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 export const CANADABUYS_DOCUMENTATION_URL = 'https://donnees-data.tpsgc-pwgsc.gc.ca/ba2/ac-cb/soutien-support-eng.html';
@@ -47,6 +48,14 @@ export const PROCUREMENT_SOURCE_ADAPTERS: ProcurementSourceAdapter[] = [
       attachments: { status: 'unavailable', method: 'Document links are saved with each notice; files are not downloaded' },
       awards: { status: 'unavailable', method: 'Award results are not collected; an "Awarded" column is kept as text where a site shows one' },
       auth: { status: 'unavailable', method: 'Public pages only; no login, cookies or browser checks' },
+    } },
+  { id: 'browser-sites', label: 'BC sites (your browser)',
+    coverage: `The bids page of ${BROWSER_SITES.length} BC sites that block plain automated requests (${BROWSER_SITES.map(site => site.label).join(', ')}), loaded in your Zoer browser, one page per site, spaced as each site's robots.txt asks. A site that shows a browser check waits for you; the others still run. Page layouts are not confirmed yet, so check saved notices against the site. Absence is not proof of closure. Saved records are retained.`, capabilities: {
+      listing: { status: 'partial', method: 'procurement.collect.browser: each site\'s bids page as your Zoer browser shows it (one page; later pages are not read). Read as a table with title and closing columns, else as one block per notice' },
+      detail: { status: 'unavailable', method: 'Notice pages are not read; each notice links to its page on the site. Closing times are exact only where the page states the zone' },
+      attachments: { status: 'unavailable', method: 'Documents stay on the site; files are not downloaded' },
+      awards: { status: 'unavailable', method: 'Award results are not collected' },
+      auth: { status: 'partial', method: 'Your Zoer browser profile. Browser checks are completed by you in the Zoer browser, never answered by Procurement; no logins' },
     } },
 ];
 

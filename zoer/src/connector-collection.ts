@@ -8,8 +8,13 @@ import { isPauseError } from './pause';
 import { catalogTransaction, collectCanadaBuys, type CollectionInput, type Host } from './procurement-collection';
 
 export interface ConnectorCollectionInput { sourceId: string; mode?: 'resume' | 'restart'; maxBatches?: number; portals?: string[] }
-/** `softDeadlineAt` (epoch ms): no portal starts after it. Defaults to 7.5 minutes after this source started. */
-export interface ConnectorRunOptions { softDeadlineAt?: number }
+/**
+ * `softDeadlineAt` (epoch ms): no portal starts after it. Defaults to 7.5 minutes after this source started.
+ * `connector`: a connector outside `CONNECTORS` (the browser-collected sites, which `all` must not run), used when its
+ * id is the requested `sourceId`. `stateExtras`: fields written into the source state with every update (e.g. the
+ * browser sites' per-host pacing and robots.txt readings).
+ */
+export interface ConnectorRunOptions { softDeadlineAt?: number; connector?: SourceConnector; stateExtras?: () => Record<string, unknown> }
 const LEASE_MS = 10 * 60_000;
 /** An interrupted attempt (pause, crash, time budget) is continued by `resume` only while its listings are fresh. */
 const RESUME_WINDOW_MS = 6 * 60 * 60_000;
@@ -100,7 +105,7 @@ const sameSet = (a: unknown, b: string[]) => Array.isArray(a) && a.length === b.
  * keeps every portal saved before it. Saved records are never deleted and keep stars and enrichment.
  */
 export async function collectConnectorSource(host: Host, input: ConnectorCollectionInput, runId: string, now = () => new Date().toISOString(), options: ConnectorRunOptions = {}) {
-  const connector = typeof input?.sourceId === 'string' ? connectorById(input.sourceId) : undefined;
+  const connector = typeof input?.sourceId !== 'string' ? undefined : options.connector?.id === input.sourceId ? options.connector : connectorById(input.sourceId);
   const requested = input?.portals;
   if (!connector || (input.mode && !['resume', 'restart'].includes(input.mode))
     || (input.maxBatches !== undefined && (!Number.isInteger(input.maxBatches) || input.maxBatches < 1 || input.maxBatches > 20))
@@ -109,7 +114,7 @@ export async function collectConnectorSource(host: Host, input: ConnectorCollect
   const selected = connector.portals.filter(portal => !requested || requested.includes(portal.id)), ids = selected.map(portal => portal.id);
   if (!(await host('catalog.read', { ids: [] })).primary) throw new Error('Initialize the existing procurement catalog before collecting.');
   const key = connectorCollectionKey(connector.id), attemptedAt = now();
-  const entries = (value: any) => [{ key, value }];
+  const entries = (value: any) => [{ key, value: options.stateExtras ? { ...value, ...options.stateExtras() } : value }];
   const lease = () => new Date(Date.parse(now()) + LEASE_MS).toISOString();
   const owned = (state: any) => { if (state.ownerRunId !== runId) fail('Another collection owns this source; resume after it finishes.', 'collection_conflict'); };
   const update = (build: (current: any, revision: number) => Promise<any> | any) => catalogTransaction(host, key, async (current, revision) => { owned(current); return build(current, revision); });
@@ -183,21 +188,25 @@ export async function collectConnectorSource(host: Host, input: ConnectorCollect
         // A pause, a spent request budget or a lost checkpoint ends the run; anything else (source, schema, catalog
         // conflict) fails only this portal.
         if (isPauseError(error) || isBudgetError(error) || (error as any)?.code === 'collection_conflict') throw error;
-        const failure = errorOf(error);
+        // `waiting` (a person must act first) and `not-run` (deliberately skipped) keep the earlier counts like `failed`.
+        const failure = errorOf(error), status = ['waiting', 'not-run'].includes((error as any)?.portalStatus) ? (error as any).portalStatus : 'failed';
         state = await update(current => ({ entries: entries({ ...current, leaseUntil: lease(), portals: { ...current.portals,
-          [portal.id]: { ...current.portals?.[portal.id], status: 'failed', attemptStartedAt: attempt, attemptedAt: portalAttemptedAt, error: failure } } }) }));
+          [portal.id]: { ...current.portals?.[portal.id], status, attemptStartedAt: attempt, attemptedAt: portalAttemptedAt, error: failure } } }) }));
       }
     }
     return await update(current => {
       const portals = { ...current.portals };
-      for (const id of ids) if (portals[id]?.attemptStartedAt !== attempt) portals[id] = { ...portals[id], status: 'not-run', attemptStartedAt: attempt };
+      // Portals this attempt never reached (time limit); a portal it reached and skipped on purpose is `not-run` too.
+      const unreached = ids.filter(id => portals[id]?.attemptStartedAt !== attempt);
+      for (const id of unreached) portals[id] = { ...portals[id], status: 'not-run', attemptStartedAt: attempt };
       const statuses = ids.map(id => portals[id].status), complete = statuses.every(status => status === 'complete');
-      const failed = statuses.filter(status => status === 'failed').length, partial = statuses.filter(status => status === 'incomplete').length, notRun = statuses.filter(status => status === 'not-run').length;
-      const problems = [failed && `${failed} failed`, partial && `${partial} incomplete`, notRun && `${notRun} not reached before the time limit (resume continues them)`].filter(Boolean).join(', ');
+      const failed = statuses.filter(status => status === 'failed').length, partial = statuses.filter(status => status === 'incomplete').length, notRun = unreached.length;
+      const waiting = statuses.filter(status => status === 'waiting').length, skipped = statuses.filter(status => status === 'not-run').length - notRun;
+      const problems = [failed && `${failed} failed`, waiting && `${waiting} waiting for you`, partial && `${partial} incomplete`, skipped && `${skipped} skipped`, notRun && `${notRun} not reached before the time limit (resume continues them)`].filter(Boolean).join(', ');
       return { entries: entries({ ...current, portals, status: complete ? 'complete' : 'incomplete', leaseUntil: null,
         attempt: { ...current.attempt, open: notRun > 0 },
         ...(complete ? { lastSuccessAt: now() } : {}),
-        error: complete ? null : { code: notRun ? 'time_budget' : failed ? 'portals_failed' : 'portals_incomplete', message: `${problems} of ${ids.length} portal(s). Other portals were saved.`, at: now() } }) };
+        error: complete ? null : { code: notRun ? 'time_budget' : failed ? 'portals_failed' : waiting ? 'waiting_for_user' : partial ? 'portals_incomplete' : 'portals_skipped', message: `${problems} of ${ids.length} portal(s). Other portals were saved.`, at: now() } }) };
     });
   } catch (error) {
     if (isPauseError(error)) {

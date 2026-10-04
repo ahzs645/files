@@ -12,6 +12,7 @@ import { findSchedule, intervalText, scheduleState, type ScheduleRow } from './s
 import { ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
 import { LINK_SOURCES } from './link-sources';
 import { CanadaBuysImport } from './CanadaBuysImport';
+import { BrowserSourcesCard } from './BrowserSourcesCard';
 import { INVENTORY_SQL, sourceName, sql } from './display';
 import { shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
@@ -129,6 +130,7 @@ export function Sources() {
       {CONNECTOR_SOURCES.map(source => <ConnectorCard key={source.id} source={source} state={connectors.get(source.id)!.state} stateError={connectors.get(source.id)!.error ?? (health.error ? (health.error as Error).message : undefined)}
         saved={saved(source.id)} next={nextRun(source.id)} busy={busy} enabled={!!model}
         onCollect={(portals, key, done) => void collect(key, { sourceId: source.id, ...(portals ? { portals } : {}) }, done)} onSchedule={() => setScheduleFor(scheduleTargetFor(source.id))} />)}
+      <BrowserSourcesCard />
       {LINK_SOURCES.length > 0 && <LinkSources />}
     </div>
     <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} />
