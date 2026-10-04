@@ -1,4 +1,5 @@
-import { MAX_PURSUITS, MAX_SEARCHES, PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, validateProcurementStateInput, type Pursuit, type SavedSearch } from '../dashboard/procurement/state-contract';
+import { createHash } from 'node:crypto';
+import { HIDDEN_PREFIX, MAX_PURSUITS, MAX_SEARCHES, PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, validateProcurementStateInput, type ProcurementStateInput, type Pursuit, type SavedSearch } from '../dashboard/procurement/state-contract';
 
 type Host = (method: string, input: any) => Promise<any>;
 const conflict = () => Error('This item changed in another session. Reload and review it before saving again.');
@@ -7,6 +8,7 @@ const conflict = () => Error('This item changed in another session. Reload and r
 export async function updateProcurementState(call: Host, raw: unknown, runId: string) {
   const input = validateProcurementStateInput(raw);
   if (typeof runId !== 'string' || !runId || runId.length > 150) throw Error('A valid durable run ID is required.');
+  if (input.operation === 'hidden.set') return setHidden(call, input, runId);
   const pursuit = input.operation === 'pursuit.upsert';
   const key = pursuit ? PURSUITS_KEY : SEARCHES_KEY;
   // Retry unrelated catalog revision changes; per-item versions still prevent lost edits.
@@ -45,6 +47,36 @@ export async function updateProcurementState(call: Host, raw: unknown, runId: st
       const result = await call('catalog.commit', { revision: head.revision, entries: [{ key, value }] });
       if (result.conflict) { if (attempt < 3) continue; throw Error('Catalog changed; reload and retry.'); }
       return { key, item, revision: result.revision };
+    } catch (error) {
+      if (attempt < 3 && /Catalog changed; (reload the snapshot|retry transaction)/.test((error as Error).message)) continue;
+      throw error;
+    }
+  }
+  throw Error('Catalog changed; reload and retry.');
+}
+
+/** Record ids are arbitrary text; the workspace key alphabet is not, so the key is a digest of the id. */
+export const hiddenKey = (recordId: string) => HIDDEN_PREFIX + createHash('sha256').update(recordId).digest('hex');
+
+/**
+ * Hide or show notices in default lists. Only `procurement:hidden:*` keys are written; the catalog records, stars,
+ * pursuits and review data are untouched. Showing a notice that was since removed from the catalog is allowed.
+ */
+async function setHidden(call: Host, input: Extract<ProcurementStateInput, { operation: 'hidden.set' }>, runId: string) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const head = await call('catalog.read', { ids: [] });
+    if (!head.primary) throw Error('The existing procurement catalog must be available before saving workspace state.');
+    if (input.hidden) {
+      const found = new Set((await call('catalog.read', { ids: input.recordIds })).records.filter((record: any) => ['opportunity', 'award'].includes(record.kind)).map((record: any) => record.id));
+      const missing = input.recordIds.find(id => !found.has(id));
+      if (missing) throw Error(`The catalog record no longer exists: ${missing}`);
+    }
+    const updatedAt = new Date().toISOString();
+    const entries = input.recordIds.map(recordId => ({ key: hiddenKey(recordId), value: { schemaVersion: 1, recordId, hidden: input.hidden, updatedAt, lastRunId: runId } }));
+    try {
+      const result = await call('catalog.commit', { revision: head.revision, entries });
+      if (result.conflict) { if (attempt < 3) continue; throw Error('Catalog changed; reload and retry.'); }
+      return { keys: entries.map(entry => entry.key), recordIds: input.recordIds, hidden: input.hidden, revision: result.revision };
     } catch (error) {
       if (attempt < 3 && /Catalog changed; (reload the snapshot|retry transaction)/.test((error as Error).message)) continue;
       throw error;

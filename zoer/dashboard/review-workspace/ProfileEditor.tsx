@@ -9,6 +9,7 @@ import {
   EVIDENCE_KINDS, PROFILE_SCENARIOS, cleanDraft, countablePartners, emptyDraft, emptyEvidence, expiryWarnings, normalizeDraft, sameDraft, validateDraft,
   type DraftIssue, type ProfileDraft, type ProfileEvidenceItem, type ProfileEvidenceKind,
 } from './profile-types';
+import { EXCLUDE_MAX_TERMS, withNoiseTerms } from '../procurement/exclude';
 import './review.css';
 
 type ProfileRow = { id: string; name: string; draft: ProfileDraft; draftVersion: number; updatedAt: string; publishedVersion: number | null };
@@ -209,6 +210,12 @@ function DraftForm({ name, setName, draft, setDraft, disabled, issueFor }: { nam
       <Field label="Exclusions: work we do not take (one per line)"><textarea rows={2} value={lines(draft.exclusions)} disabled={disabled} onChange={e => patch({ exclusions: split(e.target.value) })} /></Field>
       <Field label="Geography served (one per line)"><textarea rows={2} value={lines(draft.geography)} disabled={disabled} onChange={e => patch({ geography: split(e.target.value) })} /></Field>
     </fieldset>
+    <fieldset className="rw-fieldset"><legend>Quick filters before any AI call</legend>
+      <p className="rw-note">Notices that match are marked “Filtered by profile” in Opportunities and skipped by batch triage and extraction unless you include them. Nothing is deleted.</p>
+      <Field label="Excluded keywords (one per line or comma-separated)" issues={issueFor('excludedKeywords')} hint={`Whole words in the title, description or buyer; end a word with * to match its start (fertiliz*). Up to ${EXCLUDE_MAX_TERMS}.`}><textarea rows={3} value={lines(draft.excludedKeywords)} disabled={disabled} onChange={e => patch({ excludedKeywords: split(e.target.value) })} /></Field>
+      {!draft.excludedKeywords.some(Boolean) && <Btn size="sm" variant="ghost" disabled={disabled} onClick={() => patch({ excludedKeywords: withNoiseTerms('').split('\n') })}>Insert starter noise list</Btn>}
+      <p className="rw-note">Minimum and maximum contract values under Internal commercial policy also filter, but only when a buyer budget or estimated value has been extracted from the notice. Most BC Bid notices publish no value, so an unknown value always passes.</p>
+    </fieldset>
     {EVIDENCE_KINDS.map(kind => <fieldset key={kind} className="rw-fieldset"><legend>{KIND_LABEL[kind][0]}</legend>
       {draft.evidence.filter(e => e.kind === kind).map(e => { const index = draft.evidence.indexOf(e), at = `evidence.${index}`; return <div key={e.id} className="rw-card" aria-label={`${KIND_LABEL[kind][1]}: ${e.capability || 'untitled'}`}>
         <div className="rw-grid">
@@ -242,6 +249,7 @@ function DraftForm({ name, setName, draft, setDraft, disabled, issueFor }: { nam
         <Field label="Rate from" issues={issueFor('commercial.rateLow')}><input inputMode="decimal" value={draft.commercial.rateLow ?? ''} disabled={disabled} onChange={e => patch({ commercial: { ...draft.commercial, rateLow: numberOrNull(e.target.value) } })} /></Field>
         <Field label="Rate to" issues={issueFor('commercial.rateHigh')}><input inputMode="decimal" value={draft.commercial.rateHigh ?? ''} disabled={disabled} onChange={e => patch({ commercial: { ...draft.commercial, rateHigh: numberOrNull(e.target.value) } })} /></Field>
         <Field label="Minimum contract value we pursue" issues={issueFor('commercial.minContractValue')}><input inputMode="decimal" value={draft.commercial.minContractValue ?? ''} disabled={disabled} onChange={e => patch({ commercial: { ...draft.commercial, minContractValue: numberOrNull(e.target.value) } })} /></Field>
+        <Field label="Maximum contract value we can take on" issues={issueFor('commercial.maxContractValue')}><input inputMode="decimal" value={draft.commercial.maxContractValue ?? ''} disabled={disabled} onChange={e => patch({ commercial: { ...draft.commercial, maxContractValue: numberOrNull(e.target.value) } })} /></Field>
         <Field label="Currency" issues={issueFor('commercial.currency')}><input maxLength={3} value={draft.commercial.currency ?? ''} disabled={disabled} onChange={e => patch({ commercial: { ...draft.commercial, currency: e.target.value.toUpperCase() } })} /></Field>
       </div>
       <Field label="Notes"><textarea rows={2} maxLength={2000} value={draft.commercial.notes} disabled={disabled} onChange={e => patch({ commercial: { ...draft.commercial, notes: e.target.value } })} /></Field>
@@ -262,10 +270,11 @@ export function ProfileSummary({ draft }: { draft: ProfileDraft }) {
     <div><dt>Partners</dt><dd>{draft.partners.length ? draft.partners.map(p => `${p.name}${p.confirmed ? ' (confirmed)' : ' (not confirmed)'}${p.responsibilities.length ? `: ${p.responsibilities.join(', ')}` : ''}`).join('; ') : 'None'}{draft.partners.length > 0 && <small className="rw-note"> · {partners.length} counted</small>}</dd></div>
     <div><dt>Service lines</dt><dd>{listText(draft.serviceLines)}</dd></div>
     <div><dt>Exclusions</dt><dd>{listText(draft.exclusions)}</dd></div>
+    <div><dt>Excluded keywords</dt><dd>{listText(draft.excludedKeywords)}</dd></div>
     <div><dt>Geography</dt><dd>{listText(draft.geography)}</dd></div>
     {EVIDENCE_KINDS.map(kind => { const items = draft.evidence.filter(e => e.kind === kind); return items.length ? <div key={kind}><dt>{KIND_LABEL[kind][0]}</dt><dd><ul>{items.map(e => <li key={e.id}>{e.capability || 'Untitled'}{e.holder ? ` · ${e.holder}` : ''}{e.kind === 'insurance' && e.limit != null ? ` · ${e.currency ?? ''} ${e.limit.toLocaleString()}` : ''} · {verification(e)}{e.expiresAt ? ` · expires ${e.expiresAt}` : ''}</li>)}</ul></dd></div> : null; })}
     <div><dt>Capacity</dt><dd>{draft.capacity.length ? draft.capacity.map(c => `${c.from} to ${c.to}: ${c.hours} h`).join('; ') : 'Not stated'}</dd></div>
     <div><dt>Proposal hours</dt><dd>{draft.responseHours == null ? 'Unknown' : `${draft.responseHours} h`}</dd></div>
-    <div><dt>Internal policy</dt><dd>{draft.commercial.rateLow != null || draft.commercial.rateHigh != null ? `${money(draft.commercial.rateLow)} to ${money(draft.commercial.rateHigh)} ${draft.commercial.rateBasis ?? ''}`.trim() : 'No rates'} · minimum {money(draft.commercial.minContractValue)}</dd></div>
+    <div><dt>Internal policy</dt><dd>{draft.commercial.rateLow != null || draft.commercial.rateHigh != null ? `${money(draft.commercial.rateLow)} to ${money(draft.commercial.rateHigh)} ${draft.commercial.rateBasis ?? ''}`.trim() : 'No rates'} · minimum {money(draft.commercial.minContractValue)} · maximum {money(draft.commercial.maxContractValue)}</dd></div>
   </dl>;
 }

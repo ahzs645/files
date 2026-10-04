@@ -3,6 +3,7 @@
  * `procurement_profile_versions.data` on publish (CONTRACT §5.5). The host `assess` op reads it.
  * Pure module: no DOM, bridge or React imports, so tests and the host can share the rules.
  */
+import { EXCLUDE_MAX_TERMS, allExcludeTerms } from '../procurement/exclude';
 
 export const PROFILE_SCENARIOS = ['solo', 'team', 'partner'] as const;
 export type ProfileScenario = typeof PROFILE_SCENARIOS[number];
@@ -50,6 +51,8 @@ export interface ProfileCommercial {
   rateHigh: number | null;
   /** Internal minimum contract value we would normally pursue; null = no policy. */
   minContractValue: number | null;
+  /** Internal maximum contract value we can take on; null = no policy. */
+  maxContractValue: number | null;
   notes: string;
 }
 
@@ -61,6 +64,11 @@ export interface ProfileDraft {
   partners: ProfilePartner[];
   serviceLines: string[];
   exclusions: string[];
+  /**
+   * Literal words that rule a notice out before any AI call (profile-filter.ts, same matching as the Opportunities
+   * "Exclude words" filter). `exclusions` stays free text for the AI and reviewers.
+   */
+  excludedKeywords: string[];
   /** Regions/areas the company can serve, as the user words them. */
   geography: string[];
   /** Credentials, insurance, references/past projects, equipment access. */
@@ -71,8 +79,8 @@ export interface ProfileDraft {
   commercial: ProfileCommercial;
 }
 
-export const emptyCommercial = (): ProfileCommercial => ({ origin: 'internal_policy', currency: 'CAD', rateBasis: null, rateLow: null, rateHigh: null, minContractValue: null, notes: '' });
-export const emptyDraft = (): ProfileDraft => ({ schemaVersion: 1, scenario: 'solo', team: [], partners: [], serviceLines: [], exclusions: [], geography: [], evidence: [], capacity: [], responseHours: null, commercial: emptyCommercial() });
+export const emptyCommercial = (): ProfileCommercial => ({ origin: 'internal_policy', currency: 'CAD', rateBasis: null, rateLow: null, rateHigh: null, minContractValue: null, maxContractValue: null, notes: '' });
+export const emptyDraft = (): ProfileDraft => ({ schemaVersion: 1, scenario: 'solo', team: [], partners: [], serviceLines: [], exclusions: [], excludedKeywords: [], geography: [], evidence: [], capacity: [], responseHours: null, commercial: emptyCommercial() });
 
 const newId = () => (globalThis.crypto?.randomUUID?.() ?? `ev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
 export const emptyEvidence = (kind: ProfileEvidenceKind): ProfileEvidenceItem => ({ id: newId(), capability: '', kind, holder: null, verification: 'self_declared', verifiedAt: null, expiresAt: null, sourceRef: null, ...(kind === 'insurance' ? { limit: null, currency: 'CAD' } : {}) });
@@ -94,14 +102,14 @@ export function normalizeDraft(raw: unknown): ProfileDraft {
     scenario: oneOf(d.scenario, PROFILE_SCENARIOS, 'solo'),
     team: arr(d.team).map(item => ({ name: str(obj(item).name), role: str(obj(item).role) })),
     partners: arr(d.partners).map(item => ({ name: str(obj(item).name), confirmed: obj(item).confirmed === true, responsibilities: strings(obj(item).responsibilities) })),
-    serviceLines: strings(d.serviceLines), exclusions: strings(d.exclusions), geography: strings(d.geography),
+    serviceLines: strings(d.serviceLines), exclusions: strings(d.exclusions), excludedKeywords: strings(d.excludedKeywords), geography: strings(d.geography),
     evidence: arr(d.evidence).map(item => { const e = obj(item), kind = oneOf(e.kind, EVIDENCE_KINDS, 'other'); return {
       id: str(e.id) || newId(), capability: str(e.capability), kind, holder: opt(e.holder),
       verification: oneOf(e.verification, EVIDENCE_VERIFICATIONS, 'self_declared'), verifiedAt: opt(e.verifiedAt), expiresAt: opt(e.expiresAt), sourceRef: opt(e.sourceRef),
       ...(kind === 'insurance' ? { limit: num(e.limit), currency: opt(e.currency) } : {}) }; }),
     capacity: arr(d.capacity).map(item => ({ from: str(obj(item).from), to: str(obj(item).to), hours: num(obj(item).hours) ?? 0 })),
     responseHours: num(d.responseHours),
-    commercial: { origin: 'internal_policy', currency: opt(c.currency), rateBasis: c.rateBasis === 'hourly' || c.rateBasis === 'daily' ? c.rateBasis : null, rateLow: num(c.rateLow), rateHigh: num(c.rateHigh), minContractValue: num(c.minContractValue), notes: str(c.notes) },
+    commercial: { origin: 'internal_policy', currency: opt(c.currency), rateBasis: c.rateBasis === 'hourly' || c.rateBasis === 'daily' ? c.rateBasis : null, rateLow: num(c.rateLow), rateHigh: num(c.rateHigh), minContractValue: num(c.minContractValue), maxContractValue: num(c.maxContractValue), notes: str(c.notes) },
   };
 }
 
@@ -113,6 +121,8 @@ export function cleanDraft(draft: ProfileDraft): ProfileDraft {
     team: draft.team.map(m => ({ name: m.name.trim(), role: m.role.trim() })).filter(m => m.name || m.role),
     partners: draft.partners.map(p => ({ ...p, name: p.name.trim(), responsibilities: list(p.responsibilities) })).filter(p => p.name || p.responsibilities.length),
     serviceLines: list(draft.serviceLines), exclusions: list(draft.exclusions), geography: list(draft.geography),
+    // Keywords are stored as the matcher reads them, so the editor shows exactly what is applied.
+    excludedKeywords: allExcludeTerms(draft.excludedKeywords.join('\n')),
     evidence: draft.evidence.map(e => ({ ...e, capability: e.capability.trim(), holder: text(e.holder), sourceRef: text(e.sourceRef), verifiedAt: text(e.verifiedAt), expiresAt: text(e.expiresAt), ...(e.kind === 'insurance' ? { currency: text(e.currency ?? null)?.toUpperCase() ?? null } : {}) })),
     commercial: { ...draft.commercial, currency: text(draft.commercial.currency)?.toUpperCase() ?? null, notes: draft.commercial.notes.trim() },
   };
@@ -157,10 +167,12 @@ export function validateDraft(name: string, draft: ProfileDraft): DraftIssue[] {
   });
   if (draft.responseHours != null && (!Number.isFinite(draft.responseHours) || draft.responseHours < 0)) add('responseHours', 'Proposal hours cannot be negative.');
   const c = draft.commercial;
-  for (const key of ['rateLow', 'rateHigh', 'minContractValue'] as const) if (c[key] != null && (!Number.isFinite(c[key]!) || c[key]! < 0)) add(`commercial.${key}`, 'Commercial amounts cannot be negative.');
+  for (const key of ['rateLow', 'rateHigh', 'minContractValue', 'maxContractValue'] as const) if (c[key] != null && (!Number.isFinite(c[key]!) || c[key]! < 0)) add(`commercial.${key}`, 'Commercial amounts cannot be negative.');
   if (c.rateLow != null && c.rateHigh != null && c.rateLow > c.rateHigh) add('commercial.rateHigh', 'The high rate is below the low rate.');
   if ((c.rateLow != null || c.rateHigh != null) && !c.rateBasis) add('commercial.rateBasis', 'Say whether rates are hourly or daily.');
-  if ((c.rateLow != null || c.rateHigh != null || c.minContractValue != null) && !/^[A-Z]{3}$/.test(c.currency ?? '')) add('commercial.currency', 'Give the 3-letter currency for commercial amounts.');
+  if (c.minContractValue != null && c.maxContractValue != null && c.minContractValue > c.maxContractValue) add('commercial.maxContractValue', 'The maximum contract value is below the minimum.');
+  if (allExcludeTerms(draft.excludedKeywords.join('\n')).length > EXCLUDE_MAX_TERMS) add('excludedKeywords', `Use at most ${EXCLUDE_MAX_TERMS} excluded keywords.`);
+  if ((c.rateLow != null || c.rateHigh != null || c.minContractValue != null || c.maxContractValue != null) && !/^[A-Z]{3}$/.test(c.currency ?? '')) add('commercial.currency', 'Give the 3-letter currency for commercial amounts.');
   return issues;
 }
 

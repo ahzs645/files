@@ -1,0 +1,12 @@
+/* Quick triage: exclude words, hide/undo, profile filter line (Triage.tsx). */
+.pc-exclude textarea{width:100%;min-height:72px;padding:.5rem .75rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);color:var(--text-primary);font-size:14px;resize:vertical}
+.pc-exclude .procurement-actions{margin-top:.25rem}
+.pc-hide[aria-pressed=true]{color:var(--text-primary);background:var(--surface-secondary)}
+.pc-hidden-status{display:flex;flex-wrap:wrap;align-items:center;gap:.375rem .5rem;padding:.375rem .625rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-secondary);font-size:13px;color:var(--text-primary)}
+.pc-row[data-hidden] .pc-row-title{color:var(--text-secondary)}
+.pc-row-hidden-tag{padding:0 .375rem;border-radius:.25rem;border:1px dashed var(--border-default)}
+.pc-profile-filter{margin-top:.375rem;font-size:12px;color:var(--status-warning)}
+@media(max-width:640px){
+  .pc-exclude textarea{font-size:16px;min-height:88px}
+  .pc-hide{width:44px;height:44px;margin:-.625rem 0 0 0}
+}
