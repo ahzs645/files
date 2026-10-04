@@ -242,3 +242,16 @@ describe('procurement.enrich backfill', () => {
     await expect(backfillEnrichment(catalog(1).host, { mode: 'all' as any }, 'r')).rejects.toThrow('Invalid enrichment request.');
   });
 });
+
+describe('connector portal places', () => {
+  it('use the same municipality and regional district names as tagged notices, so one Place option covers both', async () => {
+    const { BIDSANDTENDERS_PORTALS } = await import('../zoer/dashboard/procurement/portals');
+    const { SITE_PORTALS } = await import('../zoer/dashboard/procurement/site-portals');
+    for (const { id, place } of [...BIDSANDTENDERS_PORTALS, ...SITE_PORTALS]) {
+      if (place.regionalDistrict) expect(BC_REGIONAL_DISTRICTS, id).toContain(place.regionalDistrict);
+      if (place.municipality) expect(BC_MUNICIPALITIES.get(place.municipality), id).toBe(place.regionalDistrict);
+    }
+    const nanaimo = BIDSANDTENDERS_PORTALS.find(portal => portal.id === 'nanaimo')!;
+    expect(tagPlace({ buyer: 'City of Nanaimo' })).toEqual({ ...nanaimo.place, method: 'buyer' });
+  });
+});

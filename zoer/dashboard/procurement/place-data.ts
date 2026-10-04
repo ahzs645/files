@@ -51,6 +51,18 @@ export const REGIONAL_DISTRICTS: readonly RegionalDistrict[] = [
   { id: 'thompson-nicola', name: 'Thompson-Nicola Regional District', cores: ['Thompson-Nicola'], bare: ['Thompson-Nicola'], acronyms: ['TNRD'] },
 ];
 
+/**
+ * Official name of a regional district from one of its core names ("Nanaimo" → "Regional District of Nanaimo").
+ * Portal lists use it so a connector's `place` matches places tagged from buyer names and the Place filter.
+ */
+export function regionalDistrictName(core: string): string {
+  const found = REGIONAL_DISTRICTS.find(rd => rd.cores.includes(core));
+  if (!found) throw new Error(`Unknown BC regional district: ${core}`);
+  return found.name;
+}
+/** "Regional District of Nanaimo" / "Metro Vancouver Regional District" → "Nanaimo" / "Metro Vancouver", for compact labels. */
+export const regionalDistrictShort = (name: string) => name.replace(/^Regional District of /, '').replace(/ Regional District$/, '');
+
 /** [short name, regional district id (null: none), legal name]. Short names are what the UI and `region` show. */
 export const MUNICIPALITIES: readonly (readonly [string, string | null, string])[] = [
   ["100 Mile House", "cariboo", "District of 100 Mile House"],

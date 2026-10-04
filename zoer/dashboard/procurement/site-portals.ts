@@ -1,4 +1,5 @@
 import type { ConnectorPortal } from '../../src/connectors/types';
+import { regionalDistrictName } from './place-data';
 
 /**
  * BC buyers whose own website lists their bids as server-rendered HTML (connector `municipal-sites`).
@@ -23,7 +24,7 @@ export interface SitePortal extends ConnectorPortal {
 }
 
 const PACIFIC = 'America/Vancouver';
-const place = (municipality: string | null, regionalDistrict: string | null) => ({ municipality, regionalDistrict, method: 'portal' as const });
+const place = (municipality: string | null, regionalDistrict: string | null) => ({ municipality, regionalDistrict: regionalDistrict && regionalDistrictName(regionalDistrict), method: 'portal' as const });
 
 export const SITE_PORTALS: readonly SitePortal[] = [
   { id: 'rdn', label: 'Regional District of Nanaimo', host: 'rdn.bc.ca', url: 'https://rdn.bc.ca/current-bid-opportunities',
