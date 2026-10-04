@@ -131,7 +131,7 @@ describe('company profile quick filters', () => {
       CREATE TABLE procurement_stage_runs(id TEXT PRIMARY KEY,record_id TEXT,stage TEXT,is_current INTEGER); CREATE TABLE procurement_facts(id TEXT PRIMARY KEY,record_id TEXT,stage_run_id TEXT,semantic_type TEXT,status TEXT,value TEXT);
       CREATE TABLE procurement_review_state(target_type TEXT,target_id TEXT,state TEXT,value TEXT)`);
     const add = (id: string, title: string, data: object = {}) => db.prepare('INSERT INTO records VALUES(?,?,?,?)').run(id, 'opportunity', title, JSON.stringify({ issuedBy: 'City', ...data }));
-    add('o1', 'Golf course mowing'); add('o2', 'Roof', { descriptionText: 'Includes fertilizer.' }); add('o3', 'Bridge'); add('o4', 'Paving'); add('o5', 'Seawall');
+    add('o1', 'Golf course mowing'); db.prepare('INSERT INTO records VALUES(?,?,?,?)').run('a1', 'award', 'Golf course award', '{}'); add('o2', 'Roof', { descriptionText: 'Includes fertilizer.' }); add('o3', 'Bridge'); add('o4', 'Paving'); add('o5', 'Seawall');
     db.prepare('INSERT INTO procurement_profile_versions VALUES(?,?)').run('pv', JSON.stringify({ excludedKeywords: ['golf', 'fertiliz*'], commercial: { currency: 'CAD', minContractValue: 25000, maxContractValue: 500000 } }));
     db.exec("INSERT INTO procurement_stage_runs VALUES('s3','o3','extract',1),('s4','o4','extract',1),('s4old','o4','extract',0),('s5','o5','extract',1)");
     const fact = (id: string, record: string, run: string, value: object, type = 'money:buyer_estimated_value') => db.prepare("INSERT INTO procurement_facts VALUES(?,?,?,?, 'stated', ?)").run(id, record, run, type, JSON.stringify(value));
@@ -144,7 +144,7 @@ describe('company profile quick filters', () => {
     const statements: string[] = [];
     const read = async (statement: string, parameters: (string | number)[] = []) => { validateCatalogSelect(statement, parameters); statements.push(statement); return db.prepare(statement).all(...parameters) as any[]; };
     const rules = await readProfileRules('pv', read);
-    const hits = await readProfileFilterHits(['o1', 'o2', 'o3', 'o4', 'o5'], rules, read);
+    const hits = await readProfileFilterHits(['o1', 'o2', 'o3', 'o4', 'o5', 'a1'], rules, read); // awards are never flagged
     expect(Object.fromEntries([...hits].map(([id, list]) => [id, list.map(h => h.kind === 'keyword' ? h.term : h.kind)]))).toEqual({ o1: ['golf'], o2: ['fertiliz*'], o3: ['above_max'] });
     expect(await readProfileRules(null, read)).toBeNull();
     const many = keywordHitsSql(Array.from({ length: 15 }, (_, i) => `w${i}`), 150);
