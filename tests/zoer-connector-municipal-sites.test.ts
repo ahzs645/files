@@ -39,7 +39,8 @@ describe('municipal-sites listings', () => {
     // RDN prints no status; open/closed comes from the verified closing instant and says so.
     expect(daft).toMatchObject({ status: 'Open', statusDerivedFrom: 'closingAt' });
     expect(records[1]).toMatchObject({ externalId: '26-039', status: 'Closed', closingAt: '2026-10-01T15:00:00-07:00' });
-    expect(records.find(r => r.externalId === '26-006')).toMatchObject({ closingAt: '2026-12-31T00:00:00-08:00', status: 'Open' });
+    // In winter RDN prints "1:00 AM" beside 08:00Z (= 00:00 PST): the two disagree, so only the date is claimed.
+    expect(records.find(r => r.externalId === '26-006')).toMatchObject({ closingDate: 'December 31, 2026 at 1:00 AM', closingAt: '2026-12-31', status: 'Unknown' });
     expect(JSON.stringify(daft).length).toBeLessThan(250_000);
   });
 
@@ -53,6 +54,7 @@ describe('municipal-sites listings', () => {
     });
     expect(records[0]).not.toHaveProperty('statusDerivedFrom');
     expect(new Set(records.map(r => r.sourceKey)).size).toBe(15);
+    expect(records.find(r => r.description === 'Disposal of Surplus Asset -- 1988 GMC Pumper Fire Truck')?.sourceKey).toBe('municipal-sites:srd:disposal-of-surplus-asset-1988-gmc-pumper-fire-truck');
   });
 
   it('treats a stated empty result as zero notices and anything else without a table as a layout change', () => {

@@ -1,6 +1,7 @@
 import { SITE_PORTALS, type SitePortal } from '../../dashboard/procurement/site-portals';
 import { isPauseError } from '../pause';
 import { ConnectorError, httpFailure } from './errors';
+import { decodeEntities, htmlToText } from './html';
 import type { ConnectorPortal, NetFetch, NoticeContact, PortalResult, SourceConnector } from './types';
 
 /**
@@ -20,34 +21,6 @@ const MAX_PAGES = 3;
 /** Notice pages read per portal per run; the busiest of these sites listed 13 open notices on 2026-10-03. */
 const MAX_DETAILS = 25;
 
-// ---------------------------------------------------------------------------------------------
-// HTML to text
-// ---------------------------------------------------------------------------------------------
-
-const NAMED: Record<string, string> = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', ndash: '–', mdash: '—',
-  hellip: '…', bull: '•', middot: '·', copy: '©', reg: '®', trade: '™', deg: '°', eacute: 'é', Eacute: 'É', egrave: 'è', agrave: 'à', ccedil: 'ç',
-};
-/** Decodes numeric and common named entities; unknown names are left as written rather than guessed. */
-export function decodeEntities(text: string): string {
-  return text.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z][a-z0-9]{1,8});/gi, (whole, name: string) => {
-    if (name[0] !== '#') return NAMED[name] ?? whole;
-    const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
-    return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : whole;
-  });
-}
-/** Source HTML to readable text: block ends become line breaks, list items keep a bullet, entities decoded. */
-export function htmlToText(html: string): string {
-  return decodeEntities(String(html ?? '')
-    .replace(/<(script|style|svg)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li\b[^>]*>/gi, '\n• ')
-    .replace(/<\/(p|div|h[1-6]|li|ul|ol|tr|table|blockquote|section)\s*>/gi, '\n')
-    .replace(/<[^>]*>/g, ''))
-    .replace(/[ \t \r\f\v]+/g, ' ')
-    .split('\n').map(line => line.trim()).filter(Boolean)
-    .join('\n').trim();
-}
 const oneLine = (html: string) => htmlToText(html).replace(/\s*\n\s*/g, ' ').trim();
 const attr = (tag: string, name: string) => decodeEntities(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i').exec(tag)?.[1] ?? '');
 /** An https URL on the web, resolved against the page; anything else (mailto:, javascript:, credentials) is dropped. */
@@ -292,7 +265,11 @@ export function parseNoticePage(html: string, pageUrl: string): NoticePage | und
     if (key === 'description') { if (text) descriptions.push(text); links.push(body); }
     else if (key === 'contacts') { page.contacts.push(...contactsFrom(text, 'detail-field')); links.push(body); }
     else if (key === 'documents') links.push(body);
-    else if (key === 'closing') { page.closing = text.split('\n')[0]; page.closingHtml = body; }
+    else if (key === 'closing') {
+      // Only the first value: Surrey adds "Revised <date>" below the closing date.
+      page.closingHtml = body.split(/<\/(?:div|p)\s*>|<br\s*\/?>/i).find(part => htmlToText(part)) ?? body;
+      page.closing = text.split('\n')[0];
+    }
     else if (key === 'status') page.status = text.split('\n')[0];
     else if (key === 'number') page.number = text.split('\n')[0] !== '--' ? text.split('\n')[0] : undefined;
     else if (key !== 'skip' && text && text !== '--' && text.length <= 300 && page.fields.length < 10) page.fields.push({ label, value: text.split('\n')[0] });
@@ -362,8 +339,8 @@ export function noticeId(portal: SitePortal, row: SiteRow): string | undefined {
     const segments = new URL(url).pathname.replace(/\.html?$/i, '').split('/').filter(Boolean), last = segments.at(-1) ?? '';
     return slug(segments.at(-2) === 'node' ? `node-${last}` : last) || undefined;
   }
-  const number = row.number ?? leadingNumber(row.title);
-  return number ? slug(number) : undefined;
+  // Rows without a number (SRD's asset disposals) fall back to their title, which they keep while listed.
+  return slug(row.number ?? leadingNumber(row.title) ?? row.title) || undefined;
 }
 const CLOSED = /closed|award|cancel|evaluat|review|sold|no award|shortlist|challenge/i;
 

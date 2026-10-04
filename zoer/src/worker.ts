@@ -7,7 +7,7 @@ import { scrapeSample } from './scrape';
 import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
 import { createInterface } from 'node:readline';
 import { parseCapture, type PageCapture } from './capture';
-import { collectCanadaBuys } from './procurement-collection';
+import { collectProcurementSource } from './connector-collection';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
 
@@ -61,7 +61,7 @@ try {
     if (!catalogTicket || !networkTicket) throw new Error('Procurement collection requires catalog and network grants.');
     const collectCall = (method: string, input: any) => method === 'network.fetch'
       ? call(method, { ...input, ticket: networkTicket }) : catalogCall(method, input);
-    write({ protocolVersion: '1', runId, ok: true, output: await collectCanadaBuys(collectCall, request.input ?? {}, runId) });
+    write({ protocolVersion: '1', runId, ok: true, output: await collectProcurementSource(collectCall, request.input ?? {}, runId) });
   } else if (request.action.id === 'procurement.classifications') {
     if (!catalogTicket) throw new Error('Procurement classification mapping requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementClassifications(catalogCall, request.input ?? {}, runId) });
