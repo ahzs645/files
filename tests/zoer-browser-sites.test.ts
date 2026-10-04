@@ -4,7 +4,7 @@ import { collectBrowserSources, validBrowserCollectionInput } from '../zoer/src/
 import { collectProcurementSource } from '../zoer/src/connector-collection';
 import { CONNECTORS } from '../zoer/src/connectors';
 import { browserCheckMessage, detectBrowserCheck } from '../zoer/src/connectors/browser-check';
-import { browserNoticeId, browserRecord, contentOf, layoutSample, parseBlocks, parseBrowserListing, type CapturedPage } from '../zoer/src/connectors/browser-sites';
+import { browserNoticeId, browserRecord, contentOf, layoutSample, parseBlocks, parseBrowserListing, parseCellHeaderTables, parseViewRows, type CapturedPage } from '../zoer/src/connectors/browser-sites';
 import { createPacer } from '../zoer/src/connectors/pacing';
 import { insideVisitTime, parseRobots, robotsAllows, robotsPolicy, robotsTextFromCapture } from '../zoer/src/connectors/robots';
 import { BROWSER_COLLECT_ACTION, BROWSER_PAGES_PER_SITE, BROWSER_SITES, browserSiteById } from '../zoer/dashboard/procurement/browser-sites';
@@ -16,8 +16,8 @@ import { capabilityMatrix } from '../zoer/dashboard/procurement/source-health';
 import { readConnectorCollection } from '../zoer/dashboard/procurement/source-overview';
 import manifest from '../zoer/manifest.json';
 
-// Every page here is SYNTHETIC (written by hand, marked so in each file). No page was captured from these sites:
-// real fixtures are pending capture through Zoer's browser.
+// `synthetic-*` pages are written by hand (marked so in each file). `zoer-*` pages are layout samples Zoer's own
+// browser captured on 2026-10-04 (trimmed to the page content); nothing was fetched from a workstation.
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/browser-sites/${name}`, import.meta.url), 'utf8');
 const KEY = connectorCollectionKey('browser-sites');
 const site = (id: string) => browserSiteById(id)!;
@@ -138,16 +138,18 @@ describe('listing parsers (synthetic pages, layouts unverified)', () => {
     for (const record of records) expect(JSON.stringify(record).length).toBeLessThan(250_000);
   });
   it('reads a titled table first in auto layout, and a single-buyer site names itself as the buyer', () => {
-    const kelowna = site('kelowna'), url = kelowna.url;
-    const parsed = parseBrowserListing(kelowna, fixture('synthetic-table.html'), url);
-    const records = parsed.rows.map(row => browserRecord(row, kelowna, url, NOW));
+    const cranbrook = site('cranbrook'), url = cranbrook.url;
+    const parsed = parseBrowserListing(cranbrook, fixture('synthetic-table.html'), url);
+    const records = parsed.rows.map(row => browserRecord(row, cranbrook, url, NOW));
     expect(records.map(record => [record.externalId, record.status, record.closingAt, record.issuedBy])).toEqual([
-      ['T-2026-07', 'Open', '2026-10-21T14:00:00-07:00', 'City of Kelowna'], ['RFQ-26-12', 'Closed', '2026-09-30', 'City of Kelowna']]);
-    expect(records[0].sourceKey).toBe('browser-sites:kelowna:water-main-renewal-2026');
+      ['T-2026-07', 'Open', '2026-10-21T14:00:00-07:00', 'City of Cranbrook'], ['RFQ-26-12', 'Closed', '2026-09-30', 'City of Cranbrook']]);
+    expect(records[0].sourceKey).toBe('browser-sites:cranbrook:water-main-renewal-2026');
   });
   it('an empty list is empty; a page it cannot read is a layout error, never zero notices', () => {
-    expect(parseBrowserListing(site('kelowna'), fixture('synthetic-empty.html'), 'https://www.kelowna.ca/')).toEqual({ rows: [], empty: true });
-    expect(() => parseBrowserListing(site('kelowna'), fixture('synthetic-unknown-layout.html'), 'https://www.kelowna.ca/')).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    for (const id of ['cranbrook', 'kelowna']) {
+      expect(parseBrowserListing(site(id), fixture('synthetic-empty.html'), 'https://cranbrook.ca/')).toEqual({ rows: [], empty: true });
+      expect(() => parseBrowserListing(site(id), fixture('synthetic-unknown-layout.html'), 'https://cranbrook.ca/')).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    }
   });
   it('notice ids come from the link (path and id-like query values), else number or title', () => {
     expect(browserNoticeId({ href: '/bids?bidid=11037&sort=asc', title: 'x' }, 'https://www.civicinfo.bc.ca/bids')).toBe('bids-bidid-11037');
@@ -155,6 +157,79 @@ describe('listing parsers (synthetic pages, layouts unverified)', () => {
     expect(browserNoticeId({ href: 'https://a.ca/bids#top', number: 'T-1', title: 'x' }, 'https://a.ca/bids')).toBe('t-1');
     expect(browserNoticeId({ title: 'Snow Removal' }, 'https://a.ca/')).toBe('snow-removal');
     expect(contentOf('<header>h</header><nav><nav>x</nav></nav><main><p>m</p></main><footer>f</footer>')).toBe('<p>m</p>');
+  });
+});
+
+describe('listing parsers (pages captured through Zoer on 2026-10-04)', () => {
+  const RETRIEVED = '2026-10-04T04:31:00.000Z';
+  it('Chilliwack: current and recently closed tables headed by plain cells; closing times without a zone stay dates', () => {
+    const chilliwack = site('chilliwack'), url = chilliwack.url, html = fixture('zoer-chilliwack.html');
+    expect(chilliwack).toMatchObject({ layout: 'auto', verified: true, timeZone: 'America/Vancouver' });
+    // No <th> anywhere and no labelled closing dates: only the plain-cell table reader understands the page.
+    expect(() => parseBlocks(html, url)).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    expect(parseCellHeaderTables(html)).toHaveLength(17);
+    const records = parseBrowserListing(chilliwack, html, url).rows.map(row => browserRecord(row, chilliwack, url, RETRIEVED));
+    expect(records).toHaveLength(17);
+    expect(records.filter(record => record.status === 'Open').map(record => record.description)).toEqual([
+      'Supply & Delivery of Winter Road Salt', '2027 Linear Upgrades Project - Engineering Services', 'Annual Roadside & Dyke Mowing, Brushing and Cleaning Services',
+      'Canada Day 2027 - Drone Light Show and Pyrotechnic Display', 'Sourcewell and Canoe Procurement Group of Canada']);
+    expect(records[0]).toMatchObject({
+      sourceKey: 'browser-sites:chilliwack:page-cfm-bidid-1184-id-400', externalId: 'page-cfm-bidid-1184-id-400', status: 'Open', type: 'Request for Quotation',
+      closingDate: 'Oct 7, 2026 3:00 PM', closingAt: '2026-10-07', issuedBy: 'City of Chilliwack', region: 'Chilliwack',
+      detailUrl: 'https://www.chilliwack.com/main/page.cfm?id=400&whattoshow=opportunity&bidid=1184',
+    });
+    expect(records[0]).not.toHaveProperty('statusDerivedFrom');
+    expect(records[0].rawSourceData.cells).toEqual({ Section: 'Current Bid Opportunities', Title: 'Supply & Delivery of Winter Road Salt', Type: 'Request for Quotation', Closes: 'Oct 7, 2026 3:00 PM' });
+    expect(records[4]).toMatchObject({ type: 'Notice of Intent', closingAt: '2026-12-31', closingDate: 'Dec 31, 2026 2:00 PM' });
+    // Recently closed rows keep the published status; their ids match the open listing's, so a notice that moves
+    // from one table to the other updates the same saved record.
+    expect(records.slice(5).map(record => record.status)).toEqual([...Array(10).fill('Reviewing'), 'Awarded', 'Awarded']);
+    expect(records[5]).toMatchObject({ sourceKey: 'browser-sites:chilliwack:page-cfm-bidid-1181-id-400', externalId: '2026-09', description: '2026-09 2026 RRFB Installation Program',
+      type: 'Invitation To Tender', closingDate: 'Oct 1, 2026 3:00 PM', closingAt: '2026-10-01' });
+    expect(records.at(-1)).toMatchObject({ description: '2026-06 Operations Paving Program', status: 'Awarded', closingAt: '2026-07-13' });
+    expect(records.every(record => !/T\d/.test(record.closingAt ?? ''))).toBe(true);
+  });
+  it('Kelowna: a Drupal view of current notices without closing dates', () => {
+    const kelowna = site('kelowna'), url = kelowna.url, html = fixture('zoer-kelowna.html');
+    expect(kelowna).toMatchObject({ layout: 'views', verified: true });
+    const parsed = parseViewRows(html, url);
+    expect(parsed.empty).toBe(false);
+    // The page footer says "Showing 1 - 6 of 6 Results"; the contact and related-links views are not notices.
+    expect(parsed.rows.map(row => [row.number, row.title])).toEqual([
+      ['13158', 'Mechanical Contractor Services'], ['13009', 'Construction - Aurora Park'], ['13001', 'Workday Implementation Phase 2'],
+      ['12925', 'Recreation Facility Management - H2O Adventure & Fitness Centre'], ['12877', 'IT SUPPORT SERVICES'], ['12682', 'Security Services for City and Transit Facilities']]);
+    const records = parseBrowserListing(kelowna, html, url).rows.map(row => browserRecord(row, kelowna, url, RETRIEVED));
+    expect(records[0]).toMatchObject({
+      sourceKey: 'browser-sites:kelowna:reference-13158-name-mechanical-contractor-services', externalId: '13158', description: 'Mechanical Contractor Services',
+      status: 'Open', closingDate: '', issuedBy: 'City of Kelowna', region: 'Kelowna',
+      detailUrl: 'https://www.kelowna.ca/business-services/business-opportunities/bidding-opportunities/reference-13158-name-mechanical-contractor-services',
+    });
+    expect(records[0].descriptionText).toMatch(/^The City of Kelowna owns and operates a portfolio of facilities/);
+    expect(records[0].rawSourceData.cells.Title).toBe('Reference #: 13158. Name: Mechanical Contractor Services');
+    for (const record of records) { expect(record).not.toHaveProperty('closingAt'); expect(record).not.toHaveProperty('statusDerivedFrom'); }
+    // Without its bid view the page is a layout error; an empty view is empty.
+    expect(() => parseViewRows(fixture('zoer-chilliwack.html'), url)).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    expect(parseViewRows('<div class="view view-bid-opportunities view-id-bid_opportunities"><div class="view-empty">Nothing here.</div></div>', url)).toEqual({ rows: [], empty: true });
+    expect(() => parseViewRows('<div class="view view-bid-opportunities view-id-bid_opportunities"><div class="view-content"></div></div>', url)).toThrow(expect.objectContaining({ code: 'source_layout' }));
+  });
+  it('RDKB: "Opportunities" / "None at the Moment" is an empty list', () => {
+    const rdkb = site('rdkb');
+    expect(parseBrowserListing(rdkb, fixture('zoer-rdkb.html'), rdkb.url)).toEqual({ rows: [], empty: true });
+    // The wording only counts right after a bids heading.
+    expect(() => parseBrowserListing(rdkb, '<body><h2>Road closures</h2><p>None at the moment</p></body>', rdkb.url)).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    expect(rdkb.verified).toBe(false);
+  });
+  it('landing pages are not read as listings: West Vancouver is link-only (BC Bid), YVR points at its supplier page', () => {
+    const west = 'https://westvancouver.ca/business-development/information-businesses', page = fixture('zoer-westvancouver.html');
+    expect(() => parseBrowserListing(site('cranbrook'), page, west)).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    expect(page).toContain('all postings are available on <a>BC Bid</a>');
+    expect(browserSiteById('westvancouver')).toBeUndefined();
+    expect(LINK_SOURCES.find(source => source.id === 'westvancouver')).toMatchObject({ url: west, reason: 'Posts on BC Bid', region: 'West Vancouver' });
+    const yvr = site('yvr'), landing = fixture('zoer-yvr.html');
+    expect(() => parseBrowserListing(yvr, landing, 'https://www.yvr.ca/en/business/work-with-yvr')).toThrow(expect.objectContaining({ code: 'source_layout' }));
+    // The new URL is the same-host link the capture shows for active bidding opportunities; its layout is unconfirmed.
+    expect(landing).toContain('<a href="/en/business/work-with-yvr/airport-suppliers">Supplier page</a>');
+    expect(yvr).toMatchObject({ url: 'https://www.yvr.ca/en/business/work-with-yvr/airport-suppliers', host: 'www.yvr.ca', verified: false });
   });
 });
 
@@ -287,12 +362,12 @@ describe('procurement.collect.browser', () => {
   it('a check on robots.txt itself waits for the person; an unavailable browser waits too', async () => {
     const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', {
       'https://www.kelowna.ca/robots.txt': { html: fixture('synthetic-cloudflare.html'), title: 'Just a moment...', status: 403 },
-      'https://westvancouver.ca/robots.txt': new Error('Selected browser is unavailable or under manual control. Resume the agent before capturing.'),
+      'https://rdkb.com/robots.txt': new Error('Selected browser is unavailable or under manual control. Resume the agent before capturing.'),
     });
-    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['kelowna', 'westvancouver'] }, 'run-1', web.deps);
+    await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['kelowna', 'rdkb'] }, 'run-1', web.deps);
     const portals = db.states.get(KEY).portals;
     expect(portals.kelowna).toMatchObject({ status: 'waiting', error: { code: 'browser_check' } });
-    expect(portals.westvancouver).toMatchObject({ status: 'waiting', error: { code: 'browser_unavailable' } });
+    expect(portals.rdkb).toMatchObject({ status: 'waiting', error: { code: 'browser_unavailable' } });
   });
   it('a Zoer pause saves progress as paused and is rethrown; a spent page budget ends the run', async () => {
     const paused = catalog(), web = browser('2026-10-04T10:00:00.000Z', { robots: ROBOTS, [CIVIC]: { html: fixture('synthetic-blocks.html') }, [CHILLIWACK]: Object.assign(new Error('Paused for Zoer update'), { code: 'ZOER_PAUSED' }) });
@@ -301,6 +376,21 @@ describe('procurement.collect.browser', () => {
     const budget = catalog(), spent = browser('2026-10-04T10:00:00.000Z', { robots: new Error('Browser page budget exhausted or not granted.') });
     await expect(collectBrowserSources(budget.host, { sourceId: 'browser-sites', sites: ['civicinfo'] }, 'run-1', spent.deps)).rejects.toThrow(/budget/);
     expect(budget.states.get(KEY)).toMatchObject({ status: 'failed', error: { code: 'network_budget' } });
+  });
+  it('collects the captured Chilliwack, Kelowna and RDKB pages: verified sites without the unconfirmed-layout warning', async () => {
+    const db = catalog(), web = browser('2026-10-04T04:31:00.000Z', {
+      robots: ROBOTS, [CHILLIWACK]: { html: fixture('zoer-chilliwack.html'), title: 'Bid / Tenders - City of Chilliwack' },
+      [site('kelowna').url]: { html: fixture('zoer-kelowna.html'), title: 'Current bidding opportunities | City of Kelowna' },
+      [site('rdkb').url]: { html: fixture('zoer-rdkb.html'), title: 'Public Notices and Opportunities' },
+    });
+    const output = await collectBrowserSources(db.host, { sourceId: 'browser-sites', sites: ['chilliwack', 'kelowna', 'rdkb'] }, 'run-1', web.deps);
+    expect(output.summary).toMatchObject({ collected: 3, failedSites: 0 });
+    const portals = db.states.get(KEY).portals;
+    expect(portals.chilliwack).toMatchObject({ status: 'complete', recordCount: 17, warnings: [] });
+    expect(portals.kelowna).toMatchObject({ status: 'complete', recordCount: 6, warnings: [] });
+    expect(portals.rdkb).toMatchObject({ status: 'complete', recordCount: 0 });
+    expect(portals.rdkb.warnings).toEqual([expect.stringContaining('not been confirmed yet')]);
+    expect(db.records.get('opportunity:browser-sites:kelowna:reference-12682-name-security-services-city-and-transit-facilities')?.data).toMatchObject({ externalId: '12682', status: 'Open' });
   });
   it('a page the parser does not understand fails that site with a layout error, not 0 notices', async () => {
     const db = catalog(), web = browser('2026-10-04T10:00:00.000Z', { robots: ROBOTS, listing: { html: fixture('synthetic-unknown-layout.html'), title: 'Doing business' } });
@@ -320,10 +410,13 @@ describe('browser-sites registration', () => {
       expect(allowlist).toContain(item.host);
       expect(new URL(item.url).host).toBe(item.host);
       expect(item.url.startsWith('https://')).toBe(true);
-      expect(item.verified).toBe(false);
       expect(item.minDelaySeconds).toBeGreaterThanOrEqual(5);
     }
     expect(new Set(BROWSER_SITES.map(item => item.id)).size).toBe(BROWSER_SITES.length);
+    // Verified only where a listing was read from a page Zoer's browser captured (fixtures zoer-<id>.html).
+    expect(BROWSER_SITES.filter(item => item.verified).map(item => item.id)).toEqual(['kelowna', 'chilliwack']);
+    expect(allowlist).not.toContain('westvancouver.ca');
+    expect(action.inputSchema.properties.sites.maxItems).toBe(BROWSER_SITES.length);
     expect(action).toMatchObject({ effect: 'local_write', approval: 'when_configured', requiredCapabilities: expect.arrayContaining(['browser-session', 'artifact-store']) });
     expect(action.resourceLimits.maxBrowserPages).toBeGreaterThanOrEqual(BROWSER_SITES.length * BROWSER_PAGES_PER_SITE);
     expect(action.inputSchema.properties.sites.items.enum).toEqual(BROWSER_SITES.map(item => item.id));
