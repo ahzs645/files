@@ -12,6 +12,7 @@ import { useActiveProfile } from './profile-context';
 import { ProfilePicker } from './ProfilePicker';
 import { label } from './queries';
 import { ACQUIRE_REASON_TEXT, QUEUES, QUEUE_TEXT, queueSql, reviewScopeHref, type QueueId } from './queue';
+import { Today } from './Today';
 import { readAttentionSummary, readCoverage, readDeadlines, readPolicies, readQueue, readRecentDecisions, readReviewCoverage, readSourceHealth } from './home-data';
 import './review.css';
 
@@ -223,6 +224,7 @@ export function Home() {
       </div>
     </header>
     {!workspace.isPending && !available && <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved notices, documents, deadlines and pursuits are still shown below.</p>}
+    <Today source={source} asOf={asOf} />
     <AttentionTiles source={source} profile={profileVersionId} active={active !== null} asOf={asOf} available={available} />
     {/* Two independent columns, so a long panel on one side never leaves a gap on the other. */}
     <div className="rw-home-grid">
