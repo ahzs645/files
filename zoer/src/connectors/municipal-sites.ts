@@ -157,16 +157,21 @@ export function parseTable(html: string): { rows: Array<SiteRow & { html: Partia
     const rows = [...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(m => m[1]);
     const headerIndex = rows.findIndex(row => /<th\b/i.test(row));
     if (headerIndex < 0) continue;
-    const headers = cellsOf(rows[headerIndex]).map(oneLine);
+    const headerCells = [...rows[headerIndex].matchAll(/<(t[dh])\b([^>]*)>([\s\S]*?)<\/\1>/gi)];
+    const headers = headerCells.map(m => oneLine(m[3]).replace(/:\s*$/, ''));
     const roles = new Map<number, Role>(), taken = new Set<Role>();
     headers.forEach((header, i) => {
-      const role = ROLES.find(([name, test]) => !taken.has(name) && test.test(header))?.[0];
+      // The Up&Up Drupal template leaves the title header empty; its class still says what the column is.
+      // Dawson Creek prints the closing time in its own column after the date.
+      const role = (/closing time/i.test(header) && taken.has('closing') ? 'closing' : undefined)
+        ?? ROLES.find(([name, test]) => !taken.has(name) && test.test(header))?.[0]
+        ?? (!header && !taken.has('title') && /views-field-title\b/.test(headerCells[i][2]) ? 'title' : undefined);
       if (role) { roles.set(i, role); taken.add(role); }
     });
     if (!taken.has('title') || !taken.has('closing')) continue;
     const parsed = rows.slice(headerIndex + 1).map(row => cellsOf(row)).filter(cells => cells.length === headers.length).map(cells => {
       const byRole: Partial<Record<Role, string>> = {};
-      cells.forEach((cell, i) => { const role = roles.get(i); if (role) byRole[role] = cell; });
+      cells.forEach((cell, i) => { const role = roles.get(i); if (role) byRole[role] = byRole[role] === undefined ? cell : `${byRole[role]} ${cell}`; });
       const titleHtml = byRole.title ?? '';
       const link = /<a\b([^>]*)>([\s\S]*?)<\/a>/i.exec(titleHtml);
       // SRD prints the issue date inside the title cell; Penticton prints the number after the link.
@@ -212,6 +217,47 @@ export function parseCards(html: string): { rows: Array<SiteRow & { html: Partia
   throw new ConnectorError('source_layout', 'The tender search no longer shows notice cards. The site layout changed; saved records are kept.');
 }
 
+/**
+ * Drupal list views (Quesnel's Up&Up list, Comox's CiviKit): one `views-row` per notice inside the bids view, a heading
+ * link as title and labelled fields (`field__label`/`field__item`, or `<strong>Closing Date: </strong>`).
+ */
+export function parseList(html: string): { rows: Array<SiteRow & { html: Partial<Record<Role, string>> }>; empty: boolean } {
+  const start = html.search(/class="[^"]*\bview-id-[a-z_]*bid[a-z_]*\b/i);
+  if (start < 0) {
+    if (EMPTY.test(htmlToText(html))) return { rows: [], empty: true };
+    throw new ConnectorError('source_layout', 'The bids page no longer has its bid list. The site layout changed; saved records are kept.');
+  }
+  const view = html.slice(start).split(/<(?:footer|nav)\b|class="region region-breadcrumbs"/i)[0];
+  const rows = view.split(/<div\b[^>]*class="[^"]*\bviews-row\b[^"]*"[^>]*>/i).slice(1).map(part => {
+    const heading = /<h[2-4]\b[^>]*>([\s\S]*?)<\/h[2-4]>/i.exec(part);
+    const link = /<a\b([^>]*)>/i.exec(heading?.[1] ?? '') ?? /<a\b([^>]*class="[^"]*button[^"]*"[^>]*)>/i.exec(part);
+    const href = (link && attr(link[1], 'href')) || attr(/<article\b[^>]*>/i.exec(part)?.[0] ?? '', 'about') || undefined;
+    const fields: Partial<Record<Role, string>> = {}, cells: Record<string, string> = {};
+    const labelled = [
+      ...[...part.matchAll(/<div\b[^>]*class="field__label"[^>]*>([\s\S]*?)<\/div>\s*<div\b[^>]*class="field__items?"[^>]*>([\s\S]*?)<\/div>/gi)].map(m => [m[1], m[2]]),
+      ...[...part.matchAll(/<strong\b[^>]*>([^<]{2,40}?):?\s*<\/strong>([\s\S]*?)<\/div>/gi)].map(m => [m[1], m[2]]),
+    ];
+    for (const [rawLabel, value] of labelled) {
+      const label = oneLine(rawLabel).replace(/:\s*$/, ''), text = oneLine(value);
+      if (!label || !text) continue;
+      cells[label] ??= text;
+      const role: Role | undefined = /closing|deadline/i.test(label) ? 'closing' : /status/i.test(label) ? 'status' : /^type$/i.test(label) ? 'type'
+        : /number|reference/i.test(label) ? 'number' : /posted|issue/i.test(label) ? 'posted' : undefined;
+      // Quesnel repeats "Application deadline" for its open-until-filled switch; only a dated value is the deadline.
+      if (role && fields[role] === undefined && (role !== 'closing' || /\d{4}/.test(text))) fields[role] = value;
+    }
+    const summary = /views-field-body[^>]*>\s*<div\b[^>]*>([\s\S]*?)<\/div>/i.exec(part)?.[1];
+    const title = heading ? oneLine(heading[1]) : '';
+    const value = (role: Role) => fields[role] !== undefined ? oneLine(fields[role]!) : undefined;
+    return {
+      title, href, number: value('number'), type: value('type'), status: value('status'), closing: value('closing'), posted: value('posted'),
+      summary: summary ? oneLine(summary) || undefined : undefined, cells: { Title: title, ...cells }, html: fields,
+    };
+  }).filter(row => row.title);
+  if (rows.length || EMPTY.test(htmlToText(view)) || /class="view-empty"/i.test(view) || !/views-row/i.test(view)) return { rows, empty: rows.length === 0 };
+  throw new ConnectorError('source_layout', 'The bid list no longer shows titled notices. The site layout changed; saved records are kept.');
+}
+
 /** `rel="next"` page on the same host, if any. */
 export function nextPage(html: string, current: string): string | undefined {
   const tag = /<a\b[^>]*\brel="next"[^>]*>/i.exec(html)?.[0];
@@ -237,7 +283,7 @@ const LABELS = [
 ];
 const KEYS: Record<string, keyof NoticePage | 'skip'> = {
   description: 'description', contactinformation: 'contacts', contact: 'contacts', contacts: 'contacts', documents: 'documents', addendum: 'documents', addenda: 'documents',
-  closingdate: 'closing', closingtime: 'closing', status: 'status', competitionnumber: 'number',
+  closingdate: 'closing', closingtime: 'closing', applicationdeadline: 'closing', status: 'status', pdf: 'documents', attachments: 'documents', competitionnumber: 'number',
   tendertitle: 'skip', tenderrfptitle: 'skip', posteddate: 'skip', share: 'skip',
 };
 const FILE = /\.(pdf|docx?|xlsx?|zip|dwg|pptx?)(?:[?#]|$)|\/filepro\/document|\/sites\/default\/files\/|\/assets\//i;
@@ -258,28 +304,31 @@ export function parseNoticePage(html: string, pageUrl: string): NoticePage | und
   for (const pattern of LABELS) region = region.replace(pattern, (_, label: string) => `\u0001${decodeEntities(label)}\u0002`);
   const pieces = region.split(/\u0001([^\u0002]*)\u0002/);
   const page: NoticePage = { contacts: [], documents: [], fields: [] };
-  const descriptions: string[] = [], links: string[] = [];
+  const descriptions: string[] = [], links: string[] = [], docs: string[] = [];
   for (let i = 1; i < pieces.length; i += 2) {
-    const label = pieces[i].trim(), body = pieces[i + 1] ?? '', key = KEYS[label.toLowerCase().replace(/[^a-z]/g, '')];
+    const label = pieces[i].trim().replace(/:\s*$/, ''), body = pieces[i + 1] ?? '', key = KEYS[label.toLowerCase().replace(/[^a-z]/g, '')];
     const text = htmlToText(body);
     if (key === 'description') { if (text) descriptions.push(text); links.push(body); }
     else if (key === 'contacts') { page.contacts.push(...contactsFrom(text, 'detail-field')); links.push(body); }
-    else if (key === 'documents') links.push(body);
-    else if (key === 'closing') {
+    else if (key === 'documents') docs.push(body);
+    else if (key === 'closing' && !page.closing && /\d{4}/.test(text)) {
       // Only the first value: Surrey adds "Revised <date>" below the closing date.
       page.closingHtml = body.split(/<\/(?:div|p)\s*>|<br\s*\/?>/i).find(part => htmlToText(part)) ?? body;
       page.closing = text.split('\n')[0];
     }
     else if (key === 'status') page.status = text.split('\n')[0];
     else if (key === 'number') page.number = text.split('\n')[0] !== '--' ? text.split('\n')[0] : undefined;
-    else if (key !== 'skip' && text && text !== '--' && text.length <= 300 && page.fields.length < 10) page.fields.push({ label, value: text.split('\n')[0] });
+    else if (key !== 'skip' && key !== 'closing' && text && text !== '--' && text.length <= 300 && page.fields.length < 10) page.fields.push({ label, value: text.split('\n')[0] });
   }
   if (descriptions.length) page.description = descriptions.join('\n\n').slice(0, 20_000);
   if (!page.contacts.length && page.description) page.contacts.push(...contactsFrom(page.description, 'description'));
   const seen = new Set<string>();
-  for (const [, tag, inner] of links.join('\n').matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+  // Any link in a documents section is a document (Comox links `/media/<id>`); elsewhere only file-like links count.
+  const anchors = [...docs.map(html => [html, true] as const), ...links.map(html => [html, false] as const)]
+    .flatMap(([html, isDocs]) => [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)].map(m => [m[1], m[2], isDocs] as const));
+  for (const [tag, inner, isDocs] of anchors) {
     const url = resolveUrl(attr(tag, 'href'), pageUrl);
-    if (!url || !FILE.test(url) || seen.has(url)) continue;
+    if (!url || !(isDocs || FILE.test(url)) || seen.has(url)) continue;
     seen.add(url);
     page.documents.push({ name: (oneLine(inner) || attr(tag, 'title') || decodeURIComponent(url.split('/').pop() ?? '')).slice(0, 300), url });
   }
@@ -326,9 +375,9 @@ export function contactsFrom(text: string, source: NoticeContact['source']): Not
 // Records
 // ---------------------------------------------------------------------------------------------
 
-/** Notice number at the start of a title: `26-036 GNPCC …`, `RFP-08-26 Cortes …`, `RFQ 07-25 Supply …`. */
+/** Notice number at the start of a title: `26-036 GNPCC …`, `RFP-08-26 Cortes …`, `RFQ 07-25 Supply …`, `ITT No. ENG 26-04 - …`. */
 export function leadingNumber(title: string): string | undefined {
-  return /^((?:[A-Z]{2,6}[\s-]?)?\d[\dA-Z]*(?:-[\dA-Z]+)+)(?=\s|$)/.exec(title.trim())?.[1];
+  return /^((?:[A-Z]{2,6}\.?[\s-]?)?(?:No\.?\s+|NO\.?\s+)?(?:[A-Z]{1,4}\s+)?\d[\dA-Z]*(?:-[\dA-Z]+)+)(?=\s|$)/.exec(title.trim())?.[1];
 }
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
 /** The portal's own id for a notice: its page path (`node-28806`, `electric-utility-scada-digital-mimic`) or its number. */
@@ -406,7 +455,7 @@ export async function collectSitePortal(fetch: NetFetch, base: ConnectorPortal, 
     for (let n = 0; url && n < MAX_PAGES; n++) {
       const response = await fetch({ url, accept: 'text/html' });
       if (response.status !== 200) throw httpFailure(`${portal.label} bids page`, response.status);
-      const parsed = portal.layout === 'cards' ? parseCards(response.text) : parseTable(response.text);
+      const parsed = portal.layout === 'cards' ? parseCards(response.text) : portal.layout === 'list' ? parseList(response.text) : parseTable(response.text);
       for (const row of parsed.rows) {
         const id = noticeId(portal, row);
         if (id) rows.set(id, row); else unkeyed++;
