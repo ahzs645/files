@@ -1,4 +1,5 @@
 /** Offline CanadaBuys tender CSV import. No network, storage creation or source mutation. */
+import { cleanRegionText } from './region';
 export interface CanadaBuysProvenance { fileName: string; sha256: string; importedAt: string }
 
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -94,7 +95,8 @@ export function parseCanadaBuysCsv(text: string, provenance: CanadaBuysProvenanc
     const issuedBy = bilingual('contractingEntityName-nomEntitContractante');
     const status = bilingual('tenderStatus-appelOffresStatut') || 'Unknown';
     const type = bilingual('noticeType-avisType');
-    const region = bilingual('regionsOfDelivery-regionsLivraison');
+    // Bulleted source text becomes `British Columbia, Alberta`; rawSourceData keeps the source value.
+    const region = cleanRegionText(bilingual('regionsOfDelivery-regionsLivraison'));
     const category = value('procurementCategory-categorieApprovisionnement');
     const descriptionText = bilingual('tenderDescription-descriptionAppelOffres');
     const fields: [string, string][] = [

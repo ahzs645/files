@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { collectConnectorSource, collectProcurementSource } from '../zoer/src/connector-collection';
+import { collectAllSources, collectConnectorSource, collectProcurementSource } from '../zoer/src/connector-collection';
 import { bidsAndTenders } from '../zoer/src/connectors/bidsandtenders';
-import { connectorCollectionKey, CANADABUYS_DATASET_URL } from '../zoer/dashboard/procurement/source-adapters';
+import { CONNECTORS } from '../zoer/src/connectors';
+import { SITE_PORTALS } from '../zoer/dashboard/procurement/site-portals';
+import { connectorCollectionKey, CANADABUYS_DATASET_URL, COLLECTION_KEY } from '../zoer/dashboard/procurement/source-adapters';
 import manifest from '../zoer/manifest.json';
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/bidsandtenders/${name}`, import.meta.url), 'utf8');
@@ -10,6 +12,9 @@ const KEY = connectorCollectionKey('bidsandtenders');
 const NANAIMO_4318 = 'opportunity:bidsandtenders:nanaimo:3d527422-9423-47e4-86a2-38c8fe7f94b7';
 const LISTINGS: Record<string, string> = Object.fromEntries(['nanaimo', 'burnaby', 'richmond', 'metrovancouver', 'princegeorge', 'surrey', 'islandhealthfdc'].map(id => [id, fixture(`${id}-Open.json`)]));
 const EMPTY = '{"success":true,"total":0,"data":[]}';
+/** municipal-sites listing pages (saved fixtures); their notice pages answer 404, which the connector keeps as warnings. */
+const SITE_LISTING_FILE: Record<string, string> = { srd: 'srd-listing-open.html', surrey: 'surrey-listing-1.html' };
+const SITE_LISTINGS = new Map(SITE_PORTALS.flatMap(site => site.listUrls.map(url => [url, readFileSync(new URL(`./fixtures/municipal-sites/${SITE_LISTING_FILE[site.id] ?? `${site.id}-listing.html`}`, import.meta.url), 'utf8')] as const)));
 const b64 = (text: string) => Buffer.from(text).toString('base64');
 
 /** Catalog + bids&tenders site behind one host function, like tests/zoer-procurement-collection.test.ts. */
@@ -25,9 +30,19 @@ function stack(options: { prior?: any; clock?: () => string } = {}) {
     search: {} as Record<string, number | Error | string>,
     beforeRecordsCommit: undefined as (() => void) | undefined,
     onFetch: undefined as ((url: string) => void) | undefined,
+    /** The CanadaBuys daily CSV: a status, an Error to throw, or the CSV text. */
+    canadabuys: 404 as number | Error | string,
+    /** HTTP status for every municipal-sites listing page. */
+    sites: undefined as number | undefined,
     host: async (method: string, input: any): Promise<any> => {
       if (method === 'network.fetch') {
         requests.push(input); mock.onFetch?.(input.url);
+        if (input.url === CANADABUYS_DATASET_URL) {
+          if (mock.canadabuys instanceof Error) throw mock.canadabuys;
+          return typeof mock.canadabuys === 'number' ? { status: mock.canadabuys, headers: {}, bodyBase64: '' } : { status: 200, headers: {}, bodyBase64: b64(mock.canadabuys) };
+        }
+        if (SITE_LISTINGS.has(input.url)) return { status: mock.sites ?? 200, headers: {}, bodyBase64: b64(SITE_LISTINGS.get(input.url)!) };
+        if (!input.url.includes('.bidsandtenders.ca/')) return { status: 404, headers: {}, bodyBase64: b64('Not found') };
         const url = new URL(input.url), portal = url.hostname.split('.')[0];
         if (url.pathname.endsWith('/Home/BidsHomepage')) return { status: 200, headers: {}, bodyBase64: b64(home) };
         if (url.pathname.includes('/Tender/Search/')) {
@@ -244,5 +259,106 @@ describe('connector collection (bids&tenders)', () => {
     await expect(collectProcurementSource(db.host, { sourceId: 'canadabuys' }, 'run-1')).rejects.toThrow();
     expect(db.requests[0].url).toBe(CANADABUYS_DATASET_URL);
     expect(db.states.has(KEY)).toBe(false);
+  });
+});
+
+const CB_HEADERS = 'referenceNumber-numeroReference,title-titre-eng,tenderStatus-appelOffresStatut-eng,tenderClosingDate-appelOffresDateCloture,contractingEntityName-nomEntitContractante-eng';
+const cbCsv = (count: number, tag = '') => CB_HEADERS + '\n' + Array.from({ length: count }, (_, i) => `${i},Tender ${i}${tag},Open,2026-10-30T13:00:00,Buyer`).join('\n');
+const allPortals = (db: ReturnType<typeof stack>) => bidsAndTenders.portals.map(portal => db.states.get(KEY)?.portals?.[portal.id]?.status);
+
+describe("collect all sources (sourceId: 'all', one schedule)", () => {
+  it('collects CanadaBuys and then every connector within the manifest request budget, reporting each source', async () => {
+    const db = stack(); db.canadabuys = cbCsv(3);
+    const result = await collectProcurementSource(db.host, { sourceId: 'all' }, 'run-1', clock());
+    expect(result).toMatchObject({ sourceId: 'all', status: 'complete', summary: { total: 1 + CONNECTORS.length, complete: 1 + CONNECTORS.length, failedSources: 0 },
+      sources: [{ sourceId: 'canadabuys', outcome: 'complete' }, { sourceId: 'bidsandtenders', outcome: 'complete', portals: { total: 25, complete: 25, failed: 0 } },
+        { sourceId: 'municipal-sites', outcome: 'complete', portals: { total: SITE_PORTALS.length, complete: SITE_PORTALS.length } }] });
+    expect(result.sources.map(source => source.sourceId)).toEqual(['canadabuys', ...CONNECTORS.map(connector => connector.id)]);
+    expect(db.requests[0].url).toBe(CANADABUYS_DATASET_URL);
+    expect(db.states.get(COLLECTION_KEY)).toMatchObject({ status: 'complete', receipt: { offset: 3 } });
+    expect(allPortals(db).every(status => status === 'complete')).toBe(true);
+    // Zoer turns a schedule off for any step output with a numeric `failed` above zero; counts live under `summary`.
+    expect((result as any).failed).toBeUndefined();
+    const action = (manifest as any).integration.actions.find((item: any) => item.id === 'procurement.collect');
+    expect(action.inputSchema.properties.sourceId.enum).toContain('all');
+    expect(db.requests.length).toBeLessThanOrEqual(action.resourceLimits.maxNetworkRequests);
+    // The budget covers the worst case of every source: CanadaBuys' one download plus each connector's portals.
+    expect(action.resourceLimits.maxNetworkRequests).toBeGreaterThanOrEqual(1 + CONNECTORS.reduce((sum, connector) => sum + connector.requestsPerPortal * connector.portals.length, 0));
+  });
+
+  it('records a failing source and still collects the others without failing the run', async () => {
+    const db = stack(); db.canadabuys = 503; db.search.burnaby = 500;
+    const result = await collectAllSources(db.host, { sourceId: 'all' }, 'run-1', clock());
+    expect(result).toMatchObject({ status: 'incomplete', summary: { complete: 1, partial: 1, failedSources: 1 },
+      sources: [{ sourceId: 'canadabuys', outcome: 'failed', error: { code: 'source_http_error' } }, { sourceId: 'bidsandtenders', outcome: 'partial', portals: { failed: 1, complete: 24 } }, { sourceId: 'municipal-sites', outcome: 'complete' }] });
+    expect(db.states.get(COLLECTION_KEY)).toMatchObject({ status: 'failed', error: { code: 'source_http_error' } });
+    expect(db.states.get(KEY)).toMatchObject({ status: 'incomplete', portals: { burnaby: { status: 'failed' }, nanaimo: { status: 'complete' } } });
+  });
+
+  it('fails the run (so Zoer stops the schedule) only when every source failed', async () => {
+    const db = stack(); db.canadabuys = 503;
+    for (const portal of bidsAndTenders.portals) db.search[portal.id] = 503;
+    db.sites = 503;
+    await expect(collectAllSources(db.host, { sourceId: 'all' }, 'run-1', clock())).rejects.toThrow('Every source failed: canadabuys (source_http_error), bidsandtenders (portals_failed), municipal-sites (portals_failed)');
+    // Each source's own state still says what happened.
+    expect(db.states.get(COLLECTION_KEY).status).toBe('failed');
+    expect(allPortals(db).every(status => status === 'failed')).toBe(true);
+  });
+
+  it('restarts CanadaBuys on a new daily file instead of failing, and continues the same file where it stopped', async () => {
+    const db = stack(); db.canadabuys = cbCsv(150);
+    const first = await collectAllSources(db.host, { sourceId: 'all', maxBatches: 1 }, 'run-1', clock());
+    expect(first.sources[0]).toMatchObject({ sourceId: 'canadabuys', outcome: 'paused', status: 'paused' });
+    expect(db.states.get(COLLECTION_KEY).receipt.offset).toBe(100);
+    await collectAllSources(db.host, { sourceId: 'all', maxBatches: 1 }, 'run-2', clock('2026-10-03T20:00:00Z'));
+    expect(db.states.get(COLLECTION_KEY)).toMatchObject({ status: 'complete', receipt: { offset: 150, totalRecords: 150 } });
+    db.canadabuys = cbCsv(2, ' (amended)');
+    const changed = await collectAllSources(db.host, { sourceId: 'all' }, 'run-3', clock('2026-10-04T20:00:00Z'));
+    expect(changed.sources[0]).toMatchObject({ outcome: 'complete' });
+    expect(db.states.get(COLLECTION_KEY).receipt).toMatchObject({ offset: 2, totalRecords: 2 });
+    expect(db.records.get('opportunity:canadabuys:tender:1:').title).toBe('Tender 1 (amended)');
+  });
+
+  it('shares the time limit: CanadaBuys yields after its share, and sources not reached are left for the next run', async () => {
+    const db = stack(); db.canadabuys = cbCsv(250);
+    let current = Date.parse(t0);
+    // Each CanadaBuys batch "takes" 3 minutes; the first portal then runs past the run's soft limit.
+    const host = async (method: string, input: any) => {
+      if (method === 'catalog.commit' && input.records?.length && input.records[0].data.sourceId === 'canadabuys') current += 3 * 60_000;
+      return db.host(method, input);
+    };
+    db.onFetch = url => { if (url.includes('abbotsford')) current = Date.parse(t0) + 8 * 60_000; };
+    const result = await collectAllSources(host, { sourceId: 'all' }, 'run-1', () => new Date(current).toISOString());
+    expect(db.states.get(COLLECTION_KEY)).toMatchObject({ status: 'paused', receipt: { offset: 200 } });
+    expect(result.sources[0]).toMatchObject({ outcome: 'paused' });
+    expect(result.sources[1]).toMatchObject({ sourceId: 'bidsandtenders', outcome: 'partial', error: { code: 'time_budget' } });
+    // Connectors after the soft limit do not start; their state is untouched and the next run collects them.
+    expect(result.sources[2]).toMatchObject({ sourceId: 'municipal-sites', outcome: 'not-run', error: { code: 'time_budget' } });
+    expect(db.states.has(connectorCollectionKey('municipal-sites'))).toBe(false);
+    expect(result.summary.failedSources).toBe(0);
+  });
+
+  it('ends the run on a Zoer pause or a spent request budget, and leaves a busy source to its owner', async () => {
+    const pause = Object.assign(new Error('Paused for Zoer update'), { code: 'ZOER_PAUSED' });
+    const paused = stack(); paused.canadabuys = cbCsv(1); paused.search.nanaimo = pause;
+    await expect(collectAllSources(paused.host, { sourceId: 'all' }, 'run-1', clock())).rejects.toBe(pause);
+    expect(paused.states.get(KEY).status).toBe('paused');
+    const spent = stack(); spent.canadabuys = new Error('Network request budget exhausted.');
+    await expect(collectAllSources(spent.host, { sourceId: 'all' }, 'run-1', clock())).rejects.toThrow('budget exhausted');
+    expect(spent.requests.some(request => request.url.includes('bidsandtenders'))).toBe(false);
+    const portalBudget = stack(); portalBudget.canadabuys = cbCsv(1); portalBudget.search.burnaby = new Error('Network request budget exhausted.');
+    await expect(collectAllSources(portalBudget.host, { sourceId: 'all' }, 'run-1', clock())).rejects.toThrow('budget exhausted');
+    expect(portalBudget.states.get(KEY)).toMatchObject({ status: 'failed', error: { code: 'network_budget' }, portals: { abbotsford: { status: 'complete' } } });
+    const busy = stack({ prior: { status: 'running', ownerRunId: 'manual', leaseUntil: '2026-10-03T18:30:00Z', portals: {} } }); busy.canadabuys = cbCsv(1);
+    const result = await collectAllSources(busy.host, { sourceId: 'all' }, 'run-1', clock());
+    expect(result).toMatchObject({ status: 'incomplete', sources: [{ outcome: 'complete' }, { sourceId: 'bidsandtenders', outcome: 'busy', error: { code: 'collection_busy' } }, { sourceId: 'municipal-sites', outcome: 'complete' }] });
+  });
+
+  it('validates the request before touching any source', async () => {
+    const db = stack();
+    for (const input of [{ sourceId: 'all', portals: ['nanaimo'] }, { sourceId: 'all', mode: 'auto' }, { sourceId: 'all', maxBatches: 21 }]) {
+      await expect(collectProcurementSource(db.host, input, 'run-1')).rejects.toThrow('Invalid');
+    }
+    expect(db.requests).toHaveLength(0); expect(db.commits).toHaveLength(0);
   });
 });

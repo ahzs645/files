@@ -1,8 +1,10 @@
 import type { ConnectorPortal } from '../../src/connectors/types';
 import { BIDSANDTENDERS_PORTALS } from './portals';
+import { SITE_PORTALS } from './site-portals';
 import { SOURCES } from './catalog';
 import { connectorCollectionKey } from './source-adapters';
 import type { ScheduleRow } from './schedule-state';
+import { sourceErrorText } from './source-errors';
 
 /**
  * Sources page model for many sources and many portals (CONNECTORS.md §4). Pure: the page reads workspace state,
@@ -17,18 +19,24 @@ export interface ConnectorSource { id: string; label: string; region: string; po
 export const CONNECTOR_SOURCES: readonly ConnectorSource[] = [
   { id: 'bidsandtenders', label: SOURCES.find(source => source.id === 'bidsandtenders')?.label ?? 'bids&tenders', region: 'British Columbia · municipal and regional portals', portals: BIDSANDTENDERS_PORTALS,
     coverage: 'Public listings of each portal below. Documents and addenda stay on the portal (sign-in required there). A notice missing from a later listing is kept; missing is not proof of closure.' },
+  { id: 'municipal-sites', label: SOURCES.find(source => source.id === 'municipal-sites')?.label ?? 'BC local government websites', region: 'British Columbia · local governments’ own websites', portals: SITE_PORTALS,
+    coverage: 'The bids page of each website below, and the page of each open notice. Each site lists what it chooses (some show recently closed notices, some only open ones). Files are not downloaded. A notice missing from a later listing is kept; missing is not proof of closure.' },
 ];
 
 /**
- * Collection inputs Zoer can schedule. Zoer keeps one schedule per action, so `procurement.collect` can be
- * scheduled for one source at a time until the collector accepts `sourceId: 'all'` (proposal in CONNECTORS.md).
- * Scheduled CanadaBuys runs restart on the newest snapshot: resuming fails once the daily file changes, and any
- * failed run turns the schedule off.
+ * Collection inputs Zoer can schedule. Zoer keeps one schedule per action, so the Sources page schedules
+ * `sourceId: 'all'`: one run collects CanadaBuys (continuing the same daily file, restarting on a new one) and then
+ * every connector; a failing source is recorded and does not fail the run. Single-source inputs stay valid for
+ * schedules saved before `all` existed and for manual runs.
  */
-export const COLLECT_ALL_SUPPORTED = false; // TODO(bids&tenders collector): flip when `sourceId: 'all'` ships.
+export const COLLECT_ALL_SUPPORTED = true;
+export const COLLECT_ALL = 'all';
 export function scheduledCollectInput(sourceId: string): Record<string, unknown> {
+  if (sourceId === COLLECT_ALL) return { sourceId };
   return sourceId === 'canadabuys' ? { sourceId, mode: 'restart', maxBatches: 20 } : { sourceId };
 }
+/** What a Schedule button on a source schedules: everything when `all` is supported, else that one source. */
+export const scheduleTargetFor = (sourceId: string) => COLLECT_ALL_SUPPORTED ? COLLECT_ALL : sourceId;
 export const collectTarget = (row: ScheduleRow | undefined) => typeof row?.body?.input?.sourceId === 'string' ? row.body.input.sourceId as string : null;
 /** True when the saved collect schedule collects this source (directly or as part of "all"). */
 export const scheduleCovers = (row: ScheduleRow | undefined, sourceId: string) => { const target = collectTarget(row); return target === sourceId || target === 'all'; };
@@ -80,7 +88,9 @@ export function connectorStatus(state: ConnectorCollection | null | undefined, n
 export interface PortalRow {
   id: string; label: string; place: string; url: string; status: PortalStatus | 'unknown';
   statusText: string; tone: Tone; problem: boolean; counts: string; saved: number | null;
-  retrievedAt?: string; lastSuccessAt?: string; error?: string;
+  retrievedAt?: string; lastSuccessAt?: string;
+  /** Raw `code: message` (for a tooltip) and the same error in plain words (shown). */
+  error?: string; errorText?: string;
 }
 const placeText = (portal: ConnectorPortal) => [portal.place.municipality, portal.place.regionalDistrict && portal.place.regionalDistrict !== portal.place.municipality ? `${portal.place.regionalDistrict} RD` : null].filter(Boolean).join(' · ') || 'Place not recorded';
 
@@ -98,8 +108,9 @@ export function portalRows(portals: readonly ConnectorPortal[], state: Connector
     if (entry.status === 'not-run') return { ...base, status: 'not-run' as const, statusText: 'Not in last run', tone: 'idle' as const, problem: false, counts: entry.recordCount === undefined ? 'Count not recorded' : `${entry.recordCount.toLocaleString()} listed` };
     const listed = entry.recordCount === undefined ? 'Count not recorded' : `${entry.recordCount.toLocaleString()} listed`;
     const counts = entry.totalReported === undefined ? listed : `${listed} · portal reports ${entry.totalReported.toLocaleString()}`;
-    if (entry.status === 'failed') return { ...base, status: 'failed' as const, statusText: 'Failed', tone: 'warn' as const, problem: true, counts: base.lastSuccessAt ? 'Last attempt failed' : 'Never collected', error: [entry.error?.code, entry.error?.message].filter(Boolean).join(': ') || 'No error message recorded.' };
-    if (entry.status === 'incomplete') return { ...base, status: 'incomplete' as const, statusText: 'Partly collected', tone: 'warn' as const, problem: true, counts, error: [entry.error?.code, entry.error?.message].filter(Boolean).join(': ') || undefined };
+    const explained = sourceErrorText(entry.error);
+    if (entry.status === 'failed') return { ...base, status: 'failed' as const, statusText: 'Failed', tone: 'warn' as const, problem: true, counts: base.lastSuccessAt ? 'Last attempt failed' : 'Never collected', error: explained?.detail ?? 'No error message recorded.', errorText: explained?.text ?? 'No error message recorded.' };
+    if (entry.status === 'incomplete') return { ...base, status: 'incomplete' as const, statusText: 'Partly collected', tone: 'warn' as const, problem: true, counts, error: explained?.detail, errorText: explained?.text };
     return { ...base, status: 'complete' as const, statusText: 'Collected', tone: 'good' as const, problem: false, counts };
   });
 }

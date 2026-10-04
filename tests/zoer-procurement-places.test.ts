@@ -133,6 +133,19 @@ describe('enrichNotice', () => {
     expect(b.place).toBeUndefined();
     expect(c.place).toMatchObject({ municipality: 'Revelstoke' });
   });
+  it('cleans bulleted CanadaBuys regions at import and in the backfill, keeping the source value in rawSourceData', () => {
+    const header = 'referenceNumber-numeroReference,title-titre-eng,tenderStatus-appelOffresStatut-eng,tenderClosingDate-appelOffresDateCloture,contractingEntityName-nomEntitContractante-eng,regionsOfDelivery-regionsLivraison-eng';
+    const { records: [record] } = parseCanadaBuysCsv([header, 'R,Survey,Open,2026-10-01T14:00:00,Parks Canada,"*British Columbia\n*Alberta\n"'].join('\n'), { fileName: 'x.csv', sha256: 'h', importedAt: '2026-10-03T00:00:00Z' });
+    expect(record.region).toBe('British Columbia, Alberta');
+    expect(record.rawSourceData['regionsOfDelivery-regionsLivraison-eng']).toBe('*British Columbia\n*Alberta\n');
+    expect(record.sourceFields).toContainEqual({ label: 'Regions', value: 'British Columbia, Alberta' });
+    const saved = { sourceId: 'canadabuys', description: 'Survey', issuedBy: 'Parks Canada', region: '*British Columbia\n*Alberta', sourceFields: [{ label: 'Regions', value: '*British Columbia\n*Alberta' }], detailFields: [{ label: 'Regions', value: '*British Columbia\n*Alberta' }] };
+    expect(enrichmentChanged(saved)).toBe(true);
+    expect(enrichNotice(saved)).toMatchObject({ region: 'British Columbia, Alberta', sourceFields: [{ label: 'Regions', value: 'British Columbia, Alberta' }], detailFields: [{ label: 'Regions', value: 'British Columbia, Alberta' }] });
+    expect(enrichmentChanged(enrichNotice(saved))).toBe(false);
+    // Other sources' region text is never rewritten.
+    expect(enrichNotice({ sourceId: 'bc-bid', description: 'x', region: '*Odd' }).region).toBe('*Odd');
+  });
   it('is applied when BC Bid listings and details are saved', async () => {
     const records = new Map<string, any>([['opportunity:9', { id: 'opportunity:9', kind: 'opportunity', title: 'Old', data: { sourceKey: '9', processId: '9', description: 'Old', issuedBy: 'City of Courtenay' } }]]);
     let revision = 1;

@@ -18,6 +18,7 @@ import { READINESS_BUCKETS, READINESS_TEXT, RELEVANCE_BUCKETS, RELEVANCE_TEXT } 
 import { captureSnapshot, manualSnapshot, setSelection, toggleSelected, useSelection, type SelectionSnapshot } from '../review-workspace/selection';
 import { SOURCES, buildProcurementQuery, checkStatementSize, deadlineLabel } from './catalog';
 import { SavedSearches } from './SavedSearches';
+import { cleanRegionText } from './region';
 import { AlertSettings } from './AlertSettings';
 import { EvidencePanel } from './EvidencePanel';
 import { NoticeView } from './NoticeView';
@@ -121,8 +122,8 @@ export function Procurement() {
     try { await setStar(row.kind, row.kind === 'award' ? row.importKey : row.sourceKey, !row.starred); await client.invalidateQueries({ queryKey: ['catalog'] }); }
     catch (e) { setError((e as Error).message); } finally { setSaving(''); }
   };
-  const savedFilters: ProcurementFilters = { source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred, exclude };
-  const applySaved = (saved: ProcurementFilters) => { filter({ ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '' }); setPanel(''); };
+  const savedFilters: ProcurementFilters = { source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred, exclude, place };
+  const applySaved = (saved: ProcurementFilters) => { filter({ ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '', place: saved.place ?? '' }); setPanel(''); };
   const chips = reviewChips(params, profileLabel);
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
   const extraCount = [region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude'].filter(Boolean).length + reviewCount;
@@ -176,7 +177,7 @@ export function Procurement() {
         <input type="checkbox" className="pc-row-check" aria-label={`Select ${row.title || 'untitled notice'}`} checked={checked} onChange={event => toggleSelected({ id: row.id, title: row.title, updatedAt: row.catalogUpdatedAt }, event.target.checked)} />
         <div className="pc-row-main">
           <button type="button" className="pc-row-title" aria-expanded={row.id === noticeId} onClick={() => openNotice(row.id)}>{row.title || 'Untitled notice'}</button>
-          <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{row.region ? ` · ${row.region}` : ''}</p>
+          <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{cleanRegionText(row.region) ? ` · ${cleanRegionText(row.region)}` : ''}</p>
           <p className="pc-row-meta"><span className="pc-row-date pc-row-date-inline" data-tone={when.tone || undefined}>{row.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</span><span className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId)}</span><span data-kind={row.kind}>{row.kind === 'award' ? 'Award' : 'Opportunity'}</span>{status && <span className="pc-row-status" data-status={status.key} title={status.title}>{status.text}</span>}{isHidden && <span className="pc-row-hidden-tag">Hidden</span>}{row.externalId && <span>{row.externalId}</span>}<DuplicateFlag matches={duplicates.get(row.id)} /></p>
           {!!labels.get(row.id)?.length && <div className="pc-row-labels"><LabelChips labels={labels.get(row.id)!} limit={4} /></div>}
           {available && <ReviewLine review={rowReview.data?.get(row.id)} profileText={profileText} />}
@@ -262,7 +263,7 @@ export function Procurement() {
         <div className="pc-extra-fields"><FilterSelect name="Hidden notices" value={hidden === 'exclude' ? '' : hidden} onChange={value => filter({ hidden: value })} any="Leave out hidden notices" options={[['include', 'Show hidden notices too'], ['only', 'Only hidden notices']]} /></div>
       </div>
     </Modal>}
-    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || place || reviewCount > 0) && <p className="procurement-coverage">AI category, place and review filters aren’t included in saved searches or alerts yet.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
+    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || reviewCount > 0) && <p className="procurement-coverage">AI category and review filters aren’t included in saved searches or alerts yet.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
     {noticeId && (!wide || view === 'compare' || view === 'matrix') && <NoticeView id={noticeId} layout="dialog" onClose={closeNotice} />}
     {evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
   </section>;

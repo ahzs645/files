@@ -118,6 +118,10 @@
 .pc-checkpoints li>div{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
 .pc-checkpoints li>div span,.pc-checkpoints li p{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
 .pc-checkpoints [role=alert]{color:var(--status-warning)}
+/* Plain-language source error; the raw code/message sits in a small Details disclosure. */
+.pc-source-error{display:flex;flex-direction:column;gap:.125rem;font-size:13px;line-height:1.5;color:var(--status-warning)}
+.pc-source-card .pc-source-error details{border-top:0;padding-top:0;font-size:12px;color:var(--text-secondary)}
+.pc-source-error code{font-size:12px;overflow-wrap:anywhere;color:var(--text-secondary)}
 .pc-detail-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem 1rem;font-size:12px;margin:.25rem 0 .5rem}
 .pc-detail-list dt{color:var(--text-secondary)}
 .pc-detail-list dd{overflow-wrap:anywhere}
@@ -184,6 +188,8 @@
 .pc-schedule-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap}
 .pc-schedule-meta,.pc-schedule-note{font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
 .pc-schedule-line{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;font-size:12px;font-weight:400;color:var(--text-secondary)}
+/* One collect schedule for every source, in the Sources overview header. Wraps under the title on phones. */
+.pc-overview-schedule{display:flex;flex-wrap:wrap;align-items:center;gap:.375rem .625rem;margin-left:auto;font-size:12.5px;color:var(--text-secondary)}
 .pc-schedule-stopped{border:1px solid color-mix(in srgb,var(--status-warning) 40%,transparent);background:color-mix(in srgb,var(--status-warning) 8%,transparent);border-radius:.5rem;padding:.5rem .75rem;font-size:12.5px;line-height:1.5;color:var(--text-primary)}
 .pc-source-card .pc-schedule-stopped details,.pc-schedule-stopped details{border:0;padding:0}
 .pc-schedule-stopped summary{cursor:pointer;color:var(--text-secondary);min-height:32px;display:flex;align-items:center}

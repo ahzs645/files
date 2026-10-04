@@ -245,20 +245,28 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
   .research-filters:not([data-open]){display:none}
   .research-records article{padding:8px 0}
 }
-/* Scraper tab: targeted BC Bid refresh. Phone: one stacked column, full-width button. Desktop: one inline row. */
+/* Scraper tab: targeted BC Bid refresh. Phone: one stacked column, full-width button. Desktop: one inline row.
+   Inputs, the host Select trigger and the Refresh button share one box: the host control tokens (input border and
+   background, 6px radius) and an explicit height, 44px on touch widths and 36px from 1024px. Heights are set, not
+   minimums, because inherited line-height made the inputs taller than the Select and the row's baselines drifted. */
 .bid-targeted-form{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-top:10px}
 .bid-targeted-field{display:grid;gap:4px;min-width:0}
-.bid-targeted-field>label{font-size:12px;color:var(--color-text-secondary)}
-.bid-targeted-field input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-subtle);color:var(--color-text-primary);padding:8px 10px;font-size:14px}
-.bid-targeted-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:13px;color:var(--color-text-primary)}
+.bid-targeted-field>label{font-size:12px;line-height:16px;color:var(--color-text-secondary)}
+.bid-targeted-field input,.bid-targeted-field .ui-select-trigger{box-sizing:border-box;width:100%;min-width:0;height:44px;margin:0;border:1px solid var(--input-border,var(--color-border-strong));border-radius:6px;background:var(--input-bg,var(--color-bg-subtle));color:var(--color-text-primary);padding:0 12px;font-size:14px;line-height:20px}
+.bid-targeted-field .ui-select-trigger{padding-right:36px}
+.bid-targeted-field input:focus-visible{outline:none;border-color:var(--input-focus,var(--color-accent));box-shadow:0 0 0 2px color-mix(in srgb,var(--input-focus,var(--color-accent)) 20%,transparent)}
+.bid-targeted-field input:disabled{opacity:.5;cursor:not-allowed}
+.bid-targeted-check{display:flex;align-items:center;gap:8px;height:44px;font-size:13px;color:var(--color-text-primary)}
 .bid-targeted-check input{width:18px;height:18px;flex-shrink:0}
-.bid-targeted-run{justify-content:center;width:100%;min-height:44px}
+.bid-targeted-run{justify-content:center;width:100%;height:44px;padding:0 16px;border-radius:6px;font-size:14px;line-height:20px}
+/* Disabled (no filter yet, or a scrape running): still a bordered, filled button, just muted; never bare text. */
+.bid-targeted .bid-targeted-run:disabled{opacity:1;background:var(--color-bg-subtle);border:1px solid var(--color-border-strong);color:var(--color-text-tertiary);cursor:not-allowed}
 .bid-targeted-receipt{margin-top:10px;padding-top:8px;border-top:1px solid var(--color-border-default)}
 .bid-targeted-receipt p{margin-top:2px;overflow-wrap:anywhere}
 .bid-targeted .bid-targeted-error{color:var(--color-red)}
 @media(min-width:1024px){
   .bid-targeted-form{grid-template-columns:minmax(0,1.6fr) minmax(0,1.2fr) minmax(0,1.2fr) 76px auto auto;align-items:end}
-  .bid-targeted-field input{min-height:36px}
-  .bid-targeted-check{min-height:36px;white-space:nowrap}
-  .bid-targeted-run{width:auto;min-height:36px}
+  .bid-targeted-field input,.bid-targeted-field .ui-select-trigger{height:36px}
+  .bid-targeted-check{height:36px;white-space:nowrap}
+  .bid-targeted-run{width:auto;height:36px}
 }
