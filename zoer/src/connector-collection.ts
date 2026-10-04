@@ -260,8 +260,10 @@ export async function collectAllSources(host: Host, input: any, runId: string, n
   };
   try {
     // A changed daily file restarts from its beginning; the same file continues where the last run stopped.
+    // Without an explicit cap, CanadaBuys keeps going until its time share ends: a fixed 20-batch cap covered about
+    // half of a ~880-notice daily file, and each new file restarts from the top, so the rest was never imported.
     const state = await collectCanadaBuys(host, { sourceId: 'canadabuys', mode: input.mode, maxBatches: input.maxBatches ?? 20 }, runId, now,
-      { restartOnChange: true, stopAt: started + CANADABUYS_SHARE_MS });
+      { restartOnChange: true, stopAt: started + CANADABUYS_SHARE_MS, batchLimit: input.maxBatches ?? 10_000 });
     sources.push({ sourceId: 'canadabuys', status: state.status, outcome: state.status === 'complete' ? 'complete' : state.status === 'paused' ? 'paused' : 'partial', error: state.error ? { code: state.error.code, message: state.error.message } : null });
   } catch (error) { sources.push(failure('canadabuys', error)); }
   for (const connector of CONNECTORS) {

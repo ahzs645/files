@@ -48,6 +48,13 @@ describe('CanadaBuys host-mediated collection', () => {
     expect(batchCommit.entries[0].value.receipt.offset).toBe(1);
     expect(batchCommit.history[0].data.sourceFileSha256).toBe(result.receipt.sha256);
   });
+  it('keeps going past maxBatches until stopAt when a time-bounded run sets batchLimit', async () => {
+    const db = fixture(csv(2_201));
+    const result = await collectCanadaBuys(db.host, { sourceId: 'canadabuys', maxBatches: 20 }, 'all-run', () => timestamp, { stopAt: Date.parse(timestamp) + 60_000, batchLimit: 10_000 });
+    expect(result).toMatchObject({ status: 'complete', receipt: { offset: 2_201, totalRecords: 2_201 } });
+    const capped = fixture(csv(2_201));
+    expect(await collectCanadaBuys(capped.host, { sourceId: 'canadabuys', maxBatches: 20 }, 'capped', () => timestamp)).toMatchObject({ status: 'paused', receipt: { offset: 2_000 } });
+  });
   it('pauses at the batch bound and resumes the same snapshot without resetting import provenance', async () => {
     const db = fixture(csv(101));
     const first = await collectCanadaBuys(db.host, { sourceId: 'canadabuys', maxBatches: 1 }, 'one', () => timestamp);

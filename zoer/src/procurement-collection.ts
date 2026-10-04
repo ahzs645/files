@@ -12,7 +12,7 @@ export interface CollectionInput { sourceId: 'canadabuys'; mode?: 'resume' | 're
  * starts the new one from its beginning (plain `resume` fails once the daily file changes); `stopAt` (epoch ms)
  * starts no batch after that time, leaving the cursor for the next run so later sources still get their turn.
  */
-export interface CanadaBuysRunOptions { restartOnChange?: boolean; stopAt?: number }
+export interface CanadaBuysRunOptions { restartOnChange?: boolean; stopAt?: number; /** Batch cap for time-bounded runs (with `stopAt`); replaces `input.maxBatches`. */ batchLimit?: number }
 const MAX_BYTES = 20 * 1024 * 1024;
 const LEASE_MS = 10 * 60_000;
 class CollectionError extends Error { constructor(message: string, readonly code: string) { super(message); } }
@@ -79,7 +79,7 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
       excludedCount: parsed!.excluded.length, excluded: parsed!.excluded, coverageComplete: parsed!.excluded.length === 0,
       warnings: parsed!.warnings, offset, coverage: `Downloaded federal open-tender snapshot only; ${parsed!.excluded.length} oversized notice(s) excluded. Missing and previously closed records are retained.` };
     state = await transaction(host, async current => { owned(current); return { entries: stateEntry({ ...current, receipt }) }; });
-    for (let n = 0; n < (input.maxBatches ?? 1) && state.receipt.offset < records.length && !(options.stopAt && Date.parse(now()) >= options.stopAt); n++) {
+    for (let n = 0; n < (options.stopAt && options.batchLimit ? options.batchLimit : input.maxBatches ?? 1) && state.receipt.offset < records.length && !(options.stopAt && Date.parse(now()) >= options.stopAt); n++) {
       const start = state.receipt.offset;
       state = await transaction(host, async (current, revision) => {
         owned(current);
