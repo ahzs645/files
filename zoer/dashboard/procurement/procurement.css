@@ -201,6 +201,7 @@
 .pc-schedule-stopped{border:1px solid color-mix(in srgb,var(--status-warning) 40%,transparent);background:color-mix(in srgb,var(--status-warning) 8%,transparent);border-radius:.5rem;padding:.5rem .75rem;font-size:12.5px;line-height:1.5;color:var(--text-primary)}
 .pc-source-card .pc-schedule-stopped details,.pc-schedule-stopped details{border:0;padding:0}
 .pc-schedule-stopped summary{cursor:pointer;color:var(--text-secondary);min-height:32px;display:flex;align-items:center}
+@media(pointer:coarse),(max-width:640px){.pc-schedule-stopped summary{min-height:44px}}
 .pc-presets{display:flex;flex-wrap:wrap;align-items:center;gap:.375rem;border:0;padding:0;margin:0;min-width:0}
 .pc-presets legend{float:left;width:100%;margin-bottom:.25rem;padding:0;font-size:12px;color:var(--text-secondary)}
 .pc-presets button{min-height:32px;padding:0 .75rem;border:1px solid var(--border-default);border-radius:999px;font-size:12.5px;color:var(--text-secondary);background:var(--surface-primary)}
