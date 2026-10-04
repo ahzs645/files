@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { buildModel, type SavedDocument } from '../dashboard/model';
+import { enrichNotice } from '../dashboard/procurement/enrich';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
 
 type Host = (method: string, input: any) => Promise<any>;
@@ -75,7 +76,8 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     const found = (await call('catalog.read', { match: { kind: 'opportunity', field: 'processId', value: doc.record.processId }, limit: 2 })).records;
     if (found.length !== 1) throw new Error('Detail does not match exactly one saved opportunity.');
     const status = doc.record.detailFields?.find((field: any) => /^status$/i.test(field.label.trim()))?.value?.trim();
-    const row = { ...found[0].data, ...doc.record, ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId };
+    // Place and contacts are re-derived from the merged row: the detail page adds the fields they come from.
+    const row = enrichNotice({ ...found[0].data, ...doc.record, ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId });
     records = [catalogRow('opportunity', row)];
     const state = await call('catalog.workspace', { keys: ['checkpoint:full'] });
     const checkpoint = state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;
@@ -85,7 +87,7 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     records = (doc.records ?? []).map((row: any) => {
       const old: any = previous.get('opportunity:' + row.sourceKey);
       const detail = old && !row.detailFields?.length ? { descriptionText: old.descriptionText, detailFields: old.detailFields, addenda: old.addenda, attachments: old.attachments } : {};
-      return catalogRow('opportunity', { ...defaults, ...old, ...row, ...detail, starred: old?.starred ?? row.starred === true, lastRunId: runId });
+      return catalogRow('opportunity', enrichNotice({ ...defaults, ...old, ...row, ...detail, starred: old?.starred ?? row.starred === true, lastRunId: runId }));
     });
     if (doc.scope === 'all-current-public-opportunities') entries.push({ key: 'checkpoint:full', value: doc });
   } else throw new Error('Unsupported database document.');
