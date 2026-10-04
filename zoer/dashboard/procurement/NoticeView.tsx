@@ -9,7 +9,8 @@ import { patchPluginQuery, usePluginLocation } from '../navigation';
 import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
 import { PURSUIT_STAGES, type PursuitStage } from './state-contract';
 import { readProcurementState, runProcurementAction, saveProcurementState } from './state-client';
-import { shortDate, sourceName, sql } from './display';
+import { noticeStatus, shortDate, sourceName, sql } from './display';
+import { NoticeHideButton } from './Triage';
 import { AiResult, LabelChips } from './AiResult';
 import { CATEGORY_PROMPT, CATEGORY_PROMPT_NAME, ago, buyerValue, coverageText, documentCounts, documentSummary, hasUsableText, latestEvidence, latestReview, verdictText, verdictTone } from './ai';
 import { useReviewWorkspace } from '../review-workspace/actions';
@@ -71,6 +72,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { i
     <p className="pc-notice-meta">{sourceName(source)} · {award ? 'Award' : 'Opportunity'}{data.externalId || data.opportunityId ? ` · ${data.externalId || data.opportunityId}` : ''}{url && <> · <a className="procurement-link" href={url} target="_blank" rel="noopener noreferrer">Open on {sourceName(source)} ↗</a></>}</p>
     {record && <div className="pc-notice-actions">
       <Btn size="sm" variant="secondary" disabled={!!busy} aria-pressed={!!data.starred} onClick={() => void act('star', () => setStar(record.kind, award ? data.importKey : data.sourceKey, !data.starred))}>{busy === 'star' ? 'Saving…' : data.starred ? '★ Shortlisted' : '☆ Shortlist'}</Btn>
+      <NoticeHideButton id={id} title={title} />
       <label className="pc-notice-stage"><span className="sr-only">Pursuit stage</span><Select aria-label="Pursuit stage" presentation="dropdown" searchable={false} value={pursuit?.stage ?? ''} disabled={!!busy || state.isPending || !!state.error} onChange={event => void setStage(event.target.value as PursuitStage)}><option value="" disabled>{busy === 'pursuit' ? 'Saving…' : 'Add to pursuits'}</option>{PURSUIT_STAGES.map(stage => <option key={stage} value={stage}>Pursuit: {stage}</option>)}</Select></label>
     </div>}
     <div className="pc-notice-tabs" role="tablist" aria-label="Notice sections" onKeyDown={tabKeys}>
@@ -161,7 +163,7 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
     [award ? 'Awarded' : 'Closes', !award && when.tone === 'passed' ? `Closed ${when.text}` : when.text, award ? undefined : when.tone],
     ...(budget ? [[budget.label, budget.text, budget.ai ? 'ai' : undefined] as [string, string, string?], ...budget.others.map(o => [o.label, o.text, 'ai'] as [string, string, string?])] : [['Contract value', contract || 'Not disclosed'] as [string, string]]),
     ['Buyer', String(data.issuedBy || data.issuingOrganization || 'Not provided')],
-    ...(award ? [['Supplier', String(data.successfulSupplier || 'Not provided')] as [string, string]] : [['Status', String(data.status || 'Not provided')] as [string, string]]),
+    ...(award ? [['Supplier', String(data.successfulSupplier || 'Not provided')] as [string, string]] : [['Status', (status => !status ? 'Not provided' : status.title ? `${status.text} · source status: ${String(data.status || 'not given')}` : status.text)(noticeStatus(data.status, data.closingAt ?? data.closingDate, record.kind))] as [string, string]]),
     ['Type', String(data.type || data.opportunityType || 'Not provided')],
     ['Documents', documentSummary(documentCounts(documents, data.attachments))],
   ];

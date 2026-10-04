@@ -1,4 +1,5 @@
 import { sql } from '../procurement/display';
+import { HIDDEN_IDS_SQL } from '../procurement/state-contract';
 import { QUEUES, acquireParts, and, assessmentScope, deadlineWindowSql, fitBucketSql, fitSql, openSql, queueSql, recordColumns, sourceSql, type Fragment, type QueueId } from './queue';
 
 /**
@@ -7,6 +8,8 @@ import { QUEUES, acquireParts, and, assessmentScope, deadlineWindowSql, fitBucke
  */
 const r = recordColumns();
 const num = (value: unknown) => Number(value ?? 0);
+/** Open work for Home: open opportunities not hidden as "not relevant"; the Opportunities list leaves them out by default too. */
+const openWork = (asOf: number): Fragment => and(openSql(asOf), { sql: `${r.id} NOT IN (${HIDDEN_IDS_SQL})`, parameters: [] });
 
 /** Opportunity notices from one source (or all), open or closed. */
 export const opportunityScope = (source: string): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source));
@@ -17,7 +20,7 @@ const inScope = (scope: Fragment, column = 'record_id'): Fragment => ({ sql: `${
 export type QueueResult = { total: number; items: any[] };
 /** Exact count plus the first five notices (soonest closing first) for one queue. */
 export async function readQueue(queue: QueueId, profile: string | null, source: string, asOf: number): Promise<QueueResult> {
-  const scope = and(openSql(asOf), sourceSql(source), queueSql(queue, profile)), p = acquireParts();
+  const scope = and(openWork(asOf), sourceSql(source), queueSql(queue, profile)), p = acquireParts();
   const reason = queue === 'acquire' ? `CASE WHEN ${p.unchecked} THEN 'unchecked' WHEN ${p.notDownloaded} THEN 'notDownloaded' ELSE 'noText' END AS reason, ` : '';
   const rows = await sql(`SELECT id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing, ${reason}(SELECT count(*) FROM records WHERE ${scope.sql}) AS total FROM records WHERE ${scope.sql} ORDER BY coalesce(${r.closing},'9999'), id LIMIT 5`, [...scope.parameters, ...scope.parameters]);
   return { total: num(rows[0]?.total), items: rows };
@@ -41,7 +44,7 @@ export async function readReviewCoverage(source: string, profile: string | null)
 
 /** Open opportunities in scope, and (only with a profile) those whose current assessment suggests needing information or investigation. */
 export async function readAttentionSummary(source: string, profile: string | null, asOf: number) {
-  const inOpen = and(openSql(asOf), sourceSql(source));
+  const inOpen = and(openWork(asOf), sourceSql(source));
   const [openRow] = await sql(`SELECT count(*) AS count FROM records WHERE ${inOpen.sql}`, inOpen.parameters);
   const conditions = and(inOpen, fitSql({ readiness: 'conditions' }, profile));
   const [condRow] = await sql(`SELECT count(*) AS count FROM records WHERE ${conditions.sql}`, conditions.parameters);
@@ -74,7 +77,7 @@ export async function readRecentDecisions(source: string) {
 
 /** Open notices closing within `days` (inclusive of today), soonest first, with the exact total. */
 export async function readDeadlines(source: string, asOf: number, days = 14) {
-  const scope = and(openSql(asOf), sourceSql(source), deadlineWindowSql(days, asOf));
+  const scope = and(openWork(asOf), sourceSql(source), deadlineWindowSql(days, asOf));
   const rows = await sql(`SELECT id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing, (SELECT count(*) FROM records WHERE ${scope.sql}) AS total FROM records WHERE ${scope.sql} ORDER BY ${r.closing}, id LIMIT 8`, [...scope.parameters, ...scope.parameters]);
   return { total: num(rows[0]?.total), rows };
 }
@@ -112,7 +115,7 @@ export async function readBottlenecks(source: string, profile: string | null, as
   const queues = await Promise.all(QUEUES.map(async queue => {
     const q = queueSql(queue, profile);
     if (q.unavailable) return [queue, null] as const;
-    const f = and(openSql(asOf), sourceSql(source), q);
+    const f = and(openWork(asOf), sourceSql(source), q);
     return [queue, num((await sql(`SELECT count(*) AS count FROM records WHERE ${f.sql}`, f.parameters))[0]?.count)] as const;
   }));
   const [runs, tasks] = await Promise.all([

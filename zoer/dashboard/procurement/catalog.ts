@@ -1,4 +1,6 @@
 import { CLOSING_TODAY_TEXT, addDays, deadlineState, parseDeadline, zoneDate } from './deadline';
+import { excludeSql } from './exclude';
+import { HIDDEN_IDS_SQL } from './state-contract';
 
 export type ProcurementSource = {
   id: string;
@@ -45,6 +47,13 @@ export type ProcurementQueryOptions = {
   aiLabel?: string;
   starred?: boolean;
   deadline?: 'all' | 'week';
+  /** Exclude words (exclude.ts); comma/line separated. */
+  exclude?: string;
+  /**
+   * Notices hidden as "not relevant" (`procurement:hidden:*` workspace keys). Omitted = no hidden handling (other
+   * callers keep their rows); the Opportunities list passes `exclude` by default. Adds a `hidden` column.
+   */
+  hidden?: 'exclude' | 'include' | 'only';
   /** Frozen "now" for deadline filters (tests); defaults to the current time. */
   asOf?: number;
   after?: string;
@@ -75,6 +84,12 @@ export const zonedSql = (value: string) => `${value} GLOB '????-??-??[Tt ]??:??*
 export const passedOrder = (value: string) => `CASE WHEN coalesce(${value}, '')='' THEN 2 WHEN ${zonedSql(value)} THEN CASE WHEN julianday(${value}) < julianday('now') THEN 1 ELSE 0 END WHEN ${value} < ? THEN 1 ELSE 0 END`;
 const deadline = `CASE WHEN kind='opportunity' THEN coalesce(${field('closingAt')},${field('closingDate')}) ELSE ${field('awardDate')} END`;
 
+/** The host bridge rejects longer statements with a generic message; say what to change instead. */
+export const STATEMENT_LIMIT = 10_000;
+export function checkStatementSize(...statements: string[]) {
+  if (statements.some(statement => statement.length > STATEMENT_LIMIT)) throw Error('Too many filters for one query. Remove some exclude words or other filters and try again.');
+}
+
 /** Read-only, bounded catalog query. Counts retain filters but ignore the cursor. */
 export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
   const filters = ["kind IN ('opportunity', 'award')"];
@@ -97,6 +112,10 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
     const literal = `%${options.search.trim().replace(/[\\%_]/g, '\\$&')}%`;
     countParameters.push(...searchable.map(() => literal));
   }
+  const excluded = excludeSql(options.exclude);
+  if (excluded) { filters.push(excluded.sql); countParameters.push(...excluded.parameters); }
+  if (options.hidden === 'exclude') filters.push(`id NOT IN (${HIDDEN_IDS_SQL})`);
+  else if (options.hidden === 'only') filters.push(`id IN (${HIDDEN_IDS_SQL})`);
   const today = zoneDate(options.asOf ?? Date.now());
   if (options.deadline === 'week') {
     const closing = `coalesce(${field('closingAt')},${field('closingDate')})`;
@@ -131,6 +150,7 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
     `coalesce(${field('region')}, ${field('issuingLocation')}) AS region`,
     `${field('importedAt')} AS importedAt`, `${field('sourceFileName')} AS sourceFileName`,
     'updated_at AS catalogUpdatedAt',
+    ...(options.hidden ? [options.hidden === 'exclude' ? '0 AS hidden' : options.hidden === 'only' ? '1 AS hidden' : `CASE WHEN id IN (${HIDDEN_IDS_SQL}) THEN 1 ELSE 0 END AS hidden`] : []),
   ];
   return {
     statement: `SELECT ${projection.join(', ')} FROM records WHERE ${where}${cursor} ORDER BY ${order} LIMIT ?${dated ? ' OFFSET ?' : ''}`,

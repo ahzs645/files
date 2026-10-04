@@ -9,6 +9,7 @@ import { REVIEW_KEY, startPipeline, useReviewInvalidate } from './actions';
 import { toneOf } from './DimensionChips';
 import { evidenceScopeOf, type RowReview } from './opportunity-queries';
 import { label } from './queries';
+import { hasProfileFilters, profileGate, readProfileFilterHits, readProfileRules } from './profile-filter';
 import { EXPORT_COLUMNS, PIPELINE_BATCH, chunkRuns, exportJson, readExportRows, readPreflight, snapshotManifest, summarizePreflight, type PipelineStage, type SelectionSnapshot } from './selection';
 import './review.css';
 
@@ -98,12 +99,16 @@ const STAGE_TEXT: Record<PipelineStage, { title: string; scope: string }> = {
 
 /** Preflight for a batch pipeline run: records, stage, model, evidence scope, estimated calls, reuse and limits. */
 export function PipelinePreflight({ snapshot, stage, onClose }: { snapshot: SelectionSnapshot; stage: PipelineStage; onClose: () => void }) {
-  const [model, setModel] = useState<any>(null), [force, setForce] = useState(false);
+  const [model, setModel] = useState<any>(null), [force, setForce] = useState(false), [includeFiltered, setIncludeFiltered] = useState(false);
   const [progress, setProgress] = useState(''), [result, setResult] = useState<{ ok: boolean; text: string } | null>(null), [busy, setBusy] = useState(false);
   const invalidate = useReviewInvalidate();
   const preflight = useQuery({ queryKey: [...REVIEW_KEY, 'preflight', stage, snapshot.capturedAt, snapshot.ids.length], queryFn: () => readPreflight(snapshot.ids, stage), staleTime: 30_000 });
-  const summary = preflight.data ? summarizePreflight(stage, preflight.data, force) : null;
-  const runs = chunkRuns(snapshot.ids), n = (value: number) => value.toLocaleString();
+  // The profile's quick filters (excluded keywords, value range) are the cheap gate before any model call.
+  const gateQuery = useQuery({ queryKey: [...REVIEW_KEY, 'preflight-profile-filter', snapshot.profileVersionId, snapshot.capturedAt, snapshot.ids.length], staleTime: 30_000,
+    queryFn: async () => { const rules = await readProfileRules(snapshot.profileVersionId); return { rules, hits: await readProfileFilterHits(snapshot.ids, rules) }; } });
+  const gate = profileGate(snapshot.ids, gateQuery.data?.hits ?? new Map(), includeFiltered), runIds = new Set(gate.run);
+  const summary = preflight.data ? summarizePreflight(stage, preflight.data.filter(record => runIds.has(record.id)), force) : null;
+  const runs = chunkRuns(gate.run), n = (value: number) => value.toLocaleString();
   const start = async () => {
     setBusy(true); setResult(null);
     const started: string[] = [];
@@ -112,12 +117,12 @@ export function PipelinePreflight({ snapshot, stage, onClose }: { snapshot: Sele
         setProgress(`Starting run ${index + 1} of ${runs.length}…`);
         started.push((await startPipeline({ recordIds: ids, stage, profileVersionId: snapshot.profileVersionId, force }, model)).id);
       }
-      setResult({ ok: true, text: `Started ${runs.length === 1 ? 'one run' : `${n(runs.length)} sequential runs`} for ${n(snapshot.ids.length)} notices. Follow progress on Home and in AI workbench → Pipeline stages. Results appear as each notice finishes.` });
+      setResult({ ok: true, text: `Started ${runs.length === 1 ? 'one run' : `${n(runs.length)} sequential runs`} for ${n(gate.run.length)} notices${gate.run.length < snapshot.ids.length ? ` (${n(snapshot.ids.length - gate.run.length)} filtered by the profile were skipped)` : ''}. Follow progress on Home and in AI workbench → Pipeline stages. Results appear as each notice finishes.` });
     } catch (e) {
       setResult({ ok: false, text: `${started.length ? `Started ${started.length} of ${runs.length} runs; ` : ''}run ${started.length + 1} could not start: ${(e as Error).message}. Nothing further was started.` });
     } finally { setBusy(false); setProgress(''); void invalidate(); }
   };
-  const blocker = busy ? 'Starting…' : !snapshot.ids.length ? 'The selection is empty.' : !ReviewModelSelector ? 'Update Zoer to choose a review model.' : !model ? 'Choose a computer and review model.' : preflight.isPending ? 'Reading evidence scope…' : '';
+  const blocker = busy ? 'Starting…' : !snapshot.ids.length ? 'The selection is empty.' : gateQuery.isPending ? 'Checking the profile’s quick filters…' : gateQuery.isError ? `Could not check the profile’s quick filters: ${(gateQuery.error as Error).message}` : !gate.run.length ? 'Every selected notice is filtered by the profile.' : !ReviewModelSelector ? 'Update Zoer to choose a review model.' : !model ? 'Choose a computer and review model.' : preflight.isPending ? 'Reading evidence scope…' : '';
   return <Modal title={`${STAGE_TEXT[stage].title}: preflight`} mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<>
     <Btn variant="ghost" disabled={busy} onClick={onClose}>{result?.ok ? 'Close' : 'Cancel'}</Btn>
     {!result?.ok && <Btn disabled={!!blocker} onClick={() => void start()}>{busy ? 'Starting…' : `Start ${runs.length === 1 ? 'run' : `${runs.length} runs`}`}</Btn>}
@@ -131,9 +136,11 @@ export function PipelinePreflight({ snapshot, stage, onClose }: { snapshot: Sele
         <div><dt>Estimated model calls</dt><dd>{summary ? <>About {n(summary.estimatedCalls)}. <span className="rw-o-muted">{stage === 'triage' ? 'One call per notice processed.' : 'One call per 12,000 characters (code points) of each readable document, plus one per notice.'} This is an estimate; chunk overlap and repair retries can add calls.</span></> : '—'}</dd></div>
         <div><dt>Reuse</dt><dd>{summary ? force ? `Re-running all ${n(summary.records)}, including ${n(preflight.data!.filter(r => r.current).length)} with a current result.` : `${n(summary.reused)} already have a current ${stage === 'triage' ? 'triage' : 'extraction'} result and will be reused unless you re-run them.` : '—'}</dd></div>
         <div><dt>Limits</dt><dd>At most {PIPELINE_BATCH} notices per run. {runs.length > 1 ? `This selection starts as ${runs.length} sequential runs.` : 'This selection fits in one run.'}</dd></div>
+        <div><dt>Profile filters</dt><dd>{gateQuery.isPending ? 'Checking…' : gateQuery.isError ? 'Could not be checked; nothing starts until they can.' : !hasProfileFilters(gateQuery.data?.rules) ? `${snapshot.profileText} has no quick filters (excluded keywords or contract value range).` : gate.filtered.length ? <>{n(gate.filtered.length)} filtered by the profile{gate.kinds.keyword ? ` · ${n(gate.kinds.keyword)} excluded keyword` : ''}{gate.kinds.value ? ` · ${n(gate.kinds.value)} value out of range` : ''}. {includeFiltered ? 'They are included in this run.' : 'They are skipped, so no model calls are spent on them.'}</> : 'None of the selected notices is filtered by the profile. Unknown contract values pass.'}</dd></div>
         <div><dt>Profile</dt><dd>{stage === 'extract' ? `Assessment after extraction uses ${snapshot.profileText}.` : `Triage does not assess eligibility. Active profile: ${snapshot.profileText}.`}</dd></div>
       </dl>
       <label className="procurement-check"><input type="checkbox" checked={force} disabled={busy} onChange={event => setForce(event.target.checked)} />Re-run notices that already have a current result</label>
+      {gate.filtered.length > 0 && <label className="procurement-check"><input type="checkbox" checked={includeFiltered} disabled={busy} onChange={event => setIncludeFiltered(event.target.checked)} />Include the {n(gate.filtered.length)} notice{gate.filtered.length === 1 ? '' : 's'} filtered by the profile</label>}
       {ReviewModelSelector ? <ReviewModelSelector request={host} onChange={setModel} disabled={busy} /> : <p className="rw-upgrade">Update Zoer to choose computers and models for pipeline runs.</p>}
       <p className="rw-o-muted">Nothing is submitted to buyers or portals. This only prepares review material; AI results start as proposals for your review.</p>
       {blocker && !busy && !result && <p role="status" className="rw-o-muted">{blocker}</p>}

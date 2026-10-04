@@ -34,3 +34,16 @@ export function shortDate(raw: unknown, now = Date.now(), deadline = true): { te
   const days = Math.ceil((parsed.time - now) / DAY);
   return days <= 7 ? { text: `${text} · ${days === 1 ? '1 day' : `${days} days`} left`, tone: 'soon' } : { text, tone: '' };
 }
+
+const OPEN_STATUSES = ['open', 'active', ''];
+/**
+ * Status shown for a notice. Sources often keep saying "Open" after the closing date (BC Bid does for weeks), so an
+ * opportunity whose deadline has passed reads "Closed · deadline passed" while the stored source status is kept and
+ * named in `title`. Unknown deadlines never close a notice.
+ */
+export function noticeStatus(status: unknown, deadline: unknown, kind: string, now = Date.now()): { text: string; key: string; title?: string } | null {
+  const source = typeof status === 'string' ? status.trim() : '';
+  if (kind === 'opportunity' && OPEN_STATUSES.includes(source.toLowerCase()) && deadlineState(deadline, now) === 'closed')
+    return { text: 'Closed · deadline passed', key: 'closed', title: source ? `The source still says “${source}”; its closing date has passed.` : 'The closing date has passed.' };
+  return source ? { text: source, key: source.toLowerCase() } : null;
+}

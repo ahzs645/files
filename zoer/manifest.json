@@ -1048,7 +1048,7 @@
       {
         "id": "procurement.state",
         "title": "Save procurement workflow state",
-        "description": "Version-checked saved search and pursuit changes in the existing workspace catalog.",
+        "description": "Version-checked saved search and pursuit changes, and notices hidden as not relevant, in the existing workspace catalog.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -1188,6 +1188,10 @@
                     "classification": {
                       "type": "string",
                       "maxLength": 12000
+                    },
+                    "exclude": {
+                      "type": "string",
+                      "maxLength": 2000
                     }
                   },
                   "required": [
@@ -1234,6 +1238,36 @@
                 "operation",
                 "expectedVersion",
                 "id"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "hidden.set"
+                  ]
+                },
+                "recordIds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 10000,
+                    "pattern": "^(opportunity|award):"
+                  }
+                },
+                "hidden": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "operation",
+                "recordIds",
+                "hidden"
               ]
             }
           ]
