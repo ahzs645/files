@@ -357,7 +357,8 @@ describe('browser-sites registration', () => {
       expect(host.minDelaySeconds ?? policy.minDelaySeconds).toBe(item.minDelaySeconds);
       expect(host.visitWindowUtc).toBe(item.visitTimeUtc);
     }
-    const reducedPacing: Record<string, number> = { 'canadabuys.canada.ca': 0, 'bcbid.gov.bc.ca': 2 };
+    const reducedPacing: Record<string, number> = { 'canadabuys.canada.ca': 0 };
+    expect(policy.hosts['bcbid.gov.bc.ca']).toMatchObject({ minDelaySeconds: 10 });
     for (const [host, rules] of Object.entries<any>(policy.hosts)) {
       expect(allowlist).toContain(host);
       // A host may only opt in to robots.txt, never set it explicitly off (that is already the default).

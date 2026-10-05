@@ -279,3 +279,5 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
   `robots: "respect"` or `"respect-ai"` (none are listed today). Pacing (`minDelaySeconds`) and the BC Ferries visiting
   window are set in the manifest and still apply. Sources kept link-only for other reasons (sign-in walls, layouts)
   are unchanged.
+- 2026-10-04 (user decision): `bcbid.gov.bc.ca` page loads are spaced 10 s apart (was 2 s). BC Bid attachment
+  downloads keep Zoer's separate 30 s spacing.
