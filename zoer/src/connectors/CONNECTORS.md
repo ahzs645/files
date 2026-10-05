@@ -271,4 +271,6 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
     documents tab, the Documents page selection, the notices list selection; ≤ 200 notices, ≤ 48 MiB of files, under
     the 50 MiB catalog-file cap) zips each saved file under `<sourceKey>/<name>` plus `opportunities.csv` and
     `opportunities.manifest.json` into a temporary catalog file, downloads it, and deletes the temporary files.
-
+- 2026-10-04 (user decision): `bcbid.gov.bc.ca` is exempt from robots.txt (`robots: "off"`, 2 s between page loads).
+  BC Bid's robots.txt is `User-agent: * / Disallow: /`; the user chose to keep scraping BC Bid, the government
+  portal they bid through, regardless. Every other crawled host still respects robots.txt with the AI-crawler groups.
