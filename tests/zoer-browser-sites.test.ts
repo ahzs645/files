@@ -348,20 +348,21 @@ describe('browser-sites registration', () => {
     expect(action.inputSchema.properties.sites.items.enum).toEqual(BROWSER_SITES.map(item => item.id));
     expect(action.inputSchema.additionalProperties).toBe(false);
   });
-  it('Zoer’s crawl policy carries every site floor: respect-ai everywhere, robots off only for the CanadaBuys open-data file', () => {
+  it('Zoer’s crawl policy carries every site floor: robots.txt is opt-in per host, pacing still applies', () => {
     const policy = (manifest as any).integration.crawlPolicy;
-    expect(policy).toMatchObject({ product: 'ZoerProcurement', robots: 'respect-ai', minDelaySeconds: 5, maxWaitSeconds: 60 });
+    // User decision 2026-10-04: robots.txt is ignored unless a host is listed with respect/respect-ai.
+    expect(policy).toMatchObject({ product: 'ZoerProcurement', robots: 'off', minDelaySeconds: 5, maxWaitSeconds: 60 });
     for (const item of BROWSER_SITES) {
       const host = policy.hosts[item.host] ?? {};
       expect(host.minDelaySeconds ?? policy.minDelaySeconds).toBe(item.minDelaySeconds);
       expect(host.visitWindowUtc).toBe(item.visitTimeUtc);
     }
+    const reducedPacing: Record<string, number> = { 'canadabuys.canada.ca': 0, 'bcbid.gov.bc.ca': 2 };
     for (const [host, rules] of Object.entries<any>(policy.hosts)) {
       expect(allowlist).toContain(host);
-      if (host === 'canadabuys.canada.ca') { expect(rules).toEqual({ robots: 'off', minDelaySeconds: 0 }); continue; }
-      // Nothing else relaxes the policy: every other host keeps robots.txt and at least 5 s between requests.
-      expect(rules.robots).toBeUndefined();
-      expect(rules.minDelaySeconds ?? 5).toBeGreaterThanOrEqual(5);
+      // A host may only opt in to robots.txt, never set it explicitly off (that is already the default).
+      if (rules.robots !== undefined) expect(['respect', 'respect-ai']).toContain(rules.robots);
+      expect(rules.minDelaySeconds ?? 5).toBeGreaterThanOrEqual(reducedPacing[host] ?? 5);
     }
   });
   it('robots compliance list: paced sites keep their floors, robots-disallowed sources stay link-only', () => {

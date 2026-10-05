@@ -274,3 +274,8 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
 - 2026-10-04 (user decision): `bcbid.gov.bc.ca` is exempt from robots.txt (`robots: "off"`, 2 s between page loads).
   BC Bid's robots.txt is `User-agent: * / Disallow: /`; the user chose to keep scraping BC Bid, the government
   portal they bid through, regardless. Every other crawled host still respects robots.txt with the AI-crawler groups.
+- 2026-10-04 (user decision, supersedes the BC Bid-only exemption): robots.txt is opt-in. The plugin's `crawlPolicy`
+  default is `robots: "off"` for every host; a host respects robots.txt only when it is listed with
+  `robots: "respect"` or `"respect-ai"` (none are listed today). Pacing (`minDelaySeconds`) and the BC Ferries visiting
+  window are set in the manifest and still apply. Sources kept link-only for other reasons (sign-in walls, layouts)
+  are unchanged.
