@@ -2207,9 +2207,15 @@
     }
   },
   "config": {
+    "bc_bid_request_delay_seconds": {
+      "type": "number",
+      "description": "Whole seconds between BC Bid page requests, from 10 to 300. Default: 30. Applies to new and resumed captures; longer source-required waits still apply. Attachment downloads have separate 30-second pacing.",
+      "required": false,
+      "default": 30
+    },
     "browser_session_id": {
       "type": "string",
-      "description": "Zoer browser session used by this workspace. Empty selects the only ready browser.",
+      "description": "Saved Zoer browser profile used by this workspace. Agent-allowed stopped profiles start on demand. Empty selects the only eligible profile; explicit selections are never replaced.",
       "required": false,
       "default": ""
     }

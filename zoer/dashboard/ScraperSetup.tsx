@@ -49,7 +49,7 @@ export function ScraperSetup() {
     </section>}
     <section className="zoer-history zoer-setup" aria-labelledby="scraper-setup-title">
       <div className="zoer-setup-row">
-        <div><h2 id="scraper-setup-title">Browser check</h2><p>Choose a running browser in Settings and open BC Bid there, then test one listing and one detail before a full scrape.</p></div>
+        <div><h2 id="scraper-setup-title">Browser check</h2><p>Choose a saved browser profile in Settings and allow agents. Zoer starts it when needed. Test one listing and one detail before a full scrape.</p></div>
         <Button variant="ghost" disabled={active} loading={pending} onClick={() => void act(async () => { setRunId(undefined); setRunId(await testScraperBrowser()); }, setPending)}>Test browser</Button>
       </div>
       {runId && <p role={result?.status === 'failed' ? 'alert' : 'status'}>{result?.status === 'succeeded'

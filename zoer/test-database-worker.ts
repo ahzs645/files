@@ -8,10 +8,10 @@ import { LISTING_URL } from './src/scrape';
 const records=new Map<string,any>(),state=new Map<string,any>();let revision=0,primary=false;
 async function run(actionId:string,input:any={}) {
   const child=spawn(process.execPath,[resolve(import.meta.dir,'../dist/zoer-bcbid/worker/worker.js')],{stdio:['pipe','pipe','inherit']});
-  const timer=setTimeout(()=>child.kill(),15000);
+  const timer=setTimeout(()=>child.kill(),90000);
   const send=(value:any)=>child.stdin.write(JSON.stringify(value)+'\n');
   let catalog='catalog-0',browser='browser-0',sequence=0,pages=0,output:any;
-  send({protocolVersion:'1',kind:'integration-action',run:{id:actionId.replaceAll('.','-')},action:{id:actionId},input,grants:{catalog:{ticket:catalog},browser:{ticket:browser},artifacts:[{alias:'output',access:'write',ticket:'artifact'}]}});
+  send({protocolVersion:'1',kind:'integration-action',run:{id:actionId.replaceAll('.','-')},action:{id:actionId},input,config:{bc_bid_request_delay_seconds:10},grants:{catalog:{ticket:catalog},browser:{ticket:browser},artifacts:[{alias:'output',access:'write',ticket:'artifact'}]}});
   try {
     for await(const line of createInterface({input:child.stdout})) {
       const message=JSON.parse(line);

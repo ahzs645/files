@@ -12,6 +12,7 @@ import { collectionSlice, runCollection } from './collection-run';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
 import { backfillEnrichment } from './procurement-enrichment';
+import { createRequestPacing } from './request-pacing';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -29,8 +30,11 @@ let browserTicket: string;
 let artifactTicket: string;
 let catalogTicket: string;
 let networkTicket: string;
+let paceCapture: ReturnType<typeof createRequestPacing>;
 async function call(method: string, input: unknown) {
-  const response = await channel.request(method, input);
+  const send = () => channel.request(method, input);
+  const response = method === 'browser.capture-url'
+    ? await paceCapture((input as { url: string }).url, send) : await send();
   if (response.nextTicket && method.startsWith('browser.')) browserTicket = response.nextTicket;
   if (response.nextTicket && method.startsWith('catalog.')) catalogTicket = response.nextTicket;
   if (response.nextTicket && method === 'network.fetch') networkTicket = response.nextTicket;
@@ -42,6 +46,7 @@ try {
   const request = await channel.next();
   if (request.protocolVersion !== '1' || request.kind !== 'integration-action' || typeof request.run?.id !== 'string') throw new Error('Invalid Zoer worker request.');
   runId = request.run.id;
+  paceCapture = createRequestPacing({ config: request.config, paused: channel.pauseRequested });
   // Zoer re-runs a step paused for an update with the same input; `resumeCheckpoint` (value or null) marks it.
   const resumedFromPause = request.resumeCheckpoint !== undefined || process.env.ZOER_RESUMED_FROM_PAUSE === '1';
   const artifact = request.grants.artifacts?.find((grant: any) => grant.alias === 'output' && grant.access === 'write');
@@ -68,7 +73,7 @@ try {
       : await runCollection(collectCall, request.action.id, request.input ?? {}, runId);
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'procurement.collect.browser') {
-    if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+    if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
     if (!catalogTicket) throw new Error('Browser collection requires an existing catalog grant.');
     // `settle`: Zoer lets the page finish loading on its own (a check that clears itself, a list drawn by script)
     // and reports the HTTP status. Nothing on the page is clicked. Older Zoer ignores it and returns the loaded page.
@@ -94,7 +99,7 @@ try {
     const artifactId = await save({ version: 1, kind: 'star', entity, key, starred });
     write({ protocolVersion: '1', runId, ok: true, output: { artifactId } });
   } else if (request.action.id === 'awards.history') {
-    if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+    if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
     const recent = request.input?.mode === 'recent';
     const checkpointKey = recent ? 'checkpoint:awards:recent' : 'checkpoint:awards';
     const state = await catalogCall('catalog.workspace', { keys: [checkpointKey] });
@@ -136,7 +141,7 @@ try {
     const artifactId=await save({version:1,kind:'listing',records,fileName:request.input.fileName});
     write({protocolVersion:'1',runId,ok:true,output:{artifactId,count:records.length}});
   } else if (request.action.id === 'scrape.full') {
-    if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+    if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
     const resume = await fullScrapeResume(request, async () => {
       if (!catalogTicket) return undefined;
       const state = await catalogCall('catalog.workspace', { keys: ['checkpoint:full'] });
@@ -145,7 +150,7 @@ try {
     const output = await scrapeFull({ captureUrl: (url, pageNumber) => call('browser.capture-url', { ticket: browserTicket, url, pageNumber, ...(pageNumber ? {} : { readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }) }) }, save, resume, { runId });
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.targeted') {
-    if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+    if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
     if (!catalogTicket) throw new Error('Update Zoer to use the unified database plugin.');
     const output = await scrapeTargeted({ capture: options => call('browser.capture-url', { ...options, ticket: browserTicket }) }, {
       save,
@@ -154,13 +159,13 @@ try {
     }, request.input ?? {}, { runId, resume: request.resumeCheckpoint ?? undefined });
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.sample') {
-    if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+    if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
     const output = await scrapeSample({ captureUrl: url => call('browser.capture-url', { ticket: browserTicket, url }) }, save, request.input?.detailLimit ?? 3);
     write({ protocolVersion: '1', runId, ok: true, output });
   } else {
   const kind = request.action?.id === 'listing.capture' ? 'listing' : request.action?.id === 'detail.capture' ? 'detail' : null;
   if (!kind) throw new Error('Unsupported BC Bid action.');
-  if (!browserTicket) throw new Error('Select a running Zoer browser session.');
+  if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
   const page = await call('browser.read-page', { ticket: request.grants.browser.ticket }) as PageCapture;
   const captured = parseCapture(page, kind);
   const stored = { id: await save(captured.document) };
