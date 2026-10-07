@@ -13,6 +13,7 @@ import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
 import { backfillEnrichment } from './procurement-enrichment';
 import { createRequestPacing } from './request-pacing';
+import { captureMissingDetails } from './missing-details';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -148,6 +149,14 @@ try {
       return state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;
     }, resumedFromPause);
     const output = await scrapeFull({ captureUrl: (url, pageNumber) => call('browser.capture-url', { ticket: browserTicket, url, pageNumber, ...(pageNumber ? {} : { readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }) }) }, save, resume, { runId });
+    write({ protocolVersion: '1', runId, ok: true, output });
+  } else if (request.action.id === 'scrape.details') {
+    if (!browserTicket || !catalogTicket) throw new Error('Select an agent-allowed saved browser and an existing catalog.');
+    const output = await captureMissingDetails(request.input, {
+      read: ids => catalogCall('catalog.read', { ids }),
+      capture: url => call('browser.capture-url', { ticket: browserTicket, url, readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }),
+      save,
+    }, { paused: channel.pauseRequested });
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.targeted') {
     if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');

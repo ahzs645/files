@@ -57,6 +57,8 @@ AI categories are the `labels` from each notice's newest categorizing review. Th
 
 Documents provides searchable saved-file coverage, per-file warnings, download retries and saved-file re-extraction. AI review owns model/prompt selection and review history. Both show current processing progress; record details open the notice view.
 
+The bulk download count separates notices missing details from captured notices with no saved attachment links. **Capture missing details** reads up to 50 saved BC Bid notices in the chosen scope, preserving each successful capture and skipping completed notices on retry. A native connection failure before navigation gets one retry after a 70-second wait; source verification still requires manual completion. Captured notices without links may use an external portal or provide no files; the count does not prove there are no source documents. Download all reuses saved originals and retains partial results if a browser check stops the batch. Queued downloads block repeat starts before their processing batch appears in History.
+
 Old links still work: `/procurement?view=board|market|sources|saved|deadlines` redirect to Pursuits, Analysis → All sources, Sources, the Saved searches dialog and the closing-soon filter. The BC Bid overview counts an opportunity as open only when its closing date has not passed, and its Closing soon list shows upcoming deadlines only.
 
 - **Dashboard/Opportunities:** source statistics, search, filters, list/cards, pagination of saved results and detail views. Data merges by source key; later listing-only captures preserve earlier details.

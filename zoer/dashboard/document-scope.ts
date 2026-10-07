@@ -1,13 +1,16 @@
 import { notClosed } from './procurement/deadline';
-export type DocumentCandidate = { id: string; data: { sourceId?: string; status?: string; closingDate?: string; attachments?: unknown[] } };
+export type DocumentCandidate = { id: string; data: { sourceId?: string; status?: string; closingDate?: string; attachments?: unknown[]; detailFields?: unknown[] } };
 export function documentScope(records: DocumentCandidate[], scope: 'current' | 'all', now = Date.now()) {
   // Shared deadline rules: a same-day date-only deadline is still current (time unverified); unknown dates are kept.
   const included = records.filter(({data}) => scope === 'all' || (/^open$/i.test(data.status?.trim() ?? '') && notClosed(data.closingDate, now)));
   const linked = included.filter(row => Array.isArray(row.data.attachments) && row.data.attachments.length > 0);
+  const missingDetails = included.filter(row => !row.data.detailFields?.length).map(row => row.id);
   return {
     ids: linked.map(row => row.id), total: included.length,
     links: linked.reduce((n,row) => n + row.data.attachments!.length, 0),
     missing: included.length - linked.length,
+    missingDetails,
+    capturedWithoutLinks: included.filter(row => row.data.detailFields?.length && !row.data.attachments?.length).length,
     unknownDates: included.filter(row => !Number.isFinite(Date.parse(row.data.closingDate ?? ''))).length,
   };
 }

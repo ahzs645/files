@@ -18,7 +18,7 @@ import { INVENTORY_SQL, sourceName, sql } from './display';
 import { shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 
-const BC_BID_ACTIONS = ['scrape.full', 'scrape.targeted', 'scrape.sample', 'awards.history'];
+const BC_BID_ACTIONS = ['scrape.full', 'scrape.details', 'scrape.targeted', 'scrape.sample', 'awards.history'];
 const BC_CHECKPOINTS = [['checkpoint:full', 'Current opportunities'], ['checkpoint:awards', 'Historical awards'], ['checkpoint:awards:recent', 'Recent awards']] as const;
 const when = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : typeof value === 'number' ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
 const label = (id: string | null) => id === 'all' ? 'all sources' : id === 'canadabuys' ? 'CanadaBuys' : id ? CONNECTOR_SOURCES.find(source => source.id === id)?.label ?? sourceName(id) : 'an unknown source';

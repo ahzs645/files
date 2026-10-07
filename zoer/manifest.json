@@ -614,6 +614,66 @@
         }
       },
       {
+        "id": "scrape.details",
+        "title": "Capture missing BC Bid details",
+        "description": "Capture details for up to 50 saved BC Bid notices that have no details yet. Completed notices are skipped on retry; saved progress and original files are retained.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 3600000,
+          "maxMemoryMb": 512,
+          "maxOutputBytes": 67108864,
+          "maxBrowserPages": 400
+        },
+        "idempotent": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "pattern": "^opportunity:[0-9]{1,10}$"
+              }
+            }
+          },
+          "required": [
+            "recordIds"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "completed": {
+              "type": "integer"
+            },
+            "skipped": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "completed",
+            "skipped",
+            "total"
+          ]
+        }
+      },
+      {
         "id": "scrape.targeted",
         "title": "Refresh one BC Bid buyer or region",
         "description": "Search BC Bid's public opportunities for one buyer (organization), region or keyword, confirm BC Bid applied that filter, and save up to 20 result pages plus details for new or changed notices (at most 40). Aborts without saving if the filter is not confirmed; clears the search afterwards. Browser checks require manual completion.",

@@ -28,6 +28,12 @@ async function run(actionId:string,input:any={}) {
         } else throw new Error(message.method);
       } else {
         assert.ok(message.method.startsWith('browser.'),'No JSON artifact writes are allowed');assert.equal(value.ticket,browser);nextTicket=browser='browser-'+(++pages);
+        if(actionId==='scrape.details' && pages===1) {
+          // Exercise the bundled worker's real bounded wait and rotating ticket
+          // after a transient native connection failure (before navigation).
+          send({protocolVersion:'1',kind:'host-response',requestId:message.requestId,ok:false,error:{message:'Native browser connect failed (400).'},nextTicket});
+          continue;
+        }
         if(actionId==='awards.history') {
           assert.equal(value.searchFields[0].value,'2015-01-01');assert.equal(value.searchFields[1].value,'2015-01-31');
           result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:pages===1,visiblePages:[1]},html:`<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">${value.searchFields[0].value}</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">${value.searchFields[1].value}</li></ul></div><table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>2015-01-01</td><td>100</td></tr></tbody></table>`};
@@ -51,6 +57,12 @@ await run('catalog.migrate');assert.equal(primary,true);
 await run('listing.capture');assert.equal(records.size,2);
 const full=await run('scrape.full');assert.equal(full.detailCount,2);assert.equal(state.get('checkpoint:full').complete,true);
 const fullBefore=structuredClone(state.get('checkpoint:full'));
+const selected=[...records.values()].filter(row=>row.kind==='opportunity');
+selected[0].data.detailFields=[];
+const missing=await run('scrape.details',{recordIds:selected.map(row=>row.id)});
+assert.deepEqual(missing,{completed:1,skipped:1,total:2});
+assert.ok(records.get(selected[0].id).data.detailFields.length);
+assert.deepEqual(state.get('checkpoint:full'),fullBefore);
 const targeted=await run('scrape.targeted',{organization:'Ministry of Health'});assert.equal(targeted.listingCount,2);assert.equal(targeted.filtersCleared,true);
 assert.deepEqual(state.get('checkpoint:full'),fullBefore);assert.equal(state.get('checkpoint:targeted').status,'complete');assert.equal(state.get('checkpoint:targeted').filters.organization,'Ministry of Health');
 const sample=await run('scrape.sample',{detailLimit:1});assert.equal(sample.detailCount,1);

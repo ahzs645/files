@@ -63,7 +63,7 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
       }
     }
   }
-  const runs = state.runs.filter(run => ['scrape.full', 'scrape.targeted', 'scrape.sample', 'listing.capture', 'detail.capture'].includes(run.actionId)).map(run => {
+  const runs = state.runs.filter(run => ['scrape.full', 'scrape.details', 'scrape.targeted', 'scrape.sample', 'listing.capture', 'detail.capture'].includes(run.actionId)).map(run => {
     const doc = byRun.get(run.id);
     const full = doc?.scope === 'all-current-public-opportunities';
     const rows = [...(history.get(run.id)?.values() ?? [])];
@@ -83,7 +83,8 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
         batchesCompleted: doc ? 1 : 0, batchesTotal: null, heartbeatAt: Date.parse(heartbeat.get(run.id) ?? doc?.capturedAt ?? run.createdAt) } };
   }).sort((a, b) => b.startedAt - a.startedAt);
   const awardRuns = state.runs.filter(run => run.actionId === 'awards.history').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return { stars, awardCheckpoint, awardRecentCheckpoint: null as any, awardRuns, opportunities: [...opportunities.values()].map(row => ({ ...row, starred: stars.get('opportunity:' + row.sourceKey) === true })), awards: [...awards.values()].map(row => ({ ...row, starred: stars.get('award:' + row.importKey) === true })), runs, history, runsTruncated: state.runsTruncated };
+  const documentRuns = state.runs.filter(run => ['documents.download', 'documents.download.all'].includes(run.actionId));
+  return { stars, awardCheckpoint, awardRecentCheckpoint: null as any, awardRuns, documentRuns, opportunities: [...opportunities.values()].map(row => ({ ...row, starred: stars.get('opportunity:' + row.sourceKey) === true })), awards: [...awards.values()].map(row => ({ ...row, starred: stars.get('award:' + row.importKey) === true })), runs, history, runsTruncated: state.runsTruncated };
 }
 export type Model = ReturnType<typeof buildModel>;
 export function queryModel(model: Model, name: string, args: any = {}): any {
