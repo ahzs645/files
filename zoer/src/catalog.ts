@@ -1,6 +1,8 @@
+import { filterReferenceRecords, sourceMetadata } from './source-metadata';
 import { isDeepStrictEqual } from 'node:util';
 import { buildModel, type SavedDocument } from '../dashboard/model';
 import { enrichNotice } from '../dashboard/procurement/enrich';
+import { classifyCatalogRecords } from './taxonomy';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
 
 type Host = (method: string, input: any) => Promise<any>;
@@ -73,25 +75,38 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     if (doc.checkpoint) entries.push({ key: doc.checkpointKey === 'checkpoint:awards:recent' ? doc.checkpointKey : 'checkpoint:awards', value: { ...doc.checkpoint, runId } });
     if (doc.legacyCheckpoint) entries.push({ key: 'checkpoint:awards:legacy', value: doc.legacyCheckpoint });
   } else if (doc.kind === 'detail') {
-    const found = (await call('catalog.read', { match: { kind: 'opportunity', field: 'processId', value: doc.record.processId }, limit: 2 })).records;
+    const found = (await call('catalog.read', doc.scope === 'bcbid-historical' && doc.sourceKey
+      ? { ids: ['opportunity:' + doc.sourceKey] }
+      : { match: { kind: 'opportunity', field: 'processId', value: doc.record.processId }, limit: 2 })).records;
+    if (doc.scope === 'bcbid-historical' && found.some((row: any) => row.kind !== 'opportunity' || row.data.processId !== doc.record.processId)) throw new Error('Historical detail does not match its saved source key.');
     if (found.length !== 1) throw new Error('Detail does not match exactly one saved opportunity.');
     const status = doc.record.detailFields?.find((field: any) => /^status$/i.test(field.label.trim()))?.value?.trim();
     // Place and contacts are re-derived from the merged row: the detail page adds the fields they come from.
-    const row = enrichNotice({ ...found[0].data, ...doc.record, ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId });
+    const row = enrichNotice(sourceMetadata({ ...found[0].data, ...doc.record, ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId }, doc));
     records = [catalogRow('opportunity', row)];
     // A targeted refresh never edits the full crawl's progress; that crawl refetches its own pending details.
-    const state = doc.scope === 'bcbid-targeted' ? { entries: [] } : await call('catalog.workspace', { keys: ['checkpoint:full'] });
+    const state = ['bcbid-targeted', 'bcbid-historical'].includes(doc.scope) ? { entries: [] } : await call('catalog.workspace', { keys: ['checkpoint:full'] });
     const checkpoint = state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;
     if (checkpoint?.pending?.some((item: any) => item.sourceKey === row.sourceKey)) entries.push({ key: 'checkpoint:full', value: { ...checkpoint, pending: checkpoint.pending.filter((item: any) => item.sourceKey !== row.sourceKey), detailsCompleted: checkpoint.detailsCompleted + 1 } });
   } else if (['listing', 'scrape'].includes(doc.kind)) {
     const previous = new Map((await call('catalog.read', { ids: (doc.records ?? []).map((row: any) => 'opportunity:' + row.sourceKey) })).records.map((row: any) => [row.id, row.data]));
     records = (doc.records ?? []).map((row: any) => {
       const old: any = previous.get('opportunity:' + row.sourceKey);
-      const detail = old && !row.detailFields?.length ? { descriptionText: old.descriptionText, detailFields: old.detailFields, addenda: old.addenda, attachments: old.attachments } : {};
-      return catalogRow('opportunity', enrichNotice({ ...defaults, ...old, ...row, ...detail, starred: old?.starred ?? row.starred === true, lastRunId: runId }));
+      const detail = old && !row.detailFields?.length ? { descriptionText: old.descriptionText, detailFields: old.detailFields, addenda: old.addenda, attachments: old.attachments,
+        // A listing's flattened label cell must not erase the last captured
+        // authoritative tables. A subsequent detail capture replaces them.
+        ...(old.commodityTablesCaptured || old.commoditySourceProvenance ? { commodities: old.commodities, mainCommodity: old.mainCommodity, commodityTablesCaptured: old.commodityTablesCaptured } : {}) } : {};
+      return catalogRow('opportunity', enrichNotice(sourceMetadata({ ...defaults, ...old, ...row, ...detail, starred: old?.starred ?? row.starred === true, lastRunId: runId }, doc)));
     });
     if (doc.scope === 'all-current-public-opportunities') entries.push({ key: 'checkpoint:full', value: doc });
   } else throw new Error('Unsupported database document.');
+  if (doc.kind !== 'star' && records.some(row => row.kind === 'opportunity')) {
+    const known = await call('catalog.read', { ids: ['reference-release:BCBID:filters:20261010'] });
+    if (!known.records.length) records.push(...filterReferenceRecords());
+  }
+  if (doc.historicalCheckpoint) entries.push({ key: 'checkpoint:historical', value: { ...doc.historicalCheckpoint, runId } });
+  if (doc.historicalReferences) records.push(...doc.historicalReferences);
+  if (records.length > 200) throw new Error('Historical reference batch exceeds the catalog limit.');
   if (doc.kind !== 'star') {
     const previous = await call('catalog.workspace', { keys: ['run:' + runId] });
     const existing = previous.entries.find((entry: any) => entry.key === 'run:' + runId);
@@ -100,7 +115,16 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
   }
   // An optimistic revision check prevents concurrent runs from overwriting a
   // newer star or scrape. The caller retries the entire read/merge transaction.
-  const committed=await call('catalog.commit', { revision: initial.revision, records, entries, history });
+  const classified = doc.kind === 'star' ? { records, links: [] } : await classifyCatalogRecords(call, records);
+  // Stage immutable links first. They become current only when the opportunity's
+  // fingerprint is published below; interrupted/retried staging is harmless.
+  let revision = initial.revision;
+  for (let offset = 0; offset < classified.links.length; offset += 200) {
+    const receipt = await call('catalog.commit', { revision, records: classified.links.slice(offset, offset + 200) });
+    if (receipt.conflict) throw new Error('Catalog changed; retry transaction.');
+    revision = receipt.revision;
+  }
+  const committed=await call('catalog.commit', { revision, records: classified.records, entries, history });
   if(committed.conflict) throw new Error('Catalog changed; retry transaction.');
   return 'catalog:' + runId;
 }

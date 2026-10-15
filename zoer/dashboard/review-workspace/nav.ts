@@ -2,7 +2,7 @@
  * Review-workspace navigation (CONTRACT §5.3). Pure route → section/view/page mapping so it stays testable
  * without rendering the shell. Every pre-existing route keeps working; it now opens inside its matching section.
  */
-export type Section = 'home' | 'opportunities' | 'pursuits' | 'documents' | 'evidence' | 'insights' | 'workbench' | 'profiles' | 'sources';
+export type Section = 'home' | 'opportunities' | 'pursuits' | 'documents' | 'evidence' | 'insights' | 'workbench' | 'profiles' | 'sources' | 'taxonomy';
 /** [section, label, default route, short phone label?] */
 export type SectionTab = [Section, string, string, string?];
 
@@ -12,7 +12,7 @@ export const PRIMARY_SECTIONS: SectionTab[] = [
 ];
 /** Visually secondary: configuration rather than daily review work. */
 export const CONFIGURE_SECTIONS: SectionTab[] = [
-  ['workbench', 'AI workbench', '/ai-review', 'AI'], ['profiles', 'Profiles', '/profiles'], ['sources', 'Sources', '/sources'],
+  ['workbench', 'AI workbench', '/ai-review', 'AI'], ['profiles', 'Profiles', '/profiles'], ['sources', 'Sources', '/sources'], ['taxonomy', 'Taxonomy', '/taxonomy'],
 ];
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + '/');
@@ -28,6 +28,7 @@ export function sectionOf(location: string): Section {
   if (path === '/insights' || under(path, '/analysis') || under(path, '/contract-awards')) return 'insights';
   if (path === '/ai-review' || path === '/workbench') return 'workbench';
   if (path === '/profiles') return 'profiles';
+  if (path === '/taxonomy') return 'taxonomy';
   // /sources, BC Bid's own pages (/bc-bid-dashboard, /scraper, /scraper/history, /settings) and anything unknown.
   return 'sources';
 }
@@ -93,9 +94,9 @@ export function viewHref(section: Section, view: string, location: string): stri
 }
 
 /** Which page component the shell renders; `router` defers to the legacy route tree (grid, awards, analysis, BC Bid pages). */
-export type Page = 'home' | 'insights' | 'procurement' | 'pursuits' | 'documents' | 'evidence' | 'ai-review' | 'workbench' | 'profiles' | 'sources' | 'settings' | 'router';
+export type Page = 'home' | 'insights' | 'procurement' | 'pursuits' | 'documents' | 'evidence' | 'ai-review' | 'workbench' | 'profiles' | 'sources' | 'settings' | 'router' | 'taxonomy';
 const PAGES: Record<string, Page> = {
   '/home': 'home', '/insights': 'insights', '/procurement': 'procurement', '/pursuits': 'pursuits', '/documents': 'documents', '/evidence': 'evidence',
-  '/ai-review': 'ai-review', '/workbench': 'workbench', '/profiles': 'profiles', '/sources': 'sources', '/settings': 'settings',
+  '/ai-review': 'ai-review', '/workbench': 'workbench', '/profiles': 'profiles', '/sources': 'sources', '/settings': 'settings', '/taxonomy': 'taxonomy',
 };
 export const pageOf = (location: string): Page => PAGES[pathOf(location)] ?? 'router';

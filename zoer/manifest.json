@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.34.3",
+  "version": "0.35.3",
   "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -527,6 +527,66 @@
         }
       },
       {
+        "id": "scrape.historical",
+        "title": "Import all public historical BC Bid opportunities",
+        "description": "Collect the public Apr 1, 2015\u2013Dec 15, 2022 archive in verified date ranges, preserving original notice types, GSIN labels and public attachment links. Each slice commits its progress with its records; restarts resume. Private records and supplier responses are excluded by the public portal. Browser verification requires manual completion.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 600000,
+          "maxMemoryMb": 512,
+          "maxOutputBytes": 4194304,
+          "maxBrowserPages": 26
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "all-public-2015-2022"
+              ]
+            }
+          },
+          "required": [
+            "scope"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "resumable": {
+          "stepTimeoutMs": 600000,
+          "maxSteps": 100000,
+          "maxRunHours": 720,
+          "retry": {
+            "delaysMs": [
+              30000,
+              120000,
+              300000
+            ],
+            "maxConsecutive": 6
+          },
+          "lock": {
+            "input": "scope",
+            "group": "bcbid-history"
+          },
+          "autoResume": "after-restart",
+          "cleanup": true
+        }
+      },
+      {
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -675,8 +735,8 @@
       },
       {
         "id": "scrape.targeted",
-        "title": "Refresh one BC Bid buyer or region",
-        "description": "Search BC Bid's public opportunities for one buyer (organization), region or keyword, confirm BC Bid applied that filter, and save up to 20 result pages plus details for new or changed notices (at most 40). Aborts without saving if the filter is not confirmed; clears the search afterwards. Browser checks require manual completion.",
+        "title": "Refresh BC Bid by buyer, region or industry category",
+        "description": "Search BC Bid's public opportunities for one buyer (organization), region, industry category or keyword, confirm BC Bid applied that filter, and save up to 70 result pages plus details for new or changed notices (at most 40). Aborts without saving if the filter is not confirmed; clears the search afterwards. Browser checks require manual completion.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -719,12 +779,20 @@
             "maxPages": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 20,
+              "maximum": 70,
               "default": 5
             },
             "details": {
               "type": "boolean",
               "default": true
+            },
+            "industryCategory": {
+              "type": "string",
+              "enum": [
+                "Construction",
+                "Goods",
+                "Services"
+              ]
             }
           },
           "anyOf": [
@@ -766,6 +834,21 @@
               "required": [
                 "keyword"
               ]
+            },
+            {
+              "required": [
+                "industryCategory"
+              ],
+              "properties": {
+                "industryCategory": {
+                  "type": "string",
+                  "enum": [
+                    "Construction",
+                    "Goods",
+                    "Services"
+                  ]
+                }
+              }
             }
           ]
         },

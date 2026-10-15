@@ -13,7 +13,7 @@ import { LISTING_URL } from './scrape';
  */
 export const TARGETED_SCOPE = 'bcbid-targeted';
 export const TARGETED_RECEIPT_KEY = 'checkpoint:targeted';
-export const TARGETED_MAX_PAGES = 20;
+export const TARGETED_MAX_PAGES = 70;
 /** Details are the expensive part (one capture plus three tabs each); a buyer refresh stays small. */
 export const TARGETED_MAX_DETAILS = 40;
 export const TARGET_FIELDS = {
@@ -21,12 +21,13 @@ export const TARGET_FIELDS = {
   // Tag pickers: type into the search box, choose the matching suggestion. Needs Zoer `pickFields` (see report).
   organization: '#body_x_selBpmIdOrgaLevelOrgaNode_search',
   region: '#body_x_selRfpIdAreaLevelAreaNode_search',
+  industryCategory: '#body_x_selPtypeCode_search',
 } as const;
 const DETAIL_TABS = ['Opportunity Details', 'Addenda', 'Interested Supplier List'];
 const STOP = /manual|browser check|cancel|unavailable|budget|invalid.ticket/i;
 
-export type FilterKind = 'organization' | 'region' | 'keyword';
-export interface TargetedFilters { organization?: string; region?: string; keyword?: string }
+export type FilterKind = 'organization' | 'region' | 'keyword' | 'industryCategory';
+export interface TargetedFilters { organization?: string; region?: string; keyword?: string; industryCategory?: string }
 export interface TargetedOptions extends TargetedFilters { maxPages: number; details: boolean }
 export interface CaptureOptions {
   url: string; pageNumber?: number; continuePage?: number; applySearch?: boolean; readTabs?: string[];
@@ -37,23 +38,24 @@ export interface CaptureOptions {
 interface PendingDetail { sourceKey: string; processId: string; detailUrl: string }
 export interface TargetedCheckpoint {
   version: 1; kind: 'targeted'; filters: TargetedFilters; phase: 'listing' | 'detail'; startedAt: string; runId?: string;
-  pages: number; totalPages: number | null; totalReported: number | null; truncated: boolean;
+  pages: number; totalPages: number | null; totalReported: number | null; reportedCountLabel?: string | null; reportedLowerBound?: number | null; truncated: boolean;
   listingCount: number; newCount: number; changedCount: number; detailsCompleted: number; detailsSkipped: number;
   pending: PendingDetail[]; failures: { sourceKey: string; message: string }[]; confirmed: Partial<Record<FilterKind, string>>;
 }
 export interface TargetedReceipt {
   version: 1; status: 'complete' | 'failed'; runId?: string; filters: TargetedFilters; confirmed: Partial<Record<FilterKind, string>>;
-  pages: number; totalPages: number | null; totalReported: number | null; truncated: boolean;
+  pages: number; totalPages: number | null; totalReported: number | null; reportedCountLabel?: string | null; reportedLowerBound?: number | null; truncated: boolean;
   listingCount: number; newCount: number; changedCount: number; detailsCompleted: number; detailsSkipped: number; detailFailures: number;
   filtersCleared: boolean | null; startedAt: string; finishedAt: string; error?: string;
 }
 
-const LABELS: Record<FilterKind, string> = { organization: 'buyer', region: 'region', keyword: 'keyword' };
+const LABELS: Record<FilterKind, string> = { organization: 'buyer', region: 'region', keyword: 'keyword', industryCategory: 'industry category' };
 // Filter summary labels BC Bid may use. Unknown labels are not guessed into a kind.
 const LABEL_KIND: [FilterKind, RegExp][] = [
   ['organization', /organi[sz]ation|issued by|buyer/i],
   ['region', /\bregion|\barea\b|location/i],
   ['keyword', /keyword|search text/i],
+  ['industryCategory', /^Industry Category$/i],
 ];
 const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
 /** Case- and spacing-insensitive comparison; BC Bid names are otherwise matched exactly. */
@@ -62,13 +64,14 @@ export const sameName = (a: string, b: string) => clean(a).toLowerCase() === cle
 export function validateTargetedInput(input: any): TargetedOptions {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Choose a buyer, region or keyword.');
   const out: TargetedOptions = { maxPages: 5, details: true };
-  for (const kind of ['organization', 'region', 'keyword'] as const) {
+  for (const kind of ['organization', 'region', 'keyword', 'industryCategory'] as const) {
     const value = input[kind];
     if (value === undefined || value === null || value === '') continue;
     if (typeof value !== 'string' || value.length > 200 || /[\u0000-\u001f\u007f]/.test(value) || !clean(value)) throw new Error(`Invalid ${LABELS[kind]}.`);
     out[kind] = clean(value);
   }
-  if (!out.organization && !out.region && !out.keyword) throw new Error('Choose a buyer, region or keyword.');
+  if (!out.organization && !out.region && !out.keyword && !out.industryCategory) throw new Error('Choose a buyer, region or keyword.');
+  if (out.industryCategory && !['Construction','Goods','Services'].includes(out.industryCategory)) throw Error('Invalid industry category.');
   if (input.maxPages !== undefined) {
     if (!Number.isInteger(input.maxPages) || input.maxPages < 1 || input.maxPages > TARGETED_MAX_PAGES) throw new Error(`Pages must be 1-${TARGETED_MAX_PAGES}.`);
     out.maxPages = input.maxPages;
@@ -79,7 +82,7 @@ export function validateTargetedInput(input: any): TargetedOptions {
   }
   return out;
 }
-const filtersOf = (options: TargetedFilters): TargetedFilters => Object.fromEntries((['organization', 'region', 'keyword'] as const).filter(kind => options[kind]).map(kind => [kind, options[kind]]));
+const filtersOf = (options: TargetedFilters): TargetedFilters => Object.fromEntries((['organization', 'region', 'keyword', 'industryCategory'] as const).filter(kind => options[kind]).map(kind => [kind, options[kind]]));
 
 /** Active filters from BC Bid's summary (`.tag-label` followed by a list of `.tag-text` values). */
 export function readFilterTags(html: string) {
@@ -93,9 +96,9 @@ export function readFilterTags(html: string) {
     return { label, values, kind: LABEL_KIND.find(([, pattern]) => pattern.test(label))?.[0] };
   });
 }
-/** Buyer, region or keyword filters still active on a listing page. A full crawl must not run under them. */
+/** Any narrowing beyond the default Open status must be rejected by a full current crawl. */
 export function activeTargetFilters(html: string) {
-  return readFilterTags(html).filter(tag => tag.kind && tag.values.length);
+  return readFilterTags(html).filter(tag => tag.values.length && !(tag.label === 'Status' && tag.values.length === 1 && tag.values[0] === 'Open'));
 }
 
 /**
@@ -106,7 +109,7 @@ export function activeTargetFilters(html: string) {
 export function verifyTargetedFilters(html: string, filters: TargetedFilters) {
   const tags = readFilterTags(html);
   const confirmed: Partial<Record<FilterKind, string>> = {};
-  for (const kind of ['organization', 'region', 'keyword'] as const) {
+  for (const kind of ['organization', 'region', 'keyword', 'industryCategory'] as const) {
     const values = tags.filter(tag => tag.kind === kind).flatMap(tag => tag.values);
     const wanted = filters[kind];
     if (!wanted) {
@@ -123,11 +126,20 @@ export function verifyTargetedFilters(html: string, filters: TargetedFilters) {
 
 /** Listing rows, allowing BC Bid's "0 Record(s)" page that has no grid table at all. */
 export function parseTargetedListing(page: PageCapture) {
-  const totalReported = Number(page.html.match(/(\d[\d,]*)\s*Record\(s\)/)?.[1]?.replace(/,/g, '') ?? NaN);
+  // BC Bid can display a lower bound for expensive searches. Strip markup before
+  // reading it so "More than <strong>150</strong>" cannot become an exact total.
+  const $ = cheerio.load(page.html);
+  const nodeText = (node: any): string => node.type === 'text' ? node.data : (node.children ?? []).map(nodeText).join(' ');
+  const text = $.root().toArray().map(nodeText).join(' ');
+  const label = clean(text).match(/(?:More than\s*)?(\d[\d,]*)\s*Record\(s\)/i);
+  const number = label ? Number(label[1].replace(/,/g,'')) : null;
+  const reportedLowerBound = label && /^More than/i.test(label[0]) ? number : null;
+  const totalReported = reportedLowerBound === null ? number : null;
+  const counts = {totalReported,reportedCountLabel:label?.[0] ?? null,reportedLowerBound};
   try {
-    return { records: parseCapture(page, 'listing').document.records!, totalReported: Number.isFinite(totalReported) ? totalReported : null };
+    return { records: parseCapture(page, 'listing').document.records!, ...counts };
   } catch (error) {
-    if (totalReported === 0 && /grid is not loaded/.test(String(error))) return { records: [], totalReported: 0 };
+    if (totalReported === 0 && /grid is not loaded/.test(String(error))) return { records: [], ...counts };
     throw error;
   }
 }
@@ -168,7 +180,7 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
     totalReported: null, truncated: false, listingCount: 0, newCount: 0, changedCount: 0, detailsCompleted: 0, detailsSkipped: 0, pending: [], failures: [], confirmed: {} };
   if (options.runId) state.runId = options.runId;
   const searchFields = [{ selector: TARGET_FIELDS.keyword, value: filters.keyword ?? '' }];
-  const pickFields = (['organization', 'region'] as const).filter(kind => filters[kind]).map(kind => ({ selector: TARGET_FIELDS[kind], value: filters[kind]! }));
+  const pickFields = (['organization', 'region', 'industryCategory'] as const).filter(kind => filters[kind]).map(kind => ({ selector: TARGET_FIELDS[kind], value: filters[kind]! }));
   const capture = async (request: CaptureOptions) => {
     let failure: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -185,7 +197,7 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
     filtersCleared = activeTargetFilters(page.html).length === 0;
   };
   const receipt = (status: TargetedReceipt['status'], error?: string): TargetedReceipt => ({ version: 1, status, runId: options.runId, filters, confirmed: state.confirmed,
-    pages: state.pages, totalPages: state.totalPages, totalReported: state.totalReported, truncated: state.truncated, listingCount: state.listingCount,
+    pages: state.pages, totalPages: state.totalPages, totalReported: state.totalReported, reportedCountLabel: state.reportedCountLabel, reportedLowerBound: state.reportedLowerBound, truncated: state.truncated, listingCount: state.listingCount,
     newCount: state.newCount, changedCount: state.changedCount, detailsCompleted: state.detailsCompleted, detailsSkipped: state.detailsSkipped,
     detailFailures: state.failures.length, filtersCleared, startedAt: state.startedAt, finishedAt: now(), ...(error ? { error } : {}) });
   let artifactId = '';
@@ -197,10 +209,10 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
         const page = await capture(number === 1
           ? { url: LISTING_URL, pageNumber: 1, applySearch: true, searchFields, ...(pickFields.length ? { pickFields } : {}) }
           : { url: LISTING_URL, continuePage: number, searchFields });
-        const { records, totalReported } = parseTargetedListing(page);
+        const { records, totalReported, reportedCountLabel, reportedLowerBound } = parseTargetedListing(page);
         // Checked on every page: BC Bid keeps the search in its session and a reset there would widen later pages.
         const confirmed = verifyTargetedFilters(page.html, filters);
-        if (number === 1) { state.confirmed = confirmed; state.totalReported = totalReported; }
+        if (number === 1) { state.confirmed = confirmed; state.totalReported = totalReported; state.reportedCountLabel = reportedCountLabel; state.reportedLowerBound = reportedLowerBound; }
         if (records.length && (!page.pagination || page.pagination.currentPage !== number)) throw new Error('The listing pager returned the wrong page.');
         if (filters.organization && records.length && !records.some(row => [row.issuedBy, row.issuedFor].some(name => name && sameName(name, filters.organization!)))) {
           throw new Error(`None of BC Bid's results name "${filters.organization}" as the buyer, so the filter is not trusted. Nothing was saved from this page.`);
@@ -246,7 +258,7 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
     const done = receipt('complete');
     await store.receipt(done);
     return { artifactId, scope: TARGETED_SCOPE, limited: true, filters, confirmed: state.confirmed, pageCount: state.pages, totalPages: state.totalPages,
-      totalReported: state.totalReported, truncated: state.truncated, listingCount: state.listingCount, newCount: state.newCount, changedCount: state.changedCount,
+      totalReported: state.totalReported, reportedCountLabel: state.reportedCountLabel, reportedLowerBound: state.reportedLowerBound, truncated: state.truncated, listingCount: state.listingCount, newCount: state.newCount, changedCount: state.changedCount,
       detailCount: state.detailsCompleted, detailsSkipped: state.detailsSkipped, detailFailures: state.failures.length, filtersCleared: done.filtersCleared };
   } catch (error) {
     // Zoer is updating: browser work is refused, so the search stays in BC Bid until the resumed run clears it.

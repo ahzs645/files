@@ -4,9 +4,10 @@ import { queryBuyerProfiles } from './buyer-profiles';
 import { buildMarketView } from './market/model';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
 import { buildContractAwardAnalysisOverview, buildContractAwardEntityProfile, buildContractAwardEntityOptions } from '../../convex/contractAwardsAnalysisHelpers';
+import { isSourceCaptureRun } from './document-run';
 
 /** `buyer City of Nanaimo · keyword "paving"` for a targeted refresh's saved filters. */
-export const targetedLabel = (filters: any) => [filters?.organization && `buyer ${filters.organization}`, filters?.region && `region ${filters.region}`, filters?.keyword && `keyword "${filters.keyword}"`].filter(Boolean).join(' · ') || 'targeted refresh';
+export const targetedLabel = (filters: any) => [filters?.organization && `buyer ${filters.organization}`, filters?.region && `region ${filters.region}`, filters?.industryCategory && `industry ${filters.industryCategory}`, filters?.keyword && `keyword "${filters.keyword}"`].filter(Boolean).join(' · ') || 'targeted refresh';
 export interface WorkspaceState { runs: any[]; artifacts: any[]; runsTruncated?: boolean }
 const TERMINAL = ['succeeded', 'failed', 'cancelled', 'outcome_unknown'];
 /**
@@ -84,7 +85,8 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
   }).sort((a, b) => b.startedAt - a.startedAt);
   const awardRuns = state.runs.filter(run => run.actionId === 'awards.history').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const documentRuns = state.runs.filter(run => ['documents.download', 'documents.download.all'].includes(run.actionId));
-  return { stars, awardCheckpoint, awardRecentCheckpoint: null as any, awardRuns, documentRuns, opportunities: [...opportunities.values()].map(row => ({ ...row, starred: stars.get('opportunity:' + row.sourceKey) === true })), awards: [...awards.values()].map(row => ({ ...row, starred: stars.get('award:' + row.importKey) === true })), runs, history, runsTruncated: state.runsTruncated };
+  const captureRuns = state.runs.filter(isSourceCaptureRun);
+  return { stars, awardCheckpoint, awardRecentCheckpoint: null as any, awardRuns, documentRuns, captureRuns, opportunities: [...opportunities.values()].map(row => ({ ...row, starred: stars.get('opportunity:' + row.sourceKey) === true })), awards: [...awards.values()].map(row => ({ ...row, starred: stars.get('award:' + row.importKey) === true })), runs, history, runsTruncated: state.runsTruncated };
 }
 export type Model = ReturnType<typeof buildModel>;
 export function queryModel(model: Model, name: string, args: any = {}): any {

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { scrapeTargeted, verifyTargetedFilters, validateTargetedInput, activeTargetFilters, writeTargetedReceipt, TARGET_FIELDS, TARGETED_RECEIPT_KEY, type CaptureOptions } from '../zoer/src/targeted-scrape';
+import { scrapeTargeted, parseTargetedListing, verifyTargetedFilters, validateTargetedInput, activeTargetFilters, writeTargetedReceipt, TARGET_FIELDS, TARGETED_RECEIPT_KEY, type CaptureOptions } from '../zoer/src/targeted-scrape';
 import { scrapeFull } from '../zoer/src/full-scrape';
 import { saveCatalogDocument } from '../zoer/src/catalog';
 import { LISTING_URL } from '../zoer/src/scrape';
@@ -35,10 +35,25 @@ describe('targeted BC Bid refresh', () => {
   it('validates bounded input and needs at least one filter', () => {
     expect(validateTargetedInput({ organization: '  Ministry  of Health ' })).toEqual({ organization: 'Ministry of Health', maxPages: 5, details: true });
     expect(() => validateTargetedInput({})).toThrow('Choose a buyer');
-    expect(() => validateTargetedInput({ region: 'Capital', maxPages: 21 })).toThrow('1-20');
+    expect(() => validateTargetedInput({ region: 'Capital', maxPages: 71 })).toThrow('1-70');
     expect(() => validateTargetedInput({ keyword: 'a\u0000b' })).toThrow('Invalid keyword');
   });
 
+  it('captures all 70 category pages without exceeding the existing navigation grant', async () => {
+    const tags = summary([['Status', ['Open']], ['Industry Category', ['Services']]]);
+    const h = harness((o) => o.pickFields?.length || o.continuePage ? listing(o.continuePage ?? 1,70,tags) : cleared());
+    const result = await scrapeTargeted(h.browser,h.store,{ industryCategory:'Services', maxPages:70, details:false });
+    expect(result).toMatchObject({ pageCount:70, listingCount:140, truncated:false, filtersCleared:true });
+    const manifest=JSON.parse(readFileSync(new URL('../zoer/manifest.json',import.meta.url),'utf8'));
+    const grant=manifest.integration.actions.find((a:any)=>a.id==='scrape.targeted').resourceLimits.maxBrowserPages;
+    const cost=h.calls.reduce((n,r)=>n+Math.min(r.pageNumber??(r.continuePage?2:1),20)+(r.pageNumber===undefined?0:1)+(r.applySearch?2:0)+(r.pickFields?.length??0),0);
+    expect(cost + 40*4).toBeLessThanOrEqual(grant);
+  });
+  it('distinguishes lower-bound source counts, including markup, from exact totals', () => {
+    const page=listing(1,1);
+    expect(parseTargetedListing({...page,html:page.html+'<div>More than <strong>150</strong> Record(s)</div>'})).toMatchObject({totalReported:null,reportedLowerBound:150,reportedCountLabel:'More than 150 Record(s)'});
+    expect(parseTargetedListing({...page,html:page.html+'<div>386 Record(s)</div>'})).toMatchObject({totalReported:386,reportedLowerBound:null});
+  });
   it('confirms only the exact requested filters from the summary tags', () => {
     expect(verifyTargetedFilters(HEALTH, { organization: 'ministry of health' })).toEqual({ organization: 'Ministry of Health' });
     expect(() => verifyTargetedFilters('<div></div>', { organization: 'Ministry of Health' })).toThrow('did not confirm the buyer filter');

@@ -522,6 +522,23 @@ export function parseDetailPage(html: string, baseUrl: string, pageUrl: string):
         .join(" ")
     );
 
+  const mainCommodities: string[] = [], otherCommodities: string[] = [];
+  let commodityTablesCaptured = false;
+  $('table').each((_, element) => {
+    const table = $(element);
+    if (isHiddenContext($, table)) return;
+    const header = getTableHeaders($, table)[0] || '';
+    if (!/^(Main Commodity|Other Commodities)$/i.test(header)) return;
+    if (/^Main Commodity$/i.test(header)) commodityTablesCaptured = true;
+    getTableRows(table).each((_, row) => {
+      const cell = $(row).children('td').first();
+      if (!cell.length || isHiddenContext($, cell)) return;
+      const name = cleanText($, cell);
+      if (!name || /^no (?:records|results|data)(?: found| available| to display)?[.!]?$/i.test(name)) return;
+      (/^Main Commodity$/i.test(header) ? mainCommodities : otherCommodities).push(name);
+    });
+  });
+  const main = dedupeStrings(mainCommodities);
   return {
     processId,
     detailUrl: pageUrl,
@@ -529,6 +546,7 @@ export function parseDetailPage(html: string, baseUrl: string, pageUrl: string):
     detailFields,
     addenda,
     attachments,
+    ...(commodityTablesCaptured ? { commodityTablesCaptured: true, mainCommodity: main.length === 1 ? main[0] : null, commodities: dedupeStrings([...main, ...otherCommodities]) } : {}),
     sourceCapturedAt: new Date().toISOString()
   };
 }

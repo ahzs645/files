@@ -4,7 +4,7 @@ import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, pageOf, redirectOf, sectionOf, vi
 describe('review workspace navigation', () => {
   it('has six primary sections and a separate Configure group', () => {
     expect(PRIMARY_SECTIONS.map(([id]) => id)).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'evidence', 'insights']);
-    expect(CONFIGURE_SECTIONS.map(([id]) => id)).toEqual(['workbench', 'profiles', 'sources']);
+    expect(CONFIGURE_SECTIONS.map(([id]) => id)).toEqual(['workbench', 'profiles', 'sources', 'taxonomy']);
     // Phones keep short labels where the long ones would not fit.
     expect(PRIMARY_SECTIONS.find(([id]) => id === 'opportunities')?.[3]).toBe('Opps');
     expect(PRIMARY_SECTIONS.find(([id]) => id === 'documents')?.[3]).toBe('Docs');

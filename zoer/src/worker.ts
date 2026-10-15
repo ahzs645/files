@@ -12,8 +12,9 @@ import { collectionSlice, runCollection } from './collection-run';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
 import { backfillEnrichment } from './procurement-enrichment';
-import { createRequestPacing } from './request-pacing';
+import { createRequestPacing, requestDelaySeconds } from './request-pacing';
 import { captureMissingDetails } from './missing-details';
+import { historicalSlice } from './historical-scrape';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -141,6 +142,10 @@ try {
     });
     const artifactId=await save({version:1,kind:'listing',records,fileName:request.input.fileName});
     write({protocolVersion:'1',runId,ok:true,output:{artifactId,count:records.length}});
+  } else if (request.action.id === 'scrape.historical') {
+    if (!browserTicket || !catalogTicket || !request.resumable) throw new Error('Historical collection needs an agent-allowed browser, existing catalog and resumable host.');
+    const output = await historicalSlice(catalogCall, options => call('browser.capture-url', { ...options, ticket: browserTicket }), save, request.input, runId, request.resumable, { delaySeconds: requestDelaySeconds(request.config), paused: channel.pauseRequested });
+    write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.full') {
     if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
     const resume = await fullScrapeResume(request, async () => {

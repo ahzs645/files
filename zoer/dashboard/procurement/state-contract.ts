@@ -1,3 +1,4 @@
+import { METADATA_FILTER_KEYS, metadataPredicates, type MetadataFilters } from './metadata-filter';
 import { EXCLUDE_MAX_TERMS, EXCLUDE_MAX_TEXT, allExcludeTerms } from './exclude';
 export const PURSUIT_STAGES = ['Watching', 'Reviewing', 'Preparing', 'Submitted', 'Awarded', 'Closed'] as const;
 export type PursuitStage = typeof PURSUIT_STAGES[number];
@@ -15,7 +16,7 @@ export const HIDDEN_PREFIX = 'procurement:hidden:';
 export const MAX_HIDDEN_BATCH = 20;
 /** Record ids currently hidden. The IS NOT NULL guard keeps `NOT IN` from turning into "exclude everything". */
 export const HIDDEN_IDS_SQL = `SELECT json_extract(data,'$.recordId') FROM workspace_state WHERE key LIKE '${HIDDEN_PREFIX}%' AND json_extract(data,'$.hidden')=1 AND json_extract(data,'$.recordId') IS NOT NULL`;
-export type ProcurementFilters = {
+export type ProcurementFilters = MetadataFilters & {
   source: string; kind: 'all' | 'opportunity' | 'award'; search: string;
   region: string; category: string; classification?: string; buyer: string; supplier: string; deadline: 'all' | 'week'; shortlist: boolean;
   /** Exclude words (exclude.ts). Older saved searches have none. */
@@ -49,13 +50,14 @@ export function validateSourceId(value: unknown, allowAll = false): string {
 }
 export function validateProcurementFilters(value: unknown): ProcurementFilters {
   if (!object(value)) throw Error('Invalid saved-search filters.');
-  if (Object.keys(value).some(key => !['source', 'kind', 'search', 'region', 'category', 'classification', 'buyer', 'supplier', 'deadline', 'shortlist', 'exclude', 'place'].includes(key))) throw Error('Unknown saved-search filter.');
+  if (Object.keys(value).some(key => !['source', 'kind', 'search', 'region', 'category', 'classification', 'buyer', 'supplier', 'deadline', 'shortlist', 'exclude', 'place', ...METADATA_FILTER_KEYS].includes(key))) throw Error('Unknown saved-search filter.');
+  const metadata = Object.fromEntries(METADATA_FILTER_KEYS.filter(k => value[k] !== undefined).map(k => [k, text(value[k], k, 300, true)])); metadataPredicates(metadata);
   const exclude = text(value.exclude ?? '', 'exclude words', EXCLUDE_MAX_TEXT, true);
   if (allExcludeTerms(exclude).length > EXCLUDE_MAX_TERMS) throw Error(`Use at most ${EXCLUDE_MAX_TERMS} exclude words.`);
   const place = text(value.place ?? '', 'place', 300, true);
   if (place && !PLACE_FILTER.test(place)) throw Error('Invalid place filter.');
   if (!['all', 'opportunity', 'award'].includes(value.kind as string) || !['all', 'week'].includes(value.deadline as string) || typeof value.shortlist !== 'boolean') throw Error('Invalid saved-search filter value.');
-  return { source: validateSourceId(value.source, true), kind: value.kind as ProcurementFilters['kind'],
+  return { ...metadata, source: validateSourceId(value.source, true), kind: value.kind as ProcurementFilters['kind'],
     search: text(value.search, 'search text', 1000, true), region: text(value.region, 'region', 300, true),
     category: text(value.category, 'category', 300, true), classification: text(value.classification ?? '', 'classification', 12000, true), buyer: text(value.buyer, 'buyer', 300, true), supplier: text(value.supplier ?? '', 'supplier', 300, true),
     deadline: value.deadline as ProcurementFilters['deadline'], shortlist: value.shortlist, exclude, place };

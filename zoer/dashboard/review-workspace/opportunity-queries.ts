@@ -1,3 +1,4 @@
+import { METADATA_FILTER_KEYS } from '../procurement/metadata-filter';
 import { MONEY_KIND_LABELS, SUGGESTED_ACTIONS, partitionMoney, type Money, type MoneyKind } from '@bcbid/procurement-core';
 import { sql } from '../procurement/display';
 import { parseExcludeTerms } from '../procurement/exclude';
@@ -100,7 +101,7 @@ export function describeFilters(params: URLSearchParams, profileText: string, so
   if (KIND_TEXT[get('kind')]) out.push(`Type: ${KIND_TEXT[get('kind')]}`);
   if (get('deadline') === 'week') out.push('Closing in 7 days');
   if (get('shortlist') === '1') out.push('Shortlisted');
-  for (const key of ['region', 'category', 'buyer', 'supplier', 'classification']) if (get(key)) out.push(`${key[0].toUpperCase()}${key.slice(1)}: ${get(key)}`);
+  for (const key of ['region', 'category', 'buyer', 'supplier', 'classification', ...METADATA_FILTER_KEYS]) if (get(key)) out.push(`${key[0].toUpperCase()}${key.slice(1)}: ${get(key)}`);
   if (get('aiLabel')) out.push(`AI category: ${get('aiLabel')}`);
   const exclude = parseExcludeTerms(get('exclude'));
   if (exclude.length) out.push(`Excluding: ${exclude.join(', ')}`);

@@ -1,11 +1,7 @@
 import { targetedLabel } from './model';
 
-// BC regional districts as the old sbcontest scraper typed them into BC Bid. BC Bid's own tag names were not
-// re-observed (its browser check blocks plain Playwright), so a mismatch is reported with BC Bid's exact name.
-export const BC_REGIONS = ['Alberni-Clayoquot', 'Bulkley-Nechako', 'Capital', 'Cariboo', 'Central Coast', 'Central Kootenay', 'Central Okanagan',
-  'Columbia Shuswap', 'Comox Valley', 'Cowichan Valley', 'East Kootenay', 'Fraser Valley', 'Fraser-Fort George', 'Kitimat-Stikine', 'Kootenay Boundary',
-  'Metro Vancouver', 'Mount Waddington', 'Nanaimo', 'North Coast', 'North Okanagan', 'Northern Rockies', 'Okanagan-Similkameen', 'Peace River', 'qathet',
-  'Squamish-Lillooet', 'Stikine', 'Strathcona', 'Sunshine Coast', 'Thompson-Nicola'];
+import reference from '../data/bc-bid-filter-reference.json';
+export const BC_REGIONS = reference.regions.filter(t=>t.level==='regional-district' || t.level==='province').map(t=>t.title).sort();
 const when = (value?: string) => value ? new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 
 /** Receipt text for `checkpoint:targeted`: what was searched, what came back, and whether BC Bid's search was cleared. */

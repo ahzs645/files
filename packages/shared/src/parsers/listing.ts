@@ -78,9 +78,15 @@ export function parseListingPage(html: string, baseUrl: string): ListingPagePars
     }
 
     const commodityItems = $(cells[3]).find("li");
+    const commodityCell = $(cells[3]).clone();
+    commodityCell.find('br').replaceWith('\n');
+    commodityCell.find('div, p').append('\n');
     const commodities = commodityItems.length
       ? commodityItems.map((_, item) => normalizeWhitespace($(item).text())).get()
-      : getText(3).split(/[,;]+/);
+      // Commas occur inside official titles. Preserve them; BC Bid also uses
+      // semicolons and line/list boundaries to separate labels. Detail tables
+      // are authoritative when available.
+      : commodityCell.text().split(/[;\r\n]+/);
 
     opportunities.push({
       sourceKey: processId ?? opportunityId,

@@ -8,10 +8,12 @@ import { buildModel, queryModel, type Model, type SavedDocument, type WorkspaceS
 import { host } from './bridge';
 import { queryCatalog, readAll, resetCatalogCache } from './queries';
 import { SAVED_BC_BID_BUYERS_QUERY } from './buyer-query';
+import { readWorkspaceMetadata } from './workspace-bootstrap';
 export { readAll } from './queries';
 let snapshot: { model?: Model; error?: string; notice?: string } = {};
 const listeners = new Set<() => void>();
 let databaseRevision = -1;
+let metadataRevision = -1;
 export function analysisRevision() { return databaseRevision; }
 
 let savedEntries: any[] = [];
@@ -29,8 +31,10 @@ export function refresh() {
   pending = (async () => {
     try {
       const state = await host('state', { summary: true }) as WorkspaceState;
+      if (current !== generation) return;
       rawState = state;
       const head = await host('catalog.read', { ids: [] });
+      if (current !== generation) return;
       if (!head.primary) {
         if (import.meta.env.VITE_ZOER_NATIVE) throw new Error('The existing BC Bid catalog is not ready. Open its database in Databases before continuing.');
         const active = state.runs.find(run => !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status));
@@ -40,14 +44,21 @@ export function refresh() {
         else throw new Error('Database migration did not finish. Reload to retry; existing files are retained.');
         snapshot = { notice: 'Moving saved bids into the database… Existing data is retained.' }; return;
       }
-      if (head.revision !== databaseRevision) {
-        const entries: any[] = [];
+      // Saved tables do not depend on old scrape receipts. Let them start as soon
+      // as the existing catalog is verified; hydrate run history in the background.
+      databaseRevision=head.revision;
+      if (!snapshot.model) {
+        snapshot = { model: buildModel(state, []) }; emit();
+        // Let the visible page's effects enqueue its first read before history
+        // hydration claims all four bridge slots.
+        await new Promise<void>(resolve=>setTimeout(resolve,0));
+        if (current !== generation) return;
+      }
+      if (head.revision !== metadataRevision) {
         const keys = ['checkpoint:awards', 'checkpoint:awards:recent', 'checkpoint:full', 'checkpoint:targeted', ...state.runs.map(run => 'run:' + run.id)];
-        for (let i = 0; i < keys.length; i += 20) {
-          const page = await host('catalog.workspace', { keys: keys.slice(i, i + 20) });
-          entries.push(...page.entries);
-        }
-        savedEntries=entries;databaseRevision=head.revision;
+        const entries = await readWorkspaceMetadata(host, keys);
+        if (current !== generation) return;
+        savedEntries=entries;metadataRevision=head.revision;
       }
       const metadata=savedEntries.filter(entry=>entry.key.startsWith('run:')).map(entry=>entry.value).map(item=>item.document.kind==='listing'?{...item,document:{...item.document,kind:'scrape'}}:item);
       if (current !== generation) return;
@@ -78,9 +89,12 @@ export function startWorkspace() {
   document.addEventListener('visibilitychange', visible);
   return () => {
     clearInterval(timer); document.removeEventListener('visibilitychange', visible);
-    generation++; pending = undefined; snapshot = {}; databaseRevision = -1;
+    generation++; pending = undefined; snapshot = {}; databaseRevision = -1; metadataRevision = -1;
     savedEntries = []; fullCheckpoint = null; targetedCheckpoint = null; loadedHistory.clear(); migrationStarted = false;
-    rawState = { runs: [], artifacts: [] }; queryClient.clear(); resetCatalogCache(); starPending.clear(); emit();
+    // The native loader creates a distinct module on auth/environment/version
+    // changes. Keep this session's bounded five-minute query cache across closes;
+    // cancel old readers, then re-check catalog readiness when it opens again.
+    rawState = { runs: [], artifacts: [] }; void queryClient.cancelQueries(); resetCatalogCache(); starPending.clear(); emit();
   };
 }
 if (!import.meta.env.VITE_ZOER_NATIVE) startWorkspace();
@@ -197,7 +211,7 @@ export async function testScraperBrowser() {
 
 /** Last targeted refresh receipt (`checkpoint:targeted`), or null before the first one. */
 export function targetedReceipt() { return targetedCheckpoint ? structuredClone(targetedCheckpoint) : null; }
-export async function startTargetedRefresh(input: { organization?: string; region?: string; keyword?: string; maxPages: number; details: boolean }) {
+export async function startTargetedRefresh(input: { organization?: string; region?: string; keyword?: string; industryCategory?: string; maxPages: number; details: boolean }) {
   await refresh();
   if (snapshot.error) throw new Error(snapshot.error);
   // One browser: a filtered search would also narrow a running full crawl's pages.

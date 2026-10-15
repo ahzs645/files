@@ -32,6 +32,7 @@ export function TargetedRefreshPanel() {
   const [organization, setOrganization] = useState('');
   const [region, setRegion] = useState('');
   const [keyword, setKeyword] = useState('');
+  const [industryCategory,setIndustryCategory] = useState('');
   const [pages, setPages] = useState(5);
   const [details, setDetails] = useState(true);
   const [pending, setPending] = useState(false);
@@ -46,11 +47,11 @@ export function TargetedRefreshPanel() {
   const active = model.runs.find(run => ['running', 'stopping'].includes(run.status));
   const run = runId ? model.runs.find(item => item._id === runId) : undefined;
   const receipt = receiptSummary(targetedReceipt());
-  const ready = !!(organization.trim() || region.trim() || keyword.trim());
+  const ready = !!(organization.trim() || region.trim() || keyword.trim() || industryCategory);
   const browserCheck = /browser check|verification/i.test(`${run?.errorMessage ?? ''} ${receipt?.error ?? ''}`);
   const start = async () => {
     setPending(true); setError(undefined); setRunId(undefined);
-    try { setRunId(await startTargetedRefresh({ organization: organization.trim(), region: region.trim(), keyword: keyword.trim(), maxPages: pages, details })); }
+    try { setRunId(await startTargetedRefresh({ organization: organization.trim(), region: region.trim(), keyword: keyword.trim(), industryCategory, maxPages: pages, details })); }
     catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setPending(false); }
   };
@@ -58,17 +59,18 @@ export function TargetedRefreshPanel() {
     : run.status === 'succeeded' ? `Refresh finished: ${run.progress.message}` : run.status === 'cancelled' ? 'Refresh stopped. Saved notices are retained.'
     : run.errorMessage || 'Refresh failed. Check Recent runs for details.' : null;
   return <section className="zoer-history zoer-setup bid-targeted" aria-labelledby="bid-targeted-title">
-    <div><h2 id="bid-targeted-title">Refresh one buyer or region</h2>
-      <p>Searches BC Bid for one buyer, region or keyword and saves only those results, without a full scrape. BC Bid must confirm the filter or nothing is saved; the search is cleared afterwards.</p></div>
+    <div><h2 id="bid-targeted-title">Refresh BC Bid metadata</h2>
+      <p>Searches BC Bid for a buyer, region, industry category or keyword and saves only those results, without a full scrape. BC Bid must confirm the filter or nothing is saved; the search is cleared afterwards.</p></div>
     <div className="bid-targeted-form">
       <NamePicker label="Buyer" empty="Any buyer" disabled={pending} value={organization} onChange={setOrganization}
         options={(buyers ?? []).map(row => ({ value: row.name, label: `${row.name} (${row.count})` }))} />
       <NamePicker label="Region" empty="Any region" disabled={pending} value={region} onChange={setRegion} options={BC_REGIONS.map(name => ({ value: name, label: name }))} />
+      <NamePicker label="Industry category" empty="Any category" disabled={pending} value={industryCategory} onChange={setIndustryCategory} options={['Construction','Goods','Services'].map(value=>({value,label:value}))} />
       <div className="bid-targeted-field"><label htmlFor="bid-targeted-keyword">Keyword</label>
         <input id="bid-targeted-keyword" type="search" maxLength={200} placeholder="Optional" value={keyword} disabled={pending} onChange={event => setKeyword(event.target.value)} /></div>
       <div className="bid-targeted-field bid-targeted-pages"><label htmlFor="bid-targeted-pages">Pages</label>
-        <input id="bid-targeted-pages" type="number" inputMode="numeric" min={1} max={20} value={pages} disabled={pending}
-          onChange={event => setPages(Math.max(1, Math.min(20, Math.round(Number(event.target.value) || 1))))} /></div>
+        <input id="bid-targeted-pages" type="number" inputMode="numeric" min={1} max={70} value={pages} disabled={pending}
+          onChange={event => setPages(Math.max(1, Math.min(70, Math.round(Number(event.target.value) || 1))))} /></div>
       <label className="bid-targeted-check"><input type="checkbox" checked={details} disabled={pending} onChange={event => setDetails(event.target.checked)} /> Include details</label>
       <Button className="bid-targeted-run" loading={pending} disabled={!ready || !!active} onClick={() => void start()}>{pending ? 'Starting…' : 'Refresh'}</Button>
     </div>

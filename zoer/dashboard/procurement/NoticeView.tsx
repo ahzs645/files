@@ -4,7 +4,8 @@ import { Archive, Download, FileText, FileWarning, RefreshCw, X } from 'lucide-r
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
-import { setStar } from '../backend';
+import { setStar, useWorkspace } from '../backend';
+import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from '../document-run';
 import { downloadDocumentBundle, sizeText } from '../document-bundle';
 import { patchPluginQuery, usePluginLocation } from '../navigation';
 import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
@@ -25,6 +26,8 @@ import { ChangesPanel } from '../review-workspace/ChangesPanel';
 import { ReviewActivity } from '../review-workspace/ReviewActivity';
 import { LEGACY_TABS, NOTICE_TABS, coverageGaps, headerMoney, noticeKey, readChanges, readExtractionSpans, readExtractions, readFacts, readStageRuns, resolveNoticeTab, scopeText, stageStatus, when, type NoticeTabId } from '../review-workspace/notice-queries';
 import './notice.css';
+import { NoticeTaxonomy } from './Taxonomy';
+import { NoticeHistorical } from './Historical';
 
 /** Route values: `decision|requirements|evidence|changes|activity|ai`; old `overview`/`documents` still open their tab. */
 export type NoticeTab = NoticeTabId | 'overview' | 'documents';
@@ -91,6 +94,8 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { i
       {available ? <DecisionHeader recordId={id} pursuitStage={pursuit?.stage ?? null} onTab={setTab} /> : !workspace.isPending && <p className="rw-upgrade" role="note">{workspace.data?.reason ?? 'Update Zoer to use the review workspace. Existing search, pursuits, documents and AI review keep working.'} Requirements, changes and decisions appear here once it is available.</p>}
       {available && <h3 className="pc-notice-subhead">Notice</h3>}
       <Overview id={id} record={record} reviews={reviews} documents={documents} tags={detail.data.tags ?? []} onTab={setTab} onSaved={refresh} workspace={available} />
+      <NoticeTaxonomy id={id} fingerprint={data.classificationLinkSet} />
+      <NoticeHistorical data={data} />
     </div>}
     {record && tab === 'requirements' && <RequirementMatrix recordId={id} />}
     {record && tab === 'evidence' && <div className="pc-notice-section">
@@ -206,6 +211,8 @@ const HostPdfPreview = (Controls as Record<string, unknown>).PdfPreview as Compo
 const coarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 function Documents({ id, source, documents, cite, onRefresh }: { id: string; source: string; documents: any[]; cite?: Cite; onRefresh(): void }) {
+  const { model } = useWorkspace();
+  const browserBusy = !model || sourceCaptureActive(model.captureRuns) || documentDownloadActive(model.documentRuns);
   const readable = documents.filter(hasUsableText), saved = documents.filter(doc => doc.status === 'downloaded');
   const [selected, setSelected] = useState<string>(cite?.documentId ?? readable[0]?.id ?? saved[0]?.id ?? documents[0]?.id ?? '');
   const initialMode = (doc: any) => isPdf(doc) && (HostPdfPreview || !coarse()) ? 'pdf' : 'text';
@@ -221,11 +228,11 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
   };
   const getAttachments = async () => {
     setBusy(true); setError(''); setMessage('');
-    try { await runProcurementAction('documents.download', { recordIds: [id] }); setMessage('Attachments downloaded.'); onRefresh(); }
+    try { await assertDocumentBrowserIdle(host); await runProcurementAction('documents.download', { recordIds: [id] }); setMessage('Attachments downloaded.'); onRefresh(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   if (!documents.length) return <div className="pc-notice-section"><div className="pc-card pc-card-empty"><header><h3>No documents yet</h3></header>
-    {source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
+    {source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || browserBusy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}</div></div>;
   const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${hasUsableText(item) ? '' : ' · Saved; no usable text extracted'}` : 'Couldn’t download this file';
   return <div className="pc-docs">
@@ -239,7 +246,7 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
       <span className="pc-doc-tools">
         {doc?.status === 'downloaded' && <Btn size="sm" variant="ghost" aria-label={`Download ${doc.name}`} tooltip="Download" icon={<Download aria-hidden="true" className="h-4 w-4" />} onClick={() => void host('catalog.download', { id: doc.id, name: doc.name }).catch(e => setError(e.message))}><span className="sr-only">Download</span></Btn>}
         {saved.length > 1 && <Btn size="sm" variant="ghost" aria-label={`Download all ${saved.length} documents as one zip`} tooltip="Download all documents (zip)" disabled={busy} icon={<Archive aria-hidden="true" className="h-4 w-4" />} onClick={() => void downloadAll()}><span className="sr-only">Download all documents</span></Btn>}
-        {source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
+        {source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy || browserBusy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
       </span>
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-card-meta">{message}</p>}

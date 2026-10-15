@@ -1,5 +1,41 @@
 # BC Bid Monitor for Zoer
 
+## Commodity metadata maintenance
+
+Saved BC Bid records retain the original `commodities`, captured `detailFields`,
+buyers, opportunity type, dates, source URLs and capture time. The operator
+backfill in `scripts/backfillBcBidMetadata.py` adds `mainCommodity`, numeric
+`classificationCodes`, `commodityClassifications` (code, title, level and
+ancestors), explicit unresolved labels, and the official workbook URL/version/
+SHA-256/row provenance. Codes are **derived by unique exact title match** against
+BC's official UNSPSC workbook, rather than represented as codes directly shown
+on the opportunity. Ambiguous titles remain unresolved.
+
+`category` and `industryCategories` are saved only from source Industry Category
+filter captures, with their provenance. Current Open listing captures do not
+establish categories of older/closed notices. Source detail-table captures can
+repair older joined or comma-split commodity labels, preserving their before
+images. Raw documents, stars, review results and scrape checkpoints stay intact.
+
+This is an operator maintenance script, **not an automatic scheduled feature**.
+It uses only the existing primary catalog, defaults to a dry run, merges current
+records under an optimistic revision check and reads back each applied batch.
+Download the [official BC workbook](https://www2.gov.bc.ca/assets/gov/bc-procurement-resources/unspsc_codes_in_bc_bid_-_aug_2023.xlsx?forcedownload=true),
+then run with Python/openpyxl:
+
+```sh
+python3 scripts/backfillBcBidMetadata.py \
+  --workbook /path/to/official-workbook.xlsx \
+  --categories /path/to/bc-category-source.json \
+  --commodity-details /path/to/bc-commodity-detail-source.json \
+  --output /path/to/unique-receipt-directory
+```
+
+The two browser evidence inputs are optional. Review `plan.json`, then add
+`--apply`. Keep each run's receipt directory so before-images are retained.
+Refresh source captures/workbook and re-run after a scrape that changes labels;
+this backfill does not make every future scrape automatically resolve codes.
+
 Version 0.20 packages the existing `apps/dashboard` React experience and shared parsers as a separately loadable plugin. Zoer provides browsers, isolated worker execution, durable workflows, a primary SQLite database, document extraction and configured model APIs. The original standalone app and Convex deployment remain available independently.
 
 ## Build
@@ -244,3 +280,81 @@ source Status field; they do not infer closure from dates. Existing records need
 recapture or an explicit source-backed import to recover previously discarded text.
 The tracked parser JavaScript mirrors its TypeScript source: extensionless imports
 in the test runner can resolve the JavaScript file first, so keep both synchronized.
+
+
+### Shared UNSPSC taxonomy (0.35)
+
+Configure → Commodity taxonomy browses the official BC Bid `UNv260801` workbook
+as shared segment, family, class and commodity records, with explicit parents,
+ancestor paths and available definitions. Search codes or titles, follow the
+breadcrumbs, and choose **View opportunities** to include the selected code and
+its descendants. Notice details resolve their separate classification links and
+show main/other roles when the source identifies them. Unstated roles and ambiguous
+titles remain explicit; a family label is never expanded into an invented commodity.
+
+The existing primary Procurement catalog holds `taxonomy-release`, `taxonomy-term`,
+`taxonomy-change` and `opportunity-classification` records. Industry categories
+remain separate source observations. Existing embedded commodity fields remain
+for compatibility, while the shared terms are the hierarchy authority. Links
+include release, original label, exact-match method and an input fingerprint.
+Only links matching the notice's current fingerprint participate in filters and
+counts; retained older links cannot affect current results. Saved alerts use the
+same rule and require the matching host `procurement-alert-query.ts` update.
+
+The importer `scripts/importBcBidTaxonomy.py` uses read-only openpyxl, defaults to a
+dry run and requires an existing primary database. It never creates storage or
+changes download checkpoints. Run it with the genuine workbook and an output
+directory; add `--opportunities` for an offline notice snapshot. Optional
+`--categories` and `--commodity-details` accept the validated source captures used
+by `scripts/backfillBcBidMetadata.py`. Add `--apply` only for the live catalog:
+
+```sh
+python3 scripts/importBcBidTaxonomy.py \
+  --base https://zoer.k8s.overtheedgepaper.ca \
+  --workbook /path/to/unspsc_codes_in_bc_bid_-_aug_2023.xlsx \
+  --output /path/to/taxonomy-import
+```
+
+Apply reads the live notices, verifies each bounded batch after saving, preserves
+before-images, rejects conflicting immutable terms, and merges notices with
+revision checks. It stages links before publishing the corresponding notice
+fingerprint. Repeating the same import resumes safely. The release is activated
+only after terms, changes, lookup shards and notices have been verified. After
+activation, ordinary BC Bid detail/list captures maintain links automatically
+using existing bounded worker grants. Authoritative detail tables preserve whole
+titles containing commas and retain main/other evidence across listing refreshes.
+
+The workbook supplies 89,972 terms and 508 changes from `UNv250901`; it does not
+supply that previous release's complete taxonomy. The page distinguishes this
+change-log coverage and exposes source rows, changed/effective codes, definitions
+where present, the official URL and workbook SHA-256. Future complete releases
+need a genuine versioned source and an importer update; they are not inferred.
+
+Local validation: `bun run zoer:test` includes taxonomy/link transaction tests;
+`python3 -m unittest discover -s tests -p test_bcbid_taxonomy.py` checks the actual
+workbook when available in Downloads. Prepared source JSON files are portable
+artifacts, not a substitute database. The shared hierarchy, definitions and
+original historical references have been verified in the live browser. Keep
+dated import counts, deployment receipts and remaining provider checks in the
+host's `output/ui-audit/` rather than treating them as permanent product state.
+
+
+### Public historical BC Bid archive
+
+`scrape.historical` imports the publicly available April 1, 2015–December 15, 2022 archive into the existing procurement database. Use **Configure → Taxonomy → Import all public historical opportunities**. It searches all notice types with verified issue-date bounds and Closed status, splits ranges with large or lower-bound totals, verifies pager position and exact totals when published, and saves each page/detail with its catalog cursor. A crash replays from the last committed cursor. The host runs bounded slices under a single archive lock and resumes after restarts; a new run continues retained archive progress. Verification challenges wait for the user. Private supplier responses and restricted files are not collected.
+
+The historical dropdown's 33 searchable code/label pairs are versioned reference records. Original detail `Notice Type` values link to those shared terms; unlisted labels remain explicit observed references with no invented code. Published GSIN code/label pairs are discrete observed reference terms, while each notice retains its raw GSIN text and term IDs. Parent relationships are not fabricated when the public source omits its old GSIN hierarchy. Historical notices never acquire current UNSPSC links. Public attachment URLs are captured with details; binary downloads use the existing attachment workflow separately.
+
+Thirty-second BC Bid pacing applies between slices as well as between captures. The UI reports captured listings, completed details and remaining ranges; a running import does not mean the archive is complete. The full current-opportunities scraper rejects persisted historical/date filters.
+
+Pause, resume and stop controls operate on the active archive job. Native public-search readiness failures retry from the committed cursor under the host's bounded retry policy. Other unconfirmed filters, unexpected records and source count mismatches stop collection with saved coverage retained.
+
+### Discrete opportunity metadata filters
+
+**Opportunities → More filters → Source metadata** exposes official BC Bid region, industry category, saved location, opportunity type, historical type, observed historical GSIN, status, buyer, supplier and inclusive issue/closing date bounds. UNSPSC search and hierarchy browsing select a code with its descendants. These filters query the entire saved catalog before pagination and are retained in URLs, saved searches and alerts.
+
+The official region register has 38 versioned terms with source codes and parent paths, stored separately from notice rows. Industry categories also have discrete source codes. Notice links and capture provenance distinguish published BC Bid regions from buyer-derived places. Ambiguous names retain unresolved candidates; missing categories remain selectable as **Not captured / not published**. GSIN labels never imply an industry category or an unsupported historical parent relationship.
+
+Future listing/detail saves normalize published metadata and retain previously verified memberships. Targeted refreshes allow 1–70 listing pages (default five), retaining the existing 40-detail cap. Listing-only category refreshes read every page without downloading attachment binaries. **Sources → Refresh BC Bid metadata** can capture a verified Construction, Goods or Services search; the source's filter summary must confirm the exact category before it is saved. Unfiltered captures cannot recover a category that the source omits. The existing 2015 sample returns no results when all three industry categories are selected, so those records remain unknown.
+
+`bun scripts/backfillBcBidSourceMetadata.ts` previews normalization of already captured metadata; add `--apply` to merge it into the existing primary catalog with optimistic retries and read-back verification. It preserves attachments, stars and import checkpoints. It does not create storage or infer absent source values.

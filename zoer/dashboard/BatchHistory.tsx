@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
 import { researchRetry } from './research-retry';
+import { assertDocumentBrowserIdle } from './document-run';
 import { shortError } from './error-text';
 import { StatusBadge, type Tone } from './host-ui';
 
@@ -12,14 +14,14 @@ const PAGE = 8;
 
 /** Saved prompts and batches, refreshed every 10 seconds while the page is visible. */
 export function useCatalogState(onError: (message: string) => void) {
-  const [state, setState] = useState<any>({ prompts: [], batches: [] });
-  const refresh = async () => { const next=await host('catalog.state'); const tasks=await host('catalog.query',{statement: "SELECT run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]});setState({...next,tasks:tasks.rows}); };
-  useEffect(() => {
-    void refresh().catch(e => onError(e.message));
-    const timer = setInterval(() => { if (!document.hidden) void refresh().catch(e => onError(e.message)); }, 10000);
-    return () => clearInterval(timer);
-  }, []);
-  return [state, refresh] as const;
+  const state = useQuery({ queryKey: ['procurement', 'catalog-state'], queryFn: async () => {
+    const [next, tasks] = await Promise.all([host('catalog.state'), host('catalog.query', {statement: "SELECT run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]})]);
+    return {...next,tasks:tasks.rows};
+  }, refetchInterval: 10000 });
+  useEffect(() => { if (state.error) onError(state.error.message); }, [state.error, onError]);
+  const refresh = async () => { try { await state.refetch({ throwOnError: true }); } catch (e) { onError((e as Error).message); } };
+  // Keep cached batches visible when switching Download / Files / History.
+  return [{ ...(state.data ?? { prompts: [], batches: [], tasks: [] }), loadError: state.error?.message }, refresh] as const;
 }
 
 export function BatchProgress({batches, tasks = []}: {batches:any[];tasks?:any[]}) {
@@ -33,8 +35,8 @@ export function BatchProgress({batches, tasks = []}: {batches:any[];tasks?:any[]
   </section>;
 }
 
-export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], onChanged, onError, details }: {
-  title: string; kind: 'download' | 'review'; batches: any[]; modelId?: string; tasks?: any[]; onChanged: () => Promise<void>; onError: (message: string) => void;
+export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], onChanged, onError, details, browserBusy = false }: {
+  browserBusy?: boolean; title: string; kind: 'download' | 'review'; batches: any[]; modelId?: string; tasks?: any[]; onChanged: () => Promise<void>; onError: (message: string) => void;
   /** Optional per-run panel, shown when the run's Results toggle is open. */
   details?: (batch: any) => ReactNode;
 }) {
@@ -45,7 +47,7 @@ export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], o
   return <section className="zoer-history" aria-label={title}>
     <h2>{title}</h2>
     {!rows.length && <p>Nothing yet.</p>}
-    {shown.map(batch => { const steps = tasks.filter(task => task.run_id === batch.id).slice(0, 3); return <div key={batch.id} className="research-batch-item"><article className="research-batch">
+    {shown.map(batch => { const input = JSON.parse(batch.input || '{}'), needsBrowser = kind === 'download' && !input.extractOnly; const steps = tasks.filter(task => task.run_id === batch.id).slice(0, 3); return <div key={batch.id} className="research-batch-item"><article className="research-batch">
       <div>
         <StatusBadge tone={STATUS_TONE[batch.status] ?? 'neutral'}>{statusText(batch.status)}</StatusBadge>{batch.updated_at && <time dateTime={batch.updated_at}>{new Date(batch.updated_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>}
         <p>{batch.completed}/{batch.total} done{Number(batch.failed) ? ` · ${batch.failed} failed` : ''}</p>
@@ -55,7 +57,7 @@ export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], o
       {batch.status === 'running'
         ? <Button variant="ghost" disabled={busy} onClick={() => void act(() => host('cancel', { id: batch.id }))}>Stop</Button>
         // Paused for a Zoer update: it resumes on its own, so there is nothing to retry.
-        : batch.status === 'paused' || (kind === 'download' && batch.status === 'succeeded') ? null : <Button variant="ghost" disabled={busy} onClick={() => void act(() => host('action', (JSON.parse(batch.input||'{}').extractOnly?{actionId:'documents.extract',input:{recordIds:JSON.parse(batch.input).recordIds}}:researchRetry(batch, modelId))))}>Retry</Button>}
+        : batch.status === 'paused' || (kind === 'download' && batch.status === 'succeeded') ? null : <Button variant="ghost" disabled={busy || (needsBrowser && browserBusy)} onClick={() => void act(async () => { if (needsBrowser) await assertDocumentBrowserIdle(host); return host('action', input.extractOnly ? {actionId:'documents.extract',input:{recordIds:input.recordIds}} : researchRetry(batch, modelId)); })}>Retry</Button>}
       {details && <Button variant="ghost" aria-expanded={open.has(batch.id)} aria-controls={`run-${batch.id}`} onClick={() => toggle(batch.id)}>{open.has(batch.id) ? 'Hide results' : 'Results'}</Button>}
     </article>{details && open.has(batch.id) && <div id={`run-${batch.id}`}>{details(batch)}</div>}</div>; })}
     {rows.length > PAGE && <Button variant="ghost" onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show ${rows.length - PAGE} older`}</Button>}

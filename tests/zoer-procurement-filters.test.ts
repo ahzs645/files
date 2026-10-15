@@ -158,3 +158,21 @@ describe('saved-search alerts select exactly what the saved search lists', () =>
     expect(c.host({ ...base, deadline: 'week' }, now)).toEqual(['opportunity:instant-soon', 'opportunity:janitorial', 'opportunity:nanaimo', 'opportunity:roof', 'opportunity:today', 'opportunity:zoneless']);
   });
 });
+
+describe('discrete source metadata filters', () => {
+  it('matches each multi-valued category, historical references and official parents without inferring buyer locations', () => {
+    const c=catalog();
+    c.add('opportunity:a',{category:'Construction',industryCategories:['Goods','Services'],sourceRegionCodes:['CA_BC_5953'],sourceRegionPath:'|CA_STATE_BC|CA_BC_R1|CA_BC_5953|',type:'Historic Record- General (pre-Jan 2023)',historicalTypeReferenceId:'reference-term:BCBID:historical-type:ITT',gsinTermIds:['reference-term:GSIN:observed:EE:abc'],issueDate:'2015-12-31T12:00:00',closingDate:'2016-01-14T17:00:00'});
+    c.add('opportunity:b',{region:'Fraser-Fort George',regionFromPlace:true,category:'Construction',issueDate:'2016-01-01'});
+    c.add('opportunity:c',{});
+    for(const filter of [{category:'Goods'},{category:'Services'},{officialRegion:'CA_BC_R1'},{officialRegion:'CA_STATE_BC'},{historicalType:'reference-term:BCBID:historical-type:ITT'},{gsin:'reference-term:GSIN:observed:EE:abc'},{issueFrom:'2015-12-31',issueTo:'2015-12-31'},{closingFrom:'2016-01-14',closingTo:'2016-01-14'}]) {expect(c.plugin(filter)).toEqual(['opportunity:a']);expect(c.host(filter)).toEqual(['opportunity:a']);}
+    expect(c.plugin({category:'__missing__'})).toEqual(['opportunity:c']);
+    expect(c.plugin({officialRegion:'__missing__'})).toEqual(['opportunity:b','opportunity:c']);
+    expect(c.plugin({category:'Good'})).toEqual([]);
+    expect(c.plugin({category:'Construction'})).toEqual(['opportunity:b']);
+    expect(c.host({category:'__missing__'})).toEqual(c.plugin({category:'__missing__'}));
+  });
+  it('rejects malformed dates, reversed bounds and official-region SQL injection',()=>{
+    for(const f of [{issueFrom:'2015-02-30'},{issueFrom:'2016-01-01',issueTo:'2015-12-31'},{officialRegion:"CA_BC_R1' OR 1=1"}]) {expect(()=>buildProcurementQuery(f)).toThrow();expect(()=>procurementAlertQuery(f)).toThrow();}
+  });
+});

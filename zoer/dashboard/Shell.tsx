@@ -2,6 +2,7 @@ import { usePluginLocation, navigatePlugin, pluginHref } from "./navigation";
 import { Procurement } from './procurement/Procurement';
 import { Pursuits } from './procurement/Pursuits';
 import { Sources } from './procurement/Sources';
+import { Taxonomy } from './procurement/Taxonomy';
 import './procurement/procurement.css';
 import { Documents } from './Documents';
 import { AiReview } from './AiReview';
@@ -72,7 +73,7 @@ function LoadStatus() {
   return <div role="alert" className="pc-load-status"><span>Couldn’t refresh: {message.replace(/\.$/, '')}. Showing saved data.</span><Btn size="sm" onClick={() => void queryClient.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></div>;
 }
 const PAGE_VIEWS: Partial<Record<Page, () => ReactNode>> = {
-  home: () => <Home />, insights: () => <Insights />, procurement: () => <Procurement />, pursuits: () => <Pursuits />, documents: () => <Documents />,
+  home: () => <Home />, insights: () => <Insights />, procurement: () => <Procurement />, pursuits: () => <Pursuits />, documents: () => <Documents />, taxonomy: () => <Taxonomy />,
   evidence: () => <EvidenceGrid />, 'ai-review': () => <AiReview />, workbench: () => <PipelineWorkbench />, profiles: () => <ProfilesPage />, sources: () => <Sources />, settings: () => <SettingsPage />,
 };
 export function AppShell({ children }: { children: ReactNode }) {

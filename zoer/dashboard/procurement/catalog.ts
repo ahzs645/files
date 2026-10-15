@@ -1,7 +1,9 @@
+import { metadataPredicates, type MetadataFilters } from './metadata-filter';
 import { CLOSING_TODAY_TEXT, addDays, deadlineState, parseDeadline, zoneDate } from './deadline';
 import { excludeSql } from './exclude';
 import { HIDDEN_IDS_SQL } from './state-contract';
 import { cleanRegionText } from './region';
+import { parseTaxonomyFilter, taxonomyPredicate } from './taxonomy-contract';
 
 export type ProcurementSource = {
   id: string;
@@ -42,7 +44,7 @@ export function deadlineLabel(raw: unknown, now: number | Date = Date.now()): st
   return parsed.precision === 'date' ? `${value} (timezone not specified)${judgement}` : `${value}${judgement}`;
 }
 
-export type ProcurementQueryOptions = {
+export type ProcurementQueryOptions = MetadataFilters & {
   source?: string;
   kind?: 'all' | 'opportunity' | 'award';
   search?: string;
@@ -112,7 +114,11 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
     if (cleaned && cleaned !== options.region) { filters.push(`${region} IN (?,?)`); countParameters.push(options.region, cleaned); }
     else { filters.push(`${region}=?`); countParameters.push(options.region); }
   }
-  for (const [key,expression] of [['category',`coalesce(${field('category')},${field('classification')},'')`],['buyer',buyer],['supplier',`coalesce(${field('successfulSupplier')},'')`],['classification', `coalesce(CASE WHEN ${field('classificationCodes')}='' OR ${field('classificationCodes')}='[]' THEN NULL ELSE ${field('classificationCodes')} END, CASE WHEN ${field('commodities')}='' OR ${field('commodities')}='[]' THEN NULL ELSE ${field('commodities')} END, ${field('sourceCategory')},${field('category')},'')`]] as const) { if (options[key] !== undefined && options[key] !== '') {filters.push(`${expression}=?`);countParameters.push(options[key]!);} }
+  for (const [key,expression] of [['buyer',buyer],['supplier',`coalesce(${field('successfulSupplier')},'')`],['classification', `coalesce(CASE WHEN ${field('classificationCodes')}='' OR ${field('classificationCodes')}='[]' THEN NULL ELSE ${field('classificationCodes')} END, CASE WHEN ${field('commodities')}='' OR ${field('commodities')}='[]' THEN NULL ELSE ${field('commodities')} END, ${field('sourceCategory')},${field('category')},'')`]] as const) { if (options[key] !== undefined && options[key] !== '') {
+    if (key === 'classification' && parseTaxonomyFilter(options[key])) { const query = taxonomyPredicate(options[key]!); filters.push(query.sql); countParameters.push(...query.parameters); }
+    else { filters.push(`${expression}=?`);countParameters.push(options[key]!); }
+  } }
+  const metadata = metadataPredicates(options); if (metadata.sql !== '1=1') { filters.push(metadata.sql); countParameters.push(...metadata.parameters); }
   const place = options.place?.match(/^(m|rd):(.+)$/);
   if (place) { filters.push(`${field(place[1] === 'm' ? 'place.municipality' : 'place.regionalDistrict')}=?`); countParameters.push(place[2]); }
   if (options.starred) filters.push(`${field('starred')}=1`);

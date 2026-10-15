@@ -56,6 +56,10 @@ export interface OpportunityDetailScrape {
   detailUrl: string | null;
   descriptionText: string;
   detailFields: OpportunityField[];
+  /** Present only when the visible source commodity tables were captured. */
+  commodities?: string[];
+  mainCommodity?: string | null;
+  commodityTablesCaptured?: boolean;
   addenda: OpportunityAddendum[];
   attachments: OpportunityAttachment[];
   sourceCapturedAt: string;

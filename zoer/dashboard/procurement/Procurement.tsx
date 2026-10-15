@@ -1,3 +1,5 @@
+import { MetadataFilters } from './MetadataFilters';
+import { METADATA_FILTER_KEYS } from './metadata-filter';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useQuery as useCachedQuery, useQueryClient } from '@tanstack/react-query';
 import { Bookmark, Search, SlidersHorizontal, Star } from 'lucide-react';
@@ -36,8 +38,7 @@ const WIDE = '(min-width: 1024px)';
 function useWide() { return useSyncExternalStore(listener => { const media = matchMedia(WIDE); media.addEventListener('change', listener); return () => media.removeEventListener('change', listener); }, () => matchMedia(WIDE).matches); }
 // Views that used to be tabs on this page now live in their own sections.
 const MOVED_VIEWS: Record<string, string> = { board: '/pursuits', market: '/analysis/sources', sources: '/sources' };
-const EXTRA_FILTERS = [['region', 'Region'], ['category', 'Category'], ['buyer', 'Buyer'], ['supplier', 'Supplier']] as const;
-const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'exclude', 'hidden', 'place'];
+const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'exclude', 'hidden', 'place', ...METADATA_FILTER_KEYS];
 /** Notices hidden as not relevant: excluded unless the link asks to include them or show only them. */
 const HIDDEN_TEXT = { include: 'Including hidden notices', only: 'Hidden notices only' } as const;
 const PAGE = 25;
@@ -56,6 +57,7 @@ export function Procurement() {
   const view = params.get('view') ?? '';
   const source = params.get('source') ?? '', search = params.get('search') ?? '';
   const region = params.get('region') || '', category = params.get('category') || '', buyer = params.get('buyer') || '', supplier = params.get('supplier') || '', classification = params.get('classification') || '';
+  const metadataFilters = Object.fromEntries(METADATA_FILTER_KEYS.map(key => [key, params.get(key) || '']));
   const deadline: 'all' | 'week' = view === 'deadlines' || params.get('deadline') === 'week' ? 'week' : 'all';
   const kind = deadline === 'week' ? 'opportunity' : params.get('kind') ?? 'all';
   const starred = params.get('shortlist') === '1', page = Math.max(0, Number(params.get('page')) || 0);
@@ -96,9 +98,12 @@ export function Procurement() {
   const asOf = Math.floor(Date.now() / 60_000) * 60_000;
   const waitForWorkspace = workspace.isPending && needsWorkspace(scope, filters);
   const review = opportunityPredicate(scope, filters, { profileVersionId: active, asOf, workspace: available });
-  const base = { source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, aiLabel, exclude, hidden, place, asOf } as const;
-  const query = buildProcurementQuery({ ...base, sort: sort === 'fit' ? 'updated' : sort, order: sort === 'fit' ? fitOrderSql(profile) : undefined, where: review, offset: page * PAGE, limit: PAGE + 1 });
-  const list = useCachedQuery({ queryKey: ['catalog', 'procurement', query.statement, query.parameters], enabled: !!model && !waitForWorkspace && view !== 'compare',
+  const base = { ...metadataFilters, source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, aiLabel, exclude, hidden, place, asOf } as const;
+  let queryError='';
+  let query: ReturnType<typeof buildProcurementQuery>;
+  try { query = buildProcurementQuery({ ...base, sort: sort === 'fit' ? 'updated' : sort, order: sort === 'fit' ? fitOrderSql(profile) : undefined, where: review, offset: page * PAGE, limit: PAGE + 1 }); }
+  catch(e) { queryError=(e as Error).message; query=buildProcurementQuery({where:{sql:'1=0',parameters:[]}}); }
+  const list = useCachedQuery({ queryKey: ['catalog', 'procurement', query.statement, query.parameters], enabled: !!model && !queryError && !waitForWorkspace && view !== 'compare',
     queryFn: async () => { checkStatementSize(query.statement, query.countStatement); const head = await host('catalog.read', { ids: [] }); const [rows, count] = await Promise.all([sql(query.statement, query.parameters), sql(query.countStatement, query.countParameters)]); await host('catalog.read', { ids: [], revision: head.revision }); return { rows, total: Number(count[0]?.total ?? 0) }; }, refetchInterval: 30000 });
   const inventory = useCachedQuery({ queryKey: ['catalog', 'procurement-inventory'], enabled: !!model, queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60000 });
   const rows = (list.data?.rows ?? []).slice(0, PAGE), hasMore = (list.data?.rows.length ?? 0) > PAGE, total = list.data?.total ?? 0;
@@ -122,11 +127,11 @@ export function Procurement() {
     try { await setStar(row.kind, row.kind === 'award' ? row.importKey : row.sourceKey, !row.starred); await client.invalidateQueries({ queryKey: ['catalog'] }); }
     catch (e) { setError((e as Error).message); } finally { setSaving(''); }
   };
-  const savedFilters: ProcurementFilters = { source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred, exclude, place };
-  const applySaved = (saved: ProcurementFilters) => { filter({ ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '', place: saved.place ?? '' }); setPanel(''); };
+  const savedFilters: ProcurementFilters = { ...metadataFilters, source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred, exclude, place };
+  const applySaved = (saved: ProcurementFilters) => { filter({ ...Object.fromEntries(METADATA_FILTER_KEYS.map(key=>[key,saved[key]??''])), ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '', place: saved.place ?? '' }); setPanel(''); };
   const chips = reviewChips(params, profileLabel);
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
-  const extraCount = [region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude'].filter(Boolean).length + reviewCount;
+  const extraCount = [...Object.values(metadataFilters), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude'].filter(Boolean).length + reviewCount;
   const activeCount = extraCount + [source, kind !== 'all', deadline === 'week', starred].filter(Boolean).length;
   const clearAll = () => { setTyped(''); filter(Object.fromEntries([...BASE_PARAMS, ...REVIEW_PARAMS].map(key => [key, '']))); };
   const description = describeFilters(params, profileText, sourceName);
@@ -143,7 +148,7 @@ export function Procurement() {
   const typeSelect = <Select aria-label="Notice type" value={kind} onChange={event => filter({ kind: event.target.value, ...(event.target.value !== 'opportunity' ? { deadline: '' } : {}) })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select>;
   const closingChip = <button type="button" className="pc-chip" aria-pressed={deadline === 'week'} onClick={() => filter(deadline === 'week' ? { deadline: '' } : { deadline: 'week', kind: 'opportunity' })}>Closing in 7 days</button>;
   const shortlistChip = <button type="button" className="pc-chip" aria-pressed={starred} onClick={() => filter({ shortlist: starred ? '' : '1' })}><Star aria-hidden="true" className="h-3.5 w-3.5" />Shortlisted</button>;
-  const extraFields = <div className="pc-extra-fields">{EXTRA_FILTERS.map(([key, text]) => <label key={key}><span>{text}</span><input aria-label={`Filter ${text}`} value={params.get(key) ?? ''} placeholder="Exact source value" onChange={event => filter({ [key]: event.target.value })} /></label>)}{classification && <p>Classification: {classification} <Btn size="sm" variant="ghost" onClick={() => filter({ classification: '' })}>Clear</Btn></p>}</div>;
+  const extraFields = <MetadataFilters params={params} filter={filter} />;
   const reviewFields = <section className="pc-facets" aria-label="Review filters"><h3>Review ({profileText})</h3>
     {!available && <p className="procurement-coverage">{workspace.isPending ? 'Checking the review workspace…' : 'Assessment, triage and decision filters need the review workspace. Evidence gaps from saved files still work.'}</p>}
     <div className="pc-extra-fields">
@@ -168,6 +173,7 @@ export function Procurement() {
 
   // The saved-notice list keeps its original compact rows; review work adds one quiet line only where it exists.
   const results = <>
+    {queryError && <p role="alert" className="pc-error">{queryError}</p>}
     <HiddenNotice change={hide.last} busy={hide.busy.length > 0} onUndo={() => void hide.undo()} onDismiss={hide.dismiss} onShowHidden={hidden === 'exclude' ? () => filter({ hidden: 'include' }) : undefined} />
     {!workspace.isPending && !available && rows.length > 0 && <p className="rw-upgrade">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'}</p>}
     <div className="pc-results">{rows.map(row => {
@@ -255,10 +261,10 @@ export function Procurement() {
     {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>{view === 'matrix' ? 'Show matrix' : `Show ${total.toLocaleString()} results`}</Btn></>}>
       <div className="pc-filter-sheet">
         <div className="pc-sheet-only"><label><span>Source</span>{sourceSelect}</label><label><span>Notice type</span>{typeSelect}</label><div className="procurement-actions">{closingChip}{shortlistChip}</div></div>
+        {extraFields}
         {reviewFields}
         {aiFacets}
         <PlaceFilter value={place} onChange={value => filter({ place: value })} />
-        {extraFields}
         <ExcludeWordsField value={exclude} onChange={value => filter({ exclude: value })} />
         <div className="pc-extra-fields"><FilterSelect name="Hidden notices" value={hidden === 'exclude' ? '' : hidden} onChange={value => filter({ hidden: value })} any="Leave out hidden notices" options={[['include', 'Show hidden notices too'], ['only', 'Only hidden notices']]} /></div>
       </div>

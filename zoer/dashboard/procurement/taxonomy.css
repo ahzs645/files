@@ -1,0 +1,18 @@
+.pc-taxonomy { min-width: 0; display: grid; gap: 16px; }
+.pc-taxonomy header,.pc-taxonomy-tools,.pc-taxonomy-pages { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pc-taxonomy header h1 { flex: 1; font-size: 20px; font-weight: 600; }
+.pc-taxonomy-tools label { display: grid; gap: 4px; }
+.pc-taxonomy-tools input { flex: 1; min-width: 180px; font-size: 16px; padding: 10px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--input-bg); }
+.pc-taxonomy nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.pc-taxonomy nav button,.pc-taxonomy-notice button { color: var(--accent); text-align: left; min-height: 44px; overflow-wrap: anywhere; }
+.pc-taxonomy-term { display: grid; gap: 10px; border-block: 1px solid var(--border-muted); padding-block: 16px; }
+.pc-taxonomy-term h2 { font-size: 18px; font-weight: 600; }
+.pc-taxonomy-list { list-style: none; padding: 0; margin: 0; }
+.pc-taxonomy-list button { display: flex; width: 100%; align-items: center; gap: 12px; min-height: 44px; padding: 10px 0; border-bottom: 1px solid var(--border-muted); text-align: left; }
+.pc-taxonomy-list span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pc-taxonomy-list small,.pc-taxonomy-notice small { font-size: 12px; color: var(--text-muted); }
+.pc-taxonomy-hash { overflow-wrap: anywhere; font-size: 12px; }
+.pc-taxonomy-notice ul { list-style: none; padding: 0; }
+.pc-taxonomy-notice li { padding-block: 8px; border-bottom: 1px solid var(--border-muted); }
+.pc-taxonomy-notice small { display: block; }
+.pc-taxonomy-notice p { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }

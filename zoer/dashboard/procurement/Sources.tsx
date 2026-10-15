@@ -15,6 +15,7 @@ import { LINK_SOURCES } from './link-sources';
 import { CanadaBuysImport } from './CanadaBuysImport';
 import { BrowserSourcesCard } from './BrowserSourcesCard';
 import { INVENTORY_SQL, sourceName, sql } from './display';
+import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from '../document-run';
 import { shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 
@@ -257,6 +258,8 @@ const KIND_TEXT: Record<string, string> = { download: 'Document downloads', revi
 /** Capabilities, coverage, run outcomes and a retryable failure queue. Errors are shown as errors, never as zero. */
 function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any[]; canadaBuysTotal?: unknown; enabled: boolean }) {
   const client = useQueryClient();
+  const { model } = useWorkspace();
+  const browserBusy = !model || sourceCaptureActive(model.captureRuns) || documentDownloadActive(model.documentRuns);
   const attachments = useQuery({ queryKey: ['catalog', 'procurement-source-attachments'], enabled, queryFn: () => sql(ATTACHMENT_SQL), refetchInterval: 120_000 });
   const batches = useQuery({ queryKey: ['catalog', 'procurement-source-batches'], enabled, queryFn: () => sql(BATCH_SQL) as Promise<BatchRow[]>, refetchInterval: 15_000 });
   const failures = useQuery({ queryKey: ['catalog', 'procurement-source-failures'], enabled, queryFn: () => sql(FAILURE_SQL) as Promise<FailureTask[]>, refetchInterval: 15_000 });
@@ -271,7 +274,7 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any
   const running = (batches.data ?? []).some(row => row.status === 'running');
   const retry = async (recordIds: string[], key: string) => {
     setBusy(key); setError(''); setMessage('');
-    try { await host('action', { actionId: 'documents.download', input: { recordIds: recordIds.slice(0, 50), force: false } }); setMessage(`Download retry started for ${Math.min(50, recordIds.length)} notice${recordIds.length === 1 ? '' : 's'}. Successful files are not downloaded again.`); await client.invalidateQueries({ queryKey: ['catalog', 'procurement-source-batches'] }); }
+    try { await assertDocumentBrowserIdle(host); await host('action', { actionId: 'documents.download', input: { recordIds: recordIds.slice(0, 50), force: false } }); setMessage(`Download retry started for ${Math.min(50, recordIds.length)} notice${recordIds.length === 1 ? '' : 's'}. Successful files are not downloaded again.`); await client.invalidateQueries({ queryKey: ['catalog', 'procurement-source-batches'] }); }
     catch (e) { setError((e as Error).message); } finally { setBusy(''); }
   };
   return <section className="rw-panel rw-source-health" aria-labelledby="source-health-title">
@@ -309,13 +312,13 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {failures.error ? <p role="alert">Failures could not be read: {(failures.error as Error).message}</p> : failures.isPending ? <p role="status">Loading failures…</p> : !queue.length ? <><h3>Failure queue</h3><p className="rw-note">Nothing failed.</p></> :
     <details className="rw-failure-queue"><summary><h3>Failure queue · {queue.length.toLocaleString()} notice{queue.length === 1 ? '' : 's'}</h3></summary>
-      <div className="rw-actions"><Btn size="sm" variant="secondary" disabled={!!busy || running || !retryable.length} onClick={() => void retry(retryable, 'all')}>{busy === 'all' ? 'Starting…' : `Retry downloads for ${Math.min(50, retryable.length)} notice${retryable.length === 1 ? '' : 's'}`}</Btn>{running && <span className="rw-note">Wait for the current run to finish.</span>}</div>
+      <div className="rw-actions"><Btn size="sm" variant="secondary" disabled={!!busy || running || browserBusy || !retryable.length} onClick={() => void retry(retryable, 'all')}>{busy === 'all' ? 'Starting…' : `Retry downloads for ${Math.min(50, retryable.length)} notice${retryable.length === 1 ? '' : 's'}`}</Btn>{(running || browserBusy) && <span className="rw-note">Wait for active or paused browser work to finish.</span>}</div>
       {queue.some(group => group.waiting) && <p className="rw-note">Items marked “Needs you” need the BC Bid browser check completed in Zoer before retrying.</p>}
       <ul className="rw-failures">{(allFailures ? queue : queue.slice(0, 5)).map(group => <li key={group.recordId}>
         <div><strong>{group.title}</strong><small className="rw-note">{group.recordId.replace(/^opportunity:/, '')} · {when(group.updatedAt)}</small></div>
         <ul>{group.tasks.slice(0, 2).map((task, i) => <li key={i} className="rw-clamp" title={task.error ?? undefined}>{task.status === 'waiting_for_user' ? 'Needs you' : 'Failed'} · {task.kind === 'attachment' ? (task.name ?? 'Download') : task.kind}{task.error ? `: ${shortError(task.error)}` : ''}</li>)}{group.tasks.length > 2 && <li>{group.tasks.length - 2} more</li>}</ul>
         {group.waiting ? null
-          : group.retryable ? <Btn size="sm" variant="ghost" disabled={!!busy || running} onClick={() => void retry([group.recordId], group.recordId)}>{busy === group.recordId ? 'Starting…' : 'Retry'}</Btn>
+          : group.retryable ? <Btn size="sm" variant="ghost" disabled={!!busy || running || browserBusy} onClick={() => void retry([group.recordId], group.recordId)}>{busy === group.recordId ? 'Starting…' : 'Retry'}</Btn>
           : <Btn size="sm" variant="ghost" onClick={() => navigatePlugin('/ai-review')}>Retry from AI review</Btn>}
       </li>)}</ul>
       {queue.length > 5 && <Btn size="sm" variant="ghost" onClick={() => setAllFailures(!allFailures)}>{allFailures ? 'Show fewer' : `Show all ${queue.length.toLocaleString()}`}</Btn>}

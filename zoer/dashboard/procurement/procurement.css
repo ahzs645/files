@@ -73,7 +73,7 @@
 .pc-filter-sheet label{display:flex;flex-direction:column;gap:.375rem;font-size:12px;color:var(--text-secondary);min-width:0}
 .pc-sheet-only{display:none}
 .pc-extra-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
-.pc-extra-fields input{min-height:40px;padding:.375rem .75rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);color:var(--text-primary);font-size:14px;min-width:0}
+.pc-extra-fields input:not(.ui-temporal){min-height:40px;padding:.375rem .75rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);color:var(--text-primary);font-size:14px;min-width:0}
 .pc-extra-fields p{grid-column:1/-1;font-size:13px}
 @media(max-width:1100px){
   .pc-inline-filters{display:none}
@@ -93,7 +93,7 @@
   .pc-extra-fields{grid-template-columns:1fr}
   .pc-selection-actions{width:100%}
   .pc-selection-actions>*{flex:1 1 0}
-  .pc-extra-fields input{min-height:44px;font-size:16px}
+  .pc-extra-fields input:not(.ui-temporal){min-height:44px;font-size:16px}
   .procurement-detail dl{grid-template-columns:1fr}
 }
 
@@ -321,3 +321,7 @@ p.pc-source-crumb{margin-bottom:.75rem}
 .pc-run-actions{display:flex;flex-wrap:wrap;gap:.375rem}
 @media(pointer:coarse),(max-width:640px){.pc-run-actions button{min-height:44px;flex:1 1 6rem}}
 @media(min-width:1024px){.pc-run-list>li{grid-template-columns:minmax(12rem,1fr) minmax(14rem,1.5fr) auto;align-items:center;gap:1rem}.pc-run-actions{justify-content:flex-end}}
+
+.pc-commodity-filter{min-width:0;max-width:100%}.pc-commodity-filter>input{box-sizing:border-box;width:100%;min-width:0;padding:.5rem .75rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);color:var(--text-primary);font-size:16px}.pc-commodity-row{display:flex;gap:8px;align-items:center;min-width:0}.pc-commodity-row .pc-commodity-choice{flex:1 1 0;min-width:0;max-width:100%;height:auto;min-height:44px;padding:.5rem .625rem;white-space:normal;overflow-wrap:anywhere;text-align:left;justify-content:flex-start}
+
+.pc-filter-sheet .pc-labels{max-width:100%;min-width:0}.pc-filter-sheet .pc-label{max-width:100%;min-width:0;white-space:normal;overflow-wrap:anywhere}
