@@ -2,9 +2,12 @@ import type { InlineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 
 export const root = resolve(import.meta.dir, '..');
-export const zoerRoot = resolve(process.env.ZOER_UI_ROOT || resolve(root, '../zoer'));
+// Vite resolves symlinked dependencies to their real paths. Keep importer-specific
+// bridge substitutions on that same path when building from linked worktrees.
+export const zoerRoot = realpathSync(resolve(process.env.ZOER_UI_ROOT || resolve(root, '../zoer')));
 
 /** Vite configuration shared by the packaged build (`build-dashboard.ts`) and the local dev server (`dev-dashboard.ts`). */
 export function dashboardConfig(): InlineConfig {
