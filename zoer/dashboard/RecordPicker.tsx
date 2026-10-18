@@ -8,12 +8,13 @@ import { usePluginQuery } from './navigation';
 import { MoreMenu } from './host-ui';
 import { SOURCES, sourceId } from './procurement/catalog';
 import { INVENTORY_SQL, sourceName, sql } from './procurement/display';
+import { sourceReference } from './bid-summaries';
 
 export const MAX_SELECTION = 50;
 
 /** The source's own reference (e.g. a BC Bid number); internal catalog keys such as "canadabuys:tender:…" stay hidden. */
 function readableId(data: any): string {
-  const id = String(data.opportunityId || data.contractNumber || '');
+  const id = sourceReference(data) || String(data.contractNumber || '');
   return id.includes(':') ? '' : id;
 }
 

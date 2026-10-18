@@ -232,8 +232,11 @@ export function reviewPredicate(scope: ReviewScope, options: { profileVersionId:
   return queue?.unavailable ? { ...result, unavailable: queue.unavailable } : result;
 }
 
-/** Upcoming-deadline window (inclusive of today) as a string range over the source's date text. */
+/**
+ * Upcoming-deadline window (inclusive of today) as a string range over the source's date text. Only values that
+ * start with a date count: blank or unparseable deadlines are unknown, never "closing soon" (as `closesWithin`).
+ */
 export function deadlineWindowSql(days: number, asOf: number = Date.now(), alias = ''): Fragment {
   const closing = recordColumns(alias).closing;
-  return { sql: `${closing} IS NOT NULL AND ${closing}<?`, parameters: [addDays(zoneDate(asOf), days + 1)] };
+  return { sql: `${closing} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND ${closing}<?`, parameters: [addDays(zoneDate(asOf), days + 1)] };
 }

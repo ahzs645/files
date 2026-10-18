@@ -1,4 +1,13 @@
 // Pure helpers for pursuit cards and the task panel. No bridge or DOM imports (tested directly).
+import { deadlineState, shortDate } from './deadline';
+import { ACTIVE_PURSUIT_STAGES, type PursuitStage } from './state-contract';
+
+/** An active pursuit (watching, reviewing, preparing) whose notice deadline has passed: it needs moving on or closing. */
+export const deadlinePassed = (stage: string, deadline: unknown, asOf: number = Date.now()) => ACTIVE_PURSUIT_STAGES.includes(stage as PursuitStage) && deadlineState(deadline, asOf) === 'closed';
+export const DEADLINE_PASSED_HINT = 'The notice deadline has passed while this pursuit is still active. Move it to Submitted or Closed, or check the notice for an extension.';
+
+/** A task's due date as other dates read ("Oct 19, 2026"); free text is kept. */
+export const dueText = (value: string | null) => !value ? 'No due date' : /^\d{4}-\d{2}-\d{2}/.test(value) ? shortDate(value.slice(0, 10), Date.now(), false).text : value;
 
 /** Human-confirmed reasons for closing a pursuit; kept distinct, never inferred from award history. */
 export const CLOSED_REASONS = [['lost', 'Lost: another bidder was awarded'], ['withdrawn', 'Withdrawn by us'], ['no-bid', 'No bid: we decided not to submit'], ['cancelled', 'Cancelled by the buyer']] as const;

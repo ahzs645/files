@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cleanDraft, countablePartners, emptyDraft, emptyEvidence, expiryWarnings, normalizeDraft, sameDraft, validateDraft, type ProfileDraft } from '../zoer/dashboard/review-workspace/profile-types';
-import { closedReason, dueClusters, nextTask, withClosedReason, withSubmitted } from '../zoer/dashboard/procurement/pursuit-tasks';
+import { closedReason, deadlinePassed, dueClusters, dueText, nextTask, withClosedReason, withSubmitted } from '../zoer/dashboard/procurement/pursuit-tasks';
 
 const draft = (patch: Partial<ProfileDraft> = {}): ProfileDraft => ({ ...emptyDraft(), ...patch });
 const paths = (name: string, d: ProfileDraft) => validateDraft(name, d).map(issue => issue.path);
@@ -112,5 +112,26 @@ describe('pursuit stage notes and capacity conflicts', () => {
     const tasks = [{ id: 'a', dueAt: null, status: 'open' }, { id: 'b', dueAt: '2026-10-05', status: 'open' }, { id: 'c', dueAt: '2026-10-01', status: 'done' }];
     expect(nextTask(tasks)?.id).toBe('b');
     expect(nextTask([tasks[0]])?.id).toBe('a');
+  });
+});
+
+describe('pursuit deadline warnings', () => {
+  const asOf = Date.parse('2026-10-18T16:00:00Z');
+  it('flags active pursuits whose notice closed, never later stages or unknown deadlines', () => {
+    expect(deadlinePassed('Preparing', '2026-10-02', asOf)).toBe(true);
+    expect(deadlinePassed('Watching', '2026-10-17T14:00:00-07:00', asOf)).toBe(true);
+    expect(deadlinePassed('Reviewing', '2026-10-18', asOf)).toBe(false); // today, time unverified
+    expect(deadlinePassed('Preparing', 'Closes when filled', asOf)).toBe(false);
+    expect(deadlinePassed('Preparing', null, asOf)).toBe(false);
+    for (const stage of ['Submitted', 'Awarded', 'Closed']) expect(deadlinePassed(stage, '2026-10-02', asOf)).toBe(false);
+  });
+});
+
+describe('task due dates', () => {
+  it('reads like other dates, keeping free text and saying when there is none', () => {
+    expect(dueText('2026-10-19')).toMatch(/Oct 19, 2026/);
+    expect(dueText('2026-10-19T00:00:00.000Z')).toMatch(/Oct 19, 2026/);
+    expect(dueText('before the site visit')).toBe('before the site visit');
+    expect(dueText(null)).toBe('No due date');
   });
 });

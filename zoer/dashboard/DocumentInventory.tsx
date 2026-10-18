@@ -50,7 +50,7 @@ export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy 
       return <article key={row.id}>
         <div className="research-file-info">
           <strong>{row.name}</strong>
-          <span className="research-note">{row.title} · {row.record_id.replace(/^opportunity:/,'')}{row.bytes?` · ${bytes(row.bytes)}`:''}</span>
+          <span className="research-note">{row.title}{(id=>id.includes(':')?'':` · ${id}`)(String(row.record_id).replace(/^(opportunity|award):/,''))}{row.bytes?` · ${bytes(row.bytes)}`:''}</span>
           {row.error&&<span className="research-file-warning doc-clamp" title={row.error}>{shortError(row.error)}</span>}
         </div>
         <span className="doc-chip" data-tone={state[0]} title={row.chars?`${Number(row.chars).toLocaleString()} characters of text`:undefined}>{state[1]}</span>

@@ -19,3 +19,8 @@ export function DimensionChips({ assessment, compact }: { assessment: Assessment
     {DIMENSIONS.map(([key, name]) => <span key={key} className="rw-chip" data-tone={toneOf(assessment[key])}>{name}: <b>{label(assessment[key])}</b></span>)}
   </span>;
 }
+
+/** The decision panel's full breakdown: a label/value grid with a tone dot, so one pill (the suggestion) carries the colour. */
+export function DimensionList({ assessment }: { assessment: AssessmentRow }) {
+  return <dl className="rw-dims">{DIMENSIONS.map(([key, name]) => <div key={key} className="rw-dim" data-tone={toneOf(assessment[key])}><dt>{name}</dt><dd>{label(assessment[key])}</dd></div>)}</dl>;
+}

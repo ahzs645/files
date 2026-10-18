@@ -7,12 +7,14 @@ import { useCapabilities } from '../capabilities';
 import { INVENTORY_SQL, sourceName, sql } from '../procurement/display';
 import { readProcurementState } from '../procurement/state-client';
 import { PURSUIT_STAGES } from '../procurement/state-contract';
+import { BATCH_KIND_TEXT } from '../procurement/source-health';
 import { REVIEW_KEY, useReviewWorkspace } from './actions';
 import { useActiveProfile } from './profile-context';
 import { ProfilePicker } from './ProfilePicker';
 import { label } from './queries';
 import { ACQUIRE_REASON_TEXT, QUEUES, QUEUE_TEXT, queueSql, reviewScopeHref, type QueueId } from './queue';
 import { Today } from './Today';
+import { SOON_DAYS } from './today-data';
 import { friendlyDeadline } from './deadline-text';
 import { readAttentionSummary, readCoverage, readDeadlines, readPolicies, readQueue, readRecentDecisions, readReviewCoverage, readSourceHealth } from './home-data';
 import './review.css';
@@ -145,7 +147,7 @@ function Coverage({ source, profile, available }: { source: string; profile: str
   </Panel>;
 }
 
-const BATCH_KINDS: Record<string, string> = { download: 'Document downloads', review: 'AI reviews', 'document-review': 'Document reviews', 'document-synthesis': 'Document synthesis', 'record-review': 'Notice reviews', 'host-action': 'Review pipeline', 'procurement-extract': 'Requirement extraction', 'procurement-triage': 'Notice triage' };
+const BATCH_KINDS = BATCH_KIND_TEXT;
 function SourceHealth({ inventory }: { inventory: any[] | undefined }) {
   const health = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'source-health'], queryFn: readSourceHealth, refetchInterval: 30_000 });
   const sources = new Map<string, { count: number; importedAt: string | null }>(), { collection } = useCapabilities();
@@ -173,24 +175,18 @@ function RecentDecisions({ source }: { source: string }) {
   </Panel>;
 }
 
+/** Days SOON_DAYS + 1 to 14: Today's "Closing within 3 days" card already lists the nearer ones, so they never repeat here. */
+const LATER_TITLE = 'Closing later in the next two weeks';
 function Deadlines({ source, asOf }: { source: string; asOf: number }) {
-  const deadlines = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'deadlines', source, asOf], refetchInterval: 60_000, queryFn: () => readDeadlines(source, asOf) });
-  return <Panel title="Closing in the next 14 days">
-    <Loadable query={deadlines} what="deadlines">{({ total, rows }) => {
-      if (rows.length === 0) return <p className="rw-muted">Nothing saved closes in the next 14 days.</p>;
-      // Date-only deadlines falling today share one group header instead of repeating the caveat on every row.
-      const dated = rows.map(row => ({ row, d: deadlineText(row.closing, asOf) }));
-      const today = dated.filter(item => item.d.state === 'closing_today_time_unverified'), later = dated.filter(item => item.d.state !== 'closing_today_time_unverified');
-      const item = ({ row, d }: typeof dated[number], dateOnly: boolean) => <li key={row.id}>
+  const deadlines = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'deadlines', source, asOf, SOON_DAYS], refetchInterval: 60_000, queryFn: () => readDeadlines(source, asOf, 14, SOON_DAYS + 1) });
+  return <Panel title={LATER_TITLE} note={`Days ${SOON_DAYS + 1}–14; the next ${SOON_DAYS} days are under Today.`}>
+    <Loadable query={deadlines} what="deadlines">{({ total, rows }) => rows.length === 0 ? <p className="rw-muted">Nothing else saved closes in the next 14 days.</p> : <>
+      <ul className="rw-list">{rows.map(row => { const d = deadlineText(row.closing, asOf); return <li key={row.id}>
         <RouteLink to={`/procurement?notice=${encodeURIComponent(row.id)}`} className="rw-item-title">{row.title || row.id}</RouteLink>
-        <span className="rw-muted" title={d.detail || undefined}>{[dateOnly ? null : d.text, row.buyer].filter(Boolean).join(' · ')}</span>
-      </li>;
-      return <>
-        {today.length > 0 && <><h3 className="rw-group-title">Closes today (time unverified)</h3><ul className="rw-list">{today.map(entry => item(entry, true))}</ul></>}
-        {later.length > 0 && <>{today.length > 0 && <h3 className="rw-group-title">Later</h3>}<ul className="rw-list">{later.map(entry => item(entry, false))}</ul></>}
-        {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'notice')} in the next 14 days · see all →</RouteLink>}
-      </>;
-    }}</Loadable>
+        <span className="rw-muted" title={d.detail || undefined}>{[d.text, row.buyer].filter(Boolean).join(' · ')}</span>
+      </li>; })}</ul>
+      {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'notice')} in days {SOON_DAYS + 1}–14 · all open notices by closing date →</RouteLink>}
+    </>}</Loadable>
   </Panel>;
 }
 

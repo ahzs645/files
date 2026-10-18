@@ -91,6 +91,16 @@ export const zonedSql = (value: string) => `${value} GLOB '????-??-??[Tt ]??:??*
  */
 export const passedOrder = (value: string) => `CASE WHEN coalesce(${value}, '')='' THEN 2 WHEN ${zonedSql(value)} THEN CASE WHEN julianday(${value}) < julianday('now') THEN 1 ELSE 0 END WHEN ${value} < ? THEN 1 ELSE 0 END`;
 const deadline = `CASE WHEN kind='opportunity' THEN coalesce(${field('closingAt')},${field('closingDate')}) ELSE ${field('awardDate')} END`;
+/** A notice's deadline value: `closingAt` when present, else the source's `closingDate` text. */
+export const closingSql = `CASE WHEN coalesce(${field('closingAt')}, '')<>'' THEN ${field('closingAt')} ELSE ${field('closingDate')} END`;
+/**
+ * SQL approximation of `deadlineSortTime` as a julian day: offset values are instants; date-only and timezone-less values
+ * count to the end of their calendar day in Vancouver (start of day + 32 h: exact in PST, an hour lenient in PDT). Blank,
+ * free-text and non-ISO values are NULL (unknown), including bare numbers SQLite would read as julian days.
+ */
+export const deadlineTimeSql = (value: string) => `CASE WHEN ${value} NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' THEN NULL WHEN ${zonedSql(value)} THEN julianday(${value}) ELSE julianday(${value}, 'start of day', '+32 hours') END`;
+/** "Open first, soonest first" over a projected `deadlineTime` alias: upcoming ascending, then unknown, then closed newest-closed first. */
+export const OPEN_FIRST_ORDER = `CASE WHEN deadlineTime IS NULL THEN 1 WHEN deadlineTime < julianday('now') THEN 2 ELSE 0 END, CASE WHEN deadlineTime >= julianday('now') THEN deadlineTime ELSE -deadlineTime END`;
 
 /** The host bridge rejects longer statements with a generic message; say what to change instead. */
 export const STATEMENT_LIMIT = 10_000;

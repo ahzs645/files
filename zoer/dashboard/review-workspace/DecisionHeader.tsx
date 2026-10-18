@@ -8,7 +8,7 @@ import { host } from '../bridge';
 import { useCapabilities } from '../capabilities';
 import { queryClient } from '../query-client';
 import { REVIEW_KEY, reviewWrite, startPipeline, useReviewInvalidate, type WriteOp } from './actions';
-import { DimensionChips, toneOf } from './DimensionChips';
+import { DimensionList, toneOf } from './DimensionChips';
 import { useActiveProfile } from './profile-context';
 import { label, readCurrentAssessments, type AssessmentRow, type DecisionRow } from './queries';
 import {
@@ -16,6 +16,7 @@ import {
   readJudgements, readStageRuns, readTasks, readTriageOutput, scopeText, stageName, stageStatus, taskKindLabel, usageText, when,
   type DecisionChoice, type JudgementRow, type NoticeTabId, type NoticeTask, type RequirementFilters, type StageRunRow,
 } from './notice-queries';
+import { dueText } from '../procurement/pursuit-tasks';
 import './review.css';
 import './notice-polish.css';
 
@@ -120,7 +121,7 @@ export function DecisionHeader({ recordId, pursuitStage, onTab }: { recordId: st
       <div className="rw-panel-head"><h3 id={`rw-suggest-${recordId}`} className="rw-nd-eyebrow">AI suggestion · not a decision</h3>{active && <span className="rw-note">for {active.name} · v{active.version}</span>}</div>
       {assessment.isPending && !loading ? <p className="rw-muted" role="status">Loading assessment…</p> : assessment.error ? <p className="rw-error" role="alert">Could not load the assessment: {(assessment.error as Error).message}</p> : a ? <>
         <p className="rw-nd-action"><Chip value={a.suggestedAction} /></p>
-        <DimensionChips assessment={a} />
+        <DimensionList assessment={a} />
         <ExpandableList items={a.reasons} label={n => `Show all ${n} reasons`} />
         {(companyUnknowns.length > 0 || otherUnknowns.length > 0) && <>
           <h4 className="rw-subhead">Critical unknowns</h4>
@@ -184,7 +185,8 @@ function StagePanel({ recordId, runs, loading, error, profileVersionId }: { reco
         <div className="rw-nd-stage-row">
           <strong>{stageName(stage)}</strong>
           <span className="rw-chip" data-tone={STAGE_TONE[status.tone]}><b>{STAGE_WORD[status.tone]}</b></span>
-          {run && <span className="rw-note">{[when(run.finishedAt ?? run.startedAt), run.model, run.quality && `quality: ${label(run.quality)}`, usageText(run.usage)].filter(Boolean).join(' · ')}</span>}
+          {/* Model id and token usage stay off the line, in the tooltip. */}
+          {run && <span className="rw-note" title={[run.model && `Model: ${run.model}`, usageText(run.usage)].filter(Boolean).join(' · ') || undefined}>{[when(run.finishedAt ?? run.startedAt), run.quality && `quality: ${label(run.quality)}`].filter(Boolean).join(' · ')}</span>}
         </div>
         {status.tone !== 'ok' && <small className="rw-note">{status.note}</small>}
       </li>; })}</ul>}
@@ -312,7 +314,7 @@ function TaskItem({ recordId, task }: { recordId: string; task: NoticeTask }) {
   const action = useReviewAction();
   const update = (status: 'done' | 'cancelled') => action.run(status, { op: 'task.update', taskId: task.id, recordId, status, ...(note.trim() ? { completionNote: note.trim() } : {}), expectedVersion: task.version });
   return <li data-status={task.status}>
-    <div><strong>{task.title}</strong> <span className="rw-note">{taskKindLabel(task.kind)} · {task.owner || 'Unassigned'} · {task.dueAt ? `due ${task.dueAt.slice(0, 10)}` : 'no due date'}{task.linkedType ? ` · linked ${task.linkedType}` : ''}{task.status !== 'open' ? ` · ${task.status === 'done' ? 'Done' : 'Cancelled'}` : ''}</span></div>
+    <div><strong>{task.title}</strong> <span className="rw-note">{taskKindLabel(task.kind)} · {task.owner || 'Unassigned'} · {task.dueAt ? `due ${dueText(task.dueAt)}` : 'no due date'}{task.linkedType ? ` · linked ${task.linkedType}` : ''}{task.status !== 'open' ? ` · ${task.status === 'done' ? 'Done' : 'Cancelled'}` : ''}</span></div>
     {task.completionNote && <small className="rw-note">{task.completionNote}</small>}
     {writes && task.status === 'open' && (completing ? <form className="rw-form" onSubmit={event => { event.preventDefault(); if (note.trim().length >= 3) void update('done'); }}>
       <label className="rw-field"><span>What was done (required)</span><input value={note} maxLength={2000} disabled={!!action.busy} onChange={event => setNote(event.target.value)} placeholder="And where the supporting evidence is" /></label>

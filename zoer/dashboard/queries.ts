@@ -3,6 +3,7 @@ import { BUYER_MAPPING_VERSION, annotateBuyerRecord, resolveBuyer, isBuyerLevel 
 import { host } from './bridge';
 import { queryModel, type Model } from './model';
 import { zoneDate } from './procurement/deadline';
+import { OPEN_FIRST_ORDER, closingSql, deadlineTimeSql } from './procurement/catalog';
 const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
 const field = (name: string) => `json_extract(data, '$.${name}')`;
 // A record's home source. Records saved before multi-source support carry no sourceId.
@@ -23,7 +24,7 @@ function sourceScope(sources: unknown): string[] | undefined {
   return sources.length ? sources : undefined;
 }
 const sourcePredicate = (sources: string[]) => `${SOURCE_EXPRESSION} IN (${sources.map(() => '?').join(',')})`;
-const opportunityFields = ['sourceKey','processId','opportunityId','description','status','type','sourceId','issuedBy','closingDate','detailUrl','starred','commodities'];
+const opportunityFields = ['sourceKey','processId','opportunityId','externalId','description','status','type','sourceId','issuedBy','closingDate','closingAt','detailUrl','starred','commodities'];
 const awardFields = ['importKey','_id','opportunityId','opportunityDescription','opportunityType','sourceId','issuingOrganization','issuingLocation','contractNumber','contactEmail','contractContactEmail','contractValue','contractValueText','currency','successfulSupplier','supplierAddress','awardDate','justification','sourceUrl','starred','createdAt','updatedAt','sourceFileName'];
 export async function readAll(kind: 'opportunity' | 'award', starredOnly = false, live = false) {
   if (live) {
@@ -231,13 +232,16 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     const count = unscopedSql(`SELECT count(*) AS total FROM ${from} WHERE ${clause}`, queryParams);
     if (name === 'catalog.count') { const result = (await count)[0]; if (mapped) await host('catalog.read', { ids: [], revision }); return result; }
     const limit = Math.max(1, Math.min(200, Math.floor(Number(args.limit) || 50))), offset = Math.max(0, Math.floor(Number(args.cursor) || 0));
-    const order = mapped?.order ?? (args.sort ? `${column(args.sort.id)} IS NULL, ${column(args.sort.id)} ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : kind === 'award' ? `${field('awardDate')} DESC, id` : `coalesce(${field('closingDate')}, '9999'), ${field('description')}, id`);
+    // Notices order by their parsed deadline (`deadlineTime`, see deadlineTimeSql): by default open first, soonest closing
+    // first, then unknown/free-text deadlines, then closed newest-closed first; the Closing date column sorts by that time.
+    const dated = kind === 'opportunity', closingSort = dated && ['closingDate', 'closingAt'].includes(args.sort?.id);
+    const order = mapped?.order ?? (closingSort ? `deadlineTime IS NULL, deadlineTime ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : args.sort ? `${column(args.sort.id)} IS NULL, ${column(args.sort.id)} ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : kind === 'award' ? `${field('awardDate')} DESC, id` : `${OPEN_FIRST_ORDER}, ${field('description')}, id`);
     const [items, totals] = await Promise.all([
-      unscopedSql(`SELECT id AS catalogId, ${fields.map(key => `${key === 'sourceId' ? SOURCE_EXPRESSION : field(key)} AS "${key}"`).join(', ')} FROM ${from} WHERE ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`, [...queryParams, limit, offset]), count,
+      unscopedSql(`SELECT id AS catalogId, ${fields.map(key => `${key === 'sourceId' ? SOURCE_EXPRESSION : field(key)} AS "${key}"`).join(', ')}${dated ? `, ${deadlineTimeSql(closingSql)} AS deadlineTime` : ''} FROM ${from} WHERE ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`, [...queryParams, limit, offset]), count,
     ]);
     // SQLite JSON booleans arrive as integers. Preserve the preference adapter's boolean contract.
     for (const row of items) {
-      row.starred = row.starred === 1 || row.starred === true;
+      row.starred = row.starred === 1 || row.starred === true; delete row.deadlineTime;
       if (kind === 'opportunity') row.commodities = typeof row.commodities === 'string' ? JSON.parse(row.commodities) : row.commodities ?? [];
     }
     if (mapped) await host('catalog.read', { ids: [], revision });

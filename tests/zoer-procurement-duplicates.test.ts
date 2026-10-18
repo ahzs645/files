@@ -40,15 +40,26 @@ describe('scoring (title 0.4, buyer 0.3, date 0.2, URL 0.1; threshold 0.85)', ()
   });
   it('allows a day for date-only values, not for two exact instants', () => {
     expect(scoreDuplicate(notice('a'), notice('b', { deadline: '2026-10-08' })).score).toBe(0.9);
-    const instants = scoreDuplicate(notice('a', { deadline: '2026-10-07T23:00:00Z' }), notice('b', { deadline: '2026-10-08T23:00:00Z' }));
-    expect(instants.score).toBeCloseTo(0.8, 3);
+    const instants = scoreDuplicate(notice('a', { deadline: '2026-10-07T23:00:00Z' }), notice('b', { title: 'Bowen Road Paving and Sidewalk Program', deadline: '2026-10-08T23:00:00Z' }));
+    expect(instants.score).toBeCloseTo(0.4 * 8 / 9 + 0.3 + 0.1, 3);
     expect(explainDuplicate(instants)).toContain('closing dates 1 day apart');
   });
   it('does not confuse different buyers, different jobs or City and District of North Vancouver', () => {
     expect(scoreDuplicate(notice('a'), notice('b', { buyer: 'City of Kamloops' })).score).toBeLessThan(DUPLICATE_THRESHOLD);
     expect(scoreDuplicate(notice('a'), notice('b', { title: 'Janitorial services' })).score).toBeLessThan(DUPLICATE_THRESHOLD);
     expect(scoreDuplicate(notice('a', { buyer: 'City of North Vancouver' }), notice('b', { buyer: 'District of North Vancouver' })).buyer).toBe(0);
-    expect(scoreDuplicate(notice('a'), notice('b', { deadline: '2026-11-07' })).score).toBeLessThan(DUPLICATE_THRESHOLD);
+    expect(scoreDuplicate(notice('a'), notice('b', { title: 'Bowen Road Paving Program Phase 2', deadline: '2026-11-07' })).score).toBeLessThan(DUPLICATE_THRESHOLD);
+  });
+  it('always shows the same title from the same buyer, whatever the closing dates, and names the other closing day', () => {
+    const pavco = (id: string, deadline: string | null) => notice(id, { title: 'Parking Lot Resurfacing', buyer: 'BC Pavilion Corporation (PavCo)', deadline });
+    const score = scoreDuplicate(pavco('a', '2026-11-16'), pavco('b', '2026-11-02T14:00:00-07:00'));
+    expect(score).toMatchObject({ score: DUPLICATE_THRESHOLD, exact: false, sameTitleBuyer: true, dayGap: 14 });
+    expect(explainDuplicate(score)).toBe('Same title and buyer, closes Nov 2, 2026 (this notice Nov 16, 2026)');
+    expect(findDuplicates(pavco('a', '2026-11-16'), [pavco('b', '2026-11-02')]).map(match => match.notice.id)).toEqual(['b']);
+    expect(explainDuplicate(scoreDuplicate(pavco('a', null), pavco('b', '2026-11-02')))).toBe('Same title and buyer, closes Nov 2, 2026');
+    expect(explainDuplicate(scoreDuplicate(pavco('a', '2026-11-02'), pavco('b', null)))).toBe('Same title and buyer, closing date not comparable');
+    expect(scoreDuplicate(pavco('a', '2026-11-16'), { ...pavco('b', '2026-11-02'), buyer: 'City of Vancouver' }).score).toBeLessThan(DUPLICATE_THRESHOLD);
+    expect(scoreDuplicate(pavco('a', '2026-11-16'), pavco('b', '2026-11-16')).sameTitleBuyer).toBeUndefined(); // exact: 100%
   });
   it('counts the same notice link as a duplicate', () => {
     expect(scoreDuplicate(notice('a', { url: 'https://www.x.ca/n/1/' }), notice('b', { title: 'Other', buyer: 'Other', deadline: null, url: 'https://x.ca/n/1' }))).toMatchObject({ score: 1, sameUrl: true });
@@ -85,6 +96,12 @@ describe('candidate SQL through the host validator', () => {
     const matches = findDuplicates(self(), rows);
     expect(matches.map(match => match.notice.id)).toEqual(['opportunity:bidsandtenders:nanaimo:9']);
     expect(matches[0].notice.sourceId).toBe('bidsandtenders');
+  });
+  it('reads and flags a same-title, same-buyer notice closing two weeks apart', () => {
+    add('opportunity:pavco-1', { description: 'Parking Lot Resurfacing', issuedBy: 'BC Pavilion Corporation', closingDate: '2026-11-02' });
+    add('opportunity:pavco-2', { description: 'Parking Lot Resurfacing', issuedBy: 'BC Pavilion Corporation', closingDate: '2026-11-16' });
+    const first = read(noticeSummaryQuery('opportunity:pavco-1').statement, ['opportunity:pavco-1'])[0] as NoticeSummary, query = duplicateCandidatesQuery(first);
+    expect(findDuplicates(first, read(query.statement, query.parameters)).map(match => match.notice.id)).toEqual(['opportunity:pavco-2']);
   });
   it('finds a same-buyer candidate outside the date window', () => {
     const query = duplicateCandidatesQuery({ ...self(), title: 'Harewood park washroom', deadline: null });

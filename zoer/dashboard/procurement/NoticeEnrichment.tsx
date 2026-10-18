@@ -66,7 +66,7 @@ export function PossibleDuplicates({ notice }: { notice: NoticeSummary }) {
       : result.error ? <p role="alert">Could not check for duplicates: {(result.error as Error).message} <Btn size="sm" variant="secondary" onClick={() => void result.refetch()}>Retry</Btn></p>
       : !result.data.matches.length ? <p className="pc-card-meta">None found among saved notices with the same title, a closing date within a day, or a similar buyer.{result.data.capped ? ` Only the ${CANDIDATE_LIMIT} closest candidates were checked.` : ''}</p>
       : <><ul className="pc-dup-list">{result.data.matches.map(match => <DuplicateItem key={match.notice.id} match={match} />)}</ul>
-        <p className="pc-card-meta">Scored on title (40%), buyer (30%), closing date (20%) and link (10%); shown at 85% or more. Nothing is merged.{result.data.capped ? ` Only the ${CANDIDATE_LIMIT} closest candidates were checked.` : ''}</p></>}
+        <p className="pc-card-meta">Scored on title (40%), buyer (30%), closing date (20%) and link (10%); shown at 85% or more, and always for the same title and buyer. Nothing is merged.{result.data.capped ? ` Only the ${CANDIDATE_LIMIT} closest candidates were checked.` : ''}</p></>}
   </section>;
 }
 
@@ -75,7 +75,7 @@ function DuplicateItem({ match }: { match: DuplicateMatch }) {
   return <li>
     <button type="button" className="pc-dup-open" onClick={() => patchPluginQuery({ notice: match.notice.id }, 'push')}>{match.notice.title || 'Untitled notice'}</button>
     <p className="pc-dup-meta"><span className="pc-tag" data-source={match.notice.sourceId}>{sourceName(match.notice.sourceId)}</span><span>{match.notice.buyer || 'Buyer not provided'}</span><span>{when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</span>{match.notice.externalId && <span>{match.notice.externalId}</span>}</p>
-    <p className="pc-dup-why"><strong>{Math.round(match.score.score * 100)}%</strong> · {explainDuplicate(match.score)}</p>
+    <p className="pc-dup-why">{match.score.sameTitleBuyer ? explainDuplicate(match.score) : <><strong>{Math.round(match.score.score * 100)}%</strong> · {explainDuplicate(match.score)}</>}</p>
   </li>;
 }
 

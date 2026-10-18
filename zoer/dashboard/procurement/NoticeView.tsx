@@ -96,9 +96,10 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
     {detail.error && <p role="alert">{detail.error.message}</p>}
     {error && <p role="alert">{error}</p>}
     {record && tab === 'decision' && <div className="pc-notice-section">
+      <NoticeFacts id={id} record={record} reviews={reviews} documents={documents} workspace={available} />
       {available ? <DecisionHeader recordId={id} pursuitStage={pursuit?.stage ?? null} onTab={setTab} /> : !workspace.isPending && <p className="rw-upgrade" role="note">{workspace.data?.reason ?? 'Update Zoer to use the review workspace. Existing search, pursuits, documents and AI review keep working.'} Requirements, changes and decisions appear here once it is available.</p>}
-      {available && <h3 className="pc-notice-subhead">Notice</h3>}
-      <Overview id={id} record={record} reviews={reviews} documents={documents} tags={detail.data.tags ?? []} onTab={setTab} onSaved={refresh} workspace={available} />
+      {available && <h3 className="pc-notice-subhead">More about this notice</h3>}
+      <Overview id={id} record={record} reviews={reviews} tags={detail.data.tags ?? []} onTab={setTab} onSaved={refresh} />
       <NoticeTaxonomy id={id} fingerprint={data.classificationLinkSet} />
       <NoticeHistorical data={data} />
     </div>}
@@ -167,17 +168,15 @@ function EvidenceInventory({ id, documents, attachments, onShowDocument }: { id:
   </section>;
 }
 
-function Overview({ id, record, reviews, documents, tags, onTab, onSaved, workspace }: { id: string; record: any; reviews: any[]; documents: any[]; tags: string[]; onTab(tab: NoticeTabId): void; onSaved(): void; workspace: boolean }) {
-  const data = record.data, award = record.kind === 'award';
-  const review = latestReview(reviews), verdict = latestEvidence(reviews, 'bid-no-bid');
+/** The notice's key facts and description: the first thing on the Decision tab, above the review workspace, on every width. */
+function NoticeFacts({ id, record, reviews, documents, workspace }: Pick<Parameters<typeof Overview>[0], 'id' | 'record' | 'reviews'> & { documents: Parameters<typeof documentCounts>[0]; workspace: boolean }) {
+  const data = record.data, award = record.kind === 'award', review = latestReview(reviews);
   const when = shortDate(award ? data.awardDate : data.closingAt ?? data.closingDate, Date.now(), !award);
   const contract = award && typeof data.contractValue === 'number' ? new Intl.NumberFormat(undefined, { style: 'currency', currency: data.currency || 'CAD', maximumFractionDigits: 0 }).format(data.contractValue) : '';
   const factMoney = useFactMoney(id, workspace && !award);
   // Extracted facts win over the legacy review: only buyer budget / estimated value may fill the budget line.
   const budget = award ? null : factMoney ? { label: factMoney.headline.length === 1 ? factMoney.headline[0].label : factMoney.headline.length ? 'Buyer budget / estimated value' : 'Budget', text: factMoney.headline.length ? factMoney.headline.map(line => factMoney.headline.length > 1 ? `${line.label}: ${line.text}` : line.text).join('; ') : factMoney.text, ai: true, others: factMoney.others.map(line => ({ label: line.label, text: line.text })) } : buyerValue(review);
-  const [editing, setEditing] = useState(false), [draft, setDraft] = useState(tags.join(', ')), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [more, setMore] = useState(false);
-  const { writes, ai } = useCapabilities();
   const description = String(data.sourceDescriptionText || data.descriptionText || data.opportunityDescription || '');
   const region = cleanRegionText(data.region ?? data.issuingLocation);
   const facts: [string, string, string?][] = [
@@ -191,20 +190,30 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
     ['Type', String(data.type || data.opportunityType || 'Not provided')],
     ['Documents', listedDocumentsText(data, documents) ?? documentSummary(documentCounts(documents, data.attachments))],
   ];
+  return <div className="pc-notice-section">
+    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd title={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate) : label === 'Place' && data.place ? placeHow(data.place) : undefined}>{text}</dd></div>)}</dl>
+    {description && <section className="pc-description"><p data-clamped={!more && description.length > 600 || undefined}>{description}</p>{description.length > 600 && <button type="button" className="pc-link-btn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}</section>}
+  </div>;
+}
+
+/** AI summary, bid/no-bid, contacts, possible duplicates and tags, below the decision workspace. */
+function Overview({ id, record, reviews, tags, onTab, onSaved }: { id: string; record: any; reviews: any[]; tags: string[]; onTab(tab: NoticeTabId): void; onSaved(): void }) {
+  const data = record.data, award = record.kind === 'award';
+  const review = latestReview(reviews), verdict = latestEvidence(reviews, 'bid-no-bid');
+  const [editing, setEditing] = useState(false), [draft, setDraft] = useState(tags.join(', ')), [saving, setSaving] = useState(false), [error, setError] = useState('');
+  const { writes, ai } = useCapabilities();
   const saveTags = async (next = draft.split(',')) => {
     setSaving(true); setError('');
     try { await host('catalog.tags', { id, tags: [...new Set(next.map(t => t.trim()).filter(Boolean))] }); setEditing(false); onSaved(); }
     catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
   return <div className="pc-notice-section">
-    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd title={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate) : label === 'Place' && data.place ? placeHow(data.place) : undefined}>{text}</dd></div>)}</dl>
     {review ? <section className="pc-card" aria-label="AI summary">
       <header><h3>AI summary</h3><span className="pc-card-links">{writes && (review.result.labels ?? []).some((label: string) => !tags.includes(label)) && <button type="button" className="pc-link-btn" disabled={saving} onClick={() => void saveTags([...tags, ...(review.result.labels ?? [])])}>Save as tags</button>}<button type="button" className="pc-link-btn" onClick={() => onTab('ai')}>Details</button></span></header>
       <p>{review.result.summary}</p><LabelChips labels={review.result.labels ?? []} />
       <p className="pc-card-meta">{[review.model, ago(review.created_at), coverageText(review)].filter(Boolean).join(' · ')}</p>
     </section> : <section className="pc-card pc-card-empty" aria-label="AI summary"><header><h3>No AI summary yet</h3></header>{writes && ai ? <><p>Summarize this notice and its documents, and tag it with AI categories.</p><Btn size="sm" onClick={() => onTab('ai')}>Summarize &amp; categorize</Btn></> : <p>This notice has not been summarized.</p>}</section>}
     {verdict && <section className="pc-card" aria-label="Bid or no-bid"><header><h3>Bid / no-bid</h3><span className="pc-card-meta">{ago(verdict.created_at)}</span></header><p className="pc-verdict" data-verdict={verdictTone(verdict.result.fields?.recommendation)}>{verdictText(verdict.result.fields?.recommendation)}</p><p>{verdict.result.summary}</p></section>}
-    {description && <section className="pc-description"><p data-clamped={!more && description.length > 600 || undefined}>{description}</p>{description.length > 600 && <button type="button" className="pc-link-btn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}</section>}
     <NoticeContacts contacts={data.contacts} />
     {!award && <PossibleDuplicates notice={noticeSummary(id, record)} />}
     <section className="pc-tags" aria-label="Your tags"><h3>Your tags</h3>

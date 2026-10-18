@@ -12,9 +12,10 @@ export type ResultRowData = { id: string; kind: string; title?: string | null; b
  * selection checkbox only exists when the host can act on a selection.
  */
 export function ResultRow({ row, asOf, writes, checked, open, onCheck, onOpen, flags, side, children }: { row: ResultRowData; asOf: number; writes: boolean; checked: boolean; open: boolean; onCheck(checked: boolean): void; onOpen(): void; flags?: ReactNode; side?: ReactNode; children?: ReactNode }) {
-  const when = cardDeadline(row.deadline, row.kind, asOf), status = noticeStatus(row.status, row.deadline, row.kind, asOf), isHidden = Number(row.hidden) === 1, region = cleanRegionText(row.region);
-  const meta = [<span key="date" className="pc-row-date" data-tone={when.tone || undefined} title={when.detail || undefined}>{when.text}</span>, <span key="source" className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId || 'bc-bid')}</span>,
-    row.kind !== 'opportunity' && <span key="kind" data-kind={row.kind}>{row.kind === 'award' ? 'Award' : row.kind}</span>, status && <span key="status" className="pc-row-status" data-status={status.key} title={status.title}>{status.text}</span>,
+  const when = cardDeadline(row.deadline, row.kind, asOf), status = noticeStatus(row.status, row.deadline, row.kind, asOf), isHidden = Number(row.hidden) === 1, cleaned = cleanRegionText(row.region);
+  const region = cleaned && cleaned.toLowerCase() !== (row.buyer ?? '').trim().toLowerCase() ? cleaned : ''; // "Capital Regional District · Capital Regional District" says it once
+  const meta = [<span key="date" className="pc-row-date" data-tone={when.tone || undefined} title={when.detail || undefined}>{status?.early ? when.text.replace(/^Closes /, 'Closing date ') : when.text}</span>, <span key="source" className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId || 'bc-bid')}</span>,
+    row.kind !== 'opportunity' && <span key="kind" data-kind={row.kind}>{row.kind === 'award' ? 'Award' : row.kind}</span>, status && !(when.state === 'closed' && status.key === 'closed' && !status.title) && <span key="status" className="pc-row-status" data-status={status.key} title={status.title}>{status.text}</span>,
     isHidden && <span key="hidden" className="pc-row-hidden-tag">Hidden</span>].filter(Boolean);
   return <article className="pc-row" data-selected={checked || undefined} data-open={open || undefined} data-hidden={isHidden || undefined} data-row-id={row.id}>
     {writes && <input type="checkbox" className="pc-row-check" aria-label={`Select ${row.title || 'untitled notice'}`} checked={checked} onChange={event => onCheck(event.target.checked)} />}

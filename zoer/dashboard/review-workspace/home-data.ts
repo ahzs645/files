@@ -1,5 +1,6 @@
 import { sql } from '../procurement/display';
 import { HIDDEN_IDS_SQL } from '../procurement/state-contract';
+import { addDays, zoneDate } from '../procurement/deadline';
 import { QUEUES, acquireParts, and, assessmentScope, deadlineWindowSql, fitBucketSql, fitSql, openSql, queueSql, recordColumns, sourceSql, type Fragment, type QueueId } from './queue';
 
 /**
@@ -75,9 +76,12 @@ export async function readRecentDecisions(source: string) {
   return sql(`SELECT d.id, d.record_id AS recordId, d.decision, d.note, d.actor, d.needs_reconfirmation AS reconfirm, d.created_at AS createdAt, ${c.title} AS title FROM procurement_decisions d LEFT JOIN records r ON r.id=d.record_id${scope ? ` WHERE ${scope.sql}` : ''} ORDER BY d.created_at DESC LIMIT 5`, scope?.parameters ?? []);
 }
 
-/** Open notices closing within `days` (inclusive of today), soonest first, with the exact total. */
-export async function readDeadlines(source: string, asOf: number, days = 14) {
-  const scope = and(openWork(asOf), sourceSql(source), deadlineWindowSql(days, asOf));
+/**
+ * Open notices closing within `days` (inclusive of today), soonest first, with the exact total. `fromDay` skips the
+ * first days (Home passes SOON_DAYS + 1 so it leaves out what Today's "Closing within 3 days" already lists).
+ */
+export async function readDeadlines(source: string, asOf: number, days = 14, fromDay = 0) {
+  const scope = and(openWork(asOf), sourceSql(source), deadlineWindowSql(days, asOf), fromDay > 0 ? { sql: `${r.closing}>=?`, parameters: [addDays(zoneDate(asOf), fromDay)] } : null);
   const rows = await sql(`SELECT id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing, (SELECT count(*) FROM records WHERE ${scope.sql}) AS total FROM records WHERE ${scope.sql} ORDER BY ${r.closing}, id LIMIT 8`, [...scope.parameters, ...scope.parameters]);
   return { total: num(rows[0]?.total), rows };
 }

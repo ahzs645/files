@@ -39,6 +39,9 @@ record('c5', { closingAt: '2026-09-27T10:00:00-07:00' });                    // 
 record('c6', { status: 'Closed', closingDate: '2026-09-28' });               // closed status
 record('c7', { closingDate: '2026-09-27' });                                 // today, time unverified: still listed
 record('c8', { sourceId: 'bidsandtenders', closingDate: 'Wed Sep 30, 2026 3:00 PM (PDT)', closingAt: '2026-09-30T15:00:00-07:00' });
+record('c9', { sourceId: 'browser-sites', closingDate: '' });                 // blank deadline: unknown, not closing soon
+record('c10', { sourceId: 'browser-sites', closingAt: '', closingDate: '2026-09-28' }); // blank closingAt wins the coalesce
+record('c11', { closingDate: '10/05/26 2:00pm' });                           // unparseable source text: unknown
 // New since last visit: first saved by r-new1/r-new2 only.
 record('n1', { sourceKey: 'k1', closingDate: '2026-11-01' }); history('r-new1', 'k1');
 record('n2', { sourceKey: 'k2', closingDate: '2026-11-01' }); history('r-old', 'k2'); history('r-new1', 'k2'); // seen before: not new
@@ -56,11 +59,31 @@ describe('Today: closing within three days', () => {
     expect((await today.readClosingSoon('canadabuys', asOf, [])).rows.map(row => row.id)).toEqual(['c2']);
     expect((await today.readClosingSoon('', asOf, [], 0)).rows.map(row => row.id)).toEqual(['c7']);
   });
+  it('never counts or lists a blank or unparseable deadline as closing soon', async () => {
+    const result = await today.readClosingSoon('browser-sites', asOf, []);
+    expect(result).toEqual({ total: 0, rows: [] });
+    expect((await today.readClosingSoon('', asOf, [])).rows.map(row => row.id)).not.toContain('c11');
+  });
   it('stays within the reader limits with the maximum number of pursuits', async () => {
     const ids = Array.from({ length: 200 }, (_, i) => `opportunity:${i}`);
     await today.readClosingSoon('bc-bid', asOf, ids);
     const last = statements.at(-2)!;
     expect(last.parameters.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('Home: closing later in the next two weeks', () => {
+  it('lists days four to fourteen only, so nothing repeats the three-day card, with a count matching its list', async () => {
+    db.exec("CREATE TABLE IF NOT EXISTS workspace_state(key TEXT PRIMARY KEY, data TEXT)");
+    record('d14', { closingDate: '2026-10-11' }); record('d15', { closingDate: '2026-10-12' });
+    try {
+      const home = await import('../zoer/dashboard/review-workspace/home-data');
+      const soon = (await today.readClosingSoon('', asOf, [])).rows.map(row => row.id), later = await home.readDeadlines('', asOf, 14, today.SOON_DAYS + 1);
+      expect(later.rows.map(row => row.id)).toEqual(['c4', 'd14']);
+      expect(later.total).toBe(later.rows.length);
+      expect(later.rows.filter(row => soon.includes(row.id))).toEqual([]);
+      expect((await home.readDeadlines('', asOf)).rows.map(row => row.id)).toEqual(expect.arrayContaining([...soon, 'c4', 'd14']));
+    } finally { db.exec("DELETE FROM records WHERE id IN ('d14','d15')"); }
   });
 });
 

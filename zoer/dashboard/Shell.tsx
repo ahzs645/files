@@ -96,7 +96,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const render = PAGE_VIEWS[pageOf(location)];
   const page = redirect ? <p role="status" className="rw-muted">Opening…</p> : render ? render() : children;
   return <div className="flex h-full min-h-0 flex-col">
-    <nav ref={top} aria-label="Procurement sections" className="zoer-tabs relative flex min-w-0 shrink-0 gap-0.5 overflow-x-auto border-b border-border-default px-2 sm:gap-1 sm:px-4">
+    <nav ref={top} aria-label="Procurement sections" data-fit={primary.length + configure.length <= 5 || undefined} className="zoer-tabs relative flex min-w-0 shrink-0 gap-0.5 overflow-x-auto border-b border-border-default px-2 sm:gap-1 sm:px-4">
       {primary.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}
       {configure.length > 0 && <span role="group" aria-label="Configure" className="rw-nav-configure">
         {configure.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}

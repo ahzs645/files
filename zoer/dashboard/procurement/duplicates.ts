@@ -1,4 +1,4 @@
-import { addDays, parseDeadline } from './deadline';
+import { addDays, parseDeadline, shortDate } from './deadline';
 import { agree, findPlaces } from './places';
 
 /**
@@ -7,7 +7,9 @@ import { agree, findPlaces } from './places';
  * day), then a weighted score — title 0.4, buyer 0.3, closing date 0.2, URL 0.1 — shown at 0.85 or more. Buyer names
  * are compared once legal forms ("Inc", "Ltd"), "City of"-style prefixes, punctuation and accents are gone
  * (LeadScout company-identity.ts). Two different municipalities with the same short name (City and District of
- * North Vancouver) never count as the same buyer. Nothing is merged; people decide.
+ * North Vancouver) never count as the same buyer. The same title words from the same buyer are always shown, whatever
+ * the closing dates (a repost, a second phase or a parallel posting): the label names the other notice's closing day.
+ * Nothing is merged; people decide.
  */
 export const DUPLICATE_THRESHOLD = 0.85;
 export const WEIGHTS = { title: 0.4, buyer: 0.3, date: 0.2, url: 0.1 } as const;
@@ -15,7 +17,7 @@ export const WEIGHTS = { title: 0.4, buyer: 0.3, date: 0.2, url: 0.1 } as const;
 export const CANDIDATE_LIMIT = 200;
 
 export interface NoticeSummary { id: string; title: string; buyer: string; deadline: string | null; url: string | null; sourceId: string; externalId?: string | null; status?: string | null }
-export interface DuplicateScore { score: number; exact: boolean; title: number; buyer: number; dayGap: number | null; sameUrl: boolean; reasons: string[] }
+export interface DuplicateScore { score: number; exact: boolean; title: number; buyer: number; dayGap: number | null; sameUrl: boolean; reasons: string[]; /** Same title words and buyer, closing dates apart or unknown: shown at the threshold. */ sameTitleBuyer?: boolean }
 
 const accents = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '');
 const LEGAL = /(?<![\p{L}\p{N}])(?:inc|incorporated|ltd|limited|llc|llp|corp|corporation|co|company|plc|ulc)(?![\p{L}\p{N}])\.?/giu;
@@ -87,15 +89,16 @@ export function scoreDuplicate(a: NoticeSummary, b: NoticeSummary): DuplicateSco
   const date = dayGap === 0 || (dayGap === 1 && !instants) ? 1 : dayGap === 1 ? 0.5 : 0;
   const ua = canonicalUrl(a.url), sameUrl = !!ua && ua === canonicalUrl(b.url);
   const exact = title === 1 && buyer === 1 && dayGap === 0;
-  const score = exact || sameUrl ? 1 : WEIGHTS.title * title + WEIGHTS.buyer * buyer + WEIGHTS.date * date + WEIGHTS.url * (sameUrl ? 1 : 0);
-  const pct = (value: number) => `${Math.round(value * 100)}%`;
-  const reasons = [
+  const weighted = exact || sameUrl ? 1 : WEIGHTS.title * title + WEIGHTS.buyer * buyer + WEIGHTS.date * date + WEIGHTS.url * (sameUrl ? 1 : 0);
+  const sameTitleBuyer = title === 1 && buyer === 1 && weighted < DUPLICATE_THRESHOLD, score = sameTitleBuyer ? DUPLICATE_THRESHOLD : weighted;
+  const pct = (value: number) => `${Math.round(value * 100)}%`, day = (value: string) => shortDate(value, 0, false).text;
+  const reasons = sameTitleBuyer ? ['same title and buyer', db ? `closes ${day(db)}${da ? ` (this notice ${day(da)})` : ''}` : 'closing date not comparable'] : [
     ...(sameUrl ? ['same notice link'] : []),
     buyer === 1 ? 'same buyer' : buyer >= 0.5 ? `buyer ${pct(buyer)} similar` : 'different buyer',
     title === 1 ? (a.title.trim().toLowerCase() === b.title.trim().toLowerCase() ? 'same title' : 'same title words') : `title ${pct(title)} similar`,
     dayGap === null ? 'closing date not comparable' : dayGap === 0 ? 'same closing day' : dayGap === 1 ? (instants ? 'closing dates 1 day apart' : 'closing within a day (a date has no time zone)') : `closing dates ${dayGap} days apart`,
   ];
-  return { score: Math.round(score * 1000) / 1000, exact, title, buyer, dayGap, sameUrl, reasons };
+  return { score: Math.round(score * 1000) / 1000, exact, title, buyer, dayGap, sameUrl, reasons, ...(sameTitleBuyer ? { sameTitleBuyer } : {}) };
 }
 
 /** "Same buyer, title 92% similar, same closing day". */

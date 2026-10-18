@@ -1,5 +1,5 @@
 import { sql } from '../procurement/display';
-import type { Pursuit, PursuitStage } from '../procurement/state-contract';
+import { ACTIVE_PURSUIT_STAGES, type Pursuit } from '../procurement/state-contract';
 import { and, deadlineWindowSql, openSql, recordColumns, sourceSql } from './queue';
 
 /**
@@ -66,8 +66,7 @@ export async function readNewSince(source: string, runIds: string[], asOf: numbe
   return { total: counts.reduce((sum, row) => sum + row.count, 0), bySource: counts, rows, openTotal: num(openTotal?.count) };
 }
 
-/** Stages where the next step is ours; submitted, awarded and closed pursuits wait on the buyer or are done. */
-export const ACTIVE_STAGES: readonly PursuitStage[] = ['Watching', 'Reviewing', 'Preparing'];
+export const ACTIVE_STAGES = ACTIVE_PURSUIT_STAGES;
 /** Active pursuits not updated for `days`, longest-quiet first. An unreadable `updatedAt` is listed, not hidden. */
 export function quietPursuits(pursuits: Pursuit[], now: number, source = '', days = QUIET_DAYS) {
   const cutoff = now - days * 86_400_000;

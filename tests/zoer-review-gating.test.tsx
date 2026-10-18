@@ -27,6 +27,14 @@ describe('opportunity cards', () => {
     expect(text).not.toContain('date only');
     expect(card(false, { ...row, kind: 'award', deadline: '2026-09-03', status: null }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).toContain('Awarded Sep 3 · BC Bid · Award');
   });
+  it('names the place once when it is the buyer, and does not call a notice the source closed early "Closes …"', () => {
+    const text = (data: ResultRowData) => card(false, data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    expect(text({ ...row, buyer: 'Capital Regional District', region: 'Capital Regional District' })).not.toContain('Capital Regional District · Capital Regional District');
+    expect(text({ ...row, region: 'Prince George' })).toContain('City of Prince George · Prince George');
+    expect(text({ ...row, status: 'Closed' })).toContain('Closing date Nov 1 · BC Bid · Closed');
+    expect(text({ ...row, status: 'Closed', deadline: '2026-10-13' })).toContain('Closed Oct 13 · BC Bid ');
+    expect(text({ ...row, status: 'Closed', deadline: '2026-10-13' })).not.toContain('BC Bid · Closed');
+  });
 });
 
 describe('Home in review mode', () => {

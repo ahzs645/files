@@ -95,6 +95,8 @@ describe('closed after the deadline', () => {
     expect(noticeStatus('Awarded', '2026-01-01', 'opportunity', now)).toEqual({ text: 'Awarded', key: 'awarded' });
     expect(noticeStatus('Open', '2020-01-01', 'award', now)).toEqual({ text: 'Open', key: 'open' });
     expect(noticeStatus(null, null, 'opportunity', now)).toBeNull();
+    expect(noticeStatus('Closed', '2026-11-16', 'opportunity', now)).toMatchObject({ text: 'Closed', key: 'closed', early: true, title: expect.stringContaining('before the closing date') });
+    expect(noticeStatus('Closed', '2026-09-01', 'opportunity', now)).toEqual({ text: 'Closed', key: 'closed' });
   });
 });
 

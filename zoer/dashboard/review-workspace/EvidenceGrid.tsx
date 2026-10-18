@@ -114,7 +114,7 @@ export function EvidenceGrid() {
               return <td key={c} role="gridcell" tabIndex={tab} data-cell={key} data-match={(problem && cell.problems.has(problem)) || undefined} onFocus={focusHere} onClick={() => activate(row, c)}
                 aria-label={`${FIELD_TEXT[cell.field]}: ${cell.value}. ${CELL_TEXT[cell.state]}${extra ? `; ${extra}` : ''}. ${cell.factId ? 'Open evidence inspector.' : 'Open the notice evidence.'}`}>
                 <span className="rw-eg-value">{cell.value}</span>
-                <span className="rw-eg-badges"><span className="rw-chip" data-tone={CELL_TONE[cell.state]}><b>{CELL_TEXT[cell.state]}</b></span>{extra && <span className="rw-chip" data-tone="needs_information"><b>{extra}</b></span>}{cell.lots > 1 && <small>{cell.lots} lots</small>}</span>
+                <span className="rw-eg-badges">{cell.value !== CELL_TEXT[cell.state] && <span className="rw-chip" data-tone={CELL_TONE[cell.state]}><b>{CELL_TEXT[cell.state]}</b></span>}{extra && <span className="rw-chip" data-tone="needs_information"><b>{extra}</b></span>}{cell.lots > 1 && <small>{cell.lots} lots</small>}</span>
               </td>;
             })}
           </tr>)}</tbody>

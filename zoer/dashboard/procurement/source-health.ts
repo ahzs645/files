@@ -52,6 +52,9 @@ export const batchStatusText = (status: string) => BATCH_STATUS[status] ?? `Unre
  * Latest attempt and latest success per batch kind. A failed, partial, stopped or waiting run is reported with
  * its own status and counts; it never reads as zero results, and it never hides the last successful run.
  */
+/** Plain names for batch kinds; anything unlisted shows its stored kind. Shared by Home's source health and Sources. */
+export const BATCH_KIND_TEXT: Record<string, string> = { download: 'Document downloads', review: 'AI reviews', 'document-review': 'Document reviews', 'document-synthesis': 'Document synthesis', 'record-review': 'Notice reviews', 'host-action': 'Review pipeline', 'procurement-extract': 'Requirement extraction', 'procurement-triage': 'Notice triage' };
+
 export function batchHealth(rows: BatchRow[]) {
   const kinds = [...new Set(rows.map(row => row.kind))].sort();
   return kinds.map(kind => {

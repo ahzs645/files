@@ -12,7 +12,7 @@ import { PROCUREMENT_SOURCE_ADAPTERS } from './procurement/source-adapters';
 import { useNarrowScreen } from './mobile';
 import { BidList } from './BidList';
 import { RecordSheet } from './RecordSheet';
-import type { BidRow } from './bid-summaries';
+import { closingCell, sourceReference, type BidRow } from './bid-summaries';
 import { gridTable, labels, tables } from './bid-columns';
 import { useCapabilities } from './capabilities';
 export type BidFilterValues={buyerLevel:BuyerLevel;search:string;organization:string;status:string[];type:string[];sources:string[]};
@@ -48,7 +48,7 @@ function BidTable({kind,filters,onOpen,...grid}:{kind:'opportunity'|'award';filt
   if(!model)return <p role="status">Loading catalog…</p>;
   return <section className="db-workspace bid-database-grid" data-kind={kind} aria-label={`${tables[kind].name} table`}>
     <ResourceDataGrid key={kind} {...grid} showSearchBar={false} columnSizes={{starred:48,opportunityId:135,status:90,closingDate:125,sourceId:110}} resetPageKey={JSON.stringify([buyerLevel,search,organization,status,type,sources,onlyStarred])} filtered={!!search.trim()||!!organization||status.length>0||type.length>0||sources.length>0||!!onlyStarred} resourceKey={'bcbid:'+kind} table={table} hiddenColumns={hidden} columnLabels={labels[kind]} loadPage={loadPage} revision={revision}
-      renderCell={(column,row)=>column==='starred'?<StarButton entity={kind} recordKey={String(kind==='award'?row.importKey:row.sourceKey)} label={String(kind==='award'?row.opportunityDescription:row.description)} />:column==='sourceId'?sourceLabel(row.sourceId):undefined}
+      renderCell={(column,row)=>column==='starred'?<StarButton entity={kind} recordKey={String(kind==='award'?row.importKey:row.sourceKey)} label={String(kind==='award'?row.opportunityDescription:row.description)} />:column==='sourceId'?sourceLabel(row.sourceId):kind==='opportunity'&&column==='opportunityId'?sourceReference(row):kind==='opportunity'&&column==='closingDate'?closingCell(row):undefined}
       onOpenRow={onOpen}/>
   </section>;
 }

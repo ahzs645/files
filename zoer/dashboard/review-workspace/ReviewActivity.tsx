@@ -5,6 +5,7 @@ import { label } from './queries';
 import {
   changeKindText, fieldName, mergeActivity, noticeKey, readAssessmentHistory, readChanges, readDecisions, readRecordEvents, readStageRuns, readTasks, stageName, taskKindLabel, usageText, when, type ActivityItem,
 } from './notice-queries';
+import { dueText } from '../procurement/pursuit-tasks';
 import './review.css';
 
 const KINDS: [string, string][] = [['', 'All activity'], ['source', 'Source capture'], ['stage', 'AI stages'], ['review', 'Reviews and matches'], ['decision', 'Decisions and assessments'], ['task', 'Tasks'], ['change', 'Changes and profiles']];
@@ -36,7 +37,7 @@ export function ReviewActivity({ recordId, documents = [] }: { recordId: string;
   for (const a of assessments.data ?? []) items.push({ at: a.createdAt, kind: 'decision', title: `Assessed: ${label(a.suggestedAction)}${a.isCurrent ? '' : ' (superseded)'}${a.freshness === 'stale' ? ' · evidence changed since' : ''}`, detail: `${a.profileVersionId ? 'Profile version ' + a.profileVersionId.slice(0, 8) : 'No company profile'} · eligibility ${label(a.eligibility)} · ${a.policyVersion}` });
   for (const d of decisions.data ?? []) items.push({ at: d.createdAt, kind: 'decision', title: `Decision recorded: ${label(d.decision)}${d.needsReconfirmation ? ' · needs reconfirmation' : ''}`, detail: [d.note, d.actor, d.assessmentId ? '' : 'no assessment referenced'].filter(Boolean).join(' — ') });
   for (const t of tasks.data ?? []) {
-    items.push({ at: t.createdAt, kind: 'task', title: `Task created: ${t.title}`, detail: `${taskKindLabel(t.kind)} · ${t.owner || 'Unassigned'}${t.dueAt ? ` · due ${t.dueAt.slice(0, 10)}` : ''}` });
+    items.push({ at: t.createdAt, kind: 'task', title: `Task created: ${t.title}`, detail: `${taskKindLabel(t.kind)} · ${t.owner || 'Unassigned'}${t.dueAt ? ` · due ${dueText(t.dueAt)}` : ''}` });
     if (t.status !== 'open') items.push({ at: t.updatedAt, kind: 'task', title: `Task ${t.status === 'done' ? 'done' : 'cancelled'}: ${t.title}`, detail: t.completionNote ?? undefined });
   }
   for (const c of changes.data ?? []) {

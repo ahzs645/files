@@ -5,7 +5,7 @@ import { host } from '../bridge';
 import { useWorkspace } from '../backend';
 import { hostHref, navigatePlugin } from '../navigation';
 import { PROCUREMENT_SOURCE_ADAPTERS, COLLECTION_KEY } from './source-adapters';
-import { CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
+import { BATCH_KIND_TEXT, CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
 import { CONNECTOR_SOURCES, COLLECT_ACTION, PORTAL_COUNT_SQL, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
 import { findSchedule, scheduleState, type ScheduleRow } from './schedule-state';
 import { SCHEDULES_KEY, ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
@@ -253,7 +253,7 @@ const ATTACHMENT_SQL = `SELECT ${SOURCE_SQL} AS sourceId, count(*) AS total,
   FROM records r WHERE r.kind='opportunity' GROUP BY sourceId`;
 const BATCH_SQL = 'SELECT id, kind, status, completed, failed, total, error, updated_at FROM batches ORDER BY updated_at DESC LIMIT 200';
 const FAILURE_SQL = "SELECT t.record_id, r.title, t.kind, t.status, t.error, t.updated_at, json_extract(t.result,'$.name') AS name, json_extract(t.result,'$.phase') AS phase FROM research_tasks t LEFT JOIN records r ON r.id=t.record_id WHERE t.status IN ('failed','waiting_for_user') ORDER BY t.updated_at DESC LIMIT 200";
-const KIND_TEXT: Record<string, string> = { download: 'Document downloads', review: 'AI reviews' };
+const KIND_TEXT = BATCH_KIND_TEXT;
 
 /** Capabilities, coverage, run outcomes and a retryable failure queue. Errors are shown as errors, never as zero. */
 function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any[]; canadaBuysTotal?: unknown; enabled: boolean }) {

@@ -5,7 +5,8 @@ import { REVIEW_KEY, reviewWrite, useReviewInvalidate } from '../review-workspac
 import { label } from '../review-workspace/queries';
 import { sql } from './display';
 import { useCapabilities } from '../capabilities';
-import { dueClusters, type DueItem } from './pursuit-tasks';
+import { DEADLINE_PASSED_HINT, deadlinePassed, dueClusters, dueText, type DueItem } from './pursuit-tasks';
+import { ACTIVE_PURSUIT_STAGES, type PursuitStage } from './state-contract';
 import '../review-workspace/review.css';
 
 export interface TaskRow {
@@ -16,7 +17,7 @@ const TASK_KINDS: [string, string][] = [['acquire_evidence', 'Acquire evidence']
 const kindLabel = (kind: string) => TASK_KINDS.find(([id]) => id === kind)?.[1] ?? kind;
 const COMPLETION_COPY = 'Completing a task does not satisfy a requirement until supporting evidence is added and reviewed.';
 const friendly = (e: unknown) => { const message = (e as Error)?.message ?? String(e); return /^Conflict:/i.test(message) ? 'Someone else changed this; reload and review it.' : message; };
-export const dueText = (value: string | null) => !value ? 'No due date' : /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : value;
+export { dueText } from './pursuit-tasks';
 
 async function readTasks(status: 'open' | 'closed'): Promise<TaskRow[]> {
   const rows = await sql(`SELECT t.id, t.record_id AS recordId, r.title AS recordTitle, t.title, t.kind, t.linked_type AS linkedType, t.linked_id AS linkedId, (SELECT q.text FROM procurement_requirements q WHERE q.id=t.linked_id AND t.linked_type='requirement') AS linkedText, t.owner, t.due_at AS dueAt, t.status, t.completion_note AS completionNote, t.version, t.created_at AS createdAt, t.updated_at AS updatedAt FROM procurement_tasks t LEFT JOIN records r ON r.id=t.record_id WHERE ${status === 'open' ? "t.status='open' ORDER BY coalesce(t.due_at,'9999-12-31'), t.created_at" : "t.status<>'open' ORDER BY t.updated_at DESC"} LIMIT 200`);
@@ -37,7 +38,8 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
   const [editing, setEditing] = useState<TaskRow | null>(null), [adding, setAdding] = useState(false);
   const { writes } = useCapabilities();
   const tasks = open.data ?? [];
-  const active = pursuits.filter(item => ['Watching', 'Reviewing', 'Preparing'].includes(item.stage));
+  const active = pursuits.filter(item => ACTIVE_PURSUIT_STAGES.includes(item.stage as PursuitStage));
+  const passed = new Set(pursuits.filter(item => deadlinePassed(item.stage, item.deadline)).map(item => item.recordId));
   const closings: DueItem[] = active.map(item => ({ id: `closing:${item.recordId}`, recordId: item.recordId, label: `${item.title} closes`, due: item.deadline, kind: 'closing' }));
   const taskItems: DueItem[] = tasks.map(task => ({ id: task.id, recordId: task.recordId, label: `${task.title} (${task.recordTitle ?? task.recordId})`, due: task.dueAt, kind: 'task', owner: task.owner }));
   const deadlineHints = dueClusters([...closings, ...taskItems.filter(item => active.some(p => p.recordId === item.recordId))], 3);
@@ -55,24 +57,25 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
       <p className="rw-note">Each notice’s own delivery or response label does not account for these overlaps. Check proposal capacity before committing.</p>
     </div>}
     {open.error && <p role="alert">{(open.error as Error).message}</p>}
-    {open.isPending ? <p role="status">Loading tasks…</p> : !tasks.length ? <p className="rw-note">{writes ? 'No open tasks. Tasks are created from a notice’s requirements, gaps or changes, or with Add task.' : 'No open tasks.'}</p> : <TaskTable tasks={tasks} onEdit={writes ? setEditing : undefined} />}
+    {open.isPending ? <p role="status">Loading tasks…</p> : !tasks.length ? <p className="rw-note">{writes ? 'No open tasks. Tasks are created from a notice’s requirements, gaps or changes, or with Add task.' : 'No open tasks.'}</p> : <TaskTable tasks={tasks} passed={passed} onEdit={writes ? setEditing : undefined} />}
     {showClosed && (closed.isPending ? <p role="status">Loading closed tasks…</p> : closed.data?.length ? <><h3>Completed and cancelled</h3><TaskTable tasks={closed.data} onEdit={writes ? setEditing : undefined} /></> : <p className="rw-note">No completed or cancelled tasks.</p>)}
     {writes && editing && <TaskEditor task={editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await invalidate(); }} />}
     {writes && adding && <TaskCreator pursuits={pursuits} onClose={() => setAdding(false)} onSaved={async () => { setAdding(false); await invalidate(); }} />}
   </section>;
 }
 
-function TaskTable({ tasks, onEdit }: { tasks: TaskRow[]; onEdit?(task: TaskRow): void }) {
-  return <div className="rw-table-wrap"><table className="rw-table rw-text">
+/** Phones (<640px) read each task as a stacked card: review.css turns rows into blocks labelled from `data-label`. */
+function TaskTable({ tasks, passed, onEdit }: { tasks: TaskRow[]; passed?: Set<string>; onEdit?(task: TaskRow): void }) {
+  return <div className="rw-table-wrap"><table className="rw-table rw-text rw-task-table">
     <thead><tr><th scope="col">Task</th><th scope="col">Notice</th><th scope="col">Linked to</th><th scope="col">Owner</th><th scope="col">Due</th><th scope="col">Status</th>{onEdit && <th scope="col"><span className="sr-only">Actions</span></th>}</tr></thead>
     <tbody>{tasks.map(task => <tr key={task.id}>
       <td><strong>{task.title}</strong><small className="rw-note">{kindLabel(task.kind)}</small></td>
-      <td>{task.recordTitle ?? task.recordId}</td>
-      <td>{task.linkedType === 'requirement' ? (task.linkedText ? <>Requirement: {task.linkedText}</> : 'Requirement (not found in the current ledger)') : task.linkedType ? `${task.linkedType.replace(/_/g, ' ')}` : 'Not linked'}</td>
-      <td>{task.owner || 'Unassigned'}</td>
-      <td>{dueText(task.dueAt)}</td>
-      <td>{task.status === 'open' ? 'Open' : task.status === 'done' ? 'Done' : 'Cancelled'}{task.completionNote && <small className="rw-note">{task.completionNote}</small>}</td>
-      {onEdit && <td><Btn size="sm" variant="ghost" aria-label={`Update task: ${task.title}`} onClick={() => onEdit(task)}>Update</Btn></td>}
+      <td data-label="Notice">{task.recordTitle ?? task.recordId}{passed?.has(task.recordId) && <small className="rw-warn" title={DEADLINE_PASSED_HINT}>Deadline passed</small>}</td>
+      <td data-label="Linked to">{task.linkedType === 'requirement' ? (task.linkedText ? <>Requirement: {task.linkedText}</> : 'Requirement (not found in the current ledger)') : task.linkedType ? `${task.linkedType.replace(/_/g, ' ')}` : 'Not linked'}</td>
+      <td data-label="Owner">{task.owner || 'Unassigned'}</td>
+      <td data-label="Due">{dueText(task.dueAt)}</td>
+      <td data-label="Status">{task.status === 'open' ? 'Open' : task.status === 'done' ? 'Done' : 'Cancelled'}{task.completionNote && <small className="rw-note">{task.completionNote}</small>}</td>
+      {onEdit && <td className="rw-task-actions"><Btn size="sm" variant="ghost" aria-label={`Update task: ${task.title}`} onClick={() => onEdit(task)}>Update</Btn></td>}
     </tr>)}</tbody>
   </table></div>;
 }

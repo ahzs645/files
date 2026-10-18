@@ -18,14 +18,16 @@
 .rw-chip[data-tone=teal]{border-color:color-mix(in srgb,var(--rw-teal,#14b8a6) 40%,transparent);background:color-mix(in srgb,var(--rw-teal,#14b8a6) 12%,transparent)}
 .rw-chip[data-tone=teal] b{color:var(--rw-teal,#14b8a6)}
 
-/* AI-suggestion card: a left accent bar in the suggested action's tone, so it reads at a glance without
-   requiring the badge text to be re-read. The bar colour always matches the badge/chip tone shown inside it. */
-.rw-nd-suggest{border-left-width:3px}
-.rw-nd-suggest[data-tone=ok]{border-left-color:var(--rw-ok,var(--status-success))}
-.rw-nd-suggest[data-tone=warn]{border-left-color:var(--rw-warn,var(--status-warning))}
-.rw-nd-suggest[data-tone=bad]{border-left-color:var(--rw-bad,var(--status-error))}
-.rw-nd-suggest[data-tone=violet]{border-left-color:var(--rw-violet,#8b5cf6)}
-.rw-nd-suggest[data-tone=neutral]{border-left-color:var(--border-default)}
+/* AI-suggestion card: the suggested-action pill carries the tone; the five dimensions are a quiet label/value grid
+   with a tone dot, so the card is not a wall of tinted pills and no accent bar bends around the rounded corner. */
+.rw-dims{display:grid;grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr));gap:.625rem 1rem;margin:.75rem 0}
+.rw-dim{display:flex;flex-direction:column;gap:.125rem;min-width:0}
+.rw-dim dt{font-size:11.5px;color:var(--text-muted)}
+.rw-dim dd{margin:0;display:flex;align-items:flex-start;gap:.375rem;font-size:13px;line-height:1.4;font-weight:600;color:var(--text-primary)}
+.rw-dim dd::before{content:"";flex:none;width:.5rem;height:.5rem;margin-top:.33rem;border-radius:999px;background:var(--text-faint)}
+.rw-dim[data-tone=supported] dd::before{background:var(--rw-ok,var(--status-success))}
+.rw-dim[data-tone=needs_information] dd::before{background:var(--rw-warn,var(--status-warning))}
+.rw-dim[data-tone=blocker] dd::before{background:var(--rw-bad,var(--status-error))}
 
 /* Decision options: a subtle tone per choice so "Pursue"/"No bid"/"Monitor"/"Defer" are distinguishable before
    reading the label, without ever replacing it. */

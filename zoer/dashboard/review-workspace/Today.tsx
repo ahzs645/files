@@ -95,7 +95,7 @@ export function Today({ source, asOf }: { source: string; asOf: number }) {
     </header>
     <div className="rw-today-grid" data-columns={layout.columns}>
       <Column title={`Closing within ${SOON_DAYS} days`} count={soon.data ? soon.data.total.toLocaleString() : '–'} note="Open notices, pursued and shortlisted first."
-        footer={soon.data && soon.data.total > PHONE_SHOW ? <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&deadline=week&sort=deadline'} className="rw-today-more">All upcoming deadlines →</RouteLink> : null}>
+        footer={soon.data && soon.data.total > PHONE_SHOW ? <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&deadline=week&sort=deadline'} className="rw-today-more">All closing in 7 days →</RouteLink> : null}>
         {soon.isPending || state.isPending ? <p className="rw-muted" role="status">Loading…</p> : soon.isError ? <Failed what="closing notices" error={soon.error} retry={soon.refetch} /> : soon.data.rows.length === 0 ? <p className="rw-muted">Nothing saved closes in the next {SOON_DAYS} days.</p> :
           <ul className="rw-today-list">{soon.data.rows.slice(0, SHOW).map(row => { const d = deadlineText(row.closing, asOf); return <Row key={row.id} to={`/procurement?notice=${encodeURIComponent(row.id)}`} title={row.title || row.id} tag={row.pursued ? 'Pursuing' : row.shortlisted ? 'Shortlisted' : undefined}
             meta={d.text} detail={d.detail} sub={[row.buyer, source ? '' : sourceName(row.sourceId)].filter(Boolean).join(' · ')} />; })}</ul>}

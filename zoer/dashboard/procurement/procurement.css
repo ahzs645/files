@@ -219,6 +219,9 @@
 @media(min-width:1024px){.procurement-workspace .procurement-board-column{flex:1 0 11rem;padding:.625rem}.procurement-workspace .procurement-board-card{padding:.625rem}.procurement-board-card .ui-select-trigger{padding-left:.625rem;padding-right:1.75rem;font-size:13px}}
 @media(max-width:640px){.procurement-board{scroll-snap-type:x mandatory}.procurement-board-column{scroll-snap-align:start}}
 @media(max-width:639px){nav.zoer-tabs[aria-label="Procurement sections"]{gap:0;padding:0 6px}nav.zoer-tabs[aria-label="Procurement sections"] a{padding:10px 9px}}
+/* Five or fewer sections fit a phone without scrolling: spread them across the strip instead of hiding the last one under the fade. */
+@media(max-width:639px){nav.zoer-tabs[data-fit]{padding:0;justify-content:space-between}nav.zoer-tabs[data-fit] a{flex:1 0 auto;justify-content:center;padding:10px 4px}}
+@media(max-width:370px){nav.zoer-tabs[data-fit] a{padding-inline:3px;font-size:12.5px}}
 
 /* Source page header: breadcrumb and a segmented control on desktop, one picker on phones. */
 .pc-source-header{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;width:100%;max-width:1400px;margin:0 auto;padding:.75rem .75rem 0}
@@ -314,12 +317,13 @@ p.pc-source-crumb{margin-bottom:.75rem}
 .pc-empty-state>div{margin-bottom:.625rem;color:var(--text-faint)}.pc-empty-state>div svg{width:2rem;height:2rem}
 .pc-empty-state>p{font-size:14px;font-weight:500;color:var(--text-heading)}
 .pc-empty-state>span{margin-top:.25rem;max-width:24rem;font-size:14px;line-height:1.5rem;color:var(--text-secondary)}
-/* Phones: the stages become a vertical list; an empty stage collapses to its one-line header. */
+/* Phones: the stages become a vertical list; empty stages are hidden and named on one "Empty stages" line instead. */
+.pc-board-empty-stages{display:none}
 @media(max-width:640px){
   .procurement-workflow .procurement-board{flex-direction:column;overflow-x:visible;scroll-snap-type:none;padding-bottom:0}
   .procurement-board .procurement-board-column{flex:none;max-width:none;width:100%}
-  .procurement-board .procurement-board-column[data-empty]{gap:0;padding:.5rem .75rem}
-  .procurement-board .procurement-board-column[data-empty]>.procurement-coverage{display:none}
+  .procurement-board .procurement-board-column[data-empty]{display:none}
+  .procurement-workflow .pc-board-empty-stages{display:block}
 }
 /* Schedules turned off by an update, per-source schedule offer (S6), and collection runs (S1): phone first. */
 .pc-schedule-notice{display:flex;flex-direction:column;gap:.75rem;border:1px solid color-mix(in srgb,var(--status-warning) 40%,transparent);background:color-mix(in srgb,var(--status-warning) 8%,transparent);border-radius:.5rem;padding:.75rem 1rem;font-size:13px;line-height:1.5;color:var(--text-primary)}

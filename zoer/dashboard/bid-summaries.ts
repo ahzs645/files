@@ -1,6 +1,19 @@
-// Pure row → display mappings for the phone list layout. Kept free of React so they can be unit tested.
+// Pure row → display mappings for the phone list layout and grid cells. Kept free of React so they can be unit tested.
+import { shortDate } from './procurement/deadline';
+
 export type BidRow = Record<string, unknown>;
 const text = (value: unknown) => (value === null || value === undefined ? '' : String(value).trim());
+
+/** The source's own reference ("Opportunity ID"), or blank when the only id is the plugin's `source:site:slug` key. */
+export function sourceReference(row: BidRow): string {
+  const id = text(row.opportunityId), key = text(row.sourceKey) || id, external = text(row.externalId);
+  return external && !key.endsWith(':' + external) ? external : id && !id.includes(':') ? id : '';
+}
+/** One closing-date format across sources ("Oct 5, 2026, 2:00 PM"), from the parsed instant when there is one; unparseable source text is kept. */
+export function closingCell(row: BidRow): string {
+  const raw = text(row.closingAt) || text(row.closingDate);
+  return raw ? shortDate(raw, Date.now(), false).text : '';
+}
 
 export function opportunitySummary(row: BidRow) {
   const sourceKey = text(row.sourceKey);
@@ -8,10 +21,10 @@ export function opportunitySummary(row: BidRow) {
     key: sourceKey,
     processId: text(row.processId) || sourceKey,
     title: text(row.description) || 'Untitled opportunity',
-    id: text(row.opportunityId),
+    id: sourceReference(row),
     status: text(row.status) || 'Unknown status',
     type: text(row.type),
-    closingDate: text(row.closingDate) || 'N/A',
+    closingDate: closingCell(row) || 'N/A',
     detailUrl: safeHttpsUrl(row.detailUrl),
   };
 }

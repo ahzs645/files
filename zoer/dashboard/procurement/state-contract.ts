@@ -2,6 +2,8 @@ import { METADATA_FILTER_KEYS, metadataPredicates, type MetadataFilters } from '
 import { EXCLUDE_MAX_TERMS, EXCLUDE_MAX_TEXT, allExcludeTerms } from './exclude';
 export const PURSUIT_STAGES = ['Watching', 'Reviewing', 'Preparing', 'Submitted', 'Awarded', 'Closed'] as const;
 export type PursuitStage = typeof PURSUIT_STAGES[number];
+/** Stages where the next step is ours; submitted, awarded and closed pursuits wait on the buyer or are done. */
+export const ACTIVE_PURSUIT_STAGES: readonly PursuitStage[] = ['Watching', 'Reviewing', 'Preparing'];
 export const PURSUITS_KEY = 'procurement:pursuits';
 export const SEARCHES_KEY = 'procurement:searches';
 export const MAX_PURSUITS = 200;

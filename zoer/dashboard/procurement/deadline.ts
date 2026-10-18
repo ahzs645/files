@@ -84,3 +84,28 @@ export function closesWithin(raw: unknown, days: number, asOf: number | Date = D
   if (!parsed || state === 'closed' || state === 'unknown') return false;
   return parsed.precision === 'instant' ? parsed.time <= Number(asOf) + days * 86_400_000 : parsed.date <= addDays(zoneDate(asOf, zone), days);
 }
+
+const DAY = 86_400_000;
+const dayText = (date: string) => { const [y, m, d] = date.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
+
+/**
+ * Compact date for result rows. With `deadline` (the default), the tone comes from `deadlineState`:
+ * date-only and timezone-less values are judged by their calendar day in the source zone, and the current
+ * day reads "closing date today; time unverified" rather than open or closed. Award and import dates pass
+ * `deadline = false` and are only formatted. The detail dialog keeps the source's exact text.
+ */
+export function shortDate(raw: unknown, now = Date.now(), deadline = true): { text: string; tone: '' | 'soon' | 'passed' } {
+  if (typeof raw !== 'string' || !raw.trim()) return { text: 'No date', tone: '' };
+  const value = raw.trim(), parsed = parseDeadline(value);
+  if (!parsed) return { text: /^\d{4}-\d{2}-\d{2}/.test(value) && validDate(value.slice(0, 10)) ? dayText(value.slice(0, 10)) : value, tone: '' };
+  const state = deadline ? deadlineState(value, now) : 'unknown';
+  if (parsed.precision === 'date') {
+    const text = dayText(parsed.date);
+    return state === 'closing_today_time_unverified' ? { text: `${text} · ${CLOSING_TODAY_TEXT}`, tone: 'soon' } : { text, tone: state === 'closed' ? 'passed' : '' };
+  }
+  const text = new Date(parsed.time).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  if (!deadline) return { text, tone: '' };
+  if (state === 'closed') return { text, tone: 'passed' };
+  const days = Math.ceil((parsed.time - now) / DAY);
+  return days <= 7 ? { text: `${text} · ${days === 1 ? '1 day' : `${days} days`} left`, tone: 'soon' } : { text, tone: '' };
+}

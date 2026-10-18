@@ -7,6 +7,7 @@ import { StarButton } from '../../apps/dashboard/src/components/preferences/BidP
 import { BuyerName } from '../../apps/dashboard/src/components/ui/BuyerName';
 import { getOpportunityStatusTone, OPPORTUNITY_TONE_STYLES } from '../../apps/dashboard/src/lib/constants';
 import { awardSummary, opportunitySummary, type BidRow } from './bid-summaries';
+import { sourceName } from './procurement/display';
 
 export function RecordSheet({ kind, row, onClose }: { kind: 'opportunity' | 'award'; row: BidRow; onClose: () => void }) {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export function RecordSheet({ kind, row, onClose }: { kind: 'opportunity' | 'awa
         <dl className="bid-list-fields">
           <div><dt>Buyer</dt><dd><BuyerName record={row} /></dd></div>
           <div><dt>Closes</dt><dd>{item.closingDate}</dd></div>
-          {item.detailUrl && <div><dt>Source</dt><dd><a href={item.detailUrl} target="_blank" rel="noreferrer">View on BC Bid</a></dd></div>}
+          {item.detailUrl && <div><dt>Source</dt><dd><a href={item.detailUrl} target="_blank" rel="noreferrer">View on {sourceName(String(row.sourceId || 'bc-bid'))}</a></dd></div>}
         </dl>
       </div>
     </Modal>;

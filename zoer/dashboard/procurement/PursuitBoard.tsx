@@ -9,7 +9,7 @@ import { LabelChips } from './AiResult';
 import { NotebookPen } from 'lucide-react';
 import { label } from '../review-workspace/queries';
 import type { DecisionRow } from '../review-workspace/queries';
-import { CLOSED_REASONS, closedReason, closedReasonLabel, nextTask, withAwarded, withClosedReason, withSubmitted, type ClosedReason } from './pursuit-tasks';
+import { CLOSED_REASONS, DEADLINE_PASSED_HINT, closedReason, closedReasonLabel, deadlinePassed, nextTask, withAwarded, withClosedReason, withSubmitted, type ClosedReason } from './pursuit-tasks';
 import { dueText, type TaskRow } from './PursuitTasks';
 import './workflow.css';
 import '../review-workspace/review.css';
@@ -74,6 +74,7 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
           {onOpenRecord ? <button type="button" className="procurement-title" onClick={() => onOpenRecord(item.recordId)}>{item.title}</button> : <h4>{item.title}</h4>}
           <p>{[info?.buyer, sourceName(item.sourceId)].filter(Boolean).join(' · ')}</p>
           {info?.deadline && <p className="pc-board-date" data-tone={when.tone || undefined}>{info.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</p>}
+          {info?.kind !== 'award' && deadlinePassed(item.stage, info?.deadline) && <span className="rw-chips" data-compact><span className="rw-chip" data-tone="blocker" title={DEADLINE_PASSED_HINT}><b>Deadline passed</b></span></span>}
           {!!labels?.get(item.recordId)?.length && <LabelChips labels={labels.get(item.recordId)!} limit={2} />}
           {decisions && <PursuitReview recordId={item.recordId} stage={item.stage} notes={item.notes} decision={decisions.get(item.recordId)} tasks={tasks?.get(item.recordId) ?? []} />}
           {item.notes && <p className="procurement-board-notes">{item.notes}</p>}
@@ -82,6 +83,8 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
         {!pursuits.some(item => item.stage === stage) && <p className="procurement-coverage">Empty</p>}
       </section>)}
     </div>
+    {/* Phones hide empty stage columns (procurement.css) and list them on this one line instead. */}
+    {pursuits.length > 0 && PURSUIT_STAGES.some(stage => !pursuits.some(item => item.stage === stage)) && <p className="procurement-coverage pc-board-empty-stages">Empty stages: {PURSUIT_STAGES.filter(stage => !pursuits.some(item => item.stage === stage)).join(', ')}</p>}
     {writes && confirm && <Modal title={confirm.stage === 'Submitted' ? 'Record submission' : confirm.stage === 'Awarded' ? 'Record award' : 'Close pursuit'} mobileSheet onClose={() => { if (!busy) setConfirm(undefined); }}
       footer={<div className="procurement-actions"><Btn variant="secondary" disabled={busy} onClick={() => setConfirm(undefined)}>Cancel</Btn><Btn disabled={busy || (confirm.stage === 'Closed' && !reason)} onClick={confirmMove}>{confirm.stage === 'Submitted' ? 'Record as submitted' : confirm.stage === 'Awarded' ? 'Record award' : 'Close pursuit'}</Btn></div>}>
       <div className="rw-form">
