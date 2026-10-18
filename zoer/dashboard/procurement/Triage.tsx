@@ -6,6 +6,7 @@ import { EXCLUDE_MAX_TERMS, EXCLUDE_MAX_TEXT, NOISE_TERMS, allExcludeTerms, pars
 import { setHiddenNotices } from './state-client';
 import { HIDDEN_PREFIX } from './state-contract';
 import { sql } from './display';
+import { useCapabilities } from '../capabilities';
 import { REVIEW_KEY } from '../review-workspace/actions';
 import { filterReason, readProfileFilterHits, readProfileRules, hasProfileFilters, type ProfileFilterHit } from '../review-workspace/profile-filter';
 import './triage.css';
@@ -51,6 +52,7 @@ export function useHideNotices(onError: (message: string) => void) {
 }
 
 export function HideButton({ row, hidden, busy, onToggle }: { row: { id: string; title?: string }; hidden: boolean; busy: boolean; onToggle(): void }) {
+  if (!useCapabilities().writes) return null;
   const title = row.title || 'untitled notice';
   return <button type="button" className="pc-star pc-hide" disabled={busy} aria-pressed={hidden} aria-label={hidden ? `Show again in lists: ${title}` : `Hide, not relevant: ${title}`} title={hidden ? 'Show again in lists' : 'Hide: not relevant'} onClick={onToggle}>
     {hidden ? <Eye aria-hidden="true" className="h-4 w-4" /> : <EyeOff aria-hidden="true" className="h-4 w-4" />}
@@ -86,9 +88,11 @@ export function ProfileFilterLine({ hits }: { hits: ProfileFilterHit[] | undefin
 
 /** Hide/show from the notice itself; the button reads back the stored state, so it doubles as undo. */
 export function NoticeHideButton({ id, title }: { id: string; title: string }) {
+  const { writes } = useCapabilities();
   const [error, setError] = useState('');
   const state = useQuery({ queryKey: ['catalog', 'procurement-hidden', id], queryFn: async () => Number((await sql(`SELECT json_extract(data,'$.hidden') AS hidden FROM workspace_state WHERE key LIKE '${HIDDEN_PREFIX}%' AND json_extract(data,'$.recordId')=?`, [id]))[0]?.hidden) === 1 });
   const hide = useHideNotices(setError), hidden = !!state.data, busy = hide.busy.length > 0;
+  if (!writes) return null;
   return <>
     <Btn size="sm" variant="secondary" disabled={busy || state.isPending} aria-pressed={hidden} tooltip={hidden ? 'Hidden from default lists and Home. Show it again.' : 'Not relevant: leave it out of default lists and Home. It stays saved.'} onClick={() => void hide.apply([{ id, title }], !hidden, false)}>
       {hidden ? <Eye aria-hidden="true" className="h-4 w-4" /> : <EyeOff aria-hidden="true" className="h-4 w-4" />}{busy ? 'Saving…' : hidden ? 'Hidden · Show again' : 'Hide'}

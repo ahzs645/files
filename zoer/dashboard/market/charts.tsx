@@ -5,6 +5,8 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import type { Overview, Slice, Matrix, Trends, Comparison } from './model';
 
 export const count = (n: number) => n.toLocaleString('en-CA');
+/** "1 award", "2 awards": a count with its noun in the right number. */
+export const counted = (n: number, one: string, many = one + 's') => `${count(n)} ${n === 1 ? one : many}`;
 export const percent = (n: number | null) => n === null ? '—' : new Intl.NumberFormat('en-CA', { style: 'percent', maximumFractionDigits: 1 }).format(n);
 export function money(n: number | null, currency: string, compact = false) {
   if (n === null) return '—';
@@ -27,7 +29,7 @@ export function LinePlot({ data, metric, currency, pareto = false }: { data: any
     <XAxis type={pareto ? 'number' : 'category'} domain={pareto ? [1, 'dataMax'] : undefined} tickFormatter={pareto ? n => count(Number(n)) : undefined} dataKey={pareto ? 'rank' : 'month'} tick={{ fill: text, fontSize: 12 }} minTickGap={28} axisLine={false} tickLine={false} />
     <YAxis tick={{ fill: text, fontSize: 12 }} width={58} axisLine={false} tickLine={false} domain={pareto ? [0, 100] : ['auto', 'auto']} ticks={pareto ? [0, 25, 50, 75, 100] : undefined} allowDataOverflow={pareto} tickFormatter={n => pareto ? percent(Number(n) / 100) : compact(Number(n))} />
     {pareto && <ReferenceLine y={80} stroke="var(--color-text-tertiary)" strokeDasharray="4 4" />}
-    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-primary)' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ stroke: 'var(--color-border-strong)' }} formatter={n => pareto ? percent(Number(n) / 100) : metric === 'value' ? money(Number(n), currency) : count(Number(n))} labelFormatter={label => pareto ? `Leading ${count(Number(label))} suppliers` : label} />
+    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-text-primary)' }} itemStyle={{ color: 'var(--color-text-primary)' }} cursor={{ stroke: 'var(--color-border-strong)' }} formatter={n => pareto ? percent(Number(n) / 100) : metric === 'value' ? money(Number(n), currency) : count(Number(n))} labelFormatter={label => pareto ? `Leading ${counted(Number(label), 'supplier')}` : label} />
     <Line name={pareto ? 'Cumulative value share' : metric === 'value' ? 'Recorded award value' : 'Saved awards'} type="linear" dataKey={key} stroke="var(--color-accent)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
   </LineChart></ResponsiveContainer></div>;
 }
@@ -40,7 +42,7 @@ export function DependencePlot({ rows, currency, inspect }: { rows: Overview['bu
     <ZAxis type="number" dataKey="positiveValue" range={[45, 600]} />
     <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ active, payload }) => {
       const r = payload?.[0]?.payload;
-      return active && r ? <div className="market-tooltip" style={tooltipStyle}><strong>{r.name}</strong><p>{count(r.count)} awards · {money(r.value, currency)}</p><p>Top supplier: {r.leading}</p><p>{percent(r.dependence)} of positive award value</p></div> : null;
+      return active && r ? <div className="market-tooltip" style={tooltipStyle}><strong>{r.name}</strong><p>{counted(r.count, 'award')} · {money(r.value, currency)}</p><p>Top supplier: {r.leading}</p><p>{percent(r.dependence)} of positive award value</p></div> : null;
     }} />
     <Scatter data={data} fill="var(--color-accent)" fillOpacity={.65} isAnimationActive={false} onClick={point => { const r = point.payload ?? point; inspect({ buyer: r.name }, r.name); }} />
   </ScatterChart></ResponsiveContainer></div>;
@@ -77,10 +79,10 @@ export function Heatmap({ rows, columns, cells, metric, currency, normalized, in
       <tbody>{rows.map(row => <tr key={row}><th scope="row"><button type="button" className="market-heat-heading" aria-label={`Actions for buyer ${row}`} aria-haspopup="dialog" {...actions({buyer:row}, row)} onClick={e => open(e.currentTarget, {buyer:row}, row)}>{row}<MoreHorizontal aria-hidden="true" size={14}/></button></th>{columns.map(column => {
         const cell = index.get(JSON.stringify([row, column]))!;
         const ratio = Math.max(0, cell[metric]) / (normalized ? totals.get(row) || 1 : maximum);
-        const raw = metric === 'value' ? money(cell.value, currency) : `${count(cell.count)} awards`;
+        const raw = metric === 'value' ? money(cell.value, currency) : `${counted(cell.count, 'award')}`;
         const title = `${row} · ${column}`;
         return <td key={column}><div className="market-heat-cell" style={{ backgroundColor: `color-mix(in srgb, var(--color-accent) ${cell.count ? 12 + ratio * 68 : 0}%, var(--color-bg-surface))` }}>
-          <button type="button" className="market-heat-value" aria-label={`${row}, ${column}: ${raw}; ${count(cell.count)} saved awards`} {...actions(cell.slice, title)} onClick={() => inspect(cell.slice, title)}><span>{normalized ? percent(ratio) : metric === 'value' ? compact(cell.value) : count(cell.count)}</span></button>
+          <button type="button" className="market-heat-value" aria-label={`${row}, ${column}: ${raw}; ${counted(cell.count, 'saved award')}`} {...actions(cell.slice, title)} onClick={() => inspect(cell.slice, title)}><span>{normalized ? percent(ratio) : metric === 'value' ? compact(cell.value) : count(cell.count)}</span></button>
           <button type="button" className="market-heat-more" aria-label={`Actions for ${row}, ${column}`} aria-haspopup="dialog" {...actions(cell.slice, title)} onClick={e => open(e.currentTarget, cell.slice, title)}><MoreHorizontal aria-hidden="true" size={14}/></button>
         </div></td>;
       })}</tr>)}</tbody></table></div>

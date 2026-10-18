@@ -196,3 +196,11 @@ export const countablePartners = (draft: Pick<ProfileDraft, 'scenario' | 'partne
 
 /** Stable comparison for "unsaved changes" and draft-vs-published badges. */
 export const sameDraft = (a: ProfileDraft, b: ProfileDraft) => JSON.stringify(cleanDraft(a)) === JSON.stringify(cleanDraft(b));
+
+/**
+ * Whether "Assess as" is a menu. A host that writes always offers one (it carries Create/Manage profiles); a read-only
+ * copy needs more than one profile besides "No company profile", otherwise the profile in use is shown as text and,
+ * when there is exactly one, used without being chosen.
+ */
+export const profileSelectable = (writes: boolean, versions: number) => writes || versions > 1;
+export const readOnlyDefaultProfile = <T>(writes: boolean, versions: readonly T[]): T | null => !writes && versions.length === 1 ? versions[0] : null;

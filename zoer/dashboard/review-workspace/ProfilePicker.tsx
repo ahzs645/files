@@ -1,6 +1,8 @@
 import { Select } from '@zoer/plugin-ui/controls';
 import { navigatePlugin } from '../navigation';
+import { useCapabilities } from '../capabilities';
 import { useActiveProfile } from './profile-context';
+import { profileSelectable } from './profile-types';
 import './review.css';
 
 const CREATE = '__create';
@@ -10,14 +12,16 @@ const CREATE = '__create';
  * eligibility not assessed. Creating a profile is an option in the same menu, so the control stays one line.
  */
 export function ProfilePicker({ label = true }: { label?: boolean }) {
-  const { profileVersionId, versions, loading, setProfileVersionId } = useActiveProfile();
+  const { profileVersionId, active, versions, loading, setProfileVersionId } = useActiveProfile(), { writes } = useCapabilities();
+  // A read-only copy with at most one profile has nothing to choose: name the profile in use as quiet text.
+  if (!loading && !profileSelectable(writes, versions.length)) return <span className="rw-profile-picker rw-profile-quiet">{label && <span>Assess as</span>}<b>{active ? `${active.name} · v${active.version}` : 'No company profile'}</b></span>;
   return <label className="rw-profile-picker">
     {label && <span>Assess as</span>}
     <Select aria-label="Assess as company profile" presentation="dropdown" searchable={false} disabled={loading} value={profileVersionId ?? ''}
       onChange={event => event.target.value === CREATE ? navigatePlugin('/profiles') : setProfileVersionId(event.target.value || null)}>
       <option value="">No company profile</option>
       {versions.map(version => <option key={version.id} value={version.id}>{version.name} · v{version.version}</option>)}
-      <option value={CREATE}>{versions.length ? 'Manage profiles…' : 'Create a profile…'}</option>
+      {writes && <option value={CREATE}>{versions.length ? 'Manage profiles…' : 'Create a profile…'}</option>}
     </Select>
   </label>;
 }

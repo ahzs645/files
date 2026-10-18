@@ -4,6 +4,7 @@ import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import { REVIEW_KEY, reviewWrite, useReviewInvalidate } from '../review-workspace/actions';
 import { label } from '../review-workspace/queries';
 import { sql } from './display';
+import { useCapabilities } from '../capabilities';
 import { dueClusters, type DueItem } from './pursuit-tasks';
 import '../review-workspace/review.css';
 
@@ -34,6 +35,7 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
   const [showClosed, setShowClosed] = useState(false);
   const closed = useQuery({ queryKey: [...REVIEW_KEY, 'tasks', 'closed'], queryFn: () => readTasks('closed'), enabled: enabled && showClosed });
   const [editing, setEditing] = useState<TaskRow | null>(null), [adding, setAdding] = useState(false);
+  const { writes } = useCapabilities();
   const tasks = open.data ?? [];
   const active = pursuits.filter(item => ['Watching', 'Reviewing', 'Preparing'].includes(item.stage));
   const closings: DueItem[] = active.map(item => ({ id: `closing:${item.recordId}`, recordId: item.recordId, label: `${item.title} closes`, due: item.deadline, kind: 'closing' }));
@@ -42,7 +44,7 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
   const ownerHints = dueClusters(taskItems, 3, true).filter(cluster => cluster.owner);
   if (!enabled) return null;
   return <section className="rw-panel rw-tasks" aria-labelledby="pursuit-tasks-title">
-    <div className="rw-panel-head"><h2 id="pursuit-tasks-title">Tasks</h2><div className="rw-actions"><label className="rw-check"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />Show completed and cancelled</label><Btn size="sm" variant="secondary" disabled={!pursuits.length} onClick={() => setAdding(true)}>Add task</Btn></div></div>
+    <div className="rw-panel-head"><h2 id="pursuit-tasks-title">Tasks</h2><div className="rw-actions"><label className="rw-check"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />Show completed and cancelled</label>{writes && <Btn size="sm" variant="secondary" disabled={!pursuits.length} onClick={() => setAdding(true)}>Add task</Btn>}</div></div>
     <p className="rw-note">{COMPLETION_COPY}</p>
     {(deadlineHints.length > 0 || ownerHints.length > 0) && <div className="rw-warnings" role="note" aria-label="Deadline and capacity overlaps">
       <strong>Overlapping due dates</strong>
@@ -53,16 +55,16 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
       <p className="rw-note">Each notice’s own delivery or response label does not account for these overlaps. Check proposal capacity before committing.</p>
     </div>}
     {open.error && <p role="alert">{(open.error as Error).message}</p>}
-    {open.isPending ? <p role="status">Loading tasks…</p> : !tasks.length ? <p className="rw-note">No open tasks. Tasks are created from a notice’s requirements, gaps or changes, or with Add task.</p> : <TaskTable tasks={tasks} onEdit={setEditing} />}
-    {showClosed && (closed.isPending ? <p role="status">Loading closed tasks…</p> : closed.data?.length ? <><h3>Completed and cancelled</h3><TaskTable tasks={closed.data} onEdit={setEditing} /></> : <p className="rw-note">No completed or cancelled tasks.</p>)}
-    {editing && <TaskEditor task={editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await invalidate(); }} />}
-    {adding && <TaskCreator pursuits={pursuits} onClose={() => setAdding(false)} onSaved={async () => { setAdding(false); await invalidate(); }} />}
+    {open.isPending ? <p role="status">Loading tasks…</p> : !tasks.length ? <p className="rw-note">{writes ? 'No open tasks. Tasks are created from a notice’s requirements, gaps or changes, or with Add task.' : 'No open tasks.'}</p> : <TaskTable tasks={tasks} onEdit={writes ? setEditing : undefined} />}
+    {showClosed && (closed.isPending ? <p role="status">Loading closed tasks…</p> : closed.data?.length ? <><h3>Completed and cancelled</h3><TaskTable tasks={closed.data} onEdit={writes ? setEditing : undefined} /></> : <p className="rw-note">No completed or cancelled tasks.</p>)}
+    {writes && editing && <TaskEditor task={editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await invalidate(); }} />}
+    {writes && adding && <TaskCreator pursuits={pursuits} onClose={() => setAdding(false)} onSaved={async () => { setAdding(false); await invalidate(); }} />}
   </section>;
 }
 
-function TaskTable({ tasks, onEdit }: { tasks: TaskRow[]; onEdit(task: TaskRow): void }) {
+function TaskTable({ tasks, onEdit }: { tasks: TaskRow[]; onEdit?(task: TaskRow): void }) {
   return <div className="rw-table-wrap"><table className="rw-table rw-text">
-    <thead><tr><th scope="col">Task</th><th scope="col">Notice</th><th scope="col">Linked to</th><th scope="col">Owner</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+    <thead><tr><th scope="col">Task</th><th scope="col">Notice</th><th scope="col">Linked to</th><th scope="col">Owner</th><th scope="col">Due</th><th scope="col">Status</th>{onEdit && <th scope="col"><span className="sr-only">Actions</span></th>}</tr></thead>
     <tbody>{tasks.map(task => <tr key={task.id}>
       <td><strong>{task.title}</strong><small className="rw-note">{kindLabel(task.kind)}</small></td>
       <td>{task.recordTitle ?? task.recordId}</td>
@@ -70,7 +72,7 @@ function TaskTable({ tasks, onEdit }: { tasks: TaskRow[]; onEdit(task: TaskRow):
       <td>{task.owner || 'Unassigned'}</td>
       <td>{dueText(task.dueAt)}</td>
       <td>{task.status === 'open' ? 'Open' : task.status === 'done' ? 'Done' : 'Cancelled'}{task.completionNote && <small className="rw-note">{task.completionNote}</small>}</td>
-      <td><Btn size="sm" variant="ghost" aria-label={`Update task: ${task.title}`} onClick={() => onEdit(task)}>Update</Btn></td>
+      {onEdit && <td><Btn size="sm" variant="ghost" aria-label={`Update task: ${task.title}`} onClick={() => onEdit(task)}>Update</Btn></td>}
     </tr>)}</tbody>
   </table></div>;
 }

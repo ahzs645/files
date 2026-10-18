@@ -15,6 +15,7 @@ import '../../apps/dashboard/src/styles/app.css';
 import '@zoer/plugin-ui/database.css';
 import './native.css';
 import { host } from './bridge';
+import { loadCapabilities, useCapabilities, useCapabilitiesReady } from './capabilities';
 const tokenMap: Record<string, string> = { 'bg-base': 'surface-base', 'bg-surface': 'surface-primary', 'bg-surface-strong': 'surface-secondary', 'bg-subtle': 'surface-hover', 'bg-hover': 'surface-hover', 'border-default': 'border-default', 'border-strong': 'input-border', 'border-subtle': 'border-muted', 'text-primary': 'text-primary', 'text-secondary': 'text-secondary', 'text-tertiary': 'text-muted', 'accent': 'accent', 'accent-strong': 'accent-hover', 'accent-muted': 'accent-subtle', 'green': 'status-success', 'red': 'status-error', 'orange': 'status-warning', 'yellow': 'status-warning' };
 function applyAppearance(value: any) {
   if (!value?.tokens) return;
@@ -27,10 +28,11 @@ function applyAppearance(value: any) {
 }
 
 const router = createRouter({ routeTree, history: createMemoryHistory(), scrollRestoration: true, defaultPreload: 'intent' });
+void loadCapabilities();
 void connectNavigation(router.history);
 const noInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 function App() {
-  const navigationReady = useNavigationReady();
+  const navigationReady = useNavigationReady(), capabilitiesReady = useCapabilitiesReady(), { collection, writes } = useCapabilities();
   // While a shared dialog is open the host stretches this iframe over its whole window and reports the panel's
   // former offsets; padding by them keeps the content in place so the dialog can cover the header and bottom bar.
   const [insets, setInsets] = useState(noInsets);
@@ -48,10 +50,10 @@ function App() {
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
   }, []);
-  if (!navigationReady) return <p role="status">Opening BC Bid…</p>;
+  if (!navigationReady || !capabilitiesReady) return <p role="status">Opening BC Bid…</p>;
   return <div className="flex h-screen flex-col" style={{ padding: `${insets.top}px ${insets.right}px ${insets.bottom}px ${insets.left}px` }}>
     {notice && <p role="status" className="px-4 py-3 text-sm text-text-secondary">{notice}</p>}
-    <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ analysisView: <MarketAnalysis />, scraperSetup: <ScraperSetup />, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar, awardsView: <AwardsBrowser />, opportunitiesView: <OpportunitiesBrowser />, historyExtras: <AwardRunList />, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>
+    <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ analysisView: <MarketAnalysis />, scraperSetup: collection ? <ScraperSetup /> : null, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar: writes ? setStar : undefined, awardsView: <AwardsBrowser />, opportunitiesView: <OpportunitiesBrowser />, historyExtras: collection ? <AwardRunList /> : null, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><App /></QueryClientProvider></StrictMode>);

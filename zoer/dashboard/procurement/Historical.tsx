@@ -4,10 +4,12 @@ import { Btn } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { useRecentRuns } from './CollectionRuns';
 import { isLive, runState } from './source-schedules';
+import { useCapabilities } from '../capabilities';
 import reference from '../../data/bc-bid-historical-types.json';
 export function HistoricalReference() {
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
-  const recent = useRecentRuns();
+  const { collection } = useCapabilities();
+  const recent = useRecentRuns(collection);
   const currentRun = recent.data?.find(r => r.actionId === 'scrape.historical');
   const currentState = currentRun ? runState(currentRun) : null;
   const state = useQuery({ queryKey: ['catalog', 'historical', 'progress'], refetchInterval: 15000, queryFn: async () => {
@@ -35,10 +37,10 @@ export function HistoricalReference() {
     {state.error && <p role="alert">{state.error.message}</p>}
     {currentState && <p role="status">{currentState.text}{currentState.detail ? ` · ${currentState.detail}` : ''}</p>}
     {cp && <p>Saved progress · {cp.listingsCaptured.toLocaleString()} listings captured · {cp.detailsCompleted.toLocaleString()} details · {cp.rangesCompleted} date ranges complete · {cp.ranges.length} remaining{cp.error && (!currentRun || currentRun.runId === cp.runId) && (!currentRun || !isLive(currentRun)) ? ` · ${cp.error}` : ''}</p>}
-    {cp?.complete ? <p>The public dated archive import is complete.</p> : <Btn variant="secondary" disabled={busy || !!currentRun && isLive(currentRun)} onClick={() => void start()}>{busy ? 'Starting…' : cp ? 'Continue historical import' : 'Import all public historical opportunities'}</Btn>}
-    {currentState?.canPause && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.pause')}>Pause historical import</Btn>}
-    {currentState?.canResume && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.resume')}>Resume historical import</Btn>}
-    {currentState?.canCancel && <Btn variant="secondary" disabled={busy} onClick={() => void control('cancel')}>Stop historical import</Btn>}
+    {cp?.complete ? <p>The public dated archive import is complete.</p> : collection && <Btn variant="secondary" disabled={busy || !!currentRun && isLive(currentRun)} onClick={() => void start()}>{busy ? 'Starting…' : cp ? 'Continue historical import' : 'Import all public historical opportunities'}</Btn>}
+    {collection && currentState?.canPause && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.pause')}>Pause historical import</Btn>}
+    {collection && currentState?.canResume && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.resume')}>Resume historical import</Btn>}
+    {collection && currentState?.canCancel && <Btn variant="secondary" disabled={busy} onClick={() => void control('cancel')}>Stop historical import</Btn>}
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
     <p>The public portal determines availability. Private invitations, supplier responses and restricted files remain outside this import. GSIN labels are stored as separate reference terms; their hierarchy is recorded only if a source provides it.</p>
     <details data-zoer-disclosure><summary>33 original historical opportunity types</summary><ul className="pc-taxonomy-list">{reference.types.map(t => <li key={t.code}><strong>{t.code}</strong> · {t.title}</li>)}</ul><a href={reference.sourceUrl} target="_blank" rel="noopener noreferrer">BC Bid public source ↗</a><p>Dropdown captured {reference.capturedAt}. These codes retain their original meanings; no automatic mapping to current types is assumed.</p></details>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Download, FileText, FileWarning, RefreshCw, X } from 'lucide-react';
+import { Archive, ChevronLeft, Download, FileText, FileWarning, RefreshCw, X } from 'lucide-react';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
@@ -14,6 +14,7 @@ import { readProcurementState, runProcurementAction, saveProcurementState } from
 import { noticeStatus, shortDate, sourceName, sql } from './display';
 import { cleanRegionText } from './region';
 import { NoticeHideButton } from './Triage';
+import { useCapabilities } from '../capabilities';
 import { AiResult, LabelChips } from './AiResult';
 import { NoticeContacts, PossibleDuplicates, noticeSummary, placeHow, placeText } from './NoticeEnrichment';
 import { CATEGORY_PROMPT, CATEGORY_PROMPT_NAME, ago, buyerValue, coverageText, documentCounts, documentSummary, listedDocumentsText, hasUsableText, latestEvidence, latestReview, verdictText, verdictTone } from './ai';
@@ -39,7 +40,7 @@ const TAB_NAMES: Record<NoticeTabId, string> = { decision: 'Decision', requireme
  * ledger (Requirements), files and source text (Evidence), changes, activity, and the earlier Ask AI results.
  * Side panel on wide screens, a sheet otherwise. The tab is route-backed (`tab`) when opened with `?notice=<id>`.
  */
-export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { id: string; layout: 'panel' | 'dialog'; onClose(): void; initialTab?: NoticeTab }) {
+export function NoticeView({ id, layout, onClose, initialTab = 'decision', backLabel = 'Back' }: { id: string; layout: 'panel' | 'dialog' | 'page'; onClose(): void; initialTab?: NoticeTab; backLabel?: string }) {
   const client = useQueryClient();
   const detail = useQuery({ queryKey: ['catalog', 'procurement-detail', id], queryFn: () => host('catalog.record', { id }) });
   const state = useQuery({ queryKey: ['catalog', 'procurement-state'], queryFn: readProcurementState });
@@ -47,8 +48,12 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { i
   const location = usePluginLocation(), params = new URLSearchParams(location.split('?')[1] ?? ''), routed = params.get('notice') === id;
   const [localTab, setLocalTab] = useState<string>(initialTab), [cite, setCite] = useState<Cite>();
   const [busy, setBusy] = useState(''), [error, setError] = useState('');
+  const { writes, ai } = useCapabilities();
   useEffect(() => { setLocalTab(initialTab); setCite(undefined); setError(''); }, [id]);
-  const tab = resolveNoticeTab(routed ? params.get('tab') ?? initialTab : localTab, available);
+  const page = useRef<HTMLElement>(null);
+  useEffect(() => { if (layout === 'page') page.current?.scrollIntoView({ block: 'start' }); }, [id, layout]);
+  // Ask AI shows earlier AI results and runs new ones; a host without AI has neither, so the tab is not offered.
+  const requested = resolveNoticeTab(routed ? params.get('tab') ?? initialTab : localTab, available), tab = requested === 'ai' && !ai ? 'decision' : requested;
   const setTab = (next: NoticeTabId) => routed ? patchPluginQuery({ tab: next === 'decision' ? null : next }, 'replace') : setLocalTab(next);
   const close = () => { if (routed && params.get('tab')) patchPluginQuery({ tab: null }, 'replace'); onClose(); };
   const changes = useQuery({ queryKey: noticeKey(id, 'changes'), enabled: available, queryFn: () => readChanges(id) });
@@ -66,7 +71,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { i
   const showCitation = (documentId: string, quote: string) => { setCite({ documentId, quote }); setTab('evidence'); };
   const title = record?.title ?? 'Notice';
   const pendingChanges = (changes.data ?? []).filter(change => !change.acknowledgedAt).length;
-  const tabs = (available ? NOTICE_TABS : LEGACY_TABS).map(value => [value, value === 'evidence' && documents.length ? `${TAB_NAMES[value]} · ${documents.length}` : value === 'ai' && reviews.length ? `${TAB_NAMES[value]} · ${reviews.length}` : value === 'changes' && pendingChanges ? `${TAB_NAMES[value]} · ${pendingChanges} new` : TAB_NAMES[value]] as const);
+  const tabs = (available ? NOTICE_TABS : LEGACY_TABS).filter(value => ai || value !== 'ai').map(value => [value, value === 'evidence' && documents.length ? `${TAB_NAMES[value]} · ${documents.length}` : value === 'ai' && reviews.length ? `${TAB_NAMES[value]} · ${reviews.length}` : value === 'changes' && pendingChanges ? `${TAB_NAMES[value]} · ${pendingChanges} new` : TAB_NAMES[value]] as const);
   const tabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
     const index = tabs.findIndex(([value]) => value === tab), n = tabs.length;
     const next = event.key === 'ArrowRight' ? (index + 1) % n : event.key === 'ArrowLeft' ? (index - 1 + n) % n : event.key === 'Home' ? 0 : event.key === 'End' ? n - 1 : -1;
@@ -77,9 +82,9 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { i
   const head = <div className="pc-notice-head">
     <p className="pc-notice-meta">{sourceName(source)} · {award ? 'Award' : 'Opportunity'}{data.externalId || data.opportunityId ? ` · ${data.externalId || data.opportunityId}` : ''}{url && <> · <a className="procurement-link" href={url} target="_blank" rel="noopener noreferrer">Open on {sourceName(source)} ↗</a></>}</p>
     {record && <div className="pc-notice-actions">
-      <Btn size="sm" variant="secondary" disabled={!!busy} aria-pressed={!!data.starred} onClick={() => void act('star', () => setStar(record.kind, award ? data.importKey : data.sourceKey, !data.starred))}>{busy === 'star' ? 'Saving…' : data.starred ? '★ Shortlisted' : '☆ Shortlist'}</Btn>
+      {!writes ? <>{data.starred && <span className="pc-tag">★ Shortlisted</span>}{pursuit && <span className="pc-tag">Pursuit: {pursuit.stage}</span>}</> : <><Btn size="sm" variant="secondary" disabled={!!busy} aria-pressed={!!data.starred} onClick={() => void act('star', () => setStar(record.kind, award ? data.importKey : data.sourceKey, !data.starred))}>{busy === 'star' ? 'Saving…' : data.starred ? '★ Shortlisted' : '☆ Shortlist'}</Btn>
       <NoticeHideButton id={id} title={title} />
-      <label className="pc-notice-stage"><span className="sr-only">Pursuit stage</span><Select aria-label="Pursuit stage" presentation="dropdown" searchable={false} value={pursuit?.stage ?? ''} disabled={!!busy || state.isPending || !!state.error} onChange={event => void setStage(event.target.value as PursuitStage)}><option value="" disabled>{busy === 'pursuit' ? 'Saving…' : 'Add to pursuits'}</option>{PURSUIT_STAGES.map(stage => <option key={stage} value={stage}>Pursuit: {stage}</option>)}</Select></label>
+      <label className="pc-notice-stage"><span className="sr-only">Pursuit stage</span><Select aria-label="Pursuit stage" presentation="dropdown" searchable={false} value={pursuit?.stage ?? ''} disabled={!!busy || state.isPending || !!state.error} onChange={event => void setStage(event.target.value as PursuitStage)}><option value="" disabled>{busy === 'pursuit' ? 'Saving…' : 'Add to pursuits'}</option>{PURSUIT_STAGES.map(stage => <option key={stage} value={stage}>Pursuit: {stage}</option>)}</Select></label></>}
     </div>}
     <div className="pc-notice-tabs" role="tablist" aria-label="Notice sections" onKeyDown={tabKeys}>
       {tabs.map(([value, text]) =>
@@ -106,6 +111,12 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision' }: { i
     {record && tab === 'activity' && <ReviewActivity recordId={id} documents={documents} />}
     {record && tab === 'ai' && <Ai id={id} reviews={reviews} documents={documents} onCite={showCitation} onRefresh={refresh} />}
   </div>;
+  // Phones: the notice replaces the list as its own page, with Back at the top.
+  if (layout === 'page') return <article ref={page} className="pc-notice" data-layout="page" aria-label={`Notice: ${title}`}>
+    <div className="pc-notice-back"><button type="button" className="pc-notice-back-btn" onClick={close}><ChevronLeft aria-hidden="true" className="h-4 w-4" />{backLabel}</button></div>
+    <h2 className="pc-notice-page-title">{title}</h2>
+    {head}{body}
+  </article>;
   if (layout === 'dialog') return <Modal title={title} mobileSheet size="wide" onClose={close} headerContent={<div className="pc-notice" data-layout="dialog">{head}</div>}><div className="pc-notice" data-layout="dialog">{body}</div></Modal>;
   return <aside className="pc-notice" data-layout="panel" aria-label={`Notice: ${title}`}>
     <div className="pc-notice-titlebar"><h2>{title}</h2><button type="button" className="pc-icon-btn" aria-label="Close notice" onClick={close}><X aria-hidden="true" className="h-4 w-4" /></button></div>
@@ -166,6 +177,7 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
   const budget = award ? null : factMoney ? { label: factMoney.headline.length === 1 ? factMoney.headline[0].label : factMoney.headline.length ? 'Buyer budget / estimated value' : 'Budget', text: factMoney.headline.length ? factMoney.headline.map(line => factMoney.headline.length > 1 ? `${line.label}: ${line.text}` : line.text).join('; ') : factMoney.text, ai: true, others: factMoney.others.map(line => ({ label: line.label, text: line.text })) } : buyerValue(review);
   const [editing, setEditing] = useState(false), [draft, setDraft] = useState(tags.join(', ')), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [more, setMore] = useState(false);
+  const { writes, ai } = useCapabilities();
   const description = String(data.sourceDescriptionText || data.descriptionText || data.opportunityDescription || '');
   const region = cleanRegionText(data.region ?? data.issuingLocation);
   const facts: [string, string, string?][] = [
@@ -187,17 +199,17 @@ function Overview({ id, record, reviews, documents, tags, onTab, onSaved, worksp
   return <div className="pc-notice-section">
     <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd title={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate) : label === 'Place' && data.place ? placeHow(data.place) : undefined}>{text}</dd></div>)}</dl>
     {review ? <section className="pc-card" aria-label="AI summary">
-      <header><h3>AI summary</h3><span className="pc-card-links">{(review.result.labels ?? []).some((label: string) => !tags.includes(label)) && <button type="button" className="pc-link-btn" disabled={saving} onClick={() => void saveTags([...tags, ...(review.result.labels ?? [])])}>Save as tags</button>}<button type="button" className="pc-link-btn" onClick={() => onTab('ai')}>Details</button></span></header>
+      <header><h3>AI summary</h3><span className="pc-card-links">{writes && (review.result.labels ?? []).some((label: string) => !tags.includes(label)) && <button type="button" className="pc-link-btn" disabled={saving} onClick={() => void saveTags([...tags, ...(review.result.labels ?? [])])}>Save as tags</button>}<button type="button" className="pc-link-btn" onClick={() => onTab('ai')}>Details</button></span></header>
       <p>{review.result.summary}</p><LabelChips labels={review.result.labels ?? []} />
       <p className="pc-card-meta">{[review.model, ago(review.created_at), coverageText(review)].filter(Boolean).join(' · ')}</p>
-    </section> : <section className="pc-card pc-card-empty" aria-label="AI summary"><header><h3>No AI summary yet</h3></header><p>Summarize this notice and its documents, and tag it with AI categories.</p><Btn size="sm" onClick={() => onTab('ai')}>Summarize &amp; categorize</Btn></section>}
+    </section> : <section className="pc-card pc-card-empty" aria-label="AI summary"><header><h3>No AI summary yet</h3></header>{writes && ai ? <><p>Summarize this notice and its documents, and tag it with AI categories.</p><Btn size="sm" onClick={() => onTab('ai')}>Summarize &amp; categorize</Btn></> : <p>This notice has not been summarized.</p>}</section>}
     {verdict && <section className="pc-card" aria-label="Bid or no-bid"><header><h3>Bid / no-bid</h3><span className="pc-card-meta">{ago(verdict.created_at)}</span></header><p className="pc-verdict" data-verdict={verdictTone(verdict.result.fields?.recommendation)}>{verdictText(verdict.result.fields?.recommendation)}</p><p>{verdict.result.summary}</p></section>}
     {description && <section className="pc-description"><p data-clamped={!more && description.length > 600 || undefined}>{description}</p>{description.length > 600 && <button type="button" className="pc-link-btn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}</section>}
     <NoticeContacts contacts={data.contacts} />
     {!award && <PossibleDuplicates notice={noticeSummary(id, record)} />}
     <section className="pc-tags" aria-label="Your tags"><h3>Your tags</h3>
-      {editing ? <div className="pc-tag-editor"><input aria-label="Tags, comma-separated" value={draft} onChange={e => setDraft(e.target.value)} placeholder="e.g. shortlist-q4, partner: Dominion" /><Btn size="sm" disabled={saving} onClick={() => void saveTags()}>{saving ? 'Saving…' : 'Save'}</Btn><Btn size="sm" variant="ghost" onClick={() => { setEditing(false); setDraft(tags.join(', ')); }}>Cancel</Btn></div>
-        : <div className="pc-tag-list">{tags.map(tag => <span key={tag} className="pc-tag">{tag}</span>)}<button type="button" className="pc-link-btn" onClick={() => setEditing(true)}>{tags.length ? 'Edit' : 'Add tags'}</button></div>}
+      {writes && editing ? <div className="pc-tag-editor"><input aria-label="Tags, comma-separated" value={draft} onChange={e => setDraft(e.target.value)} placeholder="e.g. shortlist-q4, partner: Dominion" /><Btn size="sm" disabled={saving} onClick={() => void saveTags()}>{saving ? 'Saving…' : 'Save'}</Btn><Btn size="sm" variant="ghost" onClick={() => { setEditing(false); setDraft(tags.join(', ')); }}>Cancel</Btn></div>
+        : <div className="pc-tag-list">{tags.map(tag => <span key={tag} className="pc-tag">{tag}</span>)}{writes ? <button type="button" className="pc-link-btn" onClick={() => setEditing(true)}>{tags.length ? 'Edit' : 'Add tags'}</button> : !tags.length && <span className="pc-card-meta">No tags.</span>}</div>}
       {error && <p role="alert">{error}</p>}</section>
     {(data.sourceFileName || data.importedAt) && <p className="procurement-coverage">Imported {shortDate(data.importedAt).text}{data.sourceFileName ? ` from ${data.sourceFileName}` : ''}</p>}
   </div>;
@@ -218,6 +230,7 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
   const initialMode = (doc: any) => isPdf(doc) && (HostPdfPreview || !coarse()) ? 'pdf' : 'text';
   const [mode, setMode] = useState<'pdf' | 'text'>(cite ? 'text' : initialMode(documents.find(item => item.id === selected)));
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
+  const { collection, writes } = useCapabilities();
   useEffect(() => { if (cite) { setSelected(cite.documentId); setMode(cite.quote ? 'text' : initialMode(documents.find(item => item.id === cite.documentId))); } }, [cite]);
   const doc = documents.find(item => item.id === selected);
   const choose = (value: string) => { setSelected(value); setMode(initialMode(documents.find(item => item.id === value))); };
@@ -232,7 +245,7 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   if (!documents.length) return <div className="pc-notice-section"><div className="pc-card pc-card-empty"><header><h3>No documents yet</h3></header>
-    {source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || browserBusy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
+    {!collection ? <p>No documents were saved for this notice.</p> : source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || browserBusy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}</div></div>;
   const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${hasUsableText(item) ? '' : ' · Saved; no usable text extracted'}` : 'Couldn’t download this file';
   return <div className="pc-docs">
@@ -245,8 +258,8 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
       {doc && isPdf(doc) && <span className="pc-preview-modes" role="group" aria-label="Preview as"><button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')}>PDF</button><button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>Text</button></span>}
       <span className="pc-doc-tools">
         {doc?.status === 'downloaded' && <Btn size="sm" variant="ghost" aria-label={`Download ${doc.name}`} tooltip="Download" icon={<Download aria-hidden="true" className="h-4 w-4" />} onClick={() => void host('catalog.download', { id: doc.id, name: doc.name }).catch(e => setError(e.message))}><span className="sr-only">Download</span></Btn>}
-        {saved.length > 1 && <Btn size="sm" variant="ghost" aria-label={`Download all ${saved.length} documents as one zip`} tooltip="Download all documents (zip)" disabled={busy} icon={<Archive aria-hidden="true" className="h-4 w-4" />} onClick={() => void downloadAll()}><span className="sr-only">Download all documents</span></Btn>}
-        {source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy || browserBusy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
+        {writes && saved.length > 1 && <Btn size="sm" variant="ghost" aria-label={`Download all ${saved.length} documents as one zip`} tooltip="Download all documents (zip)" disabled={busy} icon={<Archive aria-hidden="true" className="h-4 w-4" />} onClick={() => void downloadAll()}><span className="sr-only">Download all documents</span></Btn>}
+        {collection && source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy || browserBusy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
       </span>
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-card-meta">{message}</p>}
@@ -295,7 +308,8 @@ function TextPreview({ doc, quote }: { doc: any; quote: string }) {
 const ACTIONS: [string, string][] = [['summary', 'Summarize & categorize'], ['requirements', 'Mandatory requirements'], ['bid-no-bid', 'Bid / no-bid'], ['amendments', 'What changed in addenda?']];
 
 function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews: any[]; documents: any[]; onCite(documentId: string, quote: string): void; onRefresh(): void }) {
-  const models = useQuery({ queryKey: ['procurement-models'], queryFn: () => host('models'), staleTime: 60_000 });
+  const { writes, ai } = useCapabilities(), canRun = writes && ai;
+  const models = useQuery({ queryKey: ['procurement-models'], queryFn: () => host('models'), staleTime: 60_000, enabled: canRun });
   const ready = (models.data?.models ?? []).filter((model: any) => model.authReady);
   const [modelId, setModelId] = useState('');
   useEffect(() => { if (!modelId && ready.length) setModelId(ready.some((m: any) => m.id === models.data.activeModelProfileId) ? models.data.activeModelProfileId : ready[0].id); }, [models.data]);
@@ -323,7 +337,7 @@ function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews
   };
   const sorted = [...reviews].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   return <div className="pc-notice-section">
-    <section className="pc-card pc-ask" aria-label="Ask AI about this notice">
+    {canRun && <section className="pc-card pc-ask" aria-label="Ask AI about this notice">
       <header><h3>Ask about this notice</h3><label className="pc-ask-model"><span className="sr-only">Model</span><Select aria-label="Model" presentation="dropdown" searchable={false} value={modelId} disabled={!!running || !ready.length} onChange={e => setModelId(e.target.value)}>{!ready.length && <option value="">No ready model</option>}{ready.map((model: any) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</Select></label></header>
       <p className="pc-card-meta">{readable ? `Uses the notice and ${readable} document${readable === 1 ? '' : 's'} with usable text.` : textless ? 'Based on the saved notice only; no saved document has usable text.' : 'Based on the saved notice only; no documents are downloaded yet.'}{textless && readable ? ` ${textless} saved file${textless === 1 ? ' has' : 's have'} no usable text and ${textless === 1 ? 'is' : 'are'} not read.` : ''}</p>
       <div className="pc-ask-actions">{ACTIONS.map(([action, label]) => <Btn key={action} size="sm" variant={action === 'summary' ? 'primary' : 'secondary'} disabled={!!running || !modelId} onClick={() => void run(action)}>{running === action ? 'Running…' : label}</Btn>)}</div>
@@ -334,7 +348,7 @@ function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews
       {!models.isPending && !ready.length && <p className="pc-card-meta">Set up a model profile, or start a Codex or OpenCode computer, to use AI here.</p>}
       {running && <p role="status" className="pc-running"><span className="pc-spinner" aria-hidden="true" />Running on the server. You can close this notice; the result will be saved here.</p>}
       {error && <p role="alert">{error}</p>}
-    </section>
+    </section>}
     {!sorted.length && <p className="procurement-coverage">No AI results yet.</p>}
     {sorted.map(review => <AiResult key={review.id} review={review} onCite={onCite} docNames={docNames} />)}
     {sorted.length > 0 && <p className="procurement-coverage">AI results can be wrong or incomplete. Check the cited documents and the official notice before you bid.</p>}

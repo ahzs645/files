@@ -31,7 +31,7 @@ export function ScraperSetup() {
         <div><h2>{paused ? 'Paused for update' : active ? 'Scrape running' : resume ? 'Continue the scrape' : 'Nothing left to continue'}</h2>
           <p>{paused ? 'Zoer is updating. The scrape continues automatically from its saved progress; no action needed.'
             : active ? 'The scrape is running again; progress appears in Recent runs.'
-            : resume ? `${resume.pending.length.toLocaleString()} opportunities still need their details. Saved records are kept.`
+            : resume ? `${resume.pending.length.toLocaleString()} ${resume.pending.length === 1 ? 'opportunity still needs its' : 'opportunities still need their'} details. Saved records are kept.`
             : 'The last scrape has no saved progress to continue. Start a new scrape below.'}</p>
           {!active && resume && stopped?.errorMessage && <p className="zoer-continue-reason">Stopped: {stopped.errorMessage}</p>}
           {!active && resume && browserCheck && <p><strong>First:</strong> open the BC Bid browser in Zoer, complete the check, then hand control back.</p>}

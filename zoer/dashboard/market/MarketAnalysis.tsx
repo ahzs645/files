@@ -6,10 +6,11 @@ import { Modal, DatePicker, InMemoryResourceGrid, CountBadge } from '@zoer/plugi
 import { List, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { parseExclusions, addExclusion, removeExclusion, defaultFilters, inspectionFilters, type Award, type MarketFilters, type MarketOptions, type Slice, type Overview, type Metadata, type Trends, type Distribution, type Comparison, type Matrix, type QualityFlag, type MappingOverview } from './model';
 import { useMarket } from './useMarket';
-import { ComparisonPlot, DependencePlot, Heatmap, LinePlot, Metrics, Panel, compact, count, money, percent } from './charts';
+import { ComparisonPlot, DependencePlot, Heatmap, LinePlot, Metrics, Panel, compact, count, counted, money, percent } from './charts';
 import type { AnalysisAction } from './HeatmapActions';
 import { downloadRecords } from '../export';
 import { ProcurementMarket } from '../procurement/ProcurementMarket';
+import { useCapabilities } from '../capabilities';
 import './market.css';
 
 const tabs = [
@@ -72,7 +73,7 @@ function AwardRecords({ selection }: { selection: { slice: Slice; title: string;
   return <div className="market-stack">{selection.slice.quality && <p className="market-caption">Uses all saved records regardless of filters.</p>}
       {query.error && <div role="alert" className="market-error">{query.error}<button onClick={query.retry}>Retry records</button></div>}
       {!data && !query.error && <p role="status">Loading matching awards…</p>}
-      {data && <><div className="market-actions"><strong>{count(data.length)} matching awards</strong><Btn size="sm" variant="secondary" disabled={!data.length} onClick={() => downloadRecords(data, 'award', 'csv')}>Download matching CSV</Btn></div>
+      {data && <><div className="market-actions"><strong>{counted(data.length, 'matching award')}</strong><Btn size="sm" variant="secondary" disabled={!data.length} onClick={() => downloadRecords(data, 'award', 'csv')}>Download matching CSV</Btn></div>
         <InMemoryResourceGrid resourceKey="bcbid:market:records" table={recordTable} rows={data} columnLabels={recordLabels} className="market-record-grid" renderCell={(column, row) => column === 'value' ? money(row.value, row.currencyCode) : column === 'currencyCode' && row.currencyCode === 'UNSPECIFIED' ? 'Not stated' : undefined} />
       </>}
     </div>;
@@ -82,7 +83,7 @@ function Records({ selection, close }: { selection: { slice: Slice; title: strin
 }
 function RankedList({ rows, currency, dimension, inspect, limit = 8 }: { rows: Overview['buyers']; currency: string; dimension: 'buyer' | 'supplier' | 'type'; inspect: Inspect; limit?: number }) {
   const maximum = Math.max(1, ...rows.map(r => Math.max(0, r.value)));
-  return <div className="market-rank-list">{rows.slice(0, limit).map(row => <button type="button" key={row.name} onClick={() => inspect({ [dimension]: row.name }, row.name)}><span className="market-rank-line"><span>{row.name}</span><span>{money(row.value, currency, true)} · {count(row.count)} awards</span></span><span className="market-bar" style={{ width: `${Math.max(0, row.value) / maximum * 100}%` }} /></button>)}</div>;
+  return <div className="market-rank-list">{rows.slice(0, limit).map(row => <button type="button" key={row.name} onClick={() => inspect({ [dimension]: row.name }, row.name)}><span className="market-rank-line"><span>{row.name}</span><span>{money(row.value, currency, true)} · {counted(row.count, 'award')}</span></span><span className="market-bar" style={{ width: `${Math.max(0, row.value) / maximum * 100}%` }} /></button>)}</div>;
 }
 function OverviewView({ data, currency, inspect }: { data: Overview; currency: string; inspect: Inspect }) {
   return <div className="market-stack"><Metrics items={[
@@ -93,8 +94,8 @@ function OverviewView({ data, currency, inspect }: { data: Overview; currency: s
     { label: 'Top 10 supplier share', value: data.positiveTotal > 0 ? percent(data.top10Share) : '—', detail: 'Positive value only' },
   ]} />
     <Panel title="Market signals"><ul className="market-signals">
-      <li><strong>{data.suppliersFor80 === null ? 'No positive award value' : `${count(data.suppliersFor80)} suppliers account for 80% of positive award value.`}</strong> {data.suppliersFor80 !== null && `That is ${percent(data.suppliersFor80 / Math.max(1, data.supplierCount))} of the suppliers in this slice.`}</li>
-      <li>{data.buyers[0] ? <><strong>{data.buyers[0].name}</strong> is the largest buyer by recorded award value: {money(data.buyers[0].value, currency)} across {count(data.buyers[0].count)} awards.</> : 'No buyers match the current filters.'}</li>
+      <li><strong>{data.suppliersFor80 === null ? 'No positive award value' : `${counted(data.suppliersFor80, 'supplier')} ${data.suppliersFor80 === 1 ? 'accounts' : 'account'} for 80% of positive award value.`}</strong> {data.suppliersFor80 !== null && `That is ${percent(data.suppliersFor80 / Math.max(1, data.supplierCount))} of the suppliers in this slice.`}</li>
+      <li>{data.buyers[0] ? <><strong>{data.buyers[0].name}</strong> is the largest buyer by recorded award value: {money(data.buyers[0].value, currency)} across {counted(data.buyers[0].count, 'award')}.</> : 'No buyers match the current filters.'}</li>
       <li>{data.types[0] ? <><strong>{data.types[0].name}</strong> is the largest procurement type by recorded value.</> : 'No procurement types match the current filters.'}</li>
     </ul></Panel>
     <div className="market-columns"><Panel title="Leading buyers" description={`Top ${Math.min(8, data.buyerCount)} of ${count(data.buyerCount)}. Select one for its awards.`}><RankedList rows={data.buyers} currency={currency} dimension="buyer" inspect={inspect} /></Panel><Panel title="Leading procurement types" description="By recorded value."><RankedList rows={data.types} currency={currency} dimension="type" inspect={inspect} /></Panel></div>
@@ -118,8 +119,8 @@ function EntityView({ data, kind, currency, inspect, focus, explore, filters, ex
 }
 function TrendsView({ data, currency, options, change, meta, inspect, exclude, focus }: { exclude: AnalysisAction; focus: AnalysisAction; data: Trends; currency: string; options: MarketOptions; change: (o: MarketOptions) => void; meta: Metadata; inspect: Inspect }) {
   const [normalized, setNormalized] = useState(false), metric = options.metric ?? 'value';
-  return <div className="market-stack"><Panel title="Awards over time" description={data.undated ? `${count(data.undated)} undated records excluded.` : undefined} action={<Choice label="Trend metric" value={metric} values={[{ value: 'value', label: 'Award value' }, { value: 'count', label: 'Award count' }]} onChange={value => change({ ...options, metric: value as 'value' | 'count' })} />}><LinePlot data={data.series} metric={metric} currency={currency} /><details><summary>Monthly values and awards</summary><div className="market-rank-list">{data.series.map(row => <button key={row.month} onClick={() => inspect({ month: row.month }, row.month)}><span className="market-rank-line"><span>{row.month}</span><span>{money(row.value, currency, true)} · {count(row.count)} awards</span></span></button>)}</div></details></Panel>
-      <Panel title="Buyer spending calendar" description={`Top ${data.buyers.length} buyers in ${data.year}; ${count(data.shownCount)} of ${count(data.yearCount)} awards that year.`} action={<Choice label="Heatmap year" value={data.year} values={[...new Set([data.year, ...meta.years])].sort().reverse().map(y => ({ value: y, label: y }))} onChange={year => change({ ...options, year })} />}>
+  return <div className="market-stack"><Panel title="Awards over time" description={data.undated ? `${counted(data.undated, 'undated record')} excluded.` : undefined} action={<Choice label="Trend metric" value={metric} values={[{ value: 'value', label: 'Award value' }, { value: 'count', label: 'Award count' }]} onChange={value => change({ ...options, metric: value as 'value' | 'count' })} />}><LinePlot data={data.series} metric={metric} currency={currency} /><details><summary>Monthly values and awards</summary><div className="market-rank-list">{data.series.map(row => <button key={row.month} onClick={() => inspect({ month: row.month }, row.month)}><span className="market-rank-line"><span>{row.month}</span><span>{money(row.value, currency, true)} · {counted(row.count, 'award')}</span></span></button>)}</div></details></Panel>
+      <Panel title="Buyer spending calendar" description={`Top ${data.buyers.length} buyers in ${data.year}; ${count(data.shownCount)} of ${counted(data.yearCount, 'award')} that year.`} action={<Choice label="Heatmap year" value={data.year} values={[...new Set([data.year, ...meta.years])].sort().reverse().map(y => ({ value: y, label: y }))} onChange={year => change({ ...options, year })} />}>
         <label className="market-checks"><input type="checkbox" checked={normalized} onChange={e => setNormalized(e.target.checked)} />Share within each displayed buyer row</label>
         <Heatmap rows={data.buyers.map(r => r.name)} columns={data.months} cells={data.cells} metric={metric} currency={currency} normalized={normalized} inspect={inspect} months exclude={exclude} focus={focus} />
       </Panel>
@@ -129,16 +130,16 @@ function SizesView({ data, currency, inspect }: { data: Distribution; currency: 
   const [metric, setMetric] = useState<'count' | 'value'>('count');
   const maximum = Math.max(1, ...data.bins.map(b => Math.abs(b[metric])));
   return <div className="market-stack"><Metrics items={[{ label: 'Median award', value: money(data.median, currency) }, { label: 'Middle 50% of values', value: `${money(data.q1, currency, true)} – ${money(data.q3, currency, true)}` }, { label: 'Largest recorded award', value: money(data.max, currency, true) }]} />
-    <Panel title="Award-size distribution" description={`${count(data.known)} of ${count(data.count)} records have values. Ranges exclude their upper bound.`} action={<Choice label="Distribution metric" value={metric} values={[{ value: 'count', label: 'Award count' }, { value: 'value', label: 'Net award value' }]} onChange={v => setMetric(v as 'count' | 'value')} />}>
-      <div className="market-rank-list">{data.bins.map(bin => <button key={bin.label} onClick={() => inspect(bin.slice, `Award sizes · ${bin.label}`)}><span className="market-rank-line"><span>{bin.label}</span><span>{count(bin.count)} awards · {money(bin.value, currency, true)}</span></span><span className="market-bar" style={{ width: `${Math.abs(bin[metric]) / maximum * 100}%` }} /></button>)}</div>
-      {data.missing > 0 && <p className="market-caption">{count(data.missing)} records have no numeric value.</p>}
+    <Panel title="Award-size distribution" description={`${count(data.known)} of ${counted(data.count, 'record')} have values. Ranges exclude their upper bound.`} action={<Choice label="Distribution metric" value={metric} values={[{ value: 'count', label: 'Award count' }, { value: 'value', label: 'Net award value' }]} onChange={v => setMetric(v as 'count' | 'value')} />}>
+      <div className="market-rank-list">{data.bins.map(bin => <button key={bin.label} onClick={() => inspect(bin.slice, `Award sizes · ${bin.label}`)}><span className="market-rank-line"><span>{bin.label}</span><span>{counted(bin.count, 'award')} · {money(bin.value, currency, true)}</span></span><span className="market-bar" style={{ width: `${Math.abs(bin[metric]) / maximum * 100}%` }} /></button>)}</div>
+      {data.missing > 0 && <p className="market-caption">{counted(data.missing, 'record')} {data.missing === 1 ? 'has' : 'have'} no numeric value.</p>}
     </Panel>
   </div>;
 }
 function CompareView({ data, options, change, filters, inspect }: { data: Comparison; options: MarketOptions; change: (o: MarketOptions) => void; filters: MarketFilters; inspect: Inspect }) {
   const value = (n: number) => data.metric === 'value' ? money(n, filters.currency) : count(n);
   const viewPeriod = (row: Comparison['rows'][number], period: 'a' | 'b') => inspect({ [data.dimension]: row.name, from: period === 'a' ? data.aFrom : data.bFrom, to: period === 'a' ? data.aTo : data.bTo }, `${row.name} · Period ${period.toUpperCase()}`, { ...filters, from: '', to: '' });
-  return <div className="market-stack"><Metrics items={[{ label: `Period A · ${data.aFrom} to ${data.aTo}`, value: value(data.metric === 'value' ? data.aValue : data.aCount), detail: `${count(data.aCount)} saved awards` }, { label: `Period B · ${data.bFrom} to ${data.bTo}`, value: value(data.metric === 'value' ? data.bValue : data.bCount), detail: `${count(data.bCount)} saved awards` }, { label: 'Change', value: value(data.metric === 'value' ? data.bValue - data.aValue : data.bCount - data.aCount) }]} />
+  return <div className="market-stack"><Metrics items={[{ label: `Period A · ${data.aFrom} to ${data.aTo}`, value: value(data.metric === 'value' ? data.aValue : data.aCount), detail: `${counted(data.aCount, 'saved award')}` }, { label: `Period B · ${data.bFrom} to ${data.bTo}`, value: value(data.metric === 'value' ? data.bValue : data.bCount), detail: `${counted(data.bCount, 'saved award')}` }, { label: 'Change', value: value(data.metric === 'value' ? data.bValue - data.aValue : data.bCount - data.aCount) }]} />
     {data.warnings.length > 0 && <div className="market-scope">{data.warnings.map(w => <p key={w}>{w}</p>)}</div>}
     <Panel title="Largest changes" description="Top 8 by absolute change. Gray = period A, accent = period B."><ComparisonPlot data={data} currency={filters.currency} /></Panel>
     <Panel title="Full comparison" description="Open a row for period B awards; row actions show period A.">
@@ -157,13 +158,13 @@ function ComparisonControls({ options, change }: { options: MarketOptions; chang
 }
 function MatrixView({ data, kind, currency, inspect, exclude, focus }: { exclude: AnalysisAction; focus: AnalysisAction; data: Matrix; kind: 'mix' | 'relationships'; currency: string; inspect: Inspect }) {
   const [metric, setMetric] = useState<'value' | 'count'>('value'), [normalized, setNormalized] = useState(false);
-  return <Panel title={kind === 'mix' ? 'Buyer × procurement type' : 'Buyer × supplier relationships'} description={`Top ${data.rows.length} of ${count(data.buyerCount)} buyers × top ${data.columns.length} of ${count(data.columnCount)} ${kind === 'mix' ? 'types' : 'suppliers'}; ${count(data.shownCount)} of ${count(data.totalCount)} awards.`} action={<Choice label="Matrix metric" value={metric} values={[{ value: 'value', label: 'Award value' }, { value: 'count', label: 'Award count' }]} onChange={v => setMetric(v as 'value' | 'count')} />}>
+  return <Panel title={kind === 'mix' ? 'Buyer × procurement type' : 'Buyer × supplier relationships'} description={`Top ${data.rows.length} of ${count(data.buyerCount)} buyers × top ${data.columns.length} of ${count(data.columnCount)} ${kind === 'mix' ? 'types' : 'suppliers'}; ${count(data.shownCount)} of ${counted(data.totalCount, 'award')}.`} action={<Choice label="Matrix metric" value={metric} values={[{ value: 'value', label: 'Award value' }, { value: 'count', label: 'Award count' }]} onChange={v => setMetric(v as 'value' | 'count')} />}>
     <label className="market-checks"><input type="checkbox" checked={normalized} onChange={e => setNormalized(e.target.checked)} />Share within displayed rows</label>
     <Heatmap rows={data.rows} columns={data.columns} cells={data.cells} metric={metric} currency={currency} normalized={normalized} inspect={inspect} columnKind={kind === 'mix' ? 'type' : 'supplier'} exclude={exclude} focus={focus} />
   </Panel>;
 }
 function QualityView({ data, inspect }: { data: Metadata; inspect: Inspect }) {
-  return <div className="market-stack"><p className="market-caption">Covers all {count(data.count)} saved awards regardless of filters. Flags can overlap.</p>
+  return <div className="market-stack"><p className="market-caption">Covers all {counted(data.count, 'saved award')} regardless of filters. Flags can overlap.</p>
     <Metrics items={[{ label: 'Saved awards', value: count(data.count) }, { label: 'Date range', value: data.firstDate ? `${data.firstDate} – ${data.lastDate}` : 'No valid dates' }, { label: 'Procurement types', value: count(data.types.length) }]} />
     <div className="market-quality">{data.quality.map(({ flag, count: n }) => <button key={flag} type="button" onClick={() => inspect({ quality: flag }, qualityLabels[flag])}><span>{qualityLabels[flag]}</span><strong>{count(n)} <small>({percent(data.count ? n / data.count : 0)})</small></strong><span>{qualityDetails[flag]}</span></button>)}</div>
     <Panel title="How to read these figures"><ul className="market-signals"><li>Totals are recorded award amounts on their award date, not actual spend.</li><li>Buyer grouping uses a versioned proposed mapping. Original labels remain available; ambiguous names stay separate. Review Buyer mapping for evidence and limitations.</li><li>Concentration uses positive values only. Currencies are not converted.</li><li>Winner records say nothing about bidder counts, win rates, or compliance.</li></ul></Panel>
@@ -188,7 +189,7 @@ function MappingView({ data }: { data: MappingOverview }) {
   </div></Modal>}</div>;
 }
 export function MarketAnalysis() {
-  const location = usePluginLocation();
+  const location = usePluginLocation(), { surface } = useCapabilities();
   const params = new URLSearchParams(location.split('?')[1]);
   const requested = location.split('?')[0].split('/')[2];
   const view: View = tabs.some(t => t.id === requested) ? requested as View : 'overview';
@@ -254,11 +255,11 @@ export function MarketAnalysis() {
     <header className="market-header"><div>
       <h1 className="market-title">{label}</h1>
       <div className="market-view-picker"><Select aria-label="Analysis view" value={view} onChange={e => setView(e.target.value as View)}>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</Select></div>
-      <p>{meta.data ? `${count(meta.data.count)} saved awards` : 'Reading saved awards…'}</p>
+      <p>{meta.data ? `${counted(meta.data.count, 'saved award')}` : 'Reading saved awards…'}</p>
     </div><div className="market-actions">
       <Btn variant="secondary" size="sm" className="relative" aria-label={active ? `Filters, ${active} active` : 'Filters'} aria-haspopup="dialog" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Filters</span><CountBadge count={active} /></Btn>
       {/* Phones collapse these to icons (labels hidden in CSS); the accessible names stay. */}
-      <Btn variant="secondary" size="sm" aria-label="Refresh" tooltip="Refresh" onClick={() => { meta.retry(); query.retry(); }}><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Refresh</span></Btn>
+      {surface !== 'societyer' && <Btn variant="secondary" size="sm" aria-label="Refresh" tooltip="Refresh" onClick={() => { meta.retry(); query.retry(); }}><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Refresh</span></Btn>}
       <Btn size="sm" variant="secondary" aria-label="Matching awards" tooltip="Matching awards" onClick={() => inspect({}, 'Current market filters')}><List aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Matching awards</span></Btn></div></header>
     {filtersOpen && <FiltersDialog value={filters} meta={meta.data} apply={next => { update({ ...state, filters: next }); setFiltersOpen(false); }} close={() => setFiltersOpen(false)} />}
     {view !== 'quality' && view !== 'mapping' && <section className="market-buyer-controls" aria-label="Buyer hierarchy">

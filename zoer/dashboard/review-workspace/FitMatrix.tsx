@@ -46,7 +46,7 @@ export function FitMatrix({ base, profileVersionId, profileText, params, ignored
   return <section className="rw-panel rw-fit-panel" aria-labelledby="rw-fit-title">
     <header>
       <h2 id="rw-fit-title">Relevance × qualification readiness</h2>
-      <p>Categorical states for {profileText}, not a score or a probability of winning. Counts use the current filters{counts.data ? ` (${n('total').toLocaleString()} notices in scope)` : ''}; a notice assessed per lot can appear in more than one cell.</p>
+      <p>Categorical states for {profileText}, not a score or a probability of winning. Counts use the current filters{counts.data ? ` (${n('total').toLocaleString()} ${n('total') === 1 ? 'notice' : 'notices'} in scope)` : ''}; a notice assessed per lot can appear in more than one cell.</p>
       {ignored.length > 0 && <p className="rw-warn">The matrix shows every cell, so these filters are not applied here: {ignored.join(', ')}.</p>}
       <label className="procurement-check"><input type="checkbox" checked={decisions} onChange={event => setDecisions(event.target.checked)} />Show human decisions as badges</label>
     </header>

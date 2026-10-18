@@ -12,17 +12,18 @@ import { routeTree } from '../../apps/dashboard/src/routeTree.gen';
 import { useWorkspace, setStar, isStarPending, startWorkspace } from './backend';
 import './native-entry.css';
 import { bindNativeHost, type NativeHost } from './bridge';
+import { loadCapabilities, resetCapabilities, useCapabilities, useCapabilitiesReady } from './capabilities';
 function createWorkspaceRouter() { return createRouter({ routeTree, history: createMemoryHistory(), scrollRestoration: true, defaultPreload: 'intent' }); }
 function App({ router }: { router: ReturnType<typeof createWorkspaceRouter> }) {
-  const navigationReady = useNavigationReady();
+  const navigationReady = useNavigationReady(), capabilitiesReady = useCapabilitiesReady(), { collection, writes } = useCapabilities();
   // Load errors are shown once, inside the content area (Shell's LoadStatus).
   const { model, notice } = useWorkspace();
   const [starredRoute, setStarredRoute] = usePluginQuery("starred");
   const onlyStarred = starredRoute === "1", setOnlyStarred = (value: boolean) => setStarredRoute(value ? "1" : "");
-  if (!navigationReady) return <p role="status">Opening BC Bid…</p>;
+  if (!navigationReady || !capabilitiesReady) return <p role="status">Opening BC Bid…</p>;
   return <div className="bcbid-native flex h-full min-h-0 min-w-0 flex-col" data-native-workspace="bc-bid-monitor">
     {notice && <p role="status" className="px-4 py-3 text-sm text-text-secondary">{notice}</p>}
-    <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ analysisView: <MarketAnalysis />, scraperSetup: <ScraperSetup />, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar, awardsView: <AwardsBrowser />, opportunitiesView: <OpportunitiesBrowser />, historyExtras: <AwardRunList />, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>
+    <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ analysisView: <MarketAnalysis />, scraperSetup: collection ? <ScraperSetup /> : null, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar: writes ? setStar : undefined, awardsView: <AwardsBrowser />, opportunitiesView: <OpportunitiesBrowser />, historyExtras: collection ? <AwardRunList /> : null, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>
   </div>;
 }
 export default function NativeWorkspace({ host }: { host: NativeHost }) {
@@ -30,10 +31,12 @@ export default function NativeWorkspace({ host }: { host: NativeHost }) {
   const [connected, setConnected] = useState(false);
   useEffect(() => {
     const unbind = bindNativeHost(host);
+    // Ask first: the guard it installs keeps a review-only host from being sent writes.
+    void loadCapabilities();
     const stop = startWorkspace();
     void connectNavigation(router.history);
     setConnected(true);
-    return () => { unbind(); disconnectNavigation(); stop(); };
+    return () => { unbind(); disconnectNavigation(); stop(); resetCapabilities(); };
   }, [host, router]);
   return connected ? <QueryClientProvider client={queryClient}><App router={router} /></QueryClientProvider> : <p role="status">Opening BC Bid…</p>;
 }

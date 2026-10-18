@@ -11,6 +11,7 @@ import { shortDate, sourceName, sql } from './display';
 import { runProcurementAction } from './state-client';
 import { ENRICHMENT_KEY } from './enrich';
 import { host } from '../bridge';
+import { useCapabilities } from '../capabilities';
 import './enrichment.css';
 
 const METHOD_TEXT: Record<Place['method'], string> = { portal: 'from the buyer’s own portal', buyer: 'from the buyer’s name', description: 'named in the notice text', 'source-region': 'from the source’s region field' };
@@ -100,6 +101,7 @@ export function PlaceFilter({ value, onChange }: { value: string; onChange(value
   const client = useQueryClient();
   const places = useQuery({ queryKey: ['catalog', 'procurement-places'], queryFn: () => sql(PLACE_OPTIONS_SQL) as Promise<PlaceRow[]> });
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
+  const { writes } = useCapabilities();
   const options = placeOptions(places.data ?? []);
   // Keep a linked value selectable even when no saved notice has it (yet).
   if (value && !options.some(option => option.value === value)) options.unshift({ value, label: value.replace(/^(m|rd):/, ''), description: 'No saved notices' });
@@ -121,7 +123,7 @@ export function PlaceFilter({ value, onChange }: { value: string; onChange(value
       <option value="">{places.isPending ? 'Loading places…' : 'Any place'}</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></label>
     {places.error && <p role="alert">Could not load places: {(places.error as Error).message}</p>}
     <p className="procurement-coverage">Municipality and regional district from the buyer’s name or the notice text. Notices that don’t name one clearly are left untagged, so a place filter hides them.</p>
-    <div className="procurement-actions"><Btn size="sm" variant="secondary" disabled={busy} onClick={() => void tag()}>{busy ? 'Tagging saved notices…' : 'Tag saved notices'}</Btn></div>
+    {writes && <div className="procurement-actions"><Btn size="sm" variant="secondary" disabled={busy} onClick={() => void tag()}>{busy ? 'Tagging saved notices…' : 'Tag saved notices'}</Btn></div>}
     {message && <p role="status" className="procurement-coverage">{message}</p>}{error && <p role="alert">{error}</p>}
   </section>;
 }

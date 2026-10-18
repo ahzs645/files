@@ -5,6 +5,7 @@ import { downloadCsvWithManifest, exportManifest, manifestNote } from '../export
 import { navigatePlugin, patchPluginQuery, pluginHref, usePluginLocation } from '../navigation';
 import { sql } from '../procurement/display';
 import { REVIEW_KEY, useReviewWorkspace } from './actions';
+import { useCapabilities } from '../capabilities';
 import { EvidenceInspector } from './EvidenceInspector';
 import { CELL_TEXT, CELL_TONE, EVIDENCE_EXPORT_LIMIT, FIELD_TEXT, GRID_FIELDS, GRID_PAGE, PROBLEMS, PROBLEM_TEXT, evidenceExportHeader, evidenceExportRow, isGridField, isProblem, problemCountsSql, readGridPage, type GridRow, type GridScope } from './evidence-queries';
 import './review.css';
@@ -23,7 +24,7 @@ export function EvidenceGrid() {
   const problem = isProblem(params.get('problem')) ? params.get('problem') as GridScope['problem'] : undefined;
   const field = isGridField(params.get('field')) ? params.get('field') as GridScope['field'] : undefined;
   const after = params.get('after') || undefined, before = params.get('before') || undefined;
-  const workspace = useReviewWorkspace(), available = !!workspace.data?.available, client = useQueryClient();
+  const workspace = useReviewWorkspace(), available = !!workspace.data?.available, client = useQueryClient(), { writes } = useCapabilities();
   const [inspect, setInspect] = useState<{ recordId: string; factId: string } | null>(null);
   const [focus, setFocus] = useState<[number, number]>([0, 0]), grid = useRef<HTMLTableElement>(null);
   const [exporting, setExporting] = useState(false), [note, setNote] = useState(''), [error, setError] = useState('');
@@ -71,7 +72,7 @@ export function EvidenceGrid() {
 
   return <section className="rw-eg-page" aria-labelledby="rw-eg-title">
     <header className="rw-eg-head">
-      <div><h1 id="rw-eg-title">Extracted evidence</h1><p className="rw-o-muted">Review and correct extracted values one at a time.</p></div>
+      <div><h1 id="rw-eg-title">Extracted evidence</h1><p className="rw-o-muted">{writes ? 'Review and correct extracted values one at a time.' : 'Extracted values and the passages they came from.'}</p></div>
       {!catalogEmpty && !counts.isPending && <div className="procurement-actions">
         <label className="rw-eg-field"><span>Field</span><Select aria-label="Field for problem filters" presentation="dropdown" searchable={false} value={field ?? ''} onChange={event => filter({ field: event.target.value })}><option value="">All fields</option>{GRID_FIELDS.map(key => <option key={key} value={key}>{FIELD_TEXT[key]}</option>)}</Select></label>
         <Btn size="sm" variant="secondary" disabled={exporting || !rows.length} onClick={() => void exportScope()}>{exporting ? 'Exporting…' : 'Export CSV'}</Btn>
@@ -79,7 +80,7 @@ export function EvidenceGrid() {
     </header>
     {counts.isPending ? <p role="status" className="rw-o-muted">Loading evidence…</p> : catalogEmpty ? <div className="procurement-empty">
       <h2>No notices have a current extraction yet</h2>
-      <p>Select notices in Opportunities and choose Extract requirements.</p>
+      <p>{writes ? 'Select notices in Opportunities and choose Extract requirements.' : 'Requirements have not been extracted for any notice in this copy.'}</p>
       <div className="procurement-actions"><Btn variant="secondary" onClick={() => navigatePlugin('/procurement')}>Open Opportunities</Btn></div>
     </div> : <>
       <div className="rw-eg-filters" role="group" aria-label="Field problem filters (counts cover every extracted notice)">

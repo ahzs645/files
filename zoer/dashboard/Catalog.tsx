@@ -6,6 +6,7 @@ import { BidGrid, BidFilters, LayoutToggle, useBidFilters, type BidFilterValues,
 import { useNarrowScreen } from './mobile';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { parseContractAwardsJson, normalizeContractAwardImportRecord } from '../../packages/shared/src/contractAwards';
+import { useCapabilities } from './capabilities';
 import { activeAwardRun, startAwardHistory, stopAwardHistory, useWorkspace, useAction, useQuery, readAll } from './backend';
 import { downloadRecords } from './export';
 import { isPausedForUpdate, PAUSED_FOR_UPDATE } from './model';
@@ -24,6 +25,7 @@ export function CatalogTools({ entity, showStarFilter=true, showCount=true }: { 
   const importOpportunities=useAction('opportunities.importBatch');
   const importAwards=useAction('contractAwards.importBatch');
   const { onlyStarred, setOnlyStarred } = useContext(BidPreferences);
+  const { collection } = useCapabilities();
   const counts = useQuery('catalog.count', { kind: entity, starredOnly: onlyStarred });
   const exportRows = async (format: 'csv' | 'json') => {
     setExporting(true); setExportError('');
@@ -41,20 +43,21 @@ export function CatalogTools({ entity, showStarFilter=true, showCount=true }: { 
   };
   const noun = entity === 'award' ? 'award' : 'opportunity';
   return <div className="zoer-record-tools">
-    {entity==='award'&&<AwardHistoryControls />}
+    {collection&&entity==='award'&&<AwardHistoryControls />}
     {showStarFilter&&<Button variant={onlyStarred ? 'primary' : 'ghost'} aria-pressed={!!onlyStarred} onClick={() => setOnlyStarred?.(!onlyStarred)}>{onlyStarred ? 'Showing starred' : 'Starred only'}</Button>}
-    {showCount&&<span>{counts ? counts.total.toLocaleString() : 'Loading…'} {onlyStarred ? 'starred' : 'saved'} records</span>}
+    {showCount&&<span>{counts ? `${counts.total.toLocaleString()} ${onlyStarred ? 'starred' : 'saved'} ${counts.total === 1 ? 'record' : 'records'}` : 'Loading…'}</span>}
     <Button variant="ghost" disabled={!counts?.total || exporting} onClick={() => void exportRows('csv')}>Download CSV</Button>
     <Button variant="ghost" disabled={!counts?.total || exporting} onClick={() => void exportRows('json')}>Download JSON</Button>
     {exporting && <span role="status">Exporting…</span>}{exportError && <p role="alert">{exportError}</p>}
-    <details><summary>Import {noun} JSON</summary><input type="file" accept=".json,application/json" aria-label={`Import ${noun} JSON`} disabled={importing} onChange={event => void importFile(event.currentTarget)} />{importing&&<p role="status">Saving {noun} records…</p>}{importError&&<p role="alert">{importError}</p>}</details>
+    {collection&&<details><summary>Import {noun} JSON</summary><input type="file" accept=".json,application/json" aria-label={`Import ${noun} JSON`} disabled={importing} onChange={event => void importFile(event.currentTarget)} />{importing&&<p role="status">Saving {noun} records…</p>}{importError&&<p role="alert">{importError}</p>}</details>}
   </div>;
 }
 /** Download / Resume / Stop for the public award history. Used in the awards header and on the Scraper tab. */
 export function AwardHistoryControls({ note, showError = true }: { note?: string; showError?: boolean }) {
   const { model } = useWorkspace();
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
-  if (!model) return null;
+  const { collection } = useCapabilities();
+  if (!model || !collection) return null;
   const active = activeAwardRun(model), checkpoint = model.awardCheckpoint;
   const resumable = !!checkpoint && !checkpoint.complete && !active;
   const act = async (fn: () => Promise<void>, done: string) => { setBusy(true); setError(''); setMessage(''); try { await fn(); setMessage(done); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
@@ -121,7 +124,7 @@ export function AwardsBrowser() {
   const [filtersOpen, setFiltersOpen] = useState(false), [columnFilters, setColumnFilters] = useState(0);
   const inlinePanel = narrow && layout === 'list';
   return <div className="bid-opportunities-page zoer-awards">
-    <header className="bid-page-header"><div><h1>Contract awards</h1><p>{count ? count.total.toLocaleString() : 'Loading…'} {onlyStarred ? 'starred' : 'saved'} awards</p></div>{narrow && <LayoutToggle value={layout} onChange={setLayout} />}</header>
+    <header className="bid-page-header"><div><h1>Contract awards</h1><p>{count ? `${count.total.toLocaleString()} ${onlyStarred ? 'starred' : 'saved'} ${count.total === 1 ? 'award' : 'awards'}` : 'Loading…'}</p></div>{narrow && <LayoutToggle value={layout} onChange={setLayout} />}</header>
     <div className="bid-scope-bar"><button type="button" aria-pressed={!onlyStarred} onClick={()=>setOnlyStarred?.(false)}>All awards</button><button type="button" aria-pressed={!!onlyStarred} onClick={()=>setOnlyStarred?.(true)}>Starred</button></div>
     <BidFilters kind="award" values={filters} onChange={setFilters} open={filtersOpen} onOpenChange={setFiltersOpen} inlinePanel={inlinePanel} columnFilters={inlinePanel ? 0 : columnFilters}/>
     <BidGrid kind="award" filters={filters} onFiltersChange={setFilters} layout={layout} filtersOpen={filtersOpen} onFiltersOpenChange={setFiltersOpen} onColumnFiltersChange={setColumnFilters}/>

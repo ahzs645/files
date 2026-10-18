@@ -17,6 +17,9 @@ export function subscribeHost(listener: (event: string, result: any) => void) {
   window.addEventListener('message', receive);
   return () => window.removeEventListener('message', receive);
 }
+/** Rejects methods the host cannot answer before they are sent (set from host capabilities); returns the reason. */
+let guard: ((method: string) => string | undefined) | undefined;
+export function guardHost(value: typeof guard) { guard = value; }
 let sequence = 0;
 const requests = new Map<string, { resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
 window.addEventListener('message', event => {
@@ -27,6 +30,8 @@ window.addEventListener('message', event => {
   event.data.error ? request.reject(new Error(event.data.error)) : request.resolve(event.data.result);
 });
 export function host(method: string, input?: unknown): Promise<any> {
+  const refused = guard?.(method);
+  if (refused) return Promise.reject(new Error(refused));
   const binding = nativeHost;
   if (binding) return enqueue(async () => {
     if (nativeHost !== binding) throw new Error('Workspace closed.');

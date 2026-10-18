@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn, Select } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { useWorkspace } from '../backend';
+import { useCapabilities } from '../capabilities';
 import { SOURCES } from './catalog';
 import { ClassificationMappingModal } from './ClassificationMappingModal';
 import { findClassificationMapping } from './classification-contract';
@@ -27,6 +28,7 @@ const views: { id: ProcurementMarketView; label: string }[] = [
 ];
 const name = (source: string) => SOURCES.find(item => item.id === source)?.label ?? source;
 const count = (value: number) => value.toLocaleString();
+const counted = (value: number, one: string, many = one + 's') => `${count(value)} ${value === 1 ? one : many}`;
 const coverage = (part: number, total: number) => total ? `${Math.round(part / total * 100)}%` : 'No awards';
 async function sql(query: ProcurementMarketQuery) {
   return (await host('catalog.query', query)).rows as Record<string, unknown>[];
@@ -45,6 +47,7 @@ export function ProcurementMarket({ source = '', kind = 'award', onOpenCatalog }
   const client = useQueryClient();
   const [scope, setScope] = useState<ProcurementMarketScope>({ source, kind });
   const [view, setView] = useState<ProcurementMarketView>('sources');
+  const { writes, surface } = useCapabilities();
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<ProcurementMarketRow | null>(null);
   useEffect(() => { setScope({ source, kind }); setPage(0); }, [source, kind]);
@@ -66,7 +69,7 @@ export function ProcurementMarket({ source = '', kind = 'award', onOpenCatalog }
   };
   const rowLabel = (row: ProcurementMarketRow) => view === 'classifications' ? classificationLabel(row.label) : view === 'sources' ? name(row.label) : row.label || 'Not stated';
   return <section className="procurement-market" aria-label="Procurement market analysis">
-    <header className="procurement-market-header"><div><h1>All sources</h1><p>Saved notices and recorded award values, by source.</p></div><Btn variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{query.isFetching ? 'Refreshing…' : 'Refresh'}</Btn></header>
+    <header className="procurement-market-header"><div><h1>All sources</h1><p>Saved notices and recorded award values, by source.</p></div>{surface !== 'societyer' && <Btn variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>{query.isFetching ? 'Refreshing…' : 'Refresh'}</Btn>}</header>
     <div className="procurement-market-filters">
       <label>Source<Select aria-label="Market source" value={scope.source ?? ''} onChange={event => update({ source: event.target.value, kind: scope.kind })}><option value="">All sources</option>{SOURCES.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}{extraSourceIds.map(id => <option key={id} value={id}>{id}</option>)}</Select></label>
       <label>Notice type<Select aria-label="Market notice type" value={scope.kind ?? 'all'} onChange={event => update({ ...scope, kind: event.target.value as ProcurementMarketKind })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select></label>
@@ -78,14 +81,14 @@ export function ProcurementMarket({ source = '', kind = 'award', onOpenCatalog }
     {inspected && <div className="procurement-market-scope" role="status"><span>Inspecting {name(scope.source!)}{scope.buyer !== undefined && ` · Buyer: ${scope.buyer || 'Not stated'}`}{scope.supplier !== undefined && ` · Supplier: ${scope.supplier || 'Not stated'}`}{scope.classification !== undefined && ` · Classification: ${classificationLabel(scope.classification)}`}</span><Btn variant="ghost" onClick={() => update({ source: scope.source, kind: scope.kind })}>Clear drilldown</Btn></div>}
     {query.error && <div role="alert" className="procurement-market-error">{query.error.message} <Btn variant="secondary" onClick={() => void query.refetch()}>Retry analysis</Btn></div>}
     <div className="procurement-market-metrics" aria-live="polite">
-      <article><span>Saved notices</span><strong>{summary ? count(summary.recordCount) : '—'}</strong><small>{summary ? `${count(summary.opportunityCount)} opportunities · ${count(summary.awardCount)} awards` : 'Loading catalog counts…'}</small></article>
+      <article><span>Saved notices</span><strong>{summary ? count(summary.recordCount) : '—'}</strong><small>{summary ? `${counted(summary.opportunityCount, 'opportunity', 'opportunities')} · ${counted(summary.awardCount, 'award')}` : 'Loading catalog counts…'}</small></article>
       <article><span>Numeric award values</span><strong>{summary ? count(summary.valuedCount) : '—'}</strong><small>{summary ? `${coverage(summary.valuedCount, summary.awardCount)} disclosed-value coverage` : 'Loading coverage…'}</small></article>
       <article><span>Unknown award amounts</span><strong>{summary ? count(summary.missingValueCount) : '—'}</strong><small>Missing, invalid and unparsed values stay unknown.</small></article>
       <article><span>Values with a currency code</span><strong>{summary ? count(summary.comparableValueCount) : '—'}</strong><small>{summary ? `${count(summary.zeroValueCount)} zero · ${count(summary.negativeValueCount)} negative numeric amounts` : 'Loading currency coverage…'}</small></article>
     </div>
     <div className="procurement-market-breakdown">
       <div className="procurement-market-heading"><h2>{views.find(item => item.id === view)?.label}</h2><span>{query.isPending ? 'Loading…' : `Page ${page + 1} · ${rows.length} groups`}</span></div>
-      {view === 'classifications' && <><p className="procurement-market-note">Grouped by each source’s own classification codes. You can add display labels; codes aren’t mapped between systems.</p>{mappings.error && <p role="alert">Classification mappings could not be read: {mappings.error.message} <Btn variant="secondary" onClick={() => void mappings.refetch()}>Retry mappings</Btn></p>}</>}
+      {view === 'classifications' && <><p className="procurement-market-note">Grouped by each source’s own classification codes. {writes ? 'You can add display labels; codes' : 'Codes'} aren’t mapped between systems.</p>{mappings.error && <p role="alert">Classification mappings could not be read: {mappings.error.message} <Btn variant="secondary" onClick={() => void mappings.refetch()}>Retry mappings</Btn></p>}</>}
       {view === 'suppliers' && <p className="procurement-market-note">Recorded award recipients only, not every bidder.</p>}
       {view !== 'currencies' && <p className="procurement-market-note">Choose a row to drill in. Each row is one source, name and currency.</p>}
       <div className="procurement-market-table-wrap"><table>
@@ -93,17 +96,17 @@ export function ProcurementMarket({ source = '', kind = 'award', onOpenCatalog }
         <tbody>{rows.map(row => <tr key={JSON.stringify([row.sourceId, row.currency, row.label])}>
           <th scope="row">{view === 'currencies' ? row.currency || 'Unspecified currency' : <Btn variant="ghost" onClick={() => inspect(row)}>{rowLabel(row)}</Btn>}{view === 'classifications' && <div className="procurement-classification-label">{(() => {
             const mapping = findClassificationMapping(mappings.data ?? [], row.sourceId, row.label);
-            return <><small>{mappings.isPending ? 'Loading mapping…' : mappings.error ? 'Mapping unavailable' : mapping && !mapping.archived ? `Your label: ${mapping.label}` : 'Unmapped'}</small>{row.label && row.label !== '[]' && <Btn variant="secondary" disabled={mappings.isPending || !!mappings.error || row.label.length > 12000} onClick={() => setEditing(row)}>{mapping && !mapping.archived ? 'Edit mapping' : 'Map classification'}</Btn>}</>;
+            return <><small>{mappings.isPending ? 'Loading mapping…' : mappings.error ? 'Mapping unavailable' : mapping && !mapping.archived ? `Your label: ${mapping.label}` : 'Unmapped'}</small>{writes && row.label && row.label !== '[]' && <Btn variant="secondary" disabled={mappings.isPending || !!mappings.error || row.label.length > 12000} onClick={() => setEditing(row)}>{mapping && !mapping.archived ? 'Edit mapping' : 'Map classification'}</Btn>}</>;
           })()}</div>}</th>
           {view !== 'currencies' && <td>{name(row.sourceId)}</td>}
           <td>{count(row.recordCount)}</td>
-          <td>{row.awardCount ? `${count(row.valuedCount)} / ${count(row.awardCount)} awards` : 'No awards'}</td>
+          <td>{row.awardCount ? `${count(row.valuedCount)} / ${counted(row.awardCount, 'award')}` : 'No awards'}</td>
           <td><span>{formatMarketValue(row.totalValue, row.currency)}</span>{!row.currency && row.valuedCount > 0 && <small>{count(row.valuedCount)} numeric amounts · currency unknown</small>}{row.negativeValueCount > 0 && <small>Includes {count(row.negativeValueCount)} negative amounts</small>}</td>
         </tr>)}</tbody>
       </table></div>
       {!query.isPending && !query.error && !rows.length && <p className="procurement-market-empty">No saved notices match this scope. Choose another source or notice type, or clear the drilldown.</p>}
       <div className="procurement-market-pagination"><Btn variant="secondary" disabled={page === 0 || query.isFetching} onClick={() => setPage(current => Math.max(0, current - 1))}>Previous groups</Btn><span>Sorted by saved notice count. Up to 50 groups per page.</span><Btn variant="secondary" disabled={!query.data?.hasMore || query.isFetching} onClick={() => setPage(current => current + 1)}>Next groups</Btn></div>
     </div>
-    {editing && <ClassificationMappingModal sourceId={editing.sourceId} sourceLabel={name(editing.sourceId)} rawClassification={editing.label} initial={findClassificationMapping(mappings.data ?? [], editing.sourceId, editing.label)} onClose={() => setEditing(null)} onSaved={items => client.setQueryData(['catalog', 'procurement-classifications'], items)} />}
+    {writes && editing && <ClassificationMappingModal sourceId={editing.sourceId} sourceLabel={name(editing.sourceId)} rawClassification={editing.label} initial={findClassificationMapping(mappings.data ?? [], editing.sourceId, editing.label)} onClose={() => setEditing(null)} onSaved={items => client.setQueryData(['catalog', 'procurement-classifications'], items)} />}
   </section>;
 }

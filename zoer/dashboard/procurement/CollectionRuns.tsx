@@ -17,8 +17,8 @@ export const PRESETS_KEY = ['catalog', 'procurement-presets'] as const;
 const COLLECT_ACTIONS = [COLLECT_ACTION, BROWSER_COLLECT_ACTION];
 
 /** Recent runs of this plugin from Zoer's run store (`runs.recent`, S6), every 5 s. Older Zoer answers with an error. */
-export function useRecentRuns() {
-  return useQuery({ queryKey: RUNS_KEY, queryFn: async () => ((await host('runs.recent', { limit: 30 }))?.runs ?? []) as RecentRun[], refetchInterval: 5000, retry: false });
+export function useRecentRuns(enabled = true) {
+  return useQuery({ queryKey: RUNS_KEY, queryFn: async () => ((await host('runs.recent', { limit: 30 }))?.runs ?? []) as RecentRun[], refetchInterval: 5000, retry: false, enabled });
 }
 /** Saved collection presets (`presets.list`, S6). */
 export function usePresets() {

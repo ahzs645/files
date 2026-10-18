@@ -6,6 +6,7 @@ import { useCallback, useContext, useEffect, useSyncExternalStore } from 'react'
 import { buildContractAwardImportKey } from '../../packages/shared/src/contractAwards';
 import { buildModel, queryModel, type Model, type SavedDocument, type WorkspaceState } from './model';
 import { host } from './bridge';
+import { capabilities } from './capabilities';
 import { queryCatalog, readAll, resetCatalogCache } from './queries';
 import { SAVED_BC_BID_BUYERS_QUERY } from './buyer-query';
 import { readWorkspaceMetadata } from './workspace-bootstrap';
@@ -37,6 +38,7 @@ export function refresh() {
       if (current !== generation) return;
       if (!head.primary) {
         if (import.meta.env.VITE_ZOER_NATIVE) throw new Error('The existing BC Bid catalog is not ready. Open its database in Databases before continuing.');
+        if (!capabilities().writes) throw new Error('This published copy has no saved catalog yet.');
         const active = state.runs.find(run => !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status));
         if (active?.actionId === 'catalog.migrate') { snapshot = { notice: 'Moving saved bids into the database… You can leave this page open.' }; return; }
         if (active) throw new Error('Wait for the active BC Bid run to finish before migrating its database.');

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { useReviewAction } from './DecisionHeader';
+import { useCapabilities } from '../capabilities';
 import { useActiveProfile } from './profile-context';
 import { label } from './queries';
 import { changeKindText, noticeKey, readAssessmentHistory, readChanges, readDecisions, when, type ChangeRow, type NoticeTabId } from './notice-queries';
@@ -34,7 +35,7 @@ export function ChangesPanel({ recordId, onTab }: { recordId: string; onTab(tab:
   const changes = useQuery({ queryKey: noticeKey(recordId, 'changes'), queryFn: () => readChanges(recordId) });
   const assessments = useQuery({ queryKey: noticeKey(recordId, 'assessment-history'), queryFn: () => readAssessmentHistory(recordId) });
   const decisions = useQuery({ queryKey: noticeKey(recordId, 'decisions'), queryFn: () => readDecisions(recordId) });
-  const action = useReviewAction();
+  const action = useReviewAction(), { writes } = useCapabilities();
   const staleAssessments = (assessments.data ?? []).filter(item => item.isCurrent && item.freshness === 'stale');
   const latest = decisions.data?.[0], reconfirm = decisions.data?.filter(item => item.needsReconfirmation) ?? [];
   const pending = (changes.data ?? []).filter(change => !change.acknowledgedAt);
@@ -48,11 +49,11 @@ export function ChangesPanel({ recordId, onTab }: { recordId: string; onTab(tab:
         {staleAssessments.map(item => <li key={item.id}>Assessment of {when(item.createdAt)} ({item.profileVersionId === profileVersionId ? active ? `${active.name} v${active.version}` : 'this profile' : item.profileVersionId ? 'another profile version' : 'no profile'}): {label(item.suggestedAction)}, now stale.</li>)}
         {reconfirm.map(item => <li key={item.id}>Decision “{label(item.decision)}” of {when(item.createdAt)} needs reconfirmation{item.staleReason ? ` (${item.staleReason.replace(/_/g, ' ')})` : ''}.</li>)}
       </ul>
-      <ol className="rw-nd-steps">
+      {writes && <ol className="rw-nd-steps">
         <li>Review each change below and acknowledge it.</li>
         <li>Re-assess against the current evidence. <Btn size="sm" variant="secondary" disabled={!!action.busy} loading={action.busy === 'assess'} onClick={() => void action.run('assess', { op: 'assess', recordId, profileVersionId }, 'Re-assessed. Now record a new decision.')}>Re-assess{active ? ` for ${active.name} v${active.version}` : ' (no profile)'}</Btn></li>
         <li>Record a new decision; earlier decisions stay in the history. <Btn size="sm" variant="secondary" onClick={toDecision}>Record a new decision</Btn></li>
-      </ol>
+      </ol>}
       {latest && !latest.needsReconfirmation && reconfirm.length > 0 && <p className="rw-note">Your latest decision is current; older decisions remain flagged as history.</p>}
       {action.error && <p role="alert" className="rw-error">{action.error}</p>}{action.done && <p role="status" className="rw-note">{action.done}</p>}
     </section>}
@@ -66,12 +67,12 @@ export function ChangesPanel({ recordId, onTab }: { recordId: string; onTab(tab:
 }
 
 function ChangeItem({ change }: { change: ChangeRow }) {
-  const action = useReviewAction();
+  const action = useReviewAction(), { writes } = useCapabilities();
   return <li data-acknowledged={!!change.acknowledgedAt || undefined}>
     <div className="rw-panel-head"><strong>{changeKindText(change.kind)}</strong><span className="rw-note">Detected {when(change.detectedAt)}</span></div>
     <ChangeDetail change={change} />
     {change.acknowledgedAt ? <p className="rw-note">Acknowledged by {change.acknowledgedBy ?? 'someone'} · {when(change.acknowledgedAt)}</p>
-      : <div className="rw-actions"><Btn size="sm" variant="secondary" disabled={!!action.busy} loading={!!action.busy} onClick={() => void action.run('ack', { op: 'change.acknowledge', changeId: change.id })}>Acknowledge</Btn></div>}
+      : writes && <div className="rw-actions"><Btn size="sm" variant="secondary" disabled={!!action.busy} loading={!!action.busy} onClick={() => void action.run('ack', { op: 'change.acknowledge', changeId: change.id })}>Acknowledge</Btn></div>}
     {action.error && <p role="alert" className="rw-error">{action.error}</p>}
   </li>;
 }

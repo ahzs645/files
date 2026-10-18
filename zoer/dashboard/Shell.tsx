@@ -12,7 +12,8 @@ import { Insights } from './review-workspace/Insights';
 import { EvidenceGrid } from './review-workspace/EvidenceGrid';
 import { ProfilesPage } from './review-workspace/ProfileEditor';
 import { PipelineWorkbench } from './review-workspace/PipelineWorkbench';
-import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, SECTION_VIEWS, pageOf, redirectOf, sectionOf, viewHref, viewOf, type Page, type Section } from './review-workspace/nav';
+import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, gatedRedirectOf, pageOf, redirectOf, sectionOf, sectionViews, viewHref, viewOf, visibleSections, withLabels, type Page, type Section } from './review-workspace/nav';
+import { useCapabilities } from './capabilities';
 import './review-workspace/review.css';
 import { useEffect, useRef, useSyncExternalStore, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { PageTabs } from '@zoer/plugin-ui/analysis';
@@ -54,9 +55,9 @@ function SubTabs({ id, label, tabs, value }: { id: string; label: string; tabs: 
     href={tab => pluginHref(tabs.find(([candidate]) => candidate === tab)![2])} />;
 }
 function SectionViews({ section, location }: { section: Section; location: string }) {
-  const views = SECTION_VIEWS[section];
-  if (!views) return null;
-  return <SubTabs id="pc-views" label={`${SECTION_NAMES[section]} views`} value={viewOf(location)} tabs={views.map(([id, label]) => [id, label, viewHref(section, id, location)])} />;
+  const caps = useCapabilities(), views = sectionViews(section, caps);
+  if (!views?.length) return null;
+  return <SubTabs id="pc-views" label={`${SECTION_NAMES[section]} views`} value={viewOf(location, caps)} tabs={views.map(([id, label]) => [id, label, viewHref(section, id, location)])} />;
 }
 /**
  * One load status for the whole workspace, inside the content area: a workspace error wins over a
@@ -78,10 +79,13 @@ const PAGE_VIEWS: Partial<Record<Page, () => ReactNode>> = {
 };
 export function AppShell({ children }: { children: ReactNode }) {
   const location = usePluginLocation(), path = location.split("?")[0];
-  const redirect = redirectOf(location);
+  const caps = useCapabilities();
+  const redirect = redirectOf(location) ?? gatedRedirectOf(location, caps);
+  const shown = [visibleSections(PRIMARY_SECTIONS, caps), visibleSections(CONFIGURE_SECTIONS, caps)], total = shown[0].length + shown[1].length;
+  const [primary, configure] = shown.map(tabs => withLabels(tabs, total));
   // `/` opens Home; old `/?…` search links keep their filters on the review table.
   useEffect(() => { if (redirect) navigatePlugin(redirect, 'replace'); }, [redirect]);
-  const section = sectionOf(location);
+  const section = sectionOf(location, caps);
   const inBcBid = section === 'sources' && path !== '/sources';
   const analysis = path.startsWith('/analysis') || path.startsWith('/contract-awards/analysis');
   // Catalog pages size their table to the remaining height instead of scrolling the whole page.
@@ -93,10 +97,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const page = redirect ? <p role="status" className="rw-muted">Opening…</p> : render ? render() : children;
   return <div className="flex h-full min-h-0 flex-col">
     <nav ref={top} aria-label="Procurement sections" className="zoer-tabs relative flex min-w-0 shrink-0 gap-0.5 overflow-x-auto border-b border-border-default px-2 sm:gap-1 sm:px-4">
-      {PRIMARY_SECTIONS.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}
-      <span role="group" aria-label="Configure" className="rw-nav-configure">
-        {CONFIGURE_SECTIONS.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}
-      </span>
+      {primary.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}
+      {configure.length > 0 && <span role="group" aria-label="Configure" className="rw-nav-configure">
+        {configure.map(([id, label, to, short]) => <Tab key={id} to={to} label={label} short={short} active={section === id} />)}
+      </span>}
     </nav>
     {/* A source's own pages are chosen inside the page header, not from a second tab row. */}
     {inBcBid && <SubTabs id="pc-views" label="BC Bid pages" value={bcBidPage} tabs={bcBid.map(([to, label]) => [to, label, to])} />}

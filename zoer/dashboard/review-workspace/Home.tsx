@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, RefreshCw } from 'lucide-react';
 import { Btn, Select } from '@zoer/plugin-ui/controls';
-import { deadlineState, parseDeadline } from '@bcbid/procurement-core';
 import { navigatePlugin, patchPluginQuery, pluginHref, usePluginLocation } from '../navigation';
+import { useCapabilities } from '../capabilities';
 import { INVENTORY_SQL, sourceName, sql } from '../procurement/display';
 import { readProcurementState } from '../procurement/state-client';
 import { PURSUIT_STAGES } from '../procurement/state-contract';
@@ -13,6 +13,7 @@ import { ProfilePicker } from './ProfilePicker';
 import { label } from './queries';
 import { ACQUIRE_REASON_TEXT, QUEUES, QUEUE_TEXT, queueSql, reviewScopeHref, type QueueId } from './queue';
 import { Today } from './Today';
+import { friendlyDeadline } from './deadline-text';
 import { readAttentionSummary, readCoverage, readDeadlines, readPolicies, readQueue, readRecentDecisions, readReviewCoverage, readSourceHealth } from './home-data';
 import './review.css';
 
@@ -43,16 +44,13 @@ export function Loadable<T>({ query, children, what }: { query: { isPending: boo
   return <>{children(query.data)}</>;
 }
 
-/** Deadline text from the core parser: precision is explicit and a date-only deadline today stays "time unverified". */
-export function deadlineText(raw: unknown, asOf: number): { text: string; state: string } {
-  const value = parseDeadline(typeof raw === 'string' ? raw : null), state = deadlineState(value, asOf);
-  if (value.precision === 'unknown') return { text: typeof raw === 'string' && raw.trim() ? `${raw} (unrecognized date)` : 'Deadline not provided', state };
-  if (state === 'closing_today_time_unverified') return { text: `${value.date} · closing date today; time unverified`, state };
-  if (value.precision === 'instant' && value.iso) {
-    const days = Math.ceil((Date.parse(value.iso) - asOf) / 86_400_000);
-    return { text: `${new Date(value.iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}${state === 'open' ? ` · ${days <= 1 ? 'within a day' : `${days} days left`}` : ''}`, state };
-  }
-  return { text: `${value.date} · ${value.precision === 'range' ? 'date range; time unverified' : 'date only; time unverified'}`, state };
+/**
+ * Deadline text from the core parser: a short line ("Tue, Oct 20 · 2 days left", "Today") with the precision caveat
+ * ("date only; closing time not verified") and the source text in `detail`, for a tooltip.
+ */
+export function deadlineText(raw: unknown, asOf: number): { text: string; state: string; detail: string } {
+  const { text, state, detail } = friendlyDeadline(raw, asOf);
+  return { text, state, detail };
 }
 
 type RowStatus = 'pending' | 'error' | 'blocked' | 'zero' | 'active';
@@ -85,7 +83,7 @@ function QueueRow({ queue, profile, source, asOf, available, workspacePending, o
       <summary>Show examples</summary>
       <ul className="rw-queue-items">{result.data!.items.map(item => <li key={item.id}>
         <RouteLink to={`/procurement?notice=${encodeURIComponent(item.id)}`} className="rw-item-title">{item.title || item.id}</RouteLink>
-        <span className="rw-item-meta">{[item.buyer, deadlineText(item.closing, asOf).text, item.reason ? ACQUIRE_REASON_TEXT[item.reason as keyof typeof ACQUIRE_REASON_TEXT] : ''].filter(Boolean).join(' · ')}</span>
+        <span className="rw-item-meta" title={deadlineText(item.closing, asOf).detail || undefined}>{[item.buyer, deadlineText(item.closing, asOf).text, item.reason ? ACQUIRE_REASON_TEXT[item.reason as keyof typeof ACQUIRE_REASON_TEXT] : ''].filter(Boolean).join(' · ')}</span>
       </li>)}{result.data!.total > result.data!.items.length && <li className="rw-muted">and {n(result.data!.total - result.data!.items.length)} more</li>}</ul>
     </details>}
   </li>;
@@ -111,10 +109,10 @@ function AttentionTiles({ source, profile, active, asOf, available }: { source: 
   const summary = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'attention', source, profile, asOf], queryFn: () => readAttentionSummary(source, profile, asOf), refetchInterval: 60_000 });
   const decide = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'queue', 'decide', profile, source, asOf], enabled: available, queryFn: () => readQueue('decide', profile, source, asOf), refetchInterval: 60_000 });
   const changes = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'queue', 'changes', profile, source, asOf], enabled: available, queryFn: () => readQueue('changes', profile, source, asOf), refetchInterval: 60_000 });
-  const dash = <span className="rw-muted">–</span>;
+  const dash = <span className="rw-muted">–</span>, { writes } = useCapabilities();
   return <div className="rw-tiles">
-    <Tile href={reviewScopeHref({ source: source || undefined, open: true })} tone="info" title="Open opportunities" note="Saved in Zoer" count={summary.data ? n(summary.data.open) : dash} />
-    <Tile href={active ? reviewScopeHref({ source: source || undefined, open: true, readiness: 'conditions', profile }) : '/profiles'} tone="warn" title="Need information" note={active ? 'Needs information or investigation' : 'Choose a profile'} count={active ? (summary.data ? n(summary.data.needInfo) : dash) : dash} />
+    <Tile href={reviewScopeHref({ source: source || undefined, open: true })} tone="info" title="Open opportunities" note={writes ? 'Saved in Zoer' : 'In this published copy'} count={summary.data ? n(summary.data.open) : dash} />
+    <Tile href={active ? reviewScopeHref({ source: source || undefined, open: true, readiness: 'conditions', profile }) : writes ? '/profiles' : '/home'} tone="warn" title="Need information" note={active ? 'Needs information or investigation' : 'Choose a profile'} count={active ? (summary.data ? n(summary.data.needInfo) : dash) : dash} />
     <Tile href={reviewScopeHref({ source: source || undefined, queue: 'decide', profile })} tone="ok" title="Ready for your decision" note="Nothing is approved automatically" count={!available ? dash : decide.data ? n(decide.data.total) : dash} />
     <Tile href={reviewScopeHref({ source: source || undefined, queue: 'changes', profile })} tone="violet" title="Decisions to reconfirm" note="Evidence or scope changed" count={!available ? dash : changes.data ? n(changes.data.total) : dash} />
   </div>;
@@ -150,9 +148,9 @@ function Coverage({ source, profile, available }: { source: string; profile: str
 const BATCH_KINDS: Record<string, string> = { download: 'Document downloads', review: 'AI reviews', 'document-review': 'Document reviews', 'document-synthesis': 'Document synthesis', 'record-review': 'Notice reviews', 'host-action': 'Review pipeline', 'procurement-extract': 'Requirement extraction', 'procurement-triage': 'Notice triage' };
 function SourceHealth({ inventory }: { inventory: any[] | undefined }) {
   const health = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'source-health'], queryFn: readSourceHealth, refetchInterval: 30_000 });
-  const sources = new Map<string, { count: number; importedAt: string | null }>();
+  const sources = new Map<string, { count: number; importedAt: string | null }>(), { collection } = useCapabilities();
   for (const row of inventory ?? []) if (row.kind === 'opportunity') sources.set(row.sourceId, { count: Number(row.count), importedAt: row.importedAt ?? null });
-  return <Panel title="Source health" note={<RouteLink to="/sources">Sources</RouteLink>}>
+  return <Panel title="Source health" note={collection ? <RouteLink to="/sources">Sources</RouteLink> : undefined}>
     {sources.size > 0 && <ul className="rw-list">{[...sources].map(([id, s]) => <li key={id}><strong>{sourceName(id)}</strong> <span className="rw-muted">{plural(s.count, 'saved notice')}{s.importedAt ? ` · last import ${when(s.importedAt)}` : ''}</span></li>)}</ul>}
     <Loadable query={health} what="batch history">{kinds => kinds.length === 0 ? <p className="rw-muted">No batches recorded yet.</p> : <ul className="rw-list">{kinds.map(k => <li key={k.kind}>
       <strong>{BATCH_KINDS[k.kind] ?? k.kind}</strong>
@@ -185,7 +183,7 @@ function Deadlines({ source, asOf }: { source: string; asOf: number }) {
       const today = dated.filter(item => item.d.state === 'closing_today_time_unverified'), later = dated.filter(item => item.d.state !== 'closing_today_time_unverified');
       const item = ({ row, d }: typeof dated[number], dateOnly: boolean) => <li key={row.id}>
         <RouteLink to={`/procurement?notice=${encodeURIComponent(row.id)}`} className="rw-item-title">{row.title || row.id}</RouteLink>
-        <span className="rw-muted">{[row.buyer, dateOnly ? null : d.text].filter(Boolean).join(' · ')}</span>
+        <span className="rw-muted" title={d.detail || undefined}>{[dateOnly ? null : d.text, row.buyer].filter(Boolean).join(' · ')}</span>
       </li>;
       return <>
         {today.length > 0 && <><h3 className="rw-group-title">Closes today (time unverified)</h3><ul className="rw-list">{today.map(entry => item(entry, true))}</ul></>}
@@ -197,9 +195,9 @@ function Deadlines({ source, asOf }: { source: string; asOf: number }) {
 }
 
 function PursuitSummary() {
-  const state = useQuery({ queryKey: ['catalog', 'procurement-state'], queryFn: readProcurementState });
+  const state = useQuery({ queryKey: ['catalog', 'procurement-state'], queryFn: readProcurementState }), { writes } = useCapabilities();
   return <Panel title="Pursuits" note={<RouteLink to="/pursuits">Open the board</RouteLink>}>
-    <Loadable query={state} what="pursuits">{({ pursuits }) => pursuits.length === 0 ? <p className="rw-muted">No pursuits yet. Add a notice to the board from its detail view.</p> : <dl className="rw-stats rw-stats-inline">{PURSUIT_STAGES.map(stage => <div key={stage}><dt>{stage}</dt><dd>{n(pursuits.filter(p => p.stage === stage).length)}</dd></div>)}</dl>}</Loadable>
+    <Loadable query={state} what="pursuits">{({ pursuits }) => pursuits.length === 0 ? <p className="rw-muted">{writes ? 'No pursuits yet. Add a notice to the board from its detail view.' : 'No pursuits yet.'}</p> : <dl className="rw-stats rw-stats-inline">{PURSUIT_STAGES.map(stage => <div key={stage}><dt>{stage}</dt><dd>{n(pursuits.filter(p => p.stage === stage).length)}</dd></div>)}</dl>}</Loadable>
   </Panel>;
 }
 
@@ -208,7 +206,7 @@ export function Home() {
   const location = usePluginLocation(), source = new URLSearchParams(location.split('?')[1]).get('source') ?? '';
   const workspace = useReviewWorkspace(), available = workspace.data?.available === true;
   const { profileVersionId, active } = useActiveProfile();
-  const [asOf, setAsOf] = useState(() => Date.now()), client = useQueryClient();
+  const [asOf, setAsOf] = useState(() => Date.now()), client = useQueryClient(), { surface } = useCapabilities();
   const inventory = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'inventory'], queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60_000 });
   const policies = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'policies', profileVersionId], enabled: available, queryFn: () => readPolicies(profileVersionId) });
   const sources = [...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))];
@@ -220,7 +218,7 @@ export function Home() {
       <div className="rw-controls">
         <label className="rw-control"><span>Source</span><Select aria-label="Source" presentation="dropdown" searchable={false} value={source} onChange={event => patchPluginQuery({ source: event.target.value || null })}><option value="">All saved sources</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}</option>)}</Select></label>
         {available ? <span title={policy}><ProfilePicker /></span> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
-        <Btn size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={refresh} tooltip={`As of ${when(new Date(asOf).toISOString())}`}>Refresh</Btn>
+        {surface !== 'societyer' && <Btn size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={refresh} tooltip={`As of ${when(new Date(asOf).toISOString())}`}>Refresh</Btn>}
       </div>
     </header>
     {!workspace.isPending && !available && <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved notices, documents, deadlines and pursuits are still shown below.</p>}

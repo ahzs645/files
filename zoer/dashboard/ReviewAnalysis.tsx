@@ -47,7 +47,7 @@ function FieldCard({ summary, pick }: { summary: FieldSummary; pick: (title: str
 }
 
 /** Everything the saved AI reviews say, across records: coverage, labels, per-field breakdowns and what closes soon. */
-export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; onOpen: (recordId: string) => void; onSelect: (recordIds: string[]) => void }) {
+export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; onOpen: (recordId: string) => void; /** Absent on hosts that cannot run reviews: no selection buttons. */ onSelect?: (recordIds: string[]) => void }) {
   const [promptId] = usePluginQuery('prompt'), [source, setSource] = usePluginQuery('source'), [versionParam, setVersionParam] = usePluginQuery('version');
   const setPromptId = (id: string) => patchPluginQuery({ prompt: id, version: null });
   const prompt = prompts.find(p => p.id === promptId);
@@ -89,7 +89,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
   const latest = all.reduce((t, r) => r.reviewedAt > t ? r.reviewedAt : t, '');
   const selectUnreviewed = async (id: string) => {
     setBusy(id); setError('');
-    try { const ids = await readUnreviewed(host, id); if (!ids.length) throw Error(`Every open ${sourceName(id)} opportunity already has a review.`); onSelect(ids); }
+    try { const ids = await readUnreviewed(host, id); if (!ids.length) throw Error(`Every open ${sourceName(id)} opportunity already has a review.`); onSelect?.(ids); }
     catch (e) { setError((e as Error).message); } finally { setBusy(''); }
   };
   const sources = [...SOURCES.map(s => s.id), ...coverage.map(c => c.source).filter(id => !SOURCES.some(s => s.id === id))];
@@ -120,7 +120,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
 
       {focus && <section ref={focusRef} className="zoer-history ai-focus" aria-label="Selected records">
         <div className="research-toolbar review-results-head"><h2>{focus.title} · {focus.recordIds.length.toLocaleString()}</h2>
-          <div className="research-toolbar-end"><Button variant="ghost" onClick={() => onSelect(focus.recordIds.slice(0, 50))}>Select for review</Button><Button variant="ghost" onClick={() => setFocus(null)}>Close</Button></div></div>
+          <div className="research-toolbar-end">{onSelect && <Button variant="ghost" onClick={() => onSelect(focus.recordIds.slice(0, 50))}>Select for review</Button>}<Button variant="ghost" onClick={() => setFocus(null)}>Close</Button></div></div>
         <ul className="ai-record-list">{focus.recordIds.map(id => { const r = records.get(id); return <li key={id}>
           <button type="button" className="research-link" onClick={() => onOpen(id)}>{r?.title ?? id}</button>
           <small><span className="research-source-tag">{sourceName(r?.source ?? 'bc-bid')}</span>{[r?.buyer, r?.deadline && `Closes ${r.deadline}`].filter(Boolean).join(' · ')}</small>
@@ -133,7 +133,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
           {!open.length ? <p className="research-note">No open opportunities are saved.</p> : <ul className="ai-coverage">{open.map(c => <li key={c.source}>
             <div><strong>{sourceName(c.source)}</strong><span className="research-count">{c.reviewed.toLocaleString()} of {c.open.toLocaleString()} reviewed</span></div>
             <span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${c.open ? (c.reviewed / c.open) * 100 : 0}%` }} /></span>
-            {c.open > c.reviewed && <Button variant="ghost" disabled={!!busy} onClick={() => void selectUnreviewed(c.source)}>{busy === c.source ? 'Selecting…' : `Select ${Math.min(50, c.open - c.reviewed)} unreviewed`}</Button>}
+            {onSelect && c.open > c.reviewed && <Button variant="ghost" disabled={!!busy} onClick={() => void selectUnreviewed(c.source)}>{busy === c.source ? 'Selecting…' : `Select ${Math.min(50, c.open - c.reviewed)} unreviewed`}</Button>}
           </li>)}</ul>}
           <p className="research-note">Open means the saved status is open or active; source status may be stale. Unreviewed notices are selected soonest-closing first.</p>
         </section>

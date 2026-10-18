@@ -11,6 +11,11 @@
       "@zoer/plugin-ui/controls": ["../zoer/frontend/src/plugin-ui/controls.ts"],
       "@zoer/plugin-ui/analysis": ["../zoer/frontend/src/plugin-ui/analysis.ts"],
       "@zoer/plugin-ui/database": ["../zoer/frontend/src/plugin-ui/database.ts"],
+      "@zoer/plugin-ui/button": ["../zoer/frontend/src/components/ui/Btn.tsx"],
+      "@zoer/plugin-ui-host/controls": ["../zoer/frontend/src/plugin-ui/controls.ts"],
+      "@zoer/plugin-ui-host/analysis": ["../zoer/frontend/src/plugin-ui/analysis.ts"],
+      "@zoer/plugin-ui-host/database": ["../zoer/frontend/src/plugin-ui/database.ts"],
+      "@zoer/plugin-ui-host/button": ["../zoer/frontend/src/components/ui/Btn.tsx"],
       "@zoer/api-types": ["../zoer/packages/api-types/src/index.ts"],
       "@tanstack/react-query": ["../zoer/frontend/node_modules/@tanstack/react-query"]
     }

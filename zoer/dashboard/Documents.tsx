@@ -9,6 +9,7 @@ import { usePluginQuery } from './navigation';
 import { DocumentFiles, DocumentStats } from './DocumentInventory';
 import { NoticeView } from './procurement/NoticeView';
 import { useWorkspace } from './backend';
+import { useCapabilities } from './capabilities';
 import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from './document-run';
 
 const TABS: [string, string][] = [['', 'Download'], ['files', 'Files'], ['history', 'History']];
@@ -41,20 +42,21 @@ export function Documents() {
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   const current = TABS.some(([id]) => id === tab) ? tab : '';
+  const { collection } = useCapabilities();
   return <section className="research doc-page">
     {/* Download · Files · History are the section's tabs (Shell); the page itself has no heading. */}
     <DocumentStats refreshKey={refreshKey} />
     <BatchProgress batches={state.batches} tasks={state.tasks} />
-    {attention && current !== 'history' && <p className="doc-attention" role="status"><span className="doc-dot" aria-hidden="true" />The last download needs attention. <button type="button" onClick={() => setTab('history')}>Open history</button></p>}
+    {collection && attention && current !== 'history' && <p className="doc-attention" role="status"><span className="doc-dot" aria-hidden="true" />The last download needs attention. <button type="button" onClick={() => setTab('history')}>Open history</button></p>}
     {(error || state.loadError) && <p role="alert">{error || state.loadError}</p>}{message && <p role="status">{message}</p>}
-    {current === '' && <>
+    {collection && current === '' && <>
       <BulkDocuments running={downloads.some((batch: any) => batch.status === 'running')} onStarted={refresh} />
       <h2 className="doc-subhead">Or pick opportunities</h2>
       <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} more={[{ label: 'Open database viewer', onClick: () => void host('catalog.open') }]}
         actions={<><Button disabled={busy || browserBusy || !selection.size} onClick={() => void download()}>Download selected</Button><Button variant="ghost" disabled={busy || !selection.size || selection.size > BUNDLE_MAX_NOTICES} title="Saved files of the selected notices and a CSV, as one zip" onClick={() => void bundle()}>Save files as zip</Button></>} />
     </>}
     {current === 'files' && <DocumentFiles onDetails={setRecordId} refreshKey={refreshKey} running={running} browserBusy={browserBusy} />}
-    {current === 'history' && <BatchHistory title="Download history" kind="download" batches={state.batches} tasks={state.tasks} onChanged={refresh} onError={setError} browserBusy={browserBusy} />}
+    {collection && current === 'history' && <BatchHistory title="Download history" kind="download" batches={state.batches} tasks={state.tasks} onChanged={refresh} onError={setError} browserBusy={browserBusy} />}
     {recordId && <NoticeView id={recordId} layout="dialog" initialTab="documents" onClose={() => setRecordId('')} />}
   </section>;
 }

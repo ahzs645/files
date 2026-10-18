@@ -5,6 +5,7 @@ import { GATE_ORIGINS, REQUIREMENT_MATCHES, REQUIREMENT_STRENGTHS, deadlineState
 import { EvidenceInspector } from './EvidenceInspector';
 import { TaskPanel, consumeRequirementFilterPreset, useReviewAction } from './DecisionHeader';
 import { useActiveProfile } from './profile-context';
+import { useCapabilities } from '../capabilities';
 import { label } from './queries';
 import {
   NO_FILTERS, effectiveFact, factValueText, fieldName, filterRequirements, headerMoney, noticeKey, readFacts, readProfileEvidence, readRequirements, readStageRuns, readTasks, requirementCounts,
@@ -72,7 +73,7 @@ export function RequirementMatrix({ recordId }: { recordId: string }) {
 }
 
 function RequirementItem({ recordId, row, profileVersionId, openTasks, onInspect }: { recordId: string; row: RequirementRow; profileVersionId: string | null; openTasks: number; onInspect(): void }) {
-  const [panel, setPanel] = useState<'' | 'match' | 'task'>('');
+  const [panel, setPanel] = useState<'' | 'match' | 'task'>(''), { writes } = useCapabilities();
   const state = reviewStateOf(row), text = state === 'corrected' && row.reviewValue ? (typeof row.reviewValue === 'string' ? row.reviewValue : row.reviewValue.text ?? row.text) : row.text;
   const source = [row.sourceName, row.page != null ? `page ${row.page}` : '', row.heading].filter(Boolean).join(' · ');
   return <li data-state={state}>
@@ -90,10 +91,10 @@ function RequirementItem({ recordId, row, profileVersionId, openTasks, onInspect
     {row.match && <p className="rw-note">{ORIGINS[row.match.origin] ?? row.match.origin} · {row.match.rationale}{row.match.remediable != null ? ` · ${row.match.remediable ? 'remediable' : 'not remediable'}` : ''} · {row.match.reviewer}, {when(row.match.updatedAt)}</p>}
     <div className="rw-actions">
       <Btn size="sm" variant="ghost" onClick={onInspect}>Evidence &amp; review</Btn>
-      {profileVersionId && <Btn size="sm" variant="ghost" aria-expanded={panel === 'match'} onClick={() => setPanel(panel === 'match' ? '' : 'match')}>{row.match ? 'Edit match' : 'Record match'}</Btn>}
+      {writes && profileVersionId && <Btn size="sm" variant="ghost" aria-expanded={panel === 'match'} onClick={() => setPanel(panel === 'match' ? '' : 'match')}>{row.match ? 'Edit match' : 'Record match'}</Btn>}
       <Btn size="sm" variant="ghost" aria-expanded={panel === 'task'} onClick={() => setPanel(panel === 'task' ? '' : 'task')}>Tasks</Btn>
     </div>
-    {panel === 'match' && profileVersionId && <MatchEditor recordId={recordId} row={row} profileVersionId={profileVersionId} onClose={() => setPanel('')} />}
+    {writes && panel === 'match' && profileVersionId && <MatchEditor recordId={recordId} row={row} profileVersionId={profileVersionId} onClose={() => setPanel('')} />}
     {panel === 'task' && <TaskPanel recordId={recordId} link={{ type: 'requirement', id: row.id, text: row.text }} />}
   </li>;
 }

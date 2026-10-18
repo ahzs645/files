@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { host } from '../bridge';
+import { capabilities } from '../capabilities';
 import { sql } from '../procurement/display';
 import { runProcurementAction } from '../procurement/state-client';
 
@@ -26,6 +27,8 @@ async function probe(): Promise<ReviewWorkspace> {
       return { available: true, schemaVersion: Number(row.version), counts, capabilities: { reviewTasks: true, sourceSpanPreview: true, profileSupport: true, taskProgress: true } };
     }
   } catch { /* Tables absent: fall through to the migrating handshake. */ }
+  // A read-only copy cannot run the migrating action; it simply has no review tables.
+  if (!capabilities().writes) return { available: false, reason: 'This published copy has no review workspace.' };
   try {
     const run = await runProcurementAction('procurement.workspace', {});
     const output = run?.output ?? (await host('state')).runs?.find((item: any) => item.id === run?.id)?.output;

@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { Btn, ModalSurface, Select } from '@zoer/plugin-ui/controls';
 import { REQUIREMENT_STRENGTHS, MONEY_BASES, MONEY_KIND_LABELS, parseDeadline, parseMoney, verdictTone } from '@bcbid/procurement-core';
 import { host } from '../bridge';
+import { useCapabilities } from '../capabilities';
 import { REVIEW_KEY, type WriteOp } from './actions';
 import { useReviewAction } from './DecisionHeader';
 import { label } from './queries';
@@ -99,7 +100,7 @@ type Mode = '' | 'accept' | 'correct' | 'reject' | 'request_clarification';
 function ReviewActions({ item, state }: { item: InspectorItem; state: string }) {
   const [mode, setMode] = useState<Mode>(''), [reason, setReason] = useState(''), [value, setValue] = useState(''), [strength, setStrength] = useState(item.requirement?.strength ?? 'mandatory');
   const [basis, setBasis] = useState<'reference' | 'assertion'>('reference'), [reference, setReference] = useState(''), [moneyBasis, setMoneyBasis] = useState('unknown'), [problem, setProblem] = useState('');
-  const action = useReviewAction();
+  const action = useReviewAction(), { writes } = useCapabilities();
   const fact = item.fact, money = fact?.semanticType.startsWith('money:'), date = fact?.semanticType === 'date';
   const open = (next: Mode) => { setMode(next); setReason(''); setProblem(''); if (next === 'correct') { setValue(item.requirement ? item.requirement.text : fact ? (money ? moneyOf(fact)?.raw ?? '' : typeof fact.value?.raw === 'string' ? fact.value.raw : typeof fact.value === 'string' ? fact.value : '') : ''); setMoneyBasis(fact && money ? moneyOf(fact)?.basis ?? 'unknown' : 'unknown'); } };
   const reasonNeeded = mode === 'correct' || mode === 'reject' || mode === 'request_clarification' || (mode === 'accept' && item.grounding === 'unverified');
@@ -118,6 +119,7 @@ function ReviewActions({ item, state }: { item: InspectorItem; state: string }) 
     const ok = await action.run(mode, { op: 'review.append', targetType: item.type, targetId: item.id, event, reason: why, ...(mode === 'correct' ? { correction } : {}), expectedRevision: item.revision } as WriteOp, 'Review saved. The AI original and the source stay unchanged.');
     if (ok) setMode('');
   };
+  if (!writes) return null;
   return <div className="rw-inspector-actions">
     <div className="rw-actions" role="group" aria-label="Review this item">
       <Btn size="sm" variant={mode === 'accept' ? 'primary' : 'secondary'} disabled={!!action.busy} onClick={() => open('accept')}>Accept</Btn>

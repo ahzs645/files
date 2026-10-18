@@ -1,4 +1,5 @@
 import { host } from '../bridge';
+import { READ_ONLY_MESSAGE, capabilities } from '../capabilities';
 import { HIDDEN_PREFIX, PURSUITS_KEY, SEARCHES_KEY, readProcurementItems, validateProcurementStateInput, type VersionedStateInput, type Pursuit, type SavedSearch } from './state-contract';
 import { sql } from './display';
 
@@ -11,6 +12,7 @@ export async function readProcurementState() {
 /** Await a durable action; callers remain responsible for verifying their resulting data. `waitMs` (default 150 s) bounds the wait. */
 export async function runProcurementAction(actionId: string, input: unknown, signal?: AbortSignal, options?: { modelProfileId?: string; waitMs?: number }) {
   if (signal?.aborted) throw Error('Workspace closed. A previously started save may still finish.');
+  if (!capabilities().writes) throw Error(READ_ONLY_MESSAGE);
   const { run } = await host('action', { actionId, input, ...(options?.modelProfileId ? { modelProfileId: options.modelProfileId } : {}) });
   if (!run?.id) throw Error('No durable save run was returned. Refresh before retrying.');
   const deadline = Date.now() + (options?.waitMs ?? 150_000);

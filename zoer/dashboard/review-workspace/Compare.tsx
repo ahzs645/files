@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { navigatePlugin } from '../navigation';
+import { useCapabilities } from '../capabilities';
 import { sourceName, sql } from '../procurement/display';
 import { REVIEW_KEY } from './actions';
 import { toneOf } from './DimensionChips';
@@ -28,6 +29,7 @@ async function readCompare(ids: string[], profileVersionId: string | null, works
 export function Compare({ ids, profileVersionId, profileText, workspace, onOpen, onEvidence }: { ids: string[]; profileVersionId: string | null; profileText: string; workspace: boolean; onOpen: (id: string) => void; onEvidence: (ids: string[]) => void }) {
   const valid = ids.length >= COMPARE_MIN && ids.length <= COMPARE_MAX;
   const data = useQuery({ queryKey: [...REVIEW_KEY, 'compare', ids, profileVersionId, workspace], enabled: valid, queryFn: () => readCompare(ids, profileVersionId, workspace) });
+  const { writes } = useCapabilities();
   const asOf = Date.now();
   if (!valid) return <div className="procurement-empty"><h2>Choose {COMPARE_MIN}–{COMPARE_MAX} notices to compare</h2><p>{ids.length ? `${ids.length} selected.` : 'Nothing selected.'} Tick notices in the list, then choose Compare. Every column is assessed against the same company profile.</p><Btn variant="secondary" onClick={() => navigatePlugin('/procurement')}>Open the list</Btn></div>;
   if (data.isPending) return <p role="status" className="rw-o-muted">Loading comparison…</p>;
@@ -53,7 +55,7 @@ export function Compare({ ids, profileVersionId, profileText, workspace, onOpen,
     <header>
       <h2 id="rw-cmp-title">Compare {rows.length} notices</h2>
       <p>Every column uses {profileText}. Unknowns stay unknown; missing assessments read “{NOT_ASSESSED}”.</p>
-      <div className="procurement-actions"><Btn size="sm" variant="secondary" onClick={() => onEvidence(rows.map(row => row.basics.id))}>AI comparison (Evidence &amp; AI)</Btn></div>
+      {writes && <div className="procurement-actions"><Btn size="sm" variant="secondary" onClick={() => onEvidence(rows.map(row => row.basics.id))}>AI comparison (Evidence &amp; AI)</Btn></div>}
     </header>
     {rows.length < ids.length && <p className="rw-warn">{ids.length - rows.length} selected notice(s) are no longer in the catalog.</p>}
     <div className="rw-o-scroll" tabIndex={0} role="region" aria-label="Notice comparison">

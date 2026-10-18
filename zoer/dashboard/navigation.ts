@@ -3,6 +3,8 @@ import type { RouterHistory } from '@tanstack/history';
 import { host, subscribeHost } from './bridge';
 let location = '/', ready = false;
 let baseUrl = window.location.origin + '/';
+/** Absolute path prefix from the host (contract §2 `hrefBase`); anchors become `hrefBase + location` when set. */
+let hrefBase = '';
 let history: RouterHistory | undefined, syncing = false;
 let disconnect = () => {};
 let connection = 0;
@@ -10,7 +12,18 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach(listener => listener());
 export function usePluginLocation() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => location); }
 export function useNavigationReady() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => ready); }
-export const pluginHref = (path: string) => baseUrl + '#/plugins/bc-bid-monitor' + (path === '/' ? '' : path);
+export const pluginHref = (path: string) => hrefBase ? hrefBase + path : baseUrl + '#/plugins/bc-bid-monitor' + (path === '/' ? '' : path);
+/** A host's `hrefBase`: an absolute path prefix without a trailing slash; anything else is ignored. */
+export const readHrefBase = (value: unknown) => typeof value === 'string' && /^\/(?!\/)/.test(value) && !/[?#\s]/.test(value) ? value.replace(/\/+$/, '') : '';
+/** Navigation results (read, write and events) may carry `hrefBase`; a result without it leaves the current value. */
+function receiveState(state: unknown) {
+  if (!state || typeof state !== 'object') return;
+  const value = (state as { hrefBase?: unknown; baseUrl?: unknown });
+  if ('hrefBase' in value) hrefBase = readHrefBase(value.hrefBase);
+  if (typeof value.baseUrl === 'string') baseUrl = value.baseUrl;
+}
+/** Router paths back to plugin locations (the inverse of `internal` for the one path it renames). */
+export const routerLocation = (href: string) => href.replace(/^\/contract-awards\/analysis(?=$|\?)/, '/analysis/overview');
 /** A Zoer page outside the plugin (e.g. `#/settings/plugins`). */
 export const hostHref = (hash: string) => baseUrl + hash;
 const internal = (value: string) => {
@@ -33,7 +46,7 @@ function receive(value: string) {
 export function navigatePlugin(value: string, mode: 'push' | 'replace' = 'push') {
   if (value === location) return;
   receive(value);
-  void host('navigation.write', { location: value, mode }).catch(() => { /* Legacy hosts retain local navigation. */ });
+  void host('navigation.write', { location: value, mode }).then(receiveState, () => { /* Legacy hosts retain local navigation. */ });
 }
 export function patchPluginQuery(values: Record<string, string | null>, mode: 'push' | 'replace' = 'replace') {
   const [path, query] = location.split('?'), params = new URLSearchParams(query);
@@ -49,12 +62,16 @@ export async function connectNavigation(routerHistory: RouterHistory) {
   const current = ++connection;
   ready = false; location = '/'; catalogReturn.clear();
   history = routerHistory;
+  // Router links (legacy catalog pages) get plugin hrefs too once the host names a path prefix.
+  const createHref = routerHistory.createHref;
+  routerHistory.createHref = href => hrefBase ? pluginHref(routerLocation(href)) : createHref(href);
   const unsubscribe = subscribeHost((event, result) => {
+    if (event === 'navigation') receiveState(result);
     if (event === 'navigation' && typeof result?.location === 'string') receive(result.location);
   });
   let unsubscribeHistory = () => {};
-  disconnect = () => { unsubscribe(); unsubscribeHistory(); };
-  try { const state = await host('navigation.read'); if (current !== connection) return; if (typeof state.baseUrl === 'string') baseUrl = state.baseUrl; receive(state.location); } catch { /* Backwards-compatible host. */ }
+  disconnect = () => { unsubscribe(); unsubscribeHistory(); routerHistory.createHref = createHref; hrefBase = ''; };
+  try { const state = await host('navigation.read'); if (current !== connection) return; receiveState(state); receive(state.location); } catch { /* Backwards-compatible host. */ }
   if (current !== connection) return;
   unsubscribeHistory = routerHistory.subscribe(({ location: next, action }) => {
     if (syncing) return;

@@ -5,6 +5,7 @@ import { Select } from '@zoer/plugin-ui/database';
 import { host } from './bridge';
 import { shortError } from './error-text';
 import { assertDocumentBrowserIdle } from './document-run';
+import { useCapabilities } from './capabilities';
 
 const query = (statement: string, parameters: (string | number)[] = []) => host('catalog.query', {statement,parameters});
 const bytes = (n: number) => n >= 1073741824 ? `${(n/1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n/1048576).toFixed(1)} MB` : `${Math.ceil(n/1024)} KB`;
@@ -31,6 +32,7 @@ const STATUS:[string,string][]=[['all','All files'],['failed','Failed'],['unread
 export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy = false}: {onDetails(id:string):void;refreshKey?:string;running:boolean;browserBusy?:boolean}) {
   const [filter,setFilter]=useState('all'),[search,setSearch]=useState(''),[page,setPage]=useState(0);
   const [busy,setBusy]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState('');
+  const {collection}=useCapabilities();
   const where=filter==='failed'?"d.status='failed'":filter==='unreadable'?"d.status='downloaded' AND coalesce(length(d.text),0)=0":filter==='warnings'?"d.error IS NOT NULL AND d.status='downloaded'":"1=1";
   const parameters=[`%${search}%`,`%${search}%`,`%${search}%`];
   const clause=`d.name LIKE ? AND ${where} OR r.title LIKE ? AND ${where} OR d.record_id LIKE ? AND ${where}`;
@@ -52,7 +54,7 @@ export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy 
           {row.error&&<span className="research-file-warning doc-clamp" title={row.error}>{shortError(row.error)}</span>}
         </div>
         <span className="doc-chip" data-tone={state[0]} title={row.chars?`${Number(row.chars).toLocaleString()} characters of text`:undefined}>{state[1]}</span>
-        <div className="research-toolbar doc-file-actions"><Button variant="ghost" onClick={()=>onDetails(row.record_id)}>Open</Button><Button variant="ghost" disabled={!!busy||running||(browserBusy&&row.status!=='downloaded')} onClick={()=>void act(row,row.status==='downloaded')}>{busy===row.id?'Starting…':row.status==='downloaded'?'Re-extract':'Retry'}</Button></div>
+        <div className="research-toolbar doc-file-actions"><Button variant="ghost" onClick={()=>onDetails(row.record_id)}>Open</Button>{collection&&<Button variant="ghost" disabled={!!busy||running||(browserBusy&&row.status!=='downloaded')} onClick={()=>void act(row,row.status==='downloaded')}>{busy===row.id?'Starting…':row.status==='downloaded'?'Re-extract':'Retry'}</Button>}</div>
       </article>;})}</div>}
     <div className="research-toolbar research-pager"><Button variant="ghost" disabled={!page||files.isFetching} onClick={()=>setPage(page-1)}>Previous</Button><span>Page {page+1}</span><Button variant="ghost" disabled={!files.data||files.data.rows.length<=50||files.isFetching} onClick={()=>setPage(page+1)}>Next</Button></div>
     <details><summary>Supported file types</summary><p className="research-note">PDF (OCR on up to 40 scanned pages), Word (DOCX, DOC, RTF), Excel (XLSX, XLS), PowerPoint (PPTX, PPT), images by OCR, Google Earth maps (KML, KMZ), text and ZIP, including one nested ZIP level. Text is capped at 1,500,000 characters. Encrypted ZIPs, CAD drawings and GIS data are kept as originals for manual review.</p></details>

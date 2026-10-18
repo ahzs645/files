@@ -1,0 +1,42 @@
+/* Societyer build only (build-societyer.ts scopes it under .bcbid-native with the rest of the plugin CSS).
+ * Societyer's global stylesheet styles the kit's btn/select/modal/tabs/badge/empty-state markup; these rules only
+ * cover what that stylesheet has no class for. */
+
+/* The native dialog is just a transparent, full-viewport top-layer container for Societyer's .modal-backdrop + .modal. */
+dialog.bcbid-sy-dialog { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; color: var(--text-primary); }
+dialog.bcbid-sy-dialog::backdrop { background: transparent; }
+.bcbid-sy-modal-header { padding: 8px 14px; border-bottom: 1px solid var(--border); }
+
+/* Section views sit under the section nav as one boxed strip, not a full-width bar. */
+.bcbid-sy-pagetabs { align-self: flex-start; max-width: calc(100% - 24px); margin: 8px 12px 0; scrollbar-width: none; }
+.bcbid-sy-pagetabs::-webkit-scrollbar { display: none; }
+@media (min-width: 640px) { .bcbid-sy-pagetabs { max-width: calc(100% - 32px); margin: 8px 16px 0; } }
+
+.select.select--sm { height: var(--control-h-sm); font-size: var(--fs-xs); }
+.select.select--ghost { border-color: transparent; background-color: transparent; }
+select.select[multiple] { height: auto; background-image: none; padding-block: 4px; }
+
+.btn [data-btn-label] { display: contents; }
+.bcbid-sy-spin { animation: spin 1s linear infinite; }
+.bcbid-sy-badge-icon { display: inline-flex; margin-right: 4px; }
+.bcbid-sy-badge-icon svg { width: 12px; height: 12px; }
+.bcbid-sy-status-dot { display: inline-flex; min-width: 0; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-secondary); }
+.bcbid-sy-status-dot > span:first-child { width: 8px; height: 8px; flex-shrink: 0; border-radius: 999px; background: var(--text-tertiary); }
+.bcbid-sy-status-dot[data-tone=success] > span:first-child, .bcbid-sy-status-dot[data-tone=running] > span:first-child { background: var(--success); }
+.bcbid-sy-status-dot[data-tone=warning] > span:first-child { background: var(--warn); }
+.bcbid-sy-status-dot[data-tone=error] > span:first-child { background: var(--status-error); }
+.bcbid-sy-status-dot[data-tone=info] > span:first-child { background: var(--accent); }
+
+/* Native selects size to their longest option; never let one push past its row. */
+select.select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.pc-inline-filters select.select { width: 12rem; height: 36px; }
+.pc-inline-filters select.select:first-child { width: 13.5rem; }
+.pc-filter-sheet select.select, .pc-sheet-field select.select { width: 100%; }
+
+/* Sheets on phones: a clear Back control in place of the close icon. */
+.bcbid-sy-sheet-back { display: none; }
+@media (max-width: 560px) {
+  .bcbid-sy-sheet .bcbid-sy-sheet-back { display: inline-flex; margin-left: -6px; }
+  .bcbid-sy-sheet .bcbid-sy-sheet-close { display: none; }
+  .bcbid-sy-sheet.modal { max-height: 100dvh; height: 100dvh; border-radius: 0; }
+}

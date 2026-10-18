@@ -438,3 +438,18 @@
 .rw-today-alerts b{font-weight:650;margin-right:.25rem}
 .rw-today-alerts .rw-today-more{margin-left:auto}
 @media(max-width:639px){.rw-today{padding:.75rem}.rw-today-list li:nth-child(n+4){display:none}.rw-today .rw-today-list a{min-height:52px;padding:.5rem}.rw-today .rw-today-sources a{min-height:44px}.rw-today a.rw-today-more{min-height:44px}.rw-today-alerts .rw-today-more{margin-left:0}.rw-today-seen{min-height:44px}}
+/* Today without collection: two columns from tablet width up. Rows: when it closes, then buyer · source. */
+@media(min-width:640px){.rw-today-grid[data-columns="2"]{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.rw-today-grid[data-columns="2"] .rw-today-col+.rw-today-col{border-top:0;padding-top:0;border-left:1px solid var(--border-default);padding-left:1rem}}
+.rw-today-sub{font-size:12px;line-height:1.4;color:var(--text-muted);overflow-wrap:anywhere}
+.rw-profile-quiet b{font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* Home scope bar on phones: title above, then each control full width; nothing runs past the right edge. */
+@media(max-width:639px){
+  .rw-scope{flex-direction:column;align-items:stretch}
+  .rw-scope .rw-controls{display:flex;flex-direction:column;align-items:stretch;width:100%;min-width:0}
+  .rw-scope .rw-control,.rw-scope .rw-profile-picker{display:flex;width:100%;min-width:0;white-space:normal}
+  .rw-scope .rw-control>span:first-child,.rw-scope .rw-profile-picker>span:first-child{flex:none;min-width:4.5rem}
+  .rw-scope .rw-control select,.rw-scope .rw-profile-picker select,.rw-scope .rw-control .ui-select-trigger,.rw-scope .rw-profile-picker .ui-select-trigger{flex:1 1 auto;width:100%;min-width:0;max-width:none}
+  .rw-scope .rw-controls>span[title]{display:block;width:100%;min-width:0}
+}
+/* Assessment metadata: one muted line; profile and policy version are in its tooltip. */
+.rw-nd-meta{font-size:11.5px;line-height:1.4;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}

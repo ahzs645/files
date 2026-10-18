@@ -1,0 +1,7 @@
+/**
+ * The 27 Zoer theme tokens (zoer/packages/plugin-site/bin/export-site-data.ts THEME_TOKENS). The Societyer mount
+ * element defines each as `--zoer-<token>`; the bundle maps them onto Zoer's own `--<token>` names inside its scope.
+ */
+export const THEME_TOKENS = ['surface-base', 'surface-primary', 'surface-secondary', 'surface-hover', 'surface-active', 'border-default', 'border-muted', 'text-heading', 'text-primary', 'text-secondary', 'text-muted', 'text-faint', 'accent', 'accent-hover', 'accent-subtle', 'accent-text', 'input-bg', 'input-border', 'input-focus', 'danger', 'danger-hover', 'danger-text', 'scrollbar-thumb', 'scrollbar-hover', 'status-error', 'status-success', 'status-warning'] as const;
+/** The source dashboard's Tailwind colours (`--color-<name>`) read from Zoer tokens, as in the native build. */
+export const DASHBOARD_COLORS: Record<string, typeof THEME_TOKENS[number]> = { 'bg-base': 'surface-base', 'bg-surface': 'surface-primary', 'bg-surface-strong': 'surface-secondary', 'bg-subtle': 'surface-hover', 'bg-hover': 'surface-hover', 'border-default': 'border-default', 'border-strong': 'input-border', 'border-subtle': 'border-muted', 'text-primary': 'text-primary', 'text-secondary': 'text-secondary', 'text-tertiary': 'text-muted', 'accent': 'accent', 'accent-strong': 'accent-hover', 'accent-muted': 'accent-subtle', 'green': 'status-success', 'red': 'status-error', 'orange': 'status-warning', 'yellow': 'status-warning' };

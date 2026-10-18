@@ -32,7 +32,7 @@ export function BulkDocuments({running,onStarted}:{running:boolean;onStarted:()=
       if(!selected.ids.length)throw new Error('No saved attachment links in this scope. Capture opportunity details in Scraper first.');
       const result=await host('action',{actionId:'documents.download.all',input:{recordIds:selected.ids,force:false}});
       setSubmitted(result.run.id);
-      setMessage(`Download started for ${selected.ids.length.toLocaleString()} opportunities. You can leave this page.`);
+      setMessage(`Download started for ${selected.ids.length.toLocaleString()} ${selected.ids.length === 1 ? 'opportunity' : 'opportunities'}. You can leave this page.`);
       await onStarted();
       await refresh();
     }catch(e){setError((e as Error).message);}finally{pending.current=false;setBusy(false);}

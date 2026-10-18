@@ -4,6 +4,7 @@ import { parseDeadline, deadlineState } from '@bcbid/procurement-core';
 import { Btn, Modal } from '@zoer/plugin-ui/controls';
 import { ReviewModelSelector } from '@zoer/plugin-ui/analysis';
 import { host } from '../bridge';
+import { useCapabilities } from '../capabilities';
 import { downloadCsvWithManifest, downloadText, manifestNote } from '../export';
 import { BUNDLE_MAX_NOTICES, downloadDocumentBundle, sizeText } from '../document-bundle';
 import { REVIEW_KEY, startPipeline, useReviewInvalidate } from './actions';
@@ -19,9 +20,10 @@ function Chip({ value, text, tone }: { value?: unknown; text?: string; tone?: st
 }
 
 /**
- * One quiet line under a notice in the list: only what exists. The AI's next action and fit for the active profile,
- * the human decision (kept separate), and how much evidence was processed. Nothing renders for untouched notices,
- * so the list reads like a plain catalog until review work starts. "Not assessed" lives in the tooltip, not the row.
+ * One quiet decision line under a notice in the list: the AI's suggestion as a status pill, then fit and eligibility
+ * for the active profile, then the human decision (kept separate). What the review was based on ("Based on the saved
+ * notice only", files read) is the line's tooltip; the notice's Decision tab states it in full. Nothing renders for
+ * untouched notices, so the list reads like a plain catalog until review work starts.
  */
 export function ReviewLine({ review, profileText }: { review: RowReview | undefined; profileText: string }) {
   if (!review) return null;
@@ -32,9 +34,8 @@ export function ReviewLine({ review, profileText }: { review: RowReview | undefi
     items.push(<span key="elig" className="rw-o-inline">Eligibility <b>{label(a.eligibility)}</b></span>);
   }
   if (d) items.push(<span key="decision" className="rw-o-inline" title={d.note || undefined}>Your decision <b>{label(d.decision)}</b>{d.needsReconfirmation && <span className="rw-o-warn"> · reconfirm</span>}</span>);
-  if (e.extracted || e.triaged) items.push(<span key="scope" className="rw-o-inline rw-o-muted" title={scope.detail}>{scope.label}</span>);
-  else if (e.downloaded > 0) items.push(<span key="files" className="rw-o-inline rw-o-muted" title={scope.detail}>{e.usable.toLocaleString()} of {e.downloaded.toLocaleString()} file{e.downloaded === 1 ? '' : 's'} readable</span>);
-  return items.length ? <div className="rw-o-line">{items}</div> : null;
+  const basis = e.extracted || e.triaged ? `${scope.label}. ${scope.detail}.` : e.downloaded > 0 ? `${e.usable.toLocaleString()} of ${e.downloaded.toLocaleString()} file${e.downloaded === 1 ? '' : 's'} readable.` : undefined;
+  return items.length ? <div className="rw-o-line" title={basis}>{items}</div> : null;
 }
 
 export function EvidenceScopeCell({ review }: { review: RowReview | undefined }) {
@@ -68,6 +69,8 @@ export function DeadlineCell({ raw, kind, asOf }: { raw: unknown; kind: string; 
 export function SelectionActions({ snapshot, workspace, onError }: { snapshot: SelectionSnapshot; workspace: boolean; onError: (message: string) => void }) {
   // The dialog works on the selection as it was when opened, even if rows are ticked or filters change meanwhile.
   const [open, setOpen] = useState<{ stage: PipelineStage; snapshot: SelectionSnapshot } | null>(null), [busy, setBusy] = useState(''), [note, setNote] = useState('');
+  // The zip is built by the host (archive.create plus temporary files), so it needs a host that writes.
+  const { writes } = useCapabilities();
   const start = (stage: PipelineStage) => setOpen({ stage, snapshot: snapshot.origin === 'manual' ? { ...snapshot, ids: [...snapshot.ids], capturedAt: new Date().toISOString() } : snapshot });
   const download = async (format: 'json' | 'csv') => {
     setBusy(format); setNote('');
@@ -90,13 +93,13 @@ export function SelectionActions({ snapshot, workspace, onError }: { snapshot: S
   };
   const pipelineBlocker = workspace ? '' : 'Triage and extraction need the review workspace.';
   return <>
-    <Btn size="sm" variant="secondary" disabled={!!pipelineBlocker} tooltip={pipelineBlocker || 'Classify from the saved notice only'} onClick={() => start('triage')}>Triage from notice</Btn>
-    <Btn size="sm" variant="secondary" disabled={!!pipelineBlocker} tooltip={pipelineBlocker || 'Extract requirements and facts from the notice and readable documents'} onClick={() => start('extract')}>Extract requirements</Btn>
+    {writes && <><Btn size="sm" variant="secondary" disabled={!!pipelineBlocker} tooltip={pipelineBlocker || 'Classify from the saved notice only'} onClick={() => start('triage')}>Triage from notice</Btn>
+    <Btn size="sm" variant="secondary" disabled={!!pipelineBlocker} tooltip={pipelineBlocker || 'Extract requirements and facts from the notice and readable documents'} onClick={() => start('extract')}>Extract requirements</Btn></>}
     <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void download('csv')}>{busy === 'csv' ? 'Exporting…' : 'Export CSV'}</Btn>
     <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void download('json')}>{busy === 'json' ? 'Exporting…' : 'Export JSON'}</Btn>
-    <Btn size="sm" variant="secondary" disabled={!!busy || snapshot.ids.length > BUNDLE_MAX_NOTICES} tooltip={snapshot.ids.length > BUNDLE_MAX_NOTICES ? `Select at most ${BUNDLE_MAX_NOTICES} notices` : 'Saved documents of these notices and a CSV, as one zip'} onClick={() => void bundle()}>{busy === 'zip' ? 'Building zip…' : 'Download all documents'}</Btn>
+    {writes && <Btn size="sm" variant="secondary" disabled={!!busy || snapshot.ids.length > BUNDLE_MAX_NOTICES} tooltip={snapshot.ids.length > BUNDLE_MAX_NOTICES ? `Select at most ${BUNDLE_MAX_NOTICES} notices` : 'Saved documents of these notices and a CSV, as one zip'} onClick={() => void bundle()}>{busy === 'zip' ? 'Building zip…' : 'Download all documents'}</Btn>}
     {note && <span role="status" className="rw-o-muted">{note}</span>}
-    {open && <PipelinePreflight snapshot={open.snapshot} stage={open.stage} onClose={() => setOpen(null)} />}
+    {writes && open && <PipelinePreflight snapshot={open.snapshot} stage={open.stage} onClose={() => setOpen(null)} />}
   </>;
 }
 

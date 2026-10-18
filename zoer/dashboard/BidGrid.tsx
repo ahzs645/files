@@ -13,6 +13,7 @@ import { useNarrowScreen } from './mobile';
 import { BidList } from './BidList';
 import { RecordSheet } from './RecordSheet';
 import type { BidRow } from './bid-summaries';
+import { useCapabilities } from './capabilities';
 const columns = {
   opportunity: [ ['starred','Star','boolean'],['opportunityId','Opportunity ID','text'],['description','Opportunity','text'],['sourceId','Source','text'],['status','Status','text'],['type','Type','text'],['buyer','Buyer','text'],['issuedBy','Original issuer','text'],['closingDate','Closing date','date'] ],
   award: [ ['starred','Star','boolean'],['awardDate','Award date','date'],['opportunityDescription','Opportunity','text'],['sourceId','Source','text'],['buyer','Buyer','text'],['issuingOrganization','Original issuer','text'],['successfulSupplier','Supplier','text'],['contractNumber','Contract number','text'],['contractValue','Contract value','numeric'],['currency','Currency','text'],['opportunityType','Type','text'],['issuingLocation','Location','text'],['supplierAddress','Supplier address','text'],['justification','Justification','text'],['sourceUrl','Source URL','text'],['opportunityId','Opportunity ID','text'],['contactEmail','Contact email','text'],['contractValueText','Original value','text'] ],
@@ -20,6 +21,15 @@ const columns = {
 for (const fields of Object.values(columns)) fields.push(['buyerOrganization','Mapped organization','text'],['buyerGroup','Organization group','text'],['buyerType','Buyer type','text'],['buyerMappingStatus','Mapping status','text']);
 const tables:Record<string,IntrospectionTable> = Object.fromEntries(Object.entries(columns).map(([kind,columns])=>[kind,{schema:'BC Bid',name:kind==='award'?'Contract awards':'Opportunities',columns:columns.map(([name,,type])=>({name,type,nullable:true,default:null}))}]));
 const labels=Object.fromEntries(Object.entries(columns).map(([kind,columns])=>[kind,Object.fromEntries(columns.map(([name,label])=>[name,label]))]));
+const MAPPING_COLUMNS=['buyerOrganization','buyerGroup','buyerType','buyerMappingStatus'];
+/** Award history in Societyer opens on the five columns a reviewer reads; the rest stay in the column picker. */
+const SOCIETYER_AWARD_COLUMNS=['awardDate','opportunityDescription','buyer','successfulSupplier','contractValue'];
+/** Without writes the Star column could only echo a flag nobody can change here, so it is left out. */
+export function gridTable(kind:'opportunity'|'award',caps:{writes:boolean;surface:string}):{table:IntrospectionTable;hidden:string[]}{
+  const table=tables[kind],columns=caps.writes?table.columns:table.columns.filter(column=>column.name!=='starred');
+  const hidden=kind==='award'&&caps.surface==='societyer'?columns.map(column=>column.name).filter(name=>!SOCIETYER_AWARD_COLUMNS.includes(name)):MAPPING_COLUMNS;
+  return {table:columns===table.columns?table:{...table,columns},hidden};
+}
 export type BidFilterValues={buyerLevel:BuyerLevel;search:string;organization:string;status:string[];type:string[];sources:string[]};
 const list=(value:string|null)=>(value??'').split('|').filter(Boolean);
 const sourceLabel=(id:unknown)=>PROCUREMENT_SOURCE_ADAPTERS.find(adapter=>adapter.id===id)?.label??String(id??'');
@@ -43,15 +53,16 @@ function BidTable({kind,filters,onOpen,...grid}:{kind:'opportunity'|'award';filt
   const {buyerLevel,organization,status,type,sources}=filters;const search=useDeferredValue(filters.search);
   const {model}=useWorkspace(); const revision=catalogRevision();
   const {onlyStarred}=useContext(BidPreferences);
+  const {writes,surface}=useCapabilities(),{table,hidden}=useMemo(()=>gridTable(kind,{writes,surface}),[kind,writes,surface]);
   const loadPage=useCallback(async(request:GridRequest,signal:AbortSignal)=>{
     const start=performance.now();
     const result=await queryVisibleCatalog({kind,buyerLevel,search,organization,status,type,sources,starredOnly:!!onlyStarred,filters:request.filters,sort:request.sort,cursor:String(request.offset),limit:request.limit});
     if(signal.aborted)throw new DOMException('Request superseded','AbortError');
-    return {rows:result.items,fields:tables[kind].columns.map(c=>c.name),rowCount:result.items.length,total:result.total,hasMore:result.hasMore,offset:request.offset,limit:request.limit,durationMs:Math.round(performance.now()-start)};
-  },[kind,buyerLevel,search,organization,status.join('|'),type.join('|'),sources.join('|'),onlyStarred]); // eslint-disable-line react-hooks/exhaustive-deps -- arrays keyed by content
+    return {rows:result.items,fields:table.columns.map(c=>c.name),rowCount:result.items.length,total:result.total,hasMore:result.hasMore,offset:request.offset,limit:request.limit,durationMs:Math.round(performance.now()-start)};
+  },[kind,table,buyerLevel,search,organization,status.join('|'),type.join('|'),sources.join('|'),onlyStarred]); // eslint-disable-line react-hooks/exhaustive-deps -- arrays keyed by content
   if(!model)return <p role="status">Loading catalog…</p>;
   return <section className="db-workspace bid-database-grid" data-kind={kind} aria-label={`${tables[kind].name} table`}>
-    <ResourceDataGrid key={kind} {...grid} showSearchBar={false} columnSizes={{starred:48,opportunityId:135,status:90,closingDate:125,sourceId:110}} resetPageKey={JSON.stringify([buyerLevel,search,organization,status,type,sources,onlyStarred])} filtered={!!search.trim()||!!organization||status.length>0||type.length>0||sources.length>0||!!onlyStarred} resourceKey={'bcbid:'+kind} table={tables[kind]} hiddenColumns={['buyerOrganization','buyerGroup','buyerType','buyerMappingStatus']} columnLabels={labels[kind]} loadPage={loadPage} revision={revision}
+    <ResourceDataGrid key={kind} {...grid} showSearchBar={false} columnSizes={{starred:48,opportunityId:135,status:90,closingDate:125,sourceId:110}} resetPageKey={JSON.stringify([buyerLevel,search,organization,status,type,sources,onlyStarred])} filtered={!!search.trim()||!!organization||status.length>0||type.length>0||sources.length>0||!!onlyStarred} resourceKey={'bcbid:'+kind} table={table} hiddenColumns={hidden} columnLabels={labels[kind]} loadPage={loadPage} revision={revision}
       renderCell={(column,row)=>column==='starred'?<StarButton entity={kind} recordKey={String(kind==='award'?row.importKey:row.sourceKey)} label={String(kind==='award'?row.opportunityDescription:row.description)} />:column==='sourceId'?sourceLabel(row.sourceId):undefined}
       onOpenRow={onOpen}/>
   </section>;
@@ -113,7 +124,7 @@ export function OpportunitiesBrowser(){
   const narrow=useNarrowScreen();const [layout,setLayout]=useState<BidLayout>('list');
   const [filtersOpen,setFiltersOpen]=useState(false),[columnFilters,setColumnFilters]=useState(0);
   const inlinePanel=narrow&&layout==='list';
-  return <div className="bid-opportunities-page"><header className="bid-page-header"><div><h1>Opportunities</h1><p>{count?count.total.toLocaleString():'Loading…'} {onlyStarred?'starred':'saved'} opportunities</p></div>{narrow&&<LayoutToggle value={layout} onChange={setLayout}/>}</header>
+  return <div className="bid-opportunities-page"><header className="bid-page-header"><div><h1>Opportunities</h1><p>{count?`${count.total.toLocaleString()} ${onlyStarred?'starred':'saved'} ${count.total===1?'opportunity':'opportunities'}`:'Loading…'}</p></div>{narrow&&<LayoutToggle value={layout} onChange={setLayout}/>}</header>
     <div className="bid-scope-bar"><button type="button" aria-pressed={!onlyStarred} onClick={()=>setOnlyStarred?.(false)}>All opportunities</button><button type="button" aria-pressed={!!onlyStarred} onClick={()=>setOnlyStarred?.(true)}>Starred</button></div>
     <BidFilters kind="opportunity" values={filters} onChange={setFilters} open={filtersOpen} onOpenChange={setFiltersOpen} inlinePanel={inlinePanel} columnFilters={inlinePanel?0:columnFilters}/><BidGrid kind="opportunity" filters={filters} onFiltersChange={setFilters} layout={layout} filtersOpen={filtersOpen} onFiltersOpenChange={setFiltersOpen} onColumnFiltersChange={setColumnFilters}/>
   </div>;

@@ -5,6 +5,7 @@ import { Btn, Select } from '@zoer/plugin-ui/controls';
 import { ReviewModelSelector } from '@zoer/plugin-ui/analysis';
 import { verdictTone } from '@bcbid/procurement-core';
 import { host } from '../bridge';
+import { useCapabilities } from '../capabilities';
 import { queryClient } from '../query-client';
 import { REVIEW_KEY, reviewWrite, startPipeline, useReviewInvalidate, type WriteOp } from './actions';
 import { DimensionChips, toneOf } from './DimensionChips';
@@ -86,7 +87,7 @@ const DECISION_TONE: Record<string, string> = { pursue: 'ok', no_bid: 'bad', mon
  */
 export function DecisionHeader({ recordId, pursuitStage, onTab }: { recordId: string; pursuitStage: string | null; onTab(tab: NoticeTabId): void }) {
   const { profileVersionId, active, loading } = useActiveProfile();
-  const action = useReviewAction();
+  const action = useReviewAction(), { writes } = useCapabilities();
   const runs = useQuery({ queryKey: noticeKey(recordId, 'runs'), queryFn: () => readStageRuns(recordId), refetchInterval: query => (query.state.data ?? []).some(run => run.status === 'queued' || run.status === 'running') ? 5000 : false });
   const assessment = useQuery({ queryKey: noticeKey(recordId, 'assessment', profileVersionId), enabled: !loading, queryFn: async () => (await readCurrentAssessments([recordId], profileVersionId)).get(recordId) ?? null });
   const triage = useQuery({ queryKey: noticeKey(recordId, 'triage'), queryFn: () => readTriageOutput(recordId) });
@@ -126,16 +127,16 @@ export function DecisionHeader({ recordId, pursuitStage, onTab }: { recordId: st
           {companyUnknowns.length > 0 && <p className="rw-nd-unknown-group">{companyUnknowns.length} requirement{companyUnknowns.length === 1 ? '' : 's'} {companyUnknowns.length === 1 ? 'has' : 'have'} no linked company evidence. <Btn size="sm" variant="ghost" onClick={matchRequirements}>Match requirements</Btn></p>}
           <ExpandableList items={otherUnknowns} label={n => `Show all ${n} unknowns`} />
         </>}
-        <p className="rw-note">Assessed {when(a.createdAt)} for {active ? `${active.name} v${active.version}` : 'no company profile'} · policy {a.policyVersion}{a.freshness === 'stale' ? ' · evidence changed since' : ''}</p>
+        <p className="rw-nd-meta" title={`Assessed ${when(a.createdAt)} for ${active ? `${active.name} v${active.version}` : 'no company profile'} · policy ${a.policyVersion}`}>Assessed {when(a.createdAt)}{a.freshness === 'stale' ? ' · evidence changed since' : ''}</p>
       </> : <>
         <p className="rw-nd-action"><span className="rw-chip" data-tone="neutral"><b>Not assessed for this profile</b></span></p>
         <p className="rw-note">{active ? `No current assessment exists for ${active.name} v${active.version}. Another profile’s assessment is never shown in its place.` : 'Choose a profile in “Assess as” to assess eligibility.'}</p>
       </>}
       <div className="rw-actions">
-        <Btn size="sm" variant="secondary" disabled={!!action.busy || loading} loading={action.busy === 'assess'} onClick={() => void action.run('assess', { op: 'assess', recordId, profileVersionId }, 'Assessment updated from the current evidence.')}>{a ? 'Re-assess' : 'Assess for this profile'}</Btn>
+        {writes && <><Btn size="sm" variant="secondary" disabled={!!action.busy || loading} loading={action.busy === 'assess'} onClick={() => void action.run('assess', { op: 'assess', recordId, profileVersionId }, 'Assessment updated from the current evidence.')}>{a ? 'Re-assess' : 'Assess for this profile'}</Btn>
         {(suggestion === 'needs_information' || !a) && <Btn size="sm" variant="ghost" onClick={() => nextStep('acquire_evidence', 'Acquire missing evidence')}>Create evidence task</Btn>}
         {(suggestion === 'investigate' || suggestion === 'consider_partner') && <Btn size="sm" variant="ghost" onClick={() => nextStep('resolve_gap', suggestion === 'consider_partner' ? 'Confirm a partner for the remediable gaps' : 'Resolve open requirement gaps')}>Create gap task</Btn>}
-        {(suggestion === 'ready_for_human_decision' || suggestion === 'decline' || suggestion === 'archive_or_monitor') && <Btn size="sm" variant="ghost" onClick={() => focusSection(`rw-decide-${recordId}`)}>Record your decision</Btn>}
+        {(suggestion === 'ready_for_human_decision' || suggestion === 'decline' || suggestion === 'archive_or_monitor') && <Btn size="sm" variant="ghost" onClick={() => focusSection(`rw-decide-${recordId}`)}>Record your decision</Btn>}</>}
         <Btn size="sm" variant="ghost" onClick={() => onTab('requirements')}>Inspect requirements</Btn>
       </div>
       {action.error && <p role="alert" className="rw-error">{action.error}</p>}{action.done && <p role="status" className="rw-note">{action.done}</p>}
@@ -161,6 +162,7 @@ export function DecisionHeader({ recordId, pursuitStage, onTab }: { recordId: st
 
 function StagePanel({ recordId, runs, loading, error, profileVersionId }: { recordId: string; runs: StageRunRow[]; loading: boolean; error: Error | null; profileVersionId: string | null }) {
   const [choice, setChoice] = useState<any>(null), [force, setForce] = useState(false), [starting, setStarting] = useState(''), [problem, setProblem] = useState('');
+  const { writes, ai } = useCapabilities();
   const mine = useLaunches(recordId), activeLaunch = mine.find(item => !TERMINAL.includes(item.status)), finished = mine.find(item => TERMINAL.includes(item.status));
   const launch = async (stage: 'triage' | 'extract') => {
     if (!choice) return;
@@ -186,13 +188,13 @@ function StagePanel({ recordId, runs, loading, error, profileVersionId }: { reco
         </div>
         {status.tone !== 'ok' && <small className="rw-note">{status.note}</small>}
       </li>; })}</ul>}
-    <div className="rw-nd-run-row">
+    {writes && ai && <><div className="rw-nd-run-row">
       {ReviewModelSelector ? <ReviewModelSelector request={host} onChange={setChoice} disabled={!!starting} /> : <p className="rw-note">Update Zoer to choose a computer and model here; AI review keeps working meanwhile.</p>}
       <label className="rw-check"><input type="checkbox" checked={force} onChange={event => setForce(event.target.checked)} />Run again even if unchanged</label>
       <Btn size="sm" variant="secondary" disabled={!choice || !!starting} loading={starting === 'triage'} onClick={() => void launch('triage')}>Triage from notice</Btn>
       <Btn size="sm" variant="primary" disabled={!choice || !!starting} loading={starting === 'extract'} onClick={() => void launch('extract')}>Extract requirements</Btn>
     </div>
-    <p className="rw-note">Triage reads only the saved notice; extraction also reads every downloaded file, then re-assesses. Neither makes a bid decision.</p>
+    <p className="rw-note">Triage reads only the saved notice; extraction also reads every downloaded file, then re-assesses. Neither makes a bid decision.</p></>}
     {running && <p role="status" className="pc-running"><span className="pc-spinner" aria-hidden="true" />{activeLaunch ? stageName(activeLaunch.stage) : 'A stage'} is running on the server. You can close this notice; results appear here when it finishes.</p>}
     {!running && finished && finished.status !== 'succeeded' && <p role="alert" className="rw-error">{stageName(finished.stage)} {finished.status.replace(/_/g, ' ')}{finished.error ? `: ${finished.error}` : ''}. Earlier results are kept.</p>}
     {problem && <p role="alert" className="rw-error">{problem}</p>}
@@ -201,25 +203,25 @@ function StagePanel({ recordId, runs, loading, error, profileVersionId }: { reco
 
 function Judgements({ recordId, profileVersionId, profileName }: { recordId: string; profileVersionId: string; profileName: string }) {
   const judgements = useQuery({ queryKey: noticeKey(recordId, 'judgements', profileVersionId), queryFn: () => readJudgements(recordId, profileVersionId) });
-  const [editing, setEditing] = useState('');
+  const [editing, setEditing] = useState(''), { writes } = useCapabilities();
   const editingDimension = JUDGEMENT_DIMENSIONS.find(d => d.id === editing) ?? null;
   return <section className="rw-panel" aria-labelledby={`rw-judge-${recordId}`}>
     <h3 id={`rw-judge-${recordId}`}>Your judgement for {profileName || 'this profile'}</h3>
     <p className="rw-note">Recorded separately from AI output; delivery stays unknown until judged.</p>
     {judgements.isPending ? <p className="rw-muted" role="status">Loading judgements…</p> : judgements.data === null ? <p className="rw-note">Update Zoer to record delivery, response, commercial and partner judgements.</p> :
       <div className="rw-table-wrap"><table className="rw-table rw-text rw-nd-judge-table">
-        <thead><tr><th>Dimension</th><th>Value</th><th>Note</th><th aria-hidden="true"></th></tr></thead>
+        <thead><tr><th>Dimension</th><th>Value</th><th>Note</th>{writes && <th aria-hidden="true"></th>}</tr></thead>
         <tbody>{JUDGEMENT_DIMENSIONS.map(dimension => {
           const current = judgements.data?.find(row => row.dimension === dimension.id) ?? null;
           return <tr key={dimension.id}>
             <th>{dimension.name}</th>
             <td>{current ? <Chip value={current.value} text={JUDGEMENT_LABELS[current.value] ?? label(current.value)} /> : <span className="rw-chip" data-tone="neutral"><b>Not judged</b></span>}</td>
             <td className="rw-nd-judge-note" title={current ? `${current.note} — ${current.reviewer}, ${when(current.updatedAt)}` : undefined}>{current ? `${current.note} — ${current.reviewer}, ${when(current.updatedAt)}` : '—'}</td>
-            <td><Btn size="sm" variant="ghost" aria-label={`Edit ${dimension.name}`} onClick={() => setEditing(editing === dimension.id ? '' : dimension.id)}>{current ? 'Edit' : 'Judge'}</Btn></td>
+            {writes && <td><Btn size="sm" variant="ghost" aria-label={`Edit ${dimension.name}`} onClick={() => setEditing(editing === dimension.id ? '' : dimension.id)}>{current ? 'Edit' : 'Judge'}</Btn></td>}
           </tr>;
         })}</tbody>
       </table></div>}
-    {editingDimension && <JudgementEditor recordId={recordId} profileVersionId={profileVersionId} dimension={editingDimension} current={judgements.data?.find(row => row.dimension === editingDimension.id) ?? null} onClose={() => setEditing('')} />}
+    {writes && editingDimension && <JudgementEditor recordId={recordId} profileVersionId={profileVersionId} dimension={editingDimension} current={judgements.data?.find(row => row.dimension === editingDimension.id) ?? null} onClose={() => setEditing('')} />}
   </section>;
 }
 
@@ -237,6 +239,7 @@ function JudgementEditor({ recordId, profileVersionId, dimension, current, onClo
 
 function DecisionForm({ recordId, assessment, decisions, pursuitStage, loading }: { recordId: string; assessment: AssessmentRow | null; decisions: DecisionRow[]; pursuitStage: string | null; loading: boolean }) {
   const [decision, setDecision] = useState<DecisionChoice | ''>(''), [note, setNote] = useState(''), [history, setHistory] = useState(false);
+  const { writes } = useCapabilities();
   const action = useReviewAction();
   const rule = decisionNoteRule(assessment, decision), ok = !!decision && noteSatisfies(rule, note);
   const latest = decisions[0] ?? null;
@@ -249,7 +252,7 @@ function DecisionForm({ recordId, assessment, decisions, pursuitStage, loading }
         <span>Pursuit: {pursuitStage || 'Not in pursuits'}</span>
       </span>
     </div>
-    <form className="rw-form" onSubmit={event => { event.preventDefault(); if (ok) void save(); }}>
+    {writes && <form className="rw-form" onSubmit={event => { event.preventDefault(); if (ok) void save(); }}>
       <fieldset className="rw-nd-choices"><legend className="sr-only">Decision</legend>
         {DECISION_OPTIONS.map(([value, text]) => <label key={value} className="rw-check rw-nd-decision-option" data-tone={DECISION_TONE[value] ?? 'neutral'}><input type="radio" name={`decision-${recordId}`} value={value} checked={decision === value} disabled={!!action.busy} onChange={() => setDecision(value)} />{text}</label>)}
       </fieldset>
@@ -258,7 +261,7 @@ function DecisionForm({ recordId, assessment, decisions, pursuitStage, loading }
       <div className="rw-actions"><Btn size="sm" type="submit" disabled={!ok || !!action.busy || loading} loading={!!action.busy}>Record decision</Btn></div>
       <p className="rw-note">Recording a decision does not submit a bid, contact the buyer or change the pursuit stage. Earlier decisions stay in the history.</p>
       {action.error && <p role="alert" className="rw-error">{action.error}</p>}{action.done && <p role="status" className="rw-note">{action.done}</p>}
-    </form>
+    </form>}
     {decisions.length > 0 && <>
       <button type="button" className="pc-link-btn rw-nd-toggle" aria-expanded={history} onClick={() => setHistory(!history)}>{history ? 'Hide' : 'Show'} decision history ({decisions.length})</button>
       {history && <ol className="rw-nd-history">{decisions.map((item, i) => <li key={item.id}><strong>{label(item.decision)}</strong> · {when(item.createdAt)} · {item.actor}{i === 0 && item.needsReconfirmation ? <span className="rw-chip" data-tone="stale"><b>Needs reconfirmation</b></span> : i > 0 ? <span className="rw-note"> (history)</span> : null}{item.note && <p className="rw-note">{item.note}</p>}{!item.assessmentId && <small className="rw-note">No assessment referenced.</small>}</li>)}</ol>}
@@ -269,12 +272,12 @@ function DecisionForm({ recordId, assessment, decisions, pursuitStage, loading }
 /** Tasks for one notice: create (owner, due, optional link) and complete/cancel open ones. */
 export function TaskPanel({ recordId, preset, onPresetUsed, link }: { recordId: string; preset?: { kind: string; title: string } | null; onPresetUsed?(): void; link?: { type: string; id: string; text: string } }) {
   const tasks = useQuery({ queryKey: noticeKey(recordId, 'tasks'), queryFn: () => readTasks(recordId) });
-  const [showClosed, setShowClosed] = useState(false);
+  const [showClosed, setShowClosed] = useState(false), { writes } = useCapabilities();
   const list = (tasks.data ?? []).filter(task => !link || (task.linkedType === link.type && task.linkedId === link.id));
   const open = list.filter(task => task.status === 'open'), closed = list.filter(task => task.status !== 'open');
   return <section className="rw-panel" id={`rw-tasks-${recordId}${link ? `-${link.id}` : ''}`} aria-label={link ? 'Tasks for this item' : 'Tasks for this notice'}>
     <h3>{link ? 'Tasks for this item' : 'Tasks'}</h3>
-    <TaskCreateForm recordId={recordId} preset={preset} onPresetUsed={onPresetUsed} link={link} />
+    {writes && <TaskCreateForm recordId={recordId} preset={preset} onPresetUsed={onPresetUsed} link={link} />}
     {tasks.error ? <p role="alert" className="rw-error">Could not load tasks: {(tasks.error as Error).message}</p> : tasks.isPending ? <p className="rw-muted" role="status">Loading tasks…</p>
       : !open.length ? <p className="rw-note">No open tasks{link ? ' for this item' : ''}.</p> : <ul className="rw-nd-tasks">{open.map(task => <TaskItem key={task.id} recordId={recordId} task={task} />)}</ul>}
     {closed.length > 0 && <button type="button" className="pc-link-btn rw-nd-toggle" aria-expanded={showClosed} onClick={() => setShowClosed(!showClosed)}>{showClosed ? 'Hide' : 'Show'} done and cancelled ({closed.length})</button>}
@@ -305,13 +308,13 @@ function TaskCreateForm({ recordId, preset, onPresetUsed, link }: { recordId: st
 }
 
 function TaskItem({ recordId, task }: { recordId: string; task: NoticeTask }) {
-  const [completing, setCompleting] = useState(false), [note, setNote] = useState('');
+  const [completing, setCompleting] = useState(false), [note, setNote] = useState(''), { writes } = useCapabilities();
   const action = useReviewAction();
   const update = (status: 'done' | 'cancelled') => action.run(status, { op: 'task.update', taskId: task.id, recordId, status, ...(note.trim() ? { completionNote: note.trim() } : {}), expectedVersion: task.version });
   return <li data-status={task.status}>
     <div><strong>{task.title}</strong> <span className="rw-note">{taskKindLabel(task.kind)} · {task.owner || 'Unassigned'} · {task.dueAt ? `due ${task.dueAt.slice(0, 10)}` : 'no due date'}{task.linkedType ? ` · linked ${task.linkedType}` : ''}{task.status !== 'open' ? ` · ${task.status === 'done' ? 'Done' : 'Cancelled'}` : ''}</span></div>
     {task.completionNote && <small className="rw-note">{task.completionNote}</small>}
-    {task.status === 'open' && (completing ? <form className="rw-form" onSubmit={event => { event.preventDefault(); if (note.trim().length >= 3) void update('done'); }}>
+    {writes && task.status === 'open' && (completing ? <form className="rw-form" onSubmit={event => { event.preventDefault(); if (note.trim().length >= 3) void update('done'); }}>
       <label className="rw-field"><span>What was done (required)</span><input value={note} maxLength={2000} disabled={!!action.busy} onChange={event => setNote(event.target.value)} placeholder="And where the supporting evidence is" /></label>
       <div className="rw-actions"><Btn size="sm" type="submit" disabled={note.trim().length < 3 || !!action.busy} loading={action.busy === 'done'}>Mark done</Btn><Btn size="sm" variant="ghost" onClick={() => setCompleting(false)}>Back</Btn></div>
       <p className="rw-note">Completing a task does not satisfy a requirement until supporting evidence is added and reviewed.</p>

@@ -83,3 +83,11 @@ export function visitWindow(stored: string | null, now: number): { since: number
   const value = stored === null ? NaN : Number(stored);
   return Number.isFinite(value) && value > 0 && value <= now ? { since: value, first: false } : { since: now - 86_400_000, first: true };
 }
+
+/**
+ * Which Today columns a host shows. "New since your last visit" counts collection runs and the alert footer reports
+ * the alert schedule, so a host that does not collect (a published review copy) shows only the two review columns.
+ */
+export function todayLayout(caps: { collection: boolean }) {
+  return { newSince: caps.collection, alerts: caps.collection, columns: caps.collection ? 3 : 2 } as const;
+}

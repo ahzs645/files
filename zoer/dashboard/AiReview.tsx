@@ -7,6 +7,7 @@ import { RecordPicker } from './RecordPicker';
 import { useWorkspace } from './backend';
 import { host } from './bridge';
 import { usePluginQuery } from './navigation';
+import { useCapabilities } from './capabilities';
 import { NoticeView } from './procurement/NoticeView';
 import { PromptEditor, type ReviewRunner } from './PromptEditor';
 import { ReviewResults, RunResults } from './ReviewResults';
@@ -23,10 +24,11 @@ export function AiReview() {
   const [recordId, setRecordId] = usePluginQuery('record');
   const [state, refresh] = useCatalogState(setError);
   const [reviewModel, setReviewModel] = useState<any>(null);
+  const { writes, ai } = useCapabilities();
   const [legacyModels, setLegacyModels] = useState<any[]>([]);
   const modelId = reviewModel?.modelProfileId ?? '';
   useEffect(() => {
-    if (ReviewModelSelector) return;
+    if (ReviewModelSelector || !(writes && ai)) return;
     let active = true;
     void host('models').then(r => { if (active) setLegacyModels(r.models.filter((m: any) => m.authReady)); }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
@@ -50,7 +52,7 @@ export function AiReview() {
   return <section className="research">
     {/* The section tabs name this page (Run reviews · Analysis · Pipeline stages), so it has no heading of its own. */}
     <BatchProgress batches={state.batches} tasks={state.tasks} />
-    {view === 'analysis' ? <ReviewAnalysis prompts={state.prompts} onOpen={setRecordId} onSelect={selectFromAnalysis} /> : <>
+    {view === 'analysis' ? <ReviewAnalysis prompts={state.prompts} onOpen={setRecordId} onSelect={writes ? selectFromAnalysis : undefined} /> : <>
     <div className="research-grid">
       <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} more={[{ label: 'Open database viewer', onClick: () => void host('catalog.open') }]} />
       <section className="zoer-history" aria-label="Review settings">
@@ -71,7 +73,7 @@ export function AiReview() {
       details={batch => <RunResults batch={batch} prompts={state.prompts} onOpen={setRecordId} />} />
     {prompt && <ReviewResults prompt={prompt} revision={revision} onOpen={setRecordId} />}
     </>}
-    {editing && <PromptEditor key={editing === 'new' ? 'new' : promptId} prompt={editing === 'new' ? null : prompt} testIds={[...selection]} runner={runner} includeDocuments={documents}
+    {writes && editing && <PromptEditor key={editing === 'new' ? 'new' : promptId} prompt={editing === 'new' ? null : prompt} testIds={[...selection]} runner={runner} includeDocuments={documents}
       onSaved={async saved => { setPromptId(saved.id); await refresh(); }} onClose={() => setEditing('')} />}
     {recordId && <NoticeView id={recordId} layout="dialog" onClose={() => setRecordId('')} />}
   </section>;

@@ -7,6 +7,7 @@ import { SUGGESTED_ACTIONS } from '@bcbid/procurement-core';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { useWorkspace, setStar } from '../backend';
+import { useCapabilities } from '../capabilities';
 import { navigatePlugin, patchPluginQuery, usePluginLocation } from '../navigation';
 import { REVIEW_KEY, useReviewWorkspace } from '../review-workspace/actions';
 import { Compare, COMPARE_MAX, COMPARE_MIN } from '../review-workspace/Compare';
@@ -18,9 +19,8 @@ import { useActiveProfile } from '../review-workspace/profile-context';
 import { label } from '../review-workspace/queries';
 import { READINESS_BUCKETS, READINESS_TEXT, RELEVANCE_BUCKETS, RELEVANCE_TEXT } from '../review-workspace/queue';
 import { captureSnapshot, manualSnapshot, setSelection, toggleSelected, useSelection, type SelectionSnapshot } from '../review-workspace/selection';
-import { SOURCES, buildProcurementQuery, checkStatementSize, deadlineLabel } from './catalog';
+import { SOURCES, buildProcurementQuery, checkStatementSize } from './catalog';
 import { SavedSearches } from './SavedSearches';
-import { cleanRegionText } from './region';
 import { AlertSettings } from './AlertSettings';
 import { EvidencePanel } from './EvidencePanel';
 import { NoticeView } from './NoticeView';
@@ -28,14 +28,20 @@ import { DuplicateFlag, PlaceFilter, usePageDuplicates } from './NoticeEnrichmen
 import { LabelChips } from './AiResult';
 import { LABEL_GROUPS, labelGroup } from './ai';
 import { useLabelFacets, useRecordLabels } from './labels';
-import { INVENTORY_SQL, noticeStatus, shortDate, sourceName, sql } from './display';
+import { INVENTORY_SQL, sourceName, sql } from './display';
+import { ResultRow } from './ResultRow';
 import { ExcludeWordsField, HiddenNotice, HideButton, ProfileFilterLine, useHideNotices, useProfileFilterHits } from './Triage';
 import { parseExcludeTerms } from './exclude';
 import { type ProcurementFilters } from './state-contract';
 
-const WIDE = '(min-width: 1024px)';
-/** Wide screens show a notice beside the results; narrower screens open it as a sheet. */
-function useWide() { return useSyncExternalStore(listener => { const media = matchMedia(WIDE); media.addEventListener('change', listener); return () => media.removeEventListener('change', listener); }, () => matchMedia(WIDE).matches); }
+const WIDE = '(min-width: 1024px)', PHONE = '(max-width: 640px)';
+const useMedia = (query: string) => useSyncExternalStore(listener => { const media = matchMedia(query); media.addEventListener('change', listener); return () => media.removeEventListener('change', listener); }, () => matchMedia(query).matches);
+/** Wide screens show a notice beside the results; tablets open it as a sheet; phones as its own page with Back. */
+function useWide() { return useMedia(WIDE); }
+function usePhone() { return useMedia(PHONE); }
+/** Source status values for the toolbar's Status filter (the same `status` parameter as Source metadata · Source status). */
+const STATUS_SQL = "SELECT json_extract(data,'$.status') AS value, count(*) AS count FROM records WHERE kind='opportunity' AND coalesce(json_extract(data,'$.status'),'')!='' GROUP BY value ORDER BY count DESC, value LIMIT 12";
+const OPEN_WORDS = ['open', 'active'];
 // Views that used to be tabs on this page now live in their own sections.
 const MOVED_VIEWS: Record<string, string> = { board: '/pursuits', market: '/analysis/sources', sources: '/sources' };
 const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'exclude', 'hidden', 'place', ...METADATA_FILTER_KEYS];
@@ -64,7 +70,7 @@ export function Procurement() {
   const aiLabel = params.get('aiLabel') ?? '', noticeId = params.get('notice') ?? '', place = params.get('place') ?? '';
   const exclude = params.get('exclude') ?? '', excludeCount = parseExcludeTerms(exclude).length;
   const hiddenParam = params.get('hidden'), hidden = hiddenParam === 'include' || hiddenParam === 'only' ? hiddenParam : 'exclude';
-  const wide = useWide();
+  const wide = useWide(), phone = usePhone();
   const { model } = useWorkspace(), client = useQueryClient();
   const workspace = useReviewWorkspace(), available = !!workspace.data?.available;
   const { profileVersionId: active, versions } = useActiveProfile();
@@ -79,7 +85,10 @@ export function Procurement() {
   const [evidenceIds, setEvidenceIds] = useState<string[]>([]);
   const openNotice = (id: string) => patchPluginQuery({ notice: id }, noticeId ? 'replace' : 'push');
   const closeNotice = () => patchPluginQuery({ notice: '' });
+  // Back from the phone page returns to the list at the notice that was open.
+  const backToList = () => { const id = noticeId; closeNotice(); requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' })); };
   const [saving, setSaving] = useState(''), [error, setError] = useState('');
+  const { collection, writes } = useCapabilities();
   const selected = useSelection(), selectedIds = new Set(selected.map(row => row.id));
   const [snapshot, setSnapshot] = useState<SelectionSnapshot | null>(null), [capturing, setCapturing] = useState(false);
   const [typed, setTyped] = useState(search);
@@ -131,8 +140,10 @@ export function Procurement() {
   const applySaved = (saved: ProcurementFilters) => { filter({ ...Object.fromEntries(METADATA_FILTER_KEYS.map(key=>[key,saved[key]??''])), ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '', place: saved.place ?? '' }); setPanel(''); };
   const chips = reviewChips(params, profileLabel);
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
-  const extraCount = [...Object.values(metadataFilters), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude'].filter(Boolean).length + reviewCount;
-  const activeCount = extraCount + [source, kind !== 'all', deadline === 'week', starred].filter(Boolean).length;
+  // Status (source status or the Open scope) sits in the toolbar, notice type in the sheet; "More filters" counts the sheet.
+  const statusActive = !!metadataFilters.status || params.get('open') === '1';
+  const extraCount = [...Object.entries(metadataFilters).filter(([key]) => key !== 'status').map(([, value]) => value), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude', kind !== 'all' && deadline !== 'week'].filter(Boolean).length + reviewCount - (params.get('open') === '1' ? 1 : 0);
+  const activeCount = extraCount + [source, statusActive, deadline === 'week', starred].filter(Boolean).length;
   const clearAll = () => { setTyped(''); filter(Object.fromEntries([...BASE_PARAMS, ...REVIEW_PARAMS].map(key => [key, '']))); };
   const description = describeFilters(params, profileText, sourceName);
   const snapshotMeta = { description, filters: filterObject(params), profileVersionId: profile, profileText };
@@ -146,6 +157,12 @@ export function Procurement() {
 
   const sourceSelect = <Select aria-label="Source" value={source} onChange={event => filter({ source: event.target.value })}><option value="">All sources{inventory.data ? ` · ${inventoryTotal.toLocaleString()}` : ''}</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}{counts.has(id) ? ` · ${counts.get(id)!.toLocaleString()}` : ''}</option>)}</Select>;
   const typeSelect = <Select aria-label="Notice type" value={kind} onChange={event => filter({ kind: event.target.value, ...(event.target.value !== 'opportunity' ? { deadline: '' } : {}) })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select>;
+  const statuses = useCachedQuery({ queryKey: ['catalog', 'procurement-statuses'], enabled: !!model, queryFn: () => sql(STATUS_SQL), staleTime: 60_000 });
+  // "Open" is the review scope (status open/active/blank and the deadline not passed); other values are the source's own status text.
+  const statusParam = params.get('status') ?? '', statusValue = params.get('open') === '1' ? 'open' : statusParam ? 's:' + statusParam : '';
+  const statusOptions = (statuses.data ?? []).map(row => String(row.value)).filter(value => !OPEN_WORDS.includes(value.toLowerCase()));
+  if (statusParam && !statusOptions.includes(statusParam)) statusOptions.unshift(statusParam);
+  const statusSelect = <Select aria-label="Status" value={statusValue} onChange={event => { const value = event.target.value; filter({ open: value === 'open' ? '1' : '', status: value.startsWith('s:') ? value.slice(2) : '' }); }}><option value="">Any status</option><option value="open">Open</option>{statusOptions.map(value => <option key={value} value={'s:' + value}>{value}</option>)}</Select>;
   const closingChip = <button type="button" className="pc-chip" aria-pressed={deadline === 'week'} onClick={() => filter(deadline === 'week' ? { deadline: '' } : { deadline: 'week', kind: 'opportunity' })}>Closing in 7 days</button>;
   const shortlistChip = <button type="button" className="pc-chip" aria-pressed={starred} onClick={() => filter({ shortlist: starred ? '' : '1' })}><Star aria-hidden="true" className="h-3.5 w-3.5" />Shortlisted</button>;
   const extraFields = <MetadataFilters params={params} filter={filter} />;
@@ -177,24 +194,17 @@ export function Procurement() {
     <HiddenNotice change={hide.last} busy={hide.busy.length > 0} onUndo={() => void hide.undo()} onDismiss={hide.dismiss} onShowHidden={hidden === 'exclude' ? () => filter({ hidden: 'include' }) : undefined} />
     {!workspace.isPending && !available && rows.length > 0 && <p className="rw-upgrade">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'}</p>}
     <div className="pc-results">{rows.map(row => {
-      const when = shortDate(row.deadline, Date.now(), row.kind !== 'award'), checked = selectedIds.has(row.id);
-      const status = noticeStatus(row.status, row.deadline, row.kind, asOf), isHidden = Number(row.hidden) === 1;
-      return <article className="pc-row" key={row.id} data-selected={checked || undefined} data-open={row.id === noticeId || undefined} data-hidden={isHidden || undefined}>
-        <input type="checkbox" className="pc-row-check" aria-label={`Select ${row.title || 'untitled notice'}`} checked={checked} onChange={event => toggleSelected({ id: row.id, title: row.title, updatedAt: row.catalogUpdatedAt }, event.target.checked)} />
-        <div className="pc-row-main">
-          <button type="button" className="pc-row-title" aria-expanded={row.id === noticeId} onClick={() => openNotice(row.id)}>{row.title || 'Untitled notice'}</button>
-          <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{cleanRegionText(row.region) ? ` · ${cleanRegionText(row.region)}` : ''}</p>
-          <p className="pc-row-meta"><span className="pc-row-date pc-row-date-inline" data-tone={when.tone || undefined}>{row.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</span><span className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId)}</span><span data-kind={row.kind}>{row.kind === 'award' ? 'Award' : 'Opportunity'}</span>{status && <span className="pc-row-status" data-status={status.key} title={status.title}>{status.text}</span>}{isHidden && <span className="pc-row-hidden-tag">Hidden</span>}{row.externalId && <span>{row.externalId}</span>}<DuplicateFlag matches={duplicates.get(row.id)} /></p>
-          {!!labels.get(row.id)?.length && <div className="pc-row-labels"><LabelChips labels={labels.get(row.id)!} limit={4} /></div>}
-          {available && <ReviewLine review={rowReview.data?.get(row.id)} profileText={profileText} />}
-          {available && <ProfileFilterLine hits={profileFilter.hits.get(row.id)} />}
-        </div>
-        <div className="pc-row-side">
-          <span className="pc-row-date" data-tone={when.tone || undefined} title={row.kind === 'award' ? row.deadline : deadlineLabel(row.deadline)}><span className="sr-only">{row.kind === 'award' ? 'Awarded ' : 'Closes '}</span>{when.tone === 'passed' ? 'Closed ' : ''}{when.text}</span>
+      const isHidden = Number(row.hidden) === 1;
+      return <ResultRow key={row.id} row={row} asOf={asOf} writes={writes} checked={selectedIds.has(row.id)} open={row.id === noticeId} onOpen={() => openNotice(row.id)}
+        onCheck={checked => toggleSelected({ id: row.id, title: row.title, updatedAt: row.catalogUpdatedAt }, checked)} flags={<DuplicateFlag matches={duplicates.get(row.id)} />}
+        side={<>
           <HideButton row={row} hidden={isHidden} busy={hide.busy.includes(row.id)} onToggle={() => void hide.apply([{ id: row.id, title: row.title }], !isHidden)} />
-          <button type="button" className="pc-star" disabled={!!saving} aria-pressed={!!row.starred} aria-label={`${row.starred ? 'Remove from' : 'Add to'} shortlist: ${row.title}`} onClick={() => void toggleStar(row)}><Star aria-hidden="true" className="h-4 w-4" fill={row.starred ? 'currentColor' : 'none'} /></button>
-        </div>
-      </article>;
+          {writes && <button type="button" className="pc-star" disabled={!!saving} aria-pressed={!!row.starred} aria-label={`${row.starred ? 'Remove from' : 'Add to'} shortlist: ${row.title}`} onClick={() => void toggleStar(row)}><Star aria-hidden="true" className="h-4 w-4" fill={row.starred ? 'currentColor' : 'none'} /></button>}
+        </>}>
+        {!!labels.get(row.id)?.length && <div className="pc-row-labels"><LabelChips labels={labels.get(row.id)!} limit={4} /></div>}
+        {available && <ReviewLine review={rowReview.data?.get(row.id)} profileText={profileText} />}
+        {available && <ProfileFilterLine hits={profileFilter.hits.get(row.id)} />}
+      </ResultRow>;
     })}</div>
     {rowReview.isError && <p role="alert" className="rw-error">Could not load review details: {rowReview.error.message}. <Btn size="sm" variant="secondary" onClick={() => void rowReview.refetch()}>Retry</Btn></p>}
     {(page > 0 || hasMore) && <div className="pc-pager"><Btn size="sm" variant="secondary" disabled={!page} onClick={() => patchPluginQuery({ page: page > 1 ? String(page - 1) : '' }, 'push')}>Previous</Btn><span>Page {page + 1} of {Math.max(1, Math.ceil(total / PAGE)).toLocaleString()}</span><Btn size="sm" variant="secondary" disabled={!hasMore || list.isFetching} onClick={() => patchPluginQuery({ page: String(page + 1) }, 'push')}>Next</Btn></div>}
@@ -203,23 +213,24 @@ export function Procurement() {
   const selectionKey = selected.map(row => row.id).join('\n'), metaKey = JSON.stringify(snapshotMeta);
   const manual = useMemo(() => selected.length > 0 ? manualSnapshot(selected.map(row => row.id), snapshotMeta) : null, [selectionKey, metaKey]);
   const snapshotStale = snapshot && snapshot.description.join('|') !== description.join('|');
-  const selectAllButton = total > 0 && <Btn size="sm" variant="ghost" disabled={capturing || !list.data} onClick={() => void selectAll()}>{capturing ? 'Capturing…' : `Select all ${total.toLocaleString()} matching`}</Btn>;
+  const selectAllButton = writes && total > 0 && <Btn size="sm" variant="ghost" disabled={capturing || !list.data} onClick={() => void selectAll()}>{capturing ? 'Capturing…' : `Select all ${total.toLocaleString()} matching`}</Btn>;
+  const sortSelect = <Select aria-label="Sort" presentation="dropdown" searchable={false} value={sort === 'date-asc' ? 'deadline' : sort} onChange={event => patchPluginQuery({ sort: event.target.value, page: '' })}><option value="updated">Recently updated</option><option value="deadline">Closing soonest</option>{available && <option value="fit">Work fit</option>}</Select>;
   let bar: ReactNode;
   if (snapshot) bar = <>
     <span role="status"><strong>{snapshot.ids.length.toLocaleString()}</strong> in a frozen selection · captured {new Date(snapshot.capturedAt).toLocaleTimeString()}{snapshot.note && <span className="rw-warn"> {snapshot.note}</span>}{snapshotStale && <span className="rw-warn"> Filters changed since capture; actions still use the frozen list.</span>}<Btn size="sm" variant="ghost" onClick={() => setSnapshot(null)}>Clear</Btn></span>
     <div className="procurement-actions pc-selection-actions"><SelectionActions snapshot={snapshot} workspace={available} onError={setError} /></div>
   </>;
-  else if (manual) bar = <>
+  else if (manual && writes) bar = <>
     <span role="status"><strong>{selected.length.toLocaleString()}</strong> selected{selectAllButton}<Btn size="sm" variant="ghost" onClick={() => setSelection([])}>Clear</Btn></span>
     <div className="procurement-actions pc-selection-actions">
       <Btn size="sm" variant="secondary" disabled={selected.length < COMPARE_MIN || selected.length > COMPARE_MAX} tooltip={`Compare ${COMPARE_MIN}–${COMPARE_MAX} notices against one profile`} onClick={compare}>Compare</Btn>
-      <Btn size="sm" variant="secondary" disabled={selected.length > 3} tooltip="AI evidence review of 1–3 notices" onClick={() => setEvidenceIds(selected.map(row => row.id))}>Evidence &amp; AI</Btn>
+      {writes && <Btn size="sm" variant="secondary" disabled={selected.length > 3} tooltip="AI evidence review of 1–3 notices" onClick={() => setEvidenceIds(selected.map(row => row.id))}>Evidence &amp; AI</Btn>}
       <SelectionActions snapshot={manual} workspace={available} onError={setError} />
     </div>
   </>;
   else bar = <>
     <span role="status">{list.isPending && !waitForWorkspace ? 'Loading…' : `${total.toLocaleString()} ${total === 1 ? 'result' : 'results'}`}{selectAllButton}{activeCount > 0 && <Btn size="sm" variant="ghost" onClick={clearAll}>Clear filters</Btn>}</span>
-    <span className="pc-resultbar-end">{available && <ProfilePicker />}<label className="pc-sort"><span className="sr-only">Sort</span><Select aria-label="Sort" presentation="dropdown" searchable={false} value={sort === 'date-asc' ? 'deadline' : sort} onChange={event => patchPluginQuery({ sort: event.target.value, page: '' })}><option value="updated">Recently updated</option><option value="deadline">Closing soonest</option>{available && <option value="fit">Work fit</option>}</Select></label></span>
+    <span className="pc-resultbar-end">{available && <ProfilePicker />}<label className="pc-sort"><span className="sr-only">Sort</span>{sortSelect}</label></span>
   </>;
 
   // Matrix: the same scope without the matrix's own axes (they become the cells).
@@ -228,10 +239,11 @@ export function Procurement() {
   const ignored = [scope.relevance && 'work fit', scope.readiness && 'readiness', (scope.assessed || filters.assessedYes) && 'assessment'].filter(Boolean) as string[];
   const compareIds = (params.get('ids') ?? '').split(',').filter(Boolean);
 
+  if (noticeId && phone) return <section className="procurement-workspace" aria-label="Opportunities"><NoticeView id={noticeId} layout="page" backLabel={view === 'compare' ? 'Back to comparison' : view === 'matrix' ? 'Back to matrix' : 'Back to opportunities'} onClose={backToList} /></section>;
   return <section className="procurement-workspace" aria-label="Opportunities">
     <div className="pc-toolbar">
       <label className="pc-search"><Search aria-hidden="true" className="h-4 w-4" /><span className="sr-only">Search procurement</span><input type="search" aria-label="Search procurement" placeholder="Search titles, buyers or notice numbers" value={typed} onChange={event => setTyped(event.target.value)} /></label>
-      <div className="pc-inline-filters">{sourceSelect}{typeSelect}{closingChip}{shortlistChip}</div>
+      <div className="pc-inline-filters">{sourceSelect}{statusSelect}{closingChip}{shortlistChip}</div>
       <Btn variant="secondary" className="pc-more" aria-haspopup="dialog" aria-label={activeCount ? `Filters, ${activeCount} active` : 'Filters'} onClick={() => setPanel('filters')}><SlidersHorizontal aria-hidden="true" className="h-4 w-4" /><span className="pc-label-wide">More filters</span><span className="pc-label-narrow">Filters</span><span className="pc-count pc-count-wide" hidden={!extraCount}>{extraCount}</span><span className="pc-count pc-count-narrow" hidden={!activeCount}>{activeCount}</span></Btn>
       <Btn variant="secondary" aria-haspopup="dialog" aria-label="Saved searches" tooltip="Saved searches and alerts" onClick={() => setPanel('saved')}><Bookmark aria-hidden="true" className="h-4 w-4" /><span className="pc-label-saved">Saved</span></Btn>
     </div>
@@ -252,15 +264,18 @@ export function Procurement() {
         <div className="pc-resultbar">{bar}</div>
         {(error || list.error || inventory.error) && <p role="alert">{error || list.error?.message || inventory.error?.message} <Btn size="sm" variant="secondary" onClick={() => void client.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></p>}
         {!list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching notices</h2>
-          <p>{review.unavailable ?? (search.trim() ? `No saved notice matches “${search.trim()}”${activeCount ? ' with the filters below' : ''}.${hidden === 'exclude' ? ' Hidden notices are left out of lists.' : ''}` : source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? 'No saved notice matches every filter below. Remove a filter, or collect more notices from Sources.' : 'No notices are saved yet. Collect notices from Sources.')}</p>
+          <p>{review.unavailable ?? (search.trim() ? `No saved notice matches “${search.trim()}”${activeCount ? ' with the filters below' : ''}.${hidden === 'exclude' ? ' Hidden notices are left out of lists.' : ''}` : !collection ? (activeCount ? 'No saved notice matches every filter below. Remove a filter.' : 'This copy has no saved notices.') : source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? 'No saved notice matches every filter below. Remove a filter, or collect more notices from Sources.' : 'No notices are saved yet. Collect notices from Sources.')}</p>
           {activeCount > 0 && <ul className="pc-empty-filters">{description.map(line => <li key={line}>{line}</li>)}</ul>}
-          <div className="procurement-actions">{(activeCount > 0 || !!search.trim()) && <Btn variant="secondary" onClick={clearAll}>{activeCount ? 'Clear filters' : 'Clear search'}</Btn>}<Btn variant="secondary" onClick={() => navigatePlugin('/sources')}>Open Sources</Btn></div></div>}
+          <div className="procurement-actions">{(activeCount > 0 || !!search.trim()) && <Btn variant="secondary" onClick={clearAll}>{activeCount ? 'Clear filters' : 'Clear search'}</Btn>}{collection && <Btn variant="secondary" onClick={() => navigatePlugin('/sources')}>Open Sources</Btn>}</div></div>}
         {noticeId && wide ? <div className="pc-search-split"><div className="pc-search-list">{results}</div><NoticeView id={noticeId} layout="panel" onClose={closeNotice} /></div> : results}
       </>}
 
-    {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>{view === 'matrix' ? 'Show matrix' : `Show ${total.toLocaleString()} results`}</Btn></>}>
+    {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>{view === 'matrix' ? 'Show matrix' : `Show ${total.toLocaleString()} ${total === 1 ? 'result' : 'results'}`}</Btn></>}>
       <div className="pc-filter-sheet">
-        <div className="pc-sheet-only"><label><span>Source</span>{sourceSelect}</label><label><span>Notice type</span>{typeSelect}</label><div className="procurement-actions">{closingChip}{shortlistChip}</div></div>
+        <div className="pc-sheet-only"><label><span>Source</span>{sourceSelect}</label><label><span>Status</span>{statusSelect}</label><div className="procurement-actions">{closingChip}{shortlistChip}</div></div>
+        {/* Phones keep only search, Filters and Saved in the toolbar; sort and the profile live here. */}
+        <div className="pc-sheet-phone">{available && <div className="pc-sheet-field"><span>Assess as</span><ProfilePicker label={false} /></div>}<label><span>Sort</span>{sortSelect}</label></div>
+        <div className="pc-extra-fields"><label><span>Notice type</span>{typeSelect}</label></div>
         {extraFields}
         {reviewFields}
         {aiFacets}
@@ -271,6 +286,6 @@ export function Procurement() {
     </Modal>}
     {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || reviewCount > 0) && <p className="procurement-coverage">AI category and review filters aren’t included in saved searches or alerts yet.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
     {noticeId && (!wide || view === 'compare' || view === 'matrix') && <NoticeView id={noticeId} layout="dialog" onClose={closeNotice} />}
-    {evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
+    {writes && evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
   </section>;
 }
