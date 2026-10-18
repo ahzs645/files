@@ -55,7 +55,15 @@ Plugin behaviour (`zoer/dashboard/capabilities.ts`):
   search edits, alerts, classification labels, place tagging, zip bundles and AI
   runs are hidden. Gated routes redirect (sections to `/home`, views to the
   section's first remaining view).
-- Without `ai`: no model selectors and no `models` request.
+- Without `ai`: no model selectors, no `models` request, no AI workbench section and no Ask AI tab on a notice.
+- Review mode (`writes` and `collection` both false): sections are Home · Opportunities · Pursuits · Documents ·
+  Insights (full labels; the strip scrolls with a fade edge on phones). Taxonomy (an import page) is hidden without
+  `collection`. Evidence is the last Insights view (Decision insights · Market analysis · Award history · Evidence) and
+  `/evidence` links keep resolving there. Home drops "New since your last visit" and the alert-schedule footer (both
+  describe collection runs), opportunity rows have no selection checkboxes or bulk bar, and a shortlisted row shows a
+  read-only star.
+- `surface: "societyer"`: in-page Refresh buttons are hidden (the host page owns refresh) and Award history opens on
+  Award date, Opportunity, Buyer, Supplier and Contract value (the rest stay in the column picker).
 
 ## 2. Read-only bridge surface
 
@@ -66,7 +74,7 @@ The Societyer host answers these methods with the same response shapes as
 | Method | Notes |
 | --- | --- |
 | `host.capabilities` | §1 |
-| `navigation.read` / `navigation.write` | `{ version: 1, location, baseUrl }`; location is the plugin-relative path (`/home`, `/opportunities/...`) |
+| `navigation.read` / `navigation.write` | `{ version: 1, location, baseUrl, hrefBase? }`; location is the plugin-relative path (`/home`, `/opportunities/...`). `hrefBase` is optional (below) |
 | `appearance` | `{ dark, tokens }`, tokens are the 27 Zoer theme token names mapped from the host theme |
 | `overlay` | `{ open, insets }` |
 | `state` | idle run state: same shape plugin-site returns from `/api/workspace/state` for a frozen snapshot |
@@ -79,6 +87,13 @@ The Societyer host answers these methods with the same response shapes as
 | `catalog.record` | `ReadOnlyCatalog.record` |
 | `catalog.state` | `ReadOnlyCatalog.overview` |
 | `catalog.preview` / `catalog.download` | document bytes from `files/<sha256>` (§3) |
+
+`hrefBase?: string` is an absolute path prefix without a trailing slash (`"/demo/app/procurement-review"`). When a
+`navigation.read` or `navigation.write` result or a `navigation` event carries it, every in-plugin anchor the plugin
+renders (section and view tabs, Home links, router links on the catalog pages) has `href = hrefBase + location`, so
+open-in-new-tab and copy-link land on the host route. Plain clicks still go through `navigation.write`. Absent, the
+hrefs stay `baseUrl + "#/plugins/bc-bid-monitor" + location` (Zoer). Values that are not a `/`-rooted path (a URL,
+`//host`, `?` or `#`) are ignored. A result without the key keeps the last value; unmount forgets it.
 
 Inputs the review-only UI sends (everything else is refused in the plugin first):
 `navigation.write {location, mode: 'push'|'replace'}`; `state {summary: true}`;

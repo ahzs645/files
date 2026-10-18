@@ -262,7 +262,7 @@
 .rw-o-warn{color:var(--status-warning)}
 .pc-empty-filters{font-size:13px;color:var(--text-secondary);list-style:disc;margin-left:1.1rem}
 /* Phones: sort and "Assess as" move into the Filters sheet, so the result bar is just the count. */
-@media(max-width:640px){.pc-resultbar-end{display:none}}
+@media(max-width:640px){.pc-resultbar>.pc-resultbar-end{display:none}}
 .pc-sheet-phone{display:none}
 .pc-sheet-field{display:flex;flex-direction:column;gap:.375rem;font-size:12px;color:var(--text-secondary);min-width:0}
 @media(max-width:640px){.pc-sheet-phone{display:flex;flex-direction:column;gap:.75rem}}

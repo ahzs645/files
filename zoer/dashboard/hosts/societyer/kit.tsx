@@ -1,4 +1,4 @@
-import { forwardRef, useId, useLayoutEffect, useRef, type ComponentProps, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
+import { forwardRef, useEffect, useId, useLayoutEffect, useRef, type ComponentProps, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, Loader2, X } from 'lucide-react';
 import type HostBtn from '@zoer/plugin-ui-host/button';
@@ -67,7 +67,17 @@ export function PageTabs<T extends string>({ id, label, tabs, value, onChange, h
     event.preventDefault(); onChange(tabs[next].id);
     (event.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus({ preventScroll: true });
   };
-  return <div className="tabs bcbid-sy-pagetabs" role="tablist" aria-label={label} aria-orientation="horizontal">
+  // Societyer's `.tabs` fades whichever edge hides more tabs (`data-overflow` start|end|both); keep the active tab in view.
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = strip.current; if (!element) return;
+    const update = () => { const start = element.scrollLeft > 2, end = element.scrollLeft + element.clientWidth < element.scrollWidth - 2; if (start || end) element.dataset.overflow = start && end ? 'both' : start ? 'start' : 'end'; else delete element.dataset.overflow; };
+    update(); element.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update); observer.observe(element);
+    return () => { element.removeEventListener('scroll', update); observer.disconnect(); };
+  }, []);
+  useEffect(() => { strip.current?.querySelector<HTMLElement>('[aria-selected=true]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [value]);
+  return <div ref={strip} className="tabs bcbid-sy-pagetabs" role="tablist" aria-label={label} aria-orientation="horizontal">
     {tabs.map((tab, index) => {
       const selected = value === tab.id;
       const common: HTMLAttributes<HTMLElement> = { id: `${id}-tab-${tab.id}`, role: 'tab', 'aria-controls': `${id}-panel`, 'aria-selected': selected, tabIndex: selected ? 0 : -1, className: `tab${selected ? ' is-active' : ''}`,

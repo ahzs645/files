@@ -127,7 +127,8 @@ function findZone(text: string): string | null {
 const unknownValue = (raw: string): DateValue => ({ raw, precision: 'unknown', iso: null, date: null, zone: null, zoneBasis: null });
 
 function parseSingle(raw: string, defaultZone: string): DateValue {
-  const text = raw.replace(/\s+/g, ' ').trim();
+  // An ISO date-time without an offset (`2026-10-20T14:00:00`) is a wall-clock time like BC Bid's own format.
+  const text = raw.replace(/\s+/g, ' ').trim().replace(/^(\d{4}-\d{2}-\d{2})[Tt](?=\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$)/, '$1 ');
   const isoOffset = /^(\d{4})-(\d{2})-(\d{2})[Tt ](\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?\s*([Zz]|[+-]\d{2}:?\d{2})$/.exec(text);
   if (isoOffset) {
     const [, y, mo, d, h, mi, s, frac, offset] = isoOffset;
