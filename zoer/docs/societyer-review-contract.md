@@ -2,6 +2,10 @@
 
 One plugin source (this repo) serves two hosts:
 
+Operators should use the [Societyer setup and release guide](https://github.com/ahzs645/societyer/blob/main/docs/procurement-review-operations.md)
+and [Zoer publishing procedure](https://github.com/ahzs645/zoer/blob/main/docs/societyer-sharepoint-publishing.md).
+This document is the compatibility contract, not a substitute for deployment.
+
 | Host | Role | Build | UI kit | Capabilities |
 | --- | --- | --- | --- | --- |
 | Zoer | Collector + reviewer | `dist/zoer-bcbid` (native module + sandbox) | `@zoer/plugin-ui/*` supplied by Zoer | `collection: true, writes: true` |
@@ -10,6 +14,12 @@ One plugin source (this repo) serves two hosts:
 The local Zoer instance publishes a snapshot of the plugin catalog to a
 SharePoint folder. Each Societyer workspace points at its own folder and reads
 that snapshot. Societyer never writes to the folder.
+
+The production Societyer host binds each workspace to
+`Zoer/bc-bid-monitor/<workspace-id>` or a child of that root. An administrator
+cannot point one workspace at another workspace's folder or claim an arbitrary
+folder. The host uses a dedicated `PROCUREMENT_SHAREPOINT_*` reader connection;
+the meeting-file writer credentials do not enable this module.
 
 This file is the single source of truth. The Zoer publisher
 (`zoer/packages/plugin-site`) and the Societyer host
