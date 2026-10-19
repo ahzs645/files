@@ -305,10 +305,10 @@
           "artifact-store"
         ],
         "resourceLimits": {
-          "timeoutMs": 120000,
+          "timeoutMs": 300000,
           "maxMemoryMb": 256,
           "maxOutputBytes": 2097152,
-          "maxBrowserPages": 5
+          "maxBrowserPages": 25
         },
         "idempotent": false,
         "id": "scrape.sample",
@@ -751,7 +751,7 @@
           "timeoutMs": 3600000,
           "maxMemoryMb": 512,
           "maxOutputBytes": 67108864,
-          "maxBrowserPages": 320
+          "maxBrowserPages": 480
         },
         "idempotent": false,
         "inputSchema": {

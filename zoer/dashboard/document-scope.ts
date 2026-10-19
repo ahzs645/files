@@ -1,6 +1,6 @@
 import { notClosed, zoneDate } from './procurement/deadline';
-export type DocumentCandidate = { id: string; data: { sourceId?: string; status?: string; closingDate?: string; attachments?: unknown[]; detailFields?: unknown[]; detailsCaptured?: boolean } };
-const hasDetails = (row: DocumentCandidate) => row.data.detailsCaptured ?? !!row.data.detailFields?.length;
+export type DocumentCandidate = { id: string; data: { sourceId?: string; status?: string; closingDate?: string; attachments?: unknown[]; detailFields?: unknown[]; detailsCaptured?: boolean; detailNeedsRefresh?: boolean } };
+const hasDetails = (row: DocumentCandidate) => row.data.detailNeedsRefresh !== true && (row.data.detailsCaptured ?? !!row.data.detailFields?.length);
 export function documentScope(records: DocumentCandidate[], scope: 'current' | 'all', now = Date.now()) {
   // Shared deadline rules: a same-day date-only deadline is still current (time unverified); unknown dates are kept.
   const included = records.filter(({data}) => scope === 'all' || (/^open$/i.test(data.status?.trim() ?? '') && notClosed(data.closingDate, now)));
@@ -32,8 +32,8 @@ async function readCandidateSnapshot(host: (method: string, input?: unknown) => 
   while (true) {
     // Counts need links and a detail flag, never full HTML, description text or
     // every detail field. Restrict Open scope before paging the growing archive.
-    const page = await host('catalog.query', { statement: `SELECT id,json_extract(data,'$.status') AS status,json_extract(data,'$.closingDate') AS closingDate,json_extract(data,'$.attachments') AS attachments,CASE WHEN json_extract(data,'$.detailFields[0]') IS NOT NULL THEN 1 ELSE 0 END AS detailsCaptured FROM records WHERE kind='opportunity' AND coalesce(json_extract(data,'$.sourceId'),'bc-bid') IN ('','bc-bid')${scope === 'current' ? " AND lower(coalesce(json_extract(data,'$.status'),'')) LIKE '%open%' AND coalesce(julianday(json_extract(data,'$.closingDate')),9999999)>=julianday(?)" : ''} AND id>? ORDER BY id LIMIT 200`, parameters: [...(scope === 'current' ? [zoneDate(now)] : []),after] });
-    const candidates: DocumentCandidate[]=page.rows.map((row: any) => ({ id: row.id, data: { status: row.status, closingDate: row.closingDate, attachments: typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments, detailsCaptured: row.detailsCaptured === 1 } }));
+    const page = await host('catalog.query', { statement: `SELECT id,json_extract(data,'$.status') AS status,json_extract(data,'$.closingDate') AS closingDate,json_extract(data,'$.attachments') AS attachments,json_extract(data,'$.detailNeedsRefresh') AS detailNeedsRefresh,CASE WHEN json_extract(data,'$.detailFields[0]') IS NOT NULL THEN 1 ELSE 0 END AS detailsCaptured FROM records WHERE kind='opportunity' AND coalesce(json_extract(data,'$.sourceId'),'bc-bid') IN ('','bc-bid')${scope === 'current' ? " AND lower(coalesce(json_extract(data,'$.status'),'')) LIKE '%open%' AND coalesce(julianday(json_extract(data,'$.closingDate')),9999999)>=julianday(?)" : ''} AND id>? ORDER BY id LIMIT 200`, parameters: [...(scope === 'current' ? [zoneDate(now)] : []),after] });
+    const candidates: DocumentCandidate[]=page.rows.map((row: any) => ({ id: row.id, data: { status: row.status, closingDate: row.closingDate, attachments: typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments, detailsCaptured: row.detailsCaptured === 1, detailNeedsRefresh: row.detailNeedsRefresh === 1 } }));
     records.push(...candidates.filter(({data})=>scope==='all'||(/^open$/i.test(data.status?.trim()??'')&&notClosed(data.closingDate,now))));
     if (records.length > 3000) throw new Error('The catalog exceeds the 3,000-opportunity bulk limit. Use selected downloads.');
     if (!page.rows.length || (page.rows.length < 200 && !page.truncated)) break;

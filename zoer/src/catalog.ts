@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { buildModel, type SavedDocument } from '../dashboard/model';
 import { enrichNotice } from '../dashboard/procurement/enrich';
 import { classifyCatalogRecords } from './taxonomy';
+import { listingDetailRefresh } from './detail-policy';
 import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
 
 type Host = (method: string, input: any) => Promise<any>;
@@ -82,7 +83,9 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     if (found.length !== 1) throw new Error('Detail does not match exactly one saved opportunity.');
     const status = doc.record.detailFields?.find((field: any) => /^status$/i.test(field.label.trim()))?.value?.trim();
     // Place and contacts are re-derived from the merged row: the detail page adds the fields they come from.
-    const row = enrichNotice(sourceMetadata({ ...found[0].data, ...doc.record, ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId }, doc));
+    const row = enrichNotice(sourceMetadata({ ...found[0].data, ...doc.record,
+      ...listingDetailRefresh(found[0].data, doc.record, true),
+      ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId }, doc));
     records = [catalogRow('opportunity', row)];
     // A targeted refresh never edits the full crawl's progress; that crawl refetches its own pending details.
     const state = ['bcbid-targeted', 'bcbid-historical'].includes(doc.scope) ? { entries: [] } : await call('catalog.workspace', { keys: ['checkpoint:full'] });
@@ -96,7 +99,11 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
         // A listing's flattened label cell must not erase the last captured
         // authoritative tables. A subsequent detail capture replaces them.
         ...(old.commodityTablesCaptured || old.commoditySourceProvenance ? { commodities: old.commodities, mainCommodity: old.mainCommodity, commodityTablesCaptured: old.commodityTablesCaptured } : {}) } : {};
-      return catalogRow('opportunity', enrichNotice(sourceMetadata({ ...defaults, ...old, ...row, ...detail, starred: old?.starred ?? row.starred === true, lastRunId: runId }, doc)));
+      // Persist before the detail queue runs. A cap, skipped detail or failure
+      // must remain retryable even after this merge updates the listing values.
+      const refresh = listingDetailRefresh(old, row, doc.kind === 'scrape' && Boolean(row.detailFields?.length));
+      return catalogRow('opportunity', enrichNotice(sourceMetadata({ ...defaults, ...old, ...row, ...detail, ...refresh,
+        starred: old?.starred ?? row.starred === true, lastRunId: runId }, doc)));
     });
     if (doc.scope === 'all-current-public-opportunities') entries.push({ key: 'checkpoint:full', value: doc });
   } else throw new Error('Unsupported database document.');

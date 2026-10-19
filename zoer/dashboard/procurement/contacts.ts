@@ -30,11 +30,19 @@ export function telHref(phone: string): string | null {
 
 function add(list: NoticeContact[], contact: NoticeContact) {
   const name = contact.name ? clean(contact.name) : '', email = contact.email ? clean(contact.email) : '';
+  // Apply this to every path, including a whole "Contact" field and additional
+  // addresses, rather than just standalone Email fields and description text.
+  if (email && isPlatformEmail(email)) return;
   const next: NoticeContact = { ...(name ? { name } : {}), ...(email ? { email } : {}), ...(contact.phone ? { phone: clean(contact.phone) } : {}), ...(contact.role ? { role: clean(contact.role) } : {}), source: contact.source };
   if (!next.name && !next.email && !next.phone) return;
   const digits = (value?: string) => value?.replace(/\D/g, '') ?? '';
-  // Merge with a contact that shares an email or a phone number, rather than listing one person twice.
-  const same = list.find(item => (next.email && item.email?.toLowerCase() === next.email.toLowerCase()) || (next.phone && digits(item.phone) === digits(next.phone)) || (next.name && !next.email && !next.phone && item.name === next.name));
+  // Different buyers can share a switchboard. A phone match must not erase a
+  // second named contact or a different published email address.
+  const same = list.find(item => (next.email && item.email?.toLowerCase() === next.email.toLowerCase())
+    || (next.phone && digits(item.phone) === digits(next.phone)
+      && (!next.email || !item.email || next.email.toLowerCase() === item.email.toLowerCase())
+      && (!next.name || !item.name || next.name.toLowerCase() === item.name.toLowerCase()))
+    || (next.name && !next.email && !next.phone && item.name === next.name));
   if (same) { for (const key of ['name', 'email', 'phone', 'role'] as const) if (!same[key] && next[key]) same[key] = next[key]; return; }
   if (list.length < MAX_CONTACTS) list.push(next);
 }
@@ -55,14 +63,18 @@ const LABELLED = /^(?:(?:primary|procurement|purchasing|buyer|project|tender|bid
 const SINGLE = /^(?:(?:contact\s+)?(?:e-?mail(?:\s+address)?|phone(?:\s+number)?|telephone|tel\.?))\s*[:–-]\s*(.+)$/i;
 
 /** Contacts from free text: labelled lines, or a sentence inviting questions to an (non-platform) email address. */
-export function contactsFromText(text: unknown, source: NoticeContact['source'] = 'description'): NoticeContact[] {
+export function contactsFromText(text: unknown, source: NoticeContact['source'] = 'description', allowUnscopedEmail = true): NoticeContact[] {
   const list: NoticeContact[] = [];
   if (typeof text !== 'string' || !text.trim()) return list;
   const segments = text.slice(0, 50_000).split(/\n+|(?<=[.!?])\s+(?=[A-Z])/).map(segment => segment.trim()).filter(Boolean);
   for (const segment of segments) {
     const labelled = segment.match(LABELLED), single = segment.match(SINGLE);
     if (labelled) for (const contact of parseValue(labelled[1], source)) { if (!contact.email || !isPlatformEmail(contact.email)) add(list, contact); }
-    else if (single) { const email = emails(single[1])[0], phone = phones(single[1])[0]; if ((email && !isPlatformEmail(email)) || phone) add(list, { email: email && !isPlatformEmail(email) ? email : undefined, phone, source }); }
+    else if (single && (allowUnscopedEmail || /^contact\s+/i.test(segment))) {
+      const found = emails(single[1]).filter(email => !isPlatformEmail(email)), phone = phones(single[1])[0];
+      if (found.length) for (const [index, email] of found.entries()) add(list, { email, ...(index === 0 && phone ? { phone } : {}), source });
+      else if (phone) add(list, { phone, source });
+    }
     else for (const match of segment.matchAll(EMAIL)) {
       // "If you have any questions … email procurement@buyer.ca": the question words must lead to this address,
       // with no "technical"/"support" in between (that is the platform's help desk, not the buyer).
@@ -75,33 +87,67 @@ export function contactsFromText(text: unknown, source: NoticeContact['source'] 
 }
 
 const CONTACT_LABEL = /\bcontact\b|\battention\b|\bbuyer\b|\bprocurement (?:officer|specialist|lead)\b/i;
+const NON_BUYER_FIELD = /\b(?:supplier|vendor|support|help\s*desk|invoice|invoices|payment|payments)\b/i;
+const SUBMISSION_FIELD = /\b(?:submission|submissions|delivery)\b/i;
+const EMAIL_LABEL = /^(?:(?:primary|secondary|alternate|alternative|additional|backup|buyer|procurement|purchasing|project|tender|bid)\s+)*(?:contact(?:\s+\d+)?\s+)?e-?mail(?:\s+address)?(?:\s+\d+)?$/i;
+const PHONE_LABEL = /^(?:(?:primary|secondary|alternate|alternative|additional|backup|buyer|procurement|purchasing|project|tender|bid)\s+)*(?:contact(?:\s+\d+)?\s+)?(?:phone|telephone|tel\.?)(?:\s+number)?(?:\s+(?:ext(?:ension)?\.?|\d+))?$/i;
+
+/** A labelled secondary contact must never supply the primary person's name. */
+function contactGroup(label: string): string {
+  const qualifier = label.match(/\b(secondary|alternate|alternative|additional|backup)\b/i)?.[1]?.toLowerCase();
+  const number = label.match(/\bcontact\s+(\d+)\b|\s(\d+)$/i);
+  return qualifier ?? (number ? `contact-${number[1] ?? number[2]}` : 'primary');
+}
 /** BC Bid detail fields: "Contact First Name"/"Contact Last Name"/"Contact Email"/"Contact Phone", "Email", "Phone", "Contact". */
 export function contactsFromDetailFields(fields: unknown): NoticeContact[] {
   const list: NoticeContact[] = [];
   if (!Array.isArray(fields)) return list;
-  const primary: NoticeContact = { source: 'detail-field' };
-  let first = '', last = '', ext = '';
+  type ContactGroup = { contact: NoticeContact; first: string; last: string; ext: string; addresses: Array<{ email: string; priority: number }> };
+  const groups = new Map<string, ContactGroup>();
+  const groupFor = (label: string) => {
+    const key = contactGroup(label);
+    if (!groups.has(key)) groups.set(key, { contact: { source: 'detail-field' }, first: '', last: '', ext: '', addresses: [] });
+    return groups.get(key)!;
+  };
+  const addEmail = (group: ContactGroup, email: string, priority: number) => {
+    if (!isPlatformEmail(email) && !group.addresses.some(item => item.email.toLowerCase() === email.toLowerCase())) group.addresses.push({ email, priority });
+  };
   for (const field of fields) {
-    const label = clean(field?.label), value = clean(field?.value);
-    if (!label || !value) continue;
-    if (/first name/i.test(label) && CONTACT_LABEL.test(label)) first = value;
-    else if (/last name|surname/i.test(label) && CONTACT_LABEL.test(label)) last = value;
-    else if (/\bext(?:ension)?\b/i.test(label) && /phone|tel/i.test(label)) ext = value.replace(/\D/g, '');
-    else if (/e-?mail/i.test(label)) { const found = emails(value); if (found[0] && !isPlatformEmail(found[0])) primary.email ??= found[0]; }
-    else if (/phone|telephone|\btel\b/i.test(label) && !/fax/i.test(label)) primary.phone ??= phones(value)[0];
+    const label = clean(field?.label).replace(/\s*[:*]\s*$/, ''), value = clean(field?.value);
+    if (!label || !value || NON_BUYER_FIELD.test(label) || SUBMISSION_FIELD.test(label)) continue;
+    if (/first name/i.test(label) && CONTACT_LABEL.test(label)) groupFor(label).first ||= value;
+    else if (/last name|surname/i.test(label) && CONTACT_LABEL.test(label)) groupFor(label).last ||= value;
+    else if (PHONE_LABEL.test(label) && /\bext(?:ension)?\b/i.test(label)) groupFor(label).ext ||= value.replace(/\D/g, '');
+    else if (EMAIL_LABEL.test(label)) {
+      const group = groupFor(label);
+      for (const email of emails(value)) addEmail(group, email, /\bcontact\b/i.test(label) ? 0 : 1);
+    }
+    else if (PHONE_LABEL.test(label)) groupFor(label).contact.phone ??= phones(value)[0];
     else if (CONTACT_LABEL.test(label) && /\b(?:name|person|contact|attention)\b/i.test(label) && value.length <= 300) {
       // A whole contact in one field, e.g. "Contact: Jane Smith, jane@city.ca".
-      const [parsed, ...more] = parseValue(value, 'detail-field');
-      if (parsed) { primary.name ??= parsed.name ?? (looksLikeName(value) ? value : undefined); primary.email ??= parsed.email; primary.phone ??= parsed.phone; primary.role ??= parsed.role; }
-      for (const contact of more) add(list, contact);
+      const group = groupFor(label), parsed = parseValue(value, 'detail-field').filter(contact => !contact.email || !isPlatformEmail(contact.email));
+      const first = parsed[0];
+      if (first) { group.contact.name ??= first.name ?? (looksLikeName(value) ? value : undefined); group.contact.phone ??= first.phone; group.contact.role ??= first.role; }
+      for (const contact of parsed) if (contact.email) addEmail(group, contact.email, 0);
     }
   }
-  const name = [first, last].filter(Boolean).join(' ');
-  if (name) primary.name = name;
-  if (primary.phone && ext && !/ext|x\s*\d/i.test(primary.phone)) primary.phone = `${primary.phone} ext. ${ext}`;
-  if (primary.name || primary.email || primary.phone) list.unshift(primary);
+  for (const [, group] of [...groups.entries()].sort(([left], [right]) => Number(right === 'primary') - Number(left === 'primary'))) {
+    const { contact, first, last, ext } = group;
+    const name = [first, last].filter(Boolean).join(' ');
+    if (name) contact.name = name;
+    if (contact.phone && ext && !/ext|x\s*\d/i.test(contact.phone)) contact.phone = `${contact.phone} ext. ${ext}`;
+    const addresses = group.addresses.sort((left, right) => left.priority - right.priority);
+    // Extra addresses in one value do not prove that every address belongs to
+    // the first named person. Keep them without manufacturing that association.
+    if (addresses.length) for (const [index, { email }] of addresses.entries()) add(list, index === 0 ? { ...contact, email } : { email, source: 'detail-field' });
+    else add(list, contact);
+  }
   // Long free-text fields (e.g. "Delivery of Submissions") may carry a labelled contact too.
-  for (const field of fields) if (typeof field?.value === 'string' && field.value.length > 80) for (const contact of contactsFromText(field.value, 'description')) add(list, contact);
+  for (const field of fields) if (typeof field?.value === 'string' && field.value.length > 80 && !NON_BUYER_FIELD.test(field.label ?? '')) {
+    // An unqualified "Email:" in delivery instructions is a submission address.
+    // Explicit buyer contacts and enquiry invitations can still be read there.
+    for (const contact of contactsFromText(field.value, 'description', !SUBMISSION_FIELD.test(field.label ?? ''))) add(list, contact);
+  }
   return list.slice(0, MAX_CONTACTS);
 }
 

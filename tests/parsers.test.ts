@@ -403,6 +403,35 @@ describe("shared BC Bid parsers", () => {
     expect(result.detailFields.find((field) => field.label === "Email address")).toBeUndefined();
   });
 
+  it("keeps contact grids and labelled fields scoped inside their layout wrappers", () => {
+    // Synthetic regressions for the nested layout structures used by BC Bid.
+    const baseUrl = "https://bcbid.gov.bc.ca";
+    const pageUrl = `${baseUrl}/page.aspx/en/bpm/process_manage_extranet/1`;
+    const grid = parseDetailPage(`<table id="layout"><tbody><tr><td>
+      <table id="contact"><thead><tr><th>Email address</th></tr></thead><tbody><tr><td>buyer@buyer.ca</td></tr></tbody></table>
+      </td><td>Delivery of Submissions: Send bids through the portal.</td></tr></tbody></table>`, baseUrl, pageUrl);
+    expect(grid.detailFields).toEqual([{ label: "Email address", value: "buyer@buyer.ca" }]);
+
+    const fields = parseDetailPage(`<div data-iv-role="field">
+      <div class="iv-form-row"><span class="label-field">Email address</span><span>buyer@buyer.ca</span></div>
+      <div class="iv-form-row"><span class="label-field">Delivery of Submissions</span><span>Submit via the portal</span></div>
+      </div>`, baseUrl, pageUrl);
+    expect(fields.detailFields).toEqual([
+      { label: "Email address", value: "buyer@buyer.ca" }, { label: "Delivery of Submissions", value: "Submit via the portal" },
+    ]);
+  });
+
+  it("reads the visible email without concatenating hidden controls or old values", () => {
+    const html = `<div data-iv-role="field"><label class="label-field">Email address</label><div class="control-wrapper">
+      <input type="text" style="display:none" value="hidden-input@buyer.ca">
+      <span style="display:none">old@buyer.ca</span><span hidden>also-old@buyer.ca</span>
+      <span aria-hidden="true">hidden-copy@buyer.ca</span><span class="hidden">hidden-class@buyer.ca</span>
+      <a href="mailto:wrong@buyer.ca">alternate@buyer.ca</a>
+      </div></div>`;
+    expect(parseDetailPage(html, "https://bcbid.gov.bc.ca", "https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/1").detailFields)
+      .toEqual([{ label: "Email address", value: "alternate@buyer.ca" }]);
+  });
+
   it("handles missing optional sections", async () => {
     const html = await readFixture("detail", "without-optionals.html");
     const result = parseDetailPage(

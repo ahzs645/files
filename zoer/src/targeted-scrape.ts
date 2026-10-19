@@ -2,6 +2,8 @@ import * as cheerio from 'cheerio';
 import { parseCapture, type PageCapture } from './capture';
 import { isPauseError, paused } from './pause';
 import { LISTING_URL } from './scrape';
+import { BC_BID_DETAIL_TABS, needsDetail } from './detail-policy';
+export { needsDetail } from './detail-policy';
 
 /**
  * BC Bid targeted refresh: one buyer, region or keyword search instead of a full crawl.
@@ -14,7 +16,7 @@ import { LISTING_URL } from './scrape';
 export const TARGETED_SCOPE = 'bcbid-targeted';
 export const TARGETED_RECEIPT_KEY = 'checkpoint:targeted';
 export const TARGETED_MAX_PAGES = 70;
-/** Details are the expensive part (one capture plus three tabs each); a buyer refresh stays small. */
+/** Details are the expensive part (one capture plus the public tabs); a buyer refresh stays small. */
 export const TARGETED_MAX_DETAILS = 40;
 export const TARGET_FIELDS = {
   keyword: '#body_x_txtQuery',
@@ -23,7 +25,6 @@ export const TARGET_FIELDS = {
   region: '#body_x_selRfpIdAreaLevelAreaNode_search',
   industryCategory: '#body_x_selPtypeCode_search',
 } as const;
-const DETAIL_TABS = ['Opportunity Details', 'Addenda', 'Interested Supplier List'];
 const STOP = /manual|browser check|cancel|unavailable|budget|invalid.ticket/i;
 
 export type FilterKind = 'organization' | 'region' | 'keyword' | 'industryCategory';
@@ -144,13 +145,6 @@ export function parseTargetedListing(page: PageCapture) {
   }
 }
 
-/** A detail is fetched for a new notice, one never detailed, or one whose listing shows a change. */
-export function needsDetail(saved: any, row: any) {
-  if (!saved) return 'new';
-  if (!saved.detailFields?.length) return 'changed';
-  return ['amendments', 'lastUpdated', 'closingDate', 'description'].some(key => (saved[key] ?? null) !== (row[key] ?? null)) ? 'changed' : null;
-}
-
 export function validateTargetedCheckpoint(value: any, filters: TargetedFilters): TargetedCheckpoint | undefined {
   const key = (item: unknown) => typeof item === 'string' && item.length > 0 && item.length < 1000;
   if (value?.version !== 1 || value?.kind !== 'targeted' || value.phase !== 'detail' || !Array.isArray(value.pending) || value.pending.length > TARGETED_MAX_DETAILS
@@ -238,7 +232,7 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
     }
     for (const row of [...state.pending]) {
       try {
-        const page = await capture({ url: row.detailUrl, readTabs: DETAIL_TABS });
+        const page = await capture({ url: row.detailUrl, readTabs: BC_BID_DETAIL_TABS });
         const doc = parseCapture(page, 'detail').document;
         if (doc.record!.processId !== row.processId) throw new Error('BC Bid returned a different opportunity than requested.');
         artifactId = await store.save({ ...doc, scope: TARGETED_SCOPE, sourceKey: row.sourceKey });

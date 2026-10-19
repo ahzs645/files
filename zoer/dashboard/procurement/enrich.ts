@@ -3,7 +3,7 @@ import { placeForRecord } from './places';
 import { cleanRegionText } from './region';
 
 /** Bump when place or contact rules change, so the backfill action re-tags records tagged by older rules. */
-export const ENRICHMENT_VERSION = 2; // 2: CanadaBuys region text without `*` bullets.
+export const ENRICHMENT_VERSION = 3; // 3: scoped buyer contacts and multiple published addresses.
 /** Workspace state of the backfill action (procurement.enrich): cursor and running totals. */
 export const ENRICHMENT_KEY = 'procurement:enrichment:backfill';
 /** Sources whose records get `place`/`contacts` here; connectors set their own from the portal. */

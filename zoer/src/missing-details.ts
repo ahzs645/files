@@ -1,7 +1,8 @@
 import { parseCapture, type PageCapture } from './capture';
 import { isPauseError, ZoerPausedError } from './pause';
+import { needsDetail } from './detail-policy';
 
-/** Retry only saved BC Bid notices without details; each successful capture persists independently. */
+/** Retry missing or stale saved BC Bid details; each successful capture persists independently. */
 export async function captureMissingDetails(input: any, host: {
   read(ids: string[]): Promise<{ records: any[] }>;
   capture(url: string): Promise<PageCapture>;
@@ -28,7 +29,7 @@ export async function captureMissingDetails(input: any, host: {
   await progress();
   for (const id of ids) {
     const row = records.get(id)!;
-    if (row.data.detailFields?.length) { skipped++; continue; }
+    if (!needsDetail(row.data)) { skipped++; continue; }
     let page: PageCapture;
     try { page = await host.capture(row.data.detailUrl); }
     catch (error) {

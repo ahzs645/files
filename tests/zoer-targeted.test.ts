@@ -6,6 +6,7 @@ import { saveCatalogDocument } from '../zoer/src/catalog';
 import { LISTING_URL } from '../zoer/src/scrape';
 import { buildModel } from '../zoer/dashboard/model';
 import { receiptSummary } from '../zoer/dashboard/targeted';
+import { BC_BID_DETAIL_TABS } from '../zoer/src/detail-policy';
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 // Summary markup as observed on BC Bid's awards form (award-range-capture.ts) and by the old scraper's tag checks.
@@ -31,6 +32,39 @@ function harness(pages: (options: CaptureOptions, call: number) => any, saved = 
   return { browser, store, calls, docs, receipts };
 }
 
+/** Use the real catalog merge across runs: an in-memory `existing` stub that
+ * never saves listings would hide stale details becoming falsely unchanged.
+ */
+function durableHarness(last = 1) {
+  const records = new Map<string, any>(), entries = new Map<string, any>();
+  let revision = 0;
+  for (let number = 1; number <= last; number++) {
+    for (const row of parseTargetedListing(listing(number, last)).records) records.set('opportunity:' + row.sourceKey, {
+      id: 'opportunity:' + row.sourceKey, kind: 'opportunity', title: row.description,
+      data: { ...row, amendments: row.amendments - 1, starred: true,
+        detailFields: [{ label: 'Scope', value: 'Previously captured scope' }],
+        attachments: [{ url: 'https://bcbid.gov.bc.ca/bare.aspx/en/fil/download_public/previous-file', name: 'Previous file' }],
+        addenda: [], annotations: ['Retain review'] },
+    });
+  }
+  const host = async (method: string, input: any): Promise<any> => {
+    if (method === 'catalog.read') return { primary: true, revision, records: [...records.values()].filter(row => input.ids
+      ? input.ids.includes(row.id) : input.match && row.kind === input.match.kind && row.data[input.match.field] === input.match.value).map(row => structuredClone(row)) };
+    if (method === 'catalog.workspace') return { entries: input.keys.filter((key: string) => entries.has(key)).map((key: string) => ({ key, value: structuredClone(entries.get(key)) })) };
+    if (method === 'catalog.commit') {
+      if (input.revision !== revision) return { conflict: true };
+      for (const row of input.records ?? []) records.set(row.id, JSON.parse(JSON.stringify(row)));
+      for (const entry of input.entries ?? []) entries.set(entry.key, structuredClone(entry.value));
+      return { revision: ++revision };
+    }
+    throw Error(method);
+  };
+  const h = harness(options => options.applySearch && !options.pickFields ? cleared() : listing(options.continuePage ?? 1, last));
+  h.store.existing = async keys => new Map(keys.filter(key => records.has('opportunity:' + key)).map(key => [key, structuredClone(records.get('opportunity:' + key).data)]));
+  h.store.save = async doc => { h.docs.push(structuredClone(doc)); return saveCatalogDocument(host, doc, 'durable-test'); };
+  return { ...h, records, notices: () => [...records.values()].filter(row => row.kind === 'opportunity') };
+}
+
 describe('targeted BC Bid refresh', () => {
   it('validates bounded input and needs at least one filter', () => {
     expect(validateTargetedInput({ organization: '  Ministry  of Health ' })).toEqual({ organization: 'Ministry of Health', maxPages: 5, details: true });
@@ -47,7 +81,9 @@ describe('targeted BC Bid refresh', () => {
     const manifest=JSON.parse(readFileSync(new URL('../zoer/manifest.json',import.meta.url),'utf8'));
     const grant=manifest.integration.actions.find((a:any)=>a.id==='scrape.targeted').resourceLimits.maxBrowserPages;
     const cost=h.calls.reduce((n,r)=>n+Math.min(r.pageNumber??(r.continuePage?2:1),20)+(r.pageNumber===undefined?0:1)+(r.applySearch?2:0)+(r.pickFields?.length??0),0);
-    expect(cost + 40*4).toBeLessThanOrEqual(grant);
+    // One initial detail navigation plus every optional public tab is charged
+    // even when a particular notice does not publish all those tabs.
+    expect(cost + 40 * (1 + BC_BID_DETAIL_TABS.length)).toBeLessThanOrEqual(grant);
   });
   it('distinguishes lower-bound source counts, including markup, from exact totals', () => {
     const page=listing(1,1);
@@ -81,6 +117,8 @@ describe('targeted BC Bid refresh', () => {
       'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/226421',
       'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/226520',
       'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/226521']);
+    expect(h.calls.filter(call => call.url !== LISTING_URL).every(call =>
+      call.readTabs?.includes('Qualified Suppliers') && call.readTabs?.includes('Process Rules') && call.readTabs?.includes('Responses') && call.readTabs?.includes('Pricing'))).toBe(true);
     expect(h.calls.at(-1)).toEqual({ url: LISTING_URL, pageNumber: 1, applySearch: true, searchFields: [{ selector: TARGET_FIELDS.keyword, value: '' }] });
     expect(output).toMatchObject({ listingCount: 4, newCount: 2, changedCount: 1, detailCount: 3, pageCount: 2, totalPages: 2, truncated: false, filtersCleared: true, confirmed: { organization: 'Ministry of Health' } });
     expect(h.docs.filter(doc => doc.kind === 'listing').map(doc => doc.scope)).toEqual(['bcbid-targeted', 'bcbid-targeted']);
@@ -134,6 +172,53 @@ describe('targeted BC Bid refresh', () => {
     expect(output).toMatchObject({ pageCount: 2, truncated: true, detailCount: 0, detailsSkipped: 4 });
     expect(h.calls.filter(call => call.url !== LISTING_URL)).toEqual([]);
     expect(receiptSummary(h.receipts[0])!.notes).toEqual(['More result pages remain; raise Pages to include them.', '4 new or changed notices still need details.']);
+  });
+
+  it.each([{ label: 'absent', sourceId: undefined }, { label: 'legacy blank', sourceId: '' }])('keeps changed details retryable after a listing-only refresh ($label sourceId)', async ({ sourceId }) => {
+    const h = durableHarness();
+    for (const row of h.notices()) row.data.sourceId = sourceId;
+    const before = h.notices().map(row => structuredClone(row.data));
+    const skipped = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health', details: false });
+    expect(skipped).toMatchObject({ detailsSkipped: 2, detailCount: 0 });
+    expect(h.notices().every(row => row.data.detailNeedsRefresh === true)).toBe(true);
+    expect(h.notices().map(row => row.data.detailFields)).toEqual(before.map(row => row.detailFields));
+    expect(h.notices().map(row => row.data.attachments)).toEqual(before.map(row => row.attachments));
+    // The next listing is unchanged, but both outstanding details still run.
+    const retried = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health' });
+    expect(retried).toMatchObject({ changedCount: 2, detailCount: 2, detailsSkipped: 0 });
+    expect(h.notices().every(row => row.data.detailNeedsRefresh === false && row.data.starred && row.data.annotations[0] === 'Retain review')).toBe(true);
+    const unchanged = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health' });
+    expect(unchanged).toMatchObject({ changedCount: 0, detailCount: 0 });
+  });
+
+  it('retries changed notices beyond the 40-detail cap on the next refresh', async () => {
+    const h = durableHarness(21); // 42 changed notices across 21 listing pages.
+    const first = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health', maxPages: 21 });
+    expect(first).toMatchObject({ listingCount: 42, changedCount: 42, detailCount: 40, detailsSkipped: 2 });
+    const pending = h.notices().filter(row => row.data.detailNeedsRefresh).map(row => row.data.detailUrl);
+    expect(pending).toHaveLength(2);
+    h.calls.length = 0;
+    const next = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health', maxPages: 21 });
+    expect(next).toMatchObject({ listingCount: 42, changedCount: 2, detailCount: 2, detailsSkipped: 0 });
+    expect(h.calls.filter(call => call.url !== LISTING_URL).map(call => call.url)).toEqual(pending);
+  });
+
+  it('retains the detail retry marker after failure despite saving the updated listing', async () => {
+    const h = durableHarness();
+    const failed = h.notices()[0];
+    let fail = true;
+    const browser = { capture: async (options: CaptureOptions) => {
+      if (fail && options.url === failed.data.detailUrl) throw Error('Public detail request failed');
+      return h.browser.capture(options);
+    } };
+    const first = await scrapeTargeted(browser, h.store, { organization: 'Ministry of Health' });
+    expect(first).toMatchObject({ detailCount: 1, detailFailures: 1 });
+    expect(h.records.get(failed.id).data).toMatchObject({ detailNeedsRefresh: true, detailFields: failed.data.detailFields });
+    fail = false; h.calls.length = 0;
+    const retry = await scrapeTargeted(browser, h.store, { organization: 'Ministry of Health' });
+    expect(retry).toMatchObject({ changedCount: 1, detailCount: 1, detailFailures: 0 });
+    expect(h.calls.filter(call => call.url !== LISTING_URL).map(call => call.url)).toEqual([failed.data.detailUrl]);
+    expect(h.records.get(failed.id).data.detailNeedsRefresh).toBe(false);
   });
 
   it('pauses with remaining details and a resumed run fetches only those, then clears the search', async () => {

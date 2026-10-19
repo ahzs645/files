@@ -15,6 +15,7 @@ import { backfillEnrichment } from './procurement-enrichment';
 import { createRequestPacing, requestDelaySeconds } from './request-pacing';
 import { captureMissingDetails } from './missing-details';
 import { historicalSlice } from './historical-scrape';
+import { BC_BID_DETAIL_TABS } from './detail-policy';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -153,13 +154,13 @@ try {
       const state = await catalogCall('catalog.workspace', { keys: ['checkpoint:full'] });
       return state.entries.find((entry: any) => entry.key === 'checkpoint:full')?.value;
     }, resumedFromPause);
-    const output = await scrapeFull({ captureUrl: (url, pageNumber) => call('browser.capture-url', { ticket: browserTicket, url, pageNumber, ...(pageNumber ? {} : { readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }) }) }, save, resume, { runId });
+    const output = await scrapeFull({ captureUrl: (url, pageNumber) => call('browser.capture-url', { ticket: browserTicket, url, pageNumber, ...(pageNumber ? {} : { readTabs: BC_BID_DETAIL_TABS }) }) }, save, resume, { runId });
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.details') {
     if (!browserTicket || !catalogTicket) throw new Error('Select an agent-allowed saved browser and an existing catalog.');
     const output = await captureMissingDetails(request.input, {
       read: ids => catalogCall('catalog.read', { ids }),
-      capture: url => call('browser.capture-url', { ticket: browserTicket, url, readTabs: ['Opportunity Details', 'Addenda', 'Interested Supplier List'] }),
+      capture: url => call('browser.capture-url', { ticket: browserTicket, url, readTabs: BC_BID_DETAIL_TABS }),
       save,
     }, { paused: channel.pauseRequested });
     write({ protocolVersion: '1', runId, ok: true, output });
@@ -174,7 +175,8 @@ try {
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'scrape.sample') {
     if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
-    const output = await scrapeSample({ captureUrl: url => call('browser.capture-url', { ticket: browserTicket, url }) }, save, request.input?.detailLimit ?? 3);
+    const output = await scrapeSample({ captureUrl: url => call('browser.capture-url', { ticket: browserTicket, url,
+      ...(/\/process_manage_extranet\/\d+$/.test(url) ? { readTabs: BC_BID_DETAIL_TABS } : {}) }) }, save, request.input?.detailLimit ?? 3);
     write({ protocolVersion: '1', runId, ok: true, output });
   } else {
   const kind = request.action?.id === 'listing.capture' ? 'listing' : request.action?.id === 'detail.capture' ? 'detail' : null;

@@ -3,12 +3,21 @@ import { describe, it, expect } from 'vitest';
 import { scrapeSample, LISTING_URL } from '../zoer/src/scrape';
 import { buildModel, queryModel } from '../zoer/dashboard/model';
 import { normalizeContractAwardImportRecord } from '../packages/shared/src/contractAwards';
+import { BC_BID_DETAIL_TABS } from '../zoer/src/detail-policy';
 const fixture = (path: string) => readFileSync(new URL(`./fixtures/${path}`, import.meta.url), 'utf8');
 const page = (html: string, url = LISTING_URL) => ({ html, url, title: 'BC Bid', capturedAt: '2026-09-05T22:00:00Z' });
 const run = (status = 'succeeded') => ({ id: 'run-1', actionId: 'scrape.sample', createdAt: '2026-09-05T22:00:00Z', completedAt: '2026-09-05T22:01:00Z', status });
 const wrap = (document: any, i = 0) => ({ record: { id: `artifact-${i}`, runId: 'run-1', createdAt: `2026-09-05T22:00:0${i}Z` }, document });
 
 describe('Zoer scraping pipeline and source dashboard model', () => {
+  it('budgets the sample and selected-detail actions for every requested public tab', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../zoer/manifest.json', import.meta.url), 'utf8'));
+    const grant = (id: string) => manifest.integration.actions.find((action: any) => action.id === id).resourceLimits.maxBrowserPages;
+    const detailCost = 1 + BC_BID_DETAIL_TABS.length;
+    expect(1 + 3 * detailCost).toBeLessThanOrEqual(grant('scrape.sample'));
+    expect(50 * detailCost).toBeLessThanOrEqual(grant('scrape.details'));
+    expect(2 * detailCost).toBeLessThanOrEqual(grant('scrape.historical'));
+  });
   it('captures a listing page and details, checkpoints each result, and fills dashboard/detail/history queries', async () => {
     const saved: any[] = [], urls: string[] = [];
     const output = await scrapeSample({ captureUrl: async url => {

@@ -12,6 +12,9 @@ const REMOVABLE_TEXT_SELECTORS = [
     ".dropdown-clear",
     ".sr-only",
     ".tooltip-field",
+    ".hidden",
+    "[hidden]",
+    "[aria-hidden='true']",
     "button"
 ].join(", ");
 const FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field'], .field.readonly";
@@ -23,6 +26,7 @@ const FIELD_SELECTORS = ".iv-form-row, .iv-field-row, [data-iv-role='field'], .f
 function cleanText($, el) {
     const clone = el.clone();
     clone.find(REMOVABLE_TEXT_SELECTORS).remove();
+    clone.find("[style]").filter((_, node) => hasHiddenStyle($(node))).remove();
     // Preserve word boundaries between rich-text paragraphs and line breaks.
     clone.find("br").replaceWith(" ");
     clone.find("p, div, li").append(" ");
@@ -121,11 +125,16 @@ function fileNameFromUrl(url) {
         return tail ? decodeURIComponent(tail) : null;
     }
 }
-function extractFieldLabel(el) {
-    const label = (el.find(".label-field").first().length ? el.find(".label-field").first() : el.find("label").first()).clone();
+function extractFieldLabel($, el) {
+    // Layout wrappers can also carry data-iv-role="field". A child's first label
+    // belongs to that child; using it for the wrapper combines neighbouring values
+    // and then the first-wins merge hides the correctly scoped field below it.
+    const owned = (selector) => el.find(selector).filter((_, node) => $(node).closest(FIELD_SELECTORS)[0] === el[0]);
+    const fieldLabels = owned(".label-field");
+    const label = (fieldLabels.length ? fieldLabels.first() : owned("label").first()).clone();
     label.find(".tooltip-field, .sr-only").remove();
     return normalizeWhitespace(label.text().replace(/[:*]$/, "")) ||
-        normalizeWhitespace(el.find("[aria-label]").first().attr("aria-label") ?? "");
+        normalizeWhitespace(owned("[aria-label]").first().attr("aria-label") ?? "");
 }
 function extractFieldValue($, field) {
     const scopes = [
@@ -147,7 +156,7 @@ function extractFieldValue($, field) {
             .map((_, element) => {
             const input = $(element);
             const type = (input.attr("type") ?? "").toLowerCase();
-            if (type === "hidden" || type === "checkbox" || type === "radio") {
+            if (type === "hidden" || type === "checkbox" || type === "radio" || isHiddenContext($, input)) {
                 return "";
             }
             const value = input.val()?.toString() ?? input.attr("value") ?? input.text();
@@ -174,7 +183,7 @@ function readFieldRows($) {
         if (isHiddenContext($, el)) {
             return;
         }
-        let label = extractFieldLabel(el);
+        let label = extractFieldLabel($, el);
         const value = extractFieldValue($, el);
         // The host removes hidden textarea controls, including their aria-label.
         // BC Bid places this visible, unlabelled rich-text continuation immediately
@@ -207,7 +216,7 @@ function readGridFields($) {
     const fields = new Map();
     $("table").each((_, element) => {
         const table = $(element);
-        if (isHiddenContext($, table)) {
+        if (isHiddenContext($, table) || table.find("table").length > 0) {
             return;
         }
         const headers = getTableHeaders($, table);

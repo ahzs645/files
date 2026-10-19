@@ -7,6 +7,7 @@ import { LISTING_URL } from './scrape';
 import { isPauseError, paused, ZoerPausedError } from './pause';
 import { transientFailure } from './connectors/errors';
 import type { ResumableRequest } from './collection-run';
+import { BC_BID_DETAIL_TABS } from './detail-policy';
 export const HISTORICAL_KEY = 'checkpoint:historical';
 export const HISTORICAL_SCOPE = 'all-public-2015-2022';
 export const HISTORICAL_DATE_FIELDS = { from: '#body_x_txtRfpBeginDate', to: '#body_x_txtRfpBeginDatemax' };
@@ -125,7 +126,7 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
     if (cp.complete) return { resumable: 'done', output: cp, progress: progress() };
     if (cp.pending.length) {
       for (let i = 0; i < 2 && cp.pending.length; i++) {
-        const row = cp.pending[0], page = await pacedCapture({ url: row.detailUrl, readTabs: ['Opportunity Details'] });
+        const row = cp.pending[0], page = await pacedCapture({ url: row.detailUrl, readTabs: BC_BID_DETAIL_TABS });
         const doc = parseCapture(page, 'detail').document;
         if (doc.record!.processId !== row.processId) throw Error('BC Bid returned a different historical opportunity.');
         const type = doc.record!.detailFields.find((f: any) => f.label === 'Opportunity Type')?.value;

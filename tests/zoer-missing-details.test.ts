@@ -10,6 +10,13 @@ describe('capture only missing saved details',()=>{
   const result=await captureMissingDetails({recordIds:['opportunity:123','opportunity:124','opportunity:123']},{read:async()=>({records:[row(),row('124',[{}])]}),capture:async url=>{calls.push(url);return fixture(url);},save:async doc=>{saved.push(doc);return 'saved';}});
   expect(result).toEqual({completed:1,skipped:1,total:2});expect(calls).toHaveLength(1);expect(saved.filter(x=>x.kind==='detail')).toHaveLength(1);expect(saved.at(-1)).toMatchObject({scope:'bcbid-missing-details',detailsCompleted:1});
  });
+ it('recaptures a notice marked stale even when old detail fields remain available',async()=>{
+  const stale=row('123',[{label:'Scope',value:'Older scope'}]);
+  Object.assign(stale.data,{detailNeedsRefresh:true});
+  const calls:string[]=[];
+  const result=await captureMissingDetails({recordIds:['opportunity:123','opportunity:124']},{read:async()=>({records:[stale,row('124',[{label:'Scope',value:'Current scope'}])]}),capture:async url=>{calls.push(url);return fixture(url);},save:async()=> 'saved'});
+  expect(result).toEqual({completed:1,skipped:1,total:2});expect(calls).toEqual([stale.data.detailUrl]);
+ });
  it('validates the whole selection before making requests',async()=>{
   let captures=0;
   const host={read:async()=>({records:[row(),{...row('124'),data:{...row('124').data,detailUrl:'https://evil.test'}}]}),capture:async(url:string)=>{captures++;return fixture(url);},save:async()=>''};

@@ -13,6 +13,13 @@ describe('bulk attachment scope',()=>{
     const captured={...row('captured','Open','2027-01-01',[]),data:{...row('captured').data,attachments:[],detailFields:[{label:'Summary',value:'See external portal'}]}};
     expect(documentScope([captured,row('missing','Open','2027-01-01',[])],'current',Date.parse('2026-10-07'))).toMatchObject({missing:2,capturedWithoutLinks:1,missingDetails:['missing']});
   });
+  it('offers stale notices for recapture while retaining their saved links for download',async()=>{
+    const records=await readDocumentCandidates(async(_,input:any)=>input.ids?{revision:9}:{rows:[
+      {id:'opportunity:123',status:'Open',closingDate:'2027-01-01',attachments:'[{"url":"saved-file"}]',detailsCaptured:1,detailNeedsRefresh:1},
+      {id:'opportunity:124',status:'Open',closingDate:'2027-01-01',attachments:'[]',detailsCaptured:1,detailNeedsRefresh:0},
+    ]});
+    expect(documentScope(records,'current',Date.parse('2026-10-07'))).toMatchObject({ids:['opportunity:123'],links:1,missingDetails:['opportunity:123'],capturedWithoutLinks:1});
+  });
   it('reads every page with one revision and checks the revision again before publishing',async()=>{
     const calls:any[]=[];
     const records=await readDocumentCandidates(async(method,input:any)=>{calls.push(input);if(input.ids)return {revision:9};return input.parameters[0]?{rows:[{id:'last',attachments:'[]',detailsCaptured:1}]}:{rows:Array.from({length:200},(_,i)=>({id:String(i).padStart(3,'0'),attachments:'[{}]',detailsCaptured:0}))};});
