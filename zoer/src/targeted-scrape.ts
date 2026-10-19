@@ -125,18 +125,23 @@ export function verifyTargetedFilters(html: string, filters: TargetedFilters) {
   return confirmed;
 }
 
-/** Listing rows, allowing BC Bid's "0 Record(s)" page that has no grid table at all. */
-export function parseTargetedListing(page: PageCapture) {
-  // BC Bid can display a lower bound for expensive searches. Strip markup before
-  // reading it so "More than <strong>150</strong>" cannot become an exact total.
-  const $ = cheerio.load(page.html);
+/** BC Bid's displayed "N Record(s)" total, or its lower bound for expensive searches. */
+export function reportedListingTotal(html: string) {
+  // Strip markup before reading it so "More than <strong>150</strong>" cannot become an exact total.
+  const $ = cheerio.load(html);
   const nodeText = (node: any): string => node.type === 'text' ? node.data : (node.children ?? []).map(nodeText).join(' ');
   const text = $.root().toArray().map(nodeText).join(' ');
   const label = clean(text).match(/(?:More than\s*)?(\d[\d,]*)\s*Record\(s\)/i);
   const number = label ? Number(label[1].replace(/,/g,'')) : null;
   const reportedLowerBound = label && /^More than/i.test(label[0]) ? number : null;
   const totalReported = reportedLowerBound === null ? number : null;
-  const counts = {totalReported,reportedCountLabel:label?.[0] ?? null,reportedLowerBound};
+  return {totalReported,reportedCountLabel:label?.[0] ?? null,reportedLowerBound};
+}
+
+/** Listing rows, allowing BC Bid's "0 Record(s)" page that has no grid table at all. */
+export function parseTargetedListing(page: PageCapture) {
+  const counts = reportedListingTotal(page.html);
+  const { totalReported } = counts;
   try {
     return { records: parseCapture(page, 'listing').document.records!, ...counts };
   } catch (error) {

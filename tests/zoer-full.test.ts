@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { scrapeFull, validateCheckpoint } from '../zoer/src/full-scrape';
+import { compactCheckpoint, scrapeFull, validateCheckpoint } from '../zoer/src/full-scrape';
+import { reconciliationSummary } from '../zoer/src/listing-reconciliation';
 import { LISTING_URL } from '../zoer/src/scrape';
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 function listing(number: number, last = 9) {
@@ -39,6 +40,85 @@ describe('full current public crawl', () => {
     expect(urls).toEqual(checkpoint.pending.map((row: any) => row.detailUrl));
     expect(result.detailCount).toBe(2);
     expect(() => validateCheckpoint({ ...checkpoint, pending: [{ ...checkpoint.pending[0], detailUrl: 'https://evil.example/' }] })).toThrow('Invalid');
+  });
+});
+
+/** A source-shaped Open listing page with chosen process IDs, displayed total and countdown text. */
+function grid(number: number, ids: number[], { last, total, endsIn = '35 days' }: { last: number; total?: string; endsIn?: string }) {
+  const rows = ids.map(id => `<tr><td>Open</td><td>BC-${id}</td><td><a href="/page.aspx/en/bpm/process_manage_extranet/${id}">Opportunity ${id}</a></td><td>Services</td><td>RFP</td><td>Mar 08, 2026</td><td>Apr 15, 2026</td><td>${endsIn}</td><td>0</td><td>Mar 10, 2026</td><td>Ministry of Health</td><td>Ministry of Health</td><td>No</td></tr>`).join('');
+  return { url: LISTING_URL, title: 'BC Bid', capturedAt: new Date().toISOString(), pagination: { currentPage: number, hasNext: number < last, visiblePages: [number] },
+    html: `<html><body>${total ? `<div class="record-count">${total}</div>` : ''}<table id="body_x_grid_grd"><tbody>${rows}</tbody></table></body></html>` };
+}
+
+describe('full crawl listing reconciliation', () => {
+  // The 2026-10-19 audit: 724 displayed, 724 rows read, process 164592 at the end of page 45 and the start of page 46.
+  const unique = Array.from({ length: 723 }, (_, i) => 163918 + i);
+  const appearances = [...unique.slice(0, 675), 164592, ...unique.slice(675)];
+  const pages = Array.from({ length: 49 }, (_, i) => appearances.slice(i * 15, i * 15 + 15));
+  const page = (number: number) => grid(number, pages[number - 1], { last: 49, total: '724 Record(s)' });
+
+  it('keeps a repeated identity and reports 723 distinct of 724 displayed as short', async () => {
+    const saved: any[] = [];
+    const result = await scrapeFull({ captureUrl: async (url, number) => url === LISTING_URL ? page(number!) : detail(url) }, async doc => { saved.push(structuredClone(doc)); return String(saved.length); });
+    expect(appearances).toHaveLength(724);
+    expect(result).toMatchObject({ totalPages: 49, listingCount: 723, detailCount: 723 });
+    expect(result.reconciliation).toMatchObject({ status: 'short', difference: -1, identityRule: 'bc-bid-process-id',
+      sourceReportedTotal: { value: 724, label: '724 Record(s)', kind: 'exact' }, rawRowsCaptured: 724, uniqueIdentitiesCaptured: 723, pagesCaptured: 49,
+      duplicateAppearances: [{ sourceKey: '164592', appearances: [{ page: 45, row: 15 }, { page: 46, row: 1 }] }] });
+    // The duplicate row stays in page 46's saved listing; nothing is invented for the missing count.
+    const listings = saved.filter(doc => doc.kind === 'listing');
+    expect(listings.find(doc => doc.currentPage === 46).records[0].sourceKey).toBe('164592');
+    expect(listings.reduce((sum, doc) => sum + doc.records.length, 0)).toBe(724);
+    expect(saved.at(-1)).toMatchObject({ complete: true, reconciliation: { status: 'short' } });
+    expect(reconciliationSummary(result.reconciliation)).toMatch(/^Listing count short: BC Bid reported 724; 723 distinct opportunities were captured. \(724 rows read, 1 repeated\)$/);
+  });
+
+  it('carries listing counts through a compact resume mid-listing', async () => {
+    const saved: any[] = [];
+    await expect(scrapeFull({ captureUrl: async (url, number) => {
+      if (number === 47) throw new Error('Manual browser check required');
+      return url === LISTING_URL ? page(number!) : detail(url);
+    } }, async doc => { saved.push(structuredClone(doc)); return 'a'; })).rejects.toThrow('Manual');
+    const checkpoint = saved.at(-1);
+    expect(checkpoint).toMatchObject({ currentPage: 46, reconciliation: { status: 'unknown', rawRowsCaptured: 690, uniqueIdentitiesCaptured: 689 } });
+    const result = await scrapeFull({ captureUrl: async (url, number) => url === LISTING_URL ? page(number!) : detail(url) }, async () => 'b', compactCheckpoint(checkpoint));
+    expect(result.reconciliation).toMatchObject({ status: 'short', rawRowsCaptured: 724, uniqueIdentitiesCaptured: 723,
+      duplicateAppearances: [{ sourceKey: '164592', appearances: [{ page: 45, row: 15 }, { page: 46, row: 1 }] }] });
+  });
+
+  it('matches an exact total as complete and treats "More than" as a lower bound, not an expected count', async () => {
+    const crawl = async (total: string) => scrapeFull({ captureUrl: async (url, number) => url === LISTING_URL ? grid(number!, [200001, 200002, 200003], { last: 1, total }) : detail(url) }, async () => 'a');
+    expect((await crawl('3 Record(s)')).reconciliation).toMatchObject({ status: 'complete', difference: 0 });
+    const above = (await crawl('More than <strong>2</strong> Record(s)')).reconciliation;
+    expect(above).toMatchObject({ status: 'unknown', difference: null, uniqueIdentitiesCaptured: 3, sourceReportedTotal: { value: 2, kind: 'lower-bound' } });
+    expect(above.reason).toMatch(/lower bound .*cannot be confirmed complete/);
+    expect((await crawl('More than 150 Record(s)')).reconciliation).toMatchObject({ status: 'short', sourceReportedTotal: { value: 150, kind: 'lower-bound' } });
+    expect((await crawl('')).reconciliation).toMatchObject({ status: 'unknown', sourceReportedTotal: { kind: 'unavailable' } });
+  });
+
+  it('rechecks a page whose pager advanced before its rows, ignoring countdown changes', async () => {
+    const saved: any[] = [];
+    const calls: number[] = [];
+    const result = await scrapeFull({ captureUrl: async (url, number) => {
+      if (url !== LISTING_URL) return detail(url);
+      calls.push(number!);
+      // First read of page 2: new page number, page 1's rows with a ticking countdown.
+      if (number === 2 && calls.filter(n => n === 2).length === 1) return grid(2, [300001, 300002], { last: 2, total: '4 Record(s)', endsIn: '34 days 23 hours' });
+      return grid(number!, number === 1 ? [300001, 300002] : [300003, 300004], { last: 2, total: '4 Record(s)' });
+    } }, async doc => { saved.push(structuredClone(doc)); return 'a'; });
+    expect(calls).toEqual([1, 2, 2]);
+    expect(saved.filter(doc => doc.kind === 'listing').map(doc => [doc.currentPage, doc.records.map((row: any) => row.sourceKey)]))
+      .toEqual([[1, ['300001', '300002']], [2, ['300003', '300004']]]);
+    expect(result.reconciliation).toMatchObject({ status: 'complete', rawRowsCaptured: 4, duplicateAppearances: [] });
+  });
+
+  it('stops without saving a page whose rows never updated', async () => {
+    const saved: any[] = [];
+    await expect(scrapeFull({ captureUrl: async (_, number) => grid(number!, [300001, 300002], { last: 3, endsIn: `${number} days` }) },
+      async doc => { saved.push(structuredClone(doc)); return 'a'; })).rejects.toThrow('Page 2 was not saved');
+    expect(saved.filter(doc => doc.kind === 'listing').map(doc => doc.currentPage)).toEqual([1]);
+    expect(saved.at(-1)).toMatchObject({ complete: false, currentPage: 1, reconciliation: { status: 'unknown', rawRowsCaptured: 2 } });
+    expect(() => validateCheckpoint(saved.at(-1))).not.toThrow();
   });
 });
 

@@ -1,10 +1,21 @@
 import type { Checkpoint } from './full-scrape';
+import type { ListingEvidence } from './listing-reconciliation';
+
+/** Repeated identities as [id, page, row, page, row, ...] tuples keep a maximum-size resume under the approval limit. */
+const compactListing = (listing: ListingEvidence | null | undefined) => listing && { ...listing,
+  duplicateAppearances: listing.duplicateAppearances.map(item => [item.sourceKey, ...item.appearances.flatMap(at => [at.page, at.row])]) };
+function expandListing(value: any): ListingEvidence | null {
+  if (value == null) return null;
+  if (!Array.isArray(value.duplicateAppearances) || !value.duplicateAppearances.every((item: any) => Array.isArray(item) && item.length % 2 === 1)) throw new Error('Invalid compact scrape checkpoint.');
+  return { ...value, duplicateAppearances: value.duplicateAppearances.map(([sourceKey, ...rest]: any[]) =>
+    ({ sourceKey, appearances: Array.from({ length: rest.length / 2 }, (_, i) => ({ page: rest[2 * i], row: rest[2 * i + 1] })) })) };
+}
 /** Approval previews stay reviewable: BC Bid numeric IDs replace repeated public URLs. */
 export function compactCheckpoint(state: Checkpoint) {
   const pending = new Set(state.pending.map(row => row.sourceKey));
   if (!state.knownKeys.every(id => /^\d{1,10}$/.test(id)) || !state.pending.every(row => row.sourceKey === row.processId)) throw new Error('Checkpoint contains an unsupported opportunity identity.');
   return { version: 2, phase: state.phase, currentPage: state.currentPage, totalPages: state.totalPages, startedAt: state.startedAt,
-    completedIds: state.knownKeys.filter(id => !pending.has(id)), pendingIds: state.pending.map(row => row.processId) };
+    completedIds: state.knownKeys.filter(id => !pending.has(id)), pendingIds: state.pending.map(row => row.processId), listing: compactListing(state.listing) };
 }
 export function expandCheckpoint(value: any): unknown {
   if (value?.version !== 2) return value;
@@ -14,5 +25,6 @@ export function expandCheckpoint(value: any): unknown {
   return { version: 1, kind: 'scrape', scope: 'all-current-public-opportunities', limited: false, capturedAt: new Date().toISOString(),
     phase: value.phase, currentPage: value.currentPage, totalPages: value.totalPages, startedAt: value.startedAt, complete: false,
     knownKeys: [...completedIds, ...pendingIds], listingCount: completedIds.length + pendingIds.length, detailsCompleted: completedIds.length,
-    pending: pendingIds.map(processId => ({ sourceKey: processId, processId, detailUrl: `https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/${processId}` })), failures: [] };
+    pending: pendingIds.map(processId => ({ sourceKey: processId, processId, detailUrl: `https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/${processId}` })), failures: [],
+    listing: expandListing(value.listing) };
 }
