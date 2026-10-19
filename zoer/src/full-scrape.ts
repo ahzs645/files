@@ -4,6 +4,7 @@ export { compactCheckpoint } from './checkpoint';
 import { parseCapture, type PageCapture } from './capture';
 import { LISTING_URL } from './scrape';
 import { activeTargetFilters } from './targeted-scrape';
+import { DETAIL_CAPTURE_VERSION } from './detail-policy';
 
 interface PendingDetail { sourceKey: string; processId: string; detailUrl: string }
 export interface Checkpoint {
@@ -98,7 +99,8 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
         const page = await capture(row.detailUrl);
         const doc = parseCapture(page, 'detail').document;
         if (doc.record!.processId !== row.processId) throw new Error('BC Bid returned a different opportunity than requested.');
-        await save({ ...doc, sourceKey: row.sourceKey });
+        // The worker requests BC_BID_DETAIL_TABS for every full-crawl detail.
+        await save({ ...doc, sourceKey: row.sourceKey, detailCaptureVersion: DETAIL_CAPTURE_VERSION });
         state.pending = state.pending.filter(item => item.sourceKey !== row.sourceKey);
         state.detailsCompleted++;
       } catch (error) {

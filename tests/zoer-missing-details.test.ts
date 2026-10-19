@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { captureMissingDetails } from '../zoer/src/missing-details';
-const row=(id='123',details:any[]=[])=>({id:'opportunity:'+id,kind:'opportunity',data:{processId:id,detailFields:details,detailUrl:'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/'+id}});
+import { DETAIL_CAPTURE_VERSION } from '../zoer/src/detail-policy';
+const row=(id='123',details:any[]=[])=>({id:'opportunity:'+id,kind:'opportunity',data:{processId:id,detailFields:details,detailCaptureVersion:DETAIL_CAPTURE_VERSION,detailUrl:'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/'+id}});
 const html=readFileSync(new URL('./fixtures/detail/with-addenda.html',import.meta.url),'utf8');
 const fixture=(url:string)=>({url,html,title:'BC Bid',capturedAt:'2026-10-07T22:00:00Z'});
 describe('capture only missing saved details',()=>{
@@ -16,6 +17,13 @@ describe('capture only missing saved details',()=>{
   const calls:string[]=[];
   const result=await captureMissingDetails({recordIds:['opportunity:123','opportunity:124']},{read:async()=>({records:[stale,row('124',[{label:'Scope',value:'Current scope'}])]}),capture:async url=>{calls.push(url);return fixture(url);},save:async()=> 'saved'});
   expect(result).toEqual({completed:1,skipped:1,total:2});expect(calls).toEqual([stale.data.detailUrl]);
+ });
+ it('recaptures details saved before the current capture version and stamps the new capture',async()=>{
+  const legacy=row('123',[{label:'Scope',value:'Three-tab capture'}]);delete (legacy.data as any).detailCaptureVersion;
+  const calls:string[]=[],saved:any[]=[];
+  const result=await captureMissingDetails({recordIds:['opportunity:123','opportunity:124']},{read:async()=>({records:[legacy,row('124',[{label:'Scope',value:'Current scope'}])]}),capture:async url=>{calls.push(url);return fixture(url);},save:async doc=>{saved.push(doc);return 'saved';}});
+  expect(result).toEqual({completed:1,skipped:1,total:2});expect(calls).toEqual([legacy.data.detailUrl]);
+  expect(saved.find(doc=>doc.kind==='detail')).toMatchObject({scope:'bcbid-missing-details',detailCaptureVersion:DETAIL_CAPTURE_VERSION});
  });
  it('validates the whole selection before making requests',async()=>{
   let captures=0;

@@ -1,6 +1,6 @@
 import { parseCapture, type PageCapture } from './capture';
 import { isPauseError, ZoerPausedError } from './pause';
-import { needsDetail } from './detail-policy';
+import { DETAIL_CAPTURE_VERSION, needsDetail } from './detail-policy';
 
 /** Retry missing or stale saved BC Bid details; each successful capture persists independently. */
 export async function captureMissingDetails(input: any, host: {
@@ -47,7 +47,8 @@ export async function captureMissingDetails(input: any, host: {
     }
     const { document } = parseCapture(page, 'detail');
     if (document.record?.processId !== row.data.processId) throw new Error('BC Bid returned a different opportunity. Nothing was saved from that page.');
-    await host.save({ ...document, scope: 'bcbid-missing-details' });
+    // The worker requests BC_BID_DETAIL_TABS for these captures.
+    await host.save({ ...document, scope: 'bcbid-missing-details', detailCaptureVersion: DETAIL_CAPTURE_VERSION });
     completed++;
     await progress();
   }

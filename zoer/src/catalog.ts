@@ -84,7 +84,7 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     const status = doc.record.detailFields?.find((field: any) => /^status$/i.test(field.label.trim()))?.value?.trim();
     // Place and contacts are re-derived from the merged row: the detail page adds the fields they come from.
     const row = enrichNotice(sourceMetadata({ ...found[0].data, ...doc.record,
-      ...listingDetailRefresh(found[0].data, doc.record, true),
+      ...listingDetailRefresh(found[0].data, doc.record, true, doc.detailCaptureVersion),
       ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId }, doc));
     records = [catalogRow('opportunity', row)];
     // A targeted refresh never edits the full crawl's progress; that crawl refetches its own pending details.
@@ -101,7 +101,7 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
         ...(old.commodityTablesCaptured || old.commoditySourceProvenance ? { commodities: old.commodities, mainCommodity: old.mainCommodity, commodityTablesCaptured: old.commodityTablesCaptured } : {}) } : {};
       // Persist before the detail queue runs. A cap, skipped detail or failure
       // must remain retryable even after this merge updates the listing values.
-      const refresh = listingDetailRefresh(old, row, doc.kind === 'scrape' && Boolean(row.detailFields?.length));
+      const refresh = listingDetailRefresh(old, row, doc.kind === 'scrape' && Boolean(row.detailFields?.length), doc.detailCaptureVersion);
       return catalogRow('opportunity', enrichNotice(sourceMetadata({ ...defaults, ...old, ...row, ...detail, ...refresh,
         starred: old?.starred ?? row.starred === true, lastRunId: runId }, doc)));
     });

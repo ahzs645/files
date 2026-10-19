@@ -1,4 +1,5 @@
 import { parseCapture, type PageCapture } from './capture';
+import { DETAIL_CAPTURE_VERSION } from './detail-policy';
 import { parseListingPage, mergeOpportunityRecord } from '../../packages/shared/src/parsers/index';
 
 export const LISTING_URL = 'https://bcbid.gov.bc.ca/page.aspx/en/rfp/request_browse_public';
@@ -11,7 +12,8 @@ export async function scrapeSample(browser: { captureUrl(url: string): Promise<P
   const records = listing.document.records!.map(record => mergeOpportunityRecord(record, null));
   const document = { version: 1, kind: 'scrape', sourceUrl: page.url, capturedAt: page.capturedAt,
     scope: 'listing-page-and-details', limited: true, currentPage: pagination.currentPage, totalPages: pagination.totalPages,
-    detailLimit, detailsCompleted: 0, records, complete: false };
+    // The worker requests BC_BID_DETAIL_TABS for the sample's detail pages.
+    detailLimit, detailsCompleted: 0, records, complete: false, detailCaptureVersion: DETAIL_CAPTURE_VERSION };
   let artifactId = await save(document);
   for (const record of records.filter(record => record.detailUrl).slice(0, detailLimit)) {
     const detailPage = await browser.captureUrl(record.detailUrl!);

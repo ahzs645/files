@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import { parseCapture, type PageCapture } from './capture';
 import { isPauseError, paused } from './pause';
 import { LISTING_URL } from './scrape';
-import { BC_BID_DETAIL_TABS, needsDetail } from './detail-policy';
+import { BC_BID_DETAIL_TABS, DETAIL_CAPTURE_VERSION, needsDetail } from './detail-policy';
 export { needsDetail } from './detail-policy';
 
 /**
@@ -235,7 +235,7 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
         const page = await capture({ url: row.detailUrl, readTabs: BC_BID_DETAIL_TABS });
         const doc = parseCapture(page, 'detail').document;
         if (doc.record!.processId !== row.processId) throw new Error('BC Bid returned a different opportunity than requested.');
-        artifactId = await store.save({ ...doc, scope: TARGETED_SCOPE, sourceKey: row.sourceKey });
+        artifactId = await store.save({ ...doc, scope: TARGETED_SCOPE, sourceKey: row.sourceKey, detailCaptureVersion: DETAIL_CAPTURE_VERSION });
         state.detailsCompleted++;
       } catch (error) {
         if (isPauseError(error)) throw error;

@@ -6,7 +6,7 @@ import { saveCatalogDocument } from '../zoer/src/catalog';
 import { LISTING_URL } from '../zoer/src/scrape';
 import { buildModel } from '../zoer/dashboard/model';
 import { receiptSummary } from '../zoer/dashboard/targeted';
-import { BC_BID_DETAIL_TABS } from '../zoer/src/detail-policy';
+import { BC_BID_DETAIL_TABS, DETAIL_CAPTURE_VERSION, needsDetail } from '../zoer/src/detail-policy';
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 // Summary markup as observed on BC Bid's awards form (award-range-capture.ts) and by the old scraper's tag checks.
@@ -106,7 +106,7 @@ describe('targeted BC Bid refresh', () => {
     // 226420 is saved and unchanged (has details, same listing values); 226421 is saved without details.
     const page1 = (await import('../zoer/src/targeted-scrape')).parseTargetedListing(listing(1, 2)).records;
     const saved = new Map<string, any>([
-      ['226420', { ...page1[0], detailFields: [{ label: 'Status', value: 'Open' }] }],
+      ['226420', { ...page1[0], detailFields: [{ label: 'Status', value: 'Open' }], detailCaptureVersion: DETAIL_CAPTURE_VERSION }],
       ['226421', { ...page1[1], detailFields: [] }],
     ]);
     const h = harness((options, call) => options.applySearch && !options.pickFields ? cleared() : listing(call, 2), saved);
@@ -189,6 +189,29 @@ describe('targeted BC Bid refresh', () => {
     expect(h.notices().every(row => row.data.detailNeedsRefresh === false && row.data.starred && row.data.annotations[0] === 'Retain review')).toBe(true);
     const unchanged = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health' });
     expect(unchanged).toMatchObject({ changedCount: 0, detailCount: 0 });
+  });
+
+  it('recaptures unchanged notices whose details predate the current capture version, then leaves them alone', async () => {
+    const h = durableHarness();
+    for (const row of h.notices()) row.data.amendments += 1; // Listing values now match the saved notice.
+    const first = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health' });
+    expect(first).toMatchObject({ changedCount: 2, detailCount: 2, detailsSkipped: 0 });
+    expect(h.docs.filter(doc => doc.kind === 'detail').every(doc => doc.detailCaptureVersion === DETAIL_CAPTURE_VERSION)).toBe(true);
+    expect(h.notices().every(row => row.data.detailCaptureVersion === DETAIL_CAPTURE_VERSION && row.data.detailNeedsRefresh === false)).toBe(true);
+    const next = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health' });
+    expect(next).toMatchObject({ changedCount: 0, detailCount: 0 });
+  });
+
+  it('keeps a manual current-page detail capture eligible for a full-tab recapture', async () => {
+    const h = durableHarness();
+    const notice = h.notices()[0];
+    Object.assign(notice.data, { amendments: notice.data.amendments + 1, detailNeedsRefresh: true });
+    await h.store.save({ version: 1, kind: 'detail', scope: 'current-page', sourceUrl: notice.data.detailUrl, capturedAt: '2026-10-19T20:00:00Z',
+      record: { processId: notice.data.processId, detailFields: [{ label: 'Status', value: 'Open' }] } });
+    const data = h.records.get(notice.id).data;
+    expect(data).toMatchObject({ detailNeedsRefresh: false });
+    expect(data.detailCaptureVersion).toBeUndefined();
+    expect(needsDetail(data)).toBe('changed');
   });
 
   it('retries changed notices beyond the 40-detail cap on the next refresh', async () => {

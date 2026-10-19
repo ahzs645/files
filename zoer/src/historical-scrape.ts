@@ -7,7 +7,7 @@ import { LISTING_URL } from './scrape';
 import { isPauseError, paused, ZoerPausedError } from './pause';
 import { transientFailure } from './connectors/errors';
 import type { ResumableRequest } from './collection-run';
-import { BC_BID_DETAIL_TABS } from './detail-policy';
+import { BC_BID_DETAIL_TABS, DETAIL_CAPTURE_VERSION } from './detail-policy';
 export const HISTORICAL_KEY = 'checkpoint:historical';
 export const HISTORICAL_SCOPE = 'all-public-2015-2022';
 export const HISTORICAL_DATE_FIELDS = { from: '#body_x_txtRfpBeginDate', to: '#body_x_txtRfpBeginDatemax' };
@@ -133,7 +133,7 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
         if (!/^Historic Record/i.test(type || '')) throw Error('The requested historical detail is not identified as a historic record.');
         const info = historicalDetailMetadata(page, doc.record);
         cp.pending.shift(); cp.detailsCompleted++; cp.capturedAt = now();
-        await save({ ...doc, scope: 'bcbid-historical', sourceKey: row.sourceKey, record: { ...doc.record, ...info.metadata }, historicalReferences: info.references, historicalCheckpoint: cp });
+        await save({ ...doc, scope: 'bcbid-historical', sourceKey: row.sourceKey, detailCaptureVersion: DETAIL_CAPTURE_VERSION, record: { ...doc.record, ...info.metadata }, historicalReferences: info.references, historicalCheckpoint: cp });
       }
       // page=0 denotes a verified final listing page waiting for its detail queue.
       if (!cp.pending.length && cp.page === 0) { finishRange(); await flush(); }
