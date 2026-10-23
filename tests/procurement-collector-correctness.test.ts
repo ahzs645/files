@@ -69,4 +69,3 @@ describe('source identities and mapping provenance', () => {
     expect(mapped.mappingVersion).toBe(mapped.mappingProvenance.version);
   });
 });
-
