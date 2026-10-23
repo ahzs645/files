@@ -34,9 +34,12 @@ Legacy reviews do not contain a reliably comparable reviewed source revision. Th
 
 The source regression suite covers exact money parsing, legacy identity retention and ambiguity rejection, proposed mapping provenance, 4,001 complete review results through actual SQLite queries, tied timestamps, newer failed attempts, lifecycle consistency, and clock boundaries. Run:
 
+Use Bun and a qualified Zoer source checkout with its frontend dependencies installed. Host SQL validation and the collector inventory fixture default to the sibling `../zoer` checkout; set `ZOER_SOURCE_ROOT=/absolute/path/to/zoer` when using a linked or isolated files worktree. Native builds accept the same checkout through `ZOER_UI_ROOT`. The market TypeScript configuration expects the sibling checkout paths declared in `zoer/tsconfig.market.json`.
+
 ```
 npx vitest run tests/procurement-collector-correctness.test.ts tests/procurement-publication-correctness.test.ts tests/procurement-publication-projector.test.ts tests/procurement-clock.test.tsx tests/contract-award-identity-migration.test.ts tests/zoer-database.test.ts tests/zoer-review-analysis.test.ts tests/zoer-review-results.test.ts
 bun test zoer/dashboard/queries.test.ts
+bun zoer/test-collector-inventory.ts
 npm run typecheck --workspace @bcbid/shared
 npm run zoer:typecheck:market
 npm run zoer:build:native

@@ -6,7 +6,12 @@ import { publicationBuyerMetadata } from '../zoer/src/publication-metadata';
 import { readAnalysisRows, readCoverage, readUnreviewed } from '../zoer/dashboard/review-analysis';
 import { readReviewResults } from '../zoer/dashboard/review-results';
 import { latestReview } from '../zoer/dashboard/procurement/ai';
-import { validateCatalogSelect } from '../../zoer/backend/src/catalog-reader';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const readerSource = process.env.ZOER_SOURCE_ROOT
+  ? pathToFileURL(join(process.env.ZOER_SOURCE_ROOT, 'backend/src/catalog-reader.ts')).href
+  : new URL('../../zoer/backend/src/catalog-reader.ts', import.meta.url).href;
+const { validateCatalogSelect } = await import(readerSource);
 
 const award = normalizeContractAwardImportRecord({ opportunityId: 'A-123', opportunityDescription: 'Original title', contractNumber: 'C-1', contractValueText: '1,000.00', currency: 'CAD', successfulSupplier: 'Supplier', issuingOrganization: 'Buyer' } as any);
 const now = Date.parse('2026-10-22T12:00:00-07:00');
