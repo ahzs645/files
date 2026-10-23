@@ -2,7 +2,7 @@ import { buyerSearchMatches, annotateBuyerRecord, resolveBuyer, BUYER_MAPPING_VE
 import { closesWithin, deadlineState } from './procurement/deadline';
 import { queryBuyerProfiles } from './buyer-profiles';
 import { buildMarketView } from './market/model';
-import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
+import { buildContractAwardSearchText, deduplicateContractAwards, parseContractAwardValue, reconcileContractAwardIdentity } from '../../packages/shared/src/contractAwards';
 import { buildContractAwardAnalysisOverview, buildContractAwardEntityProfile, buildContractAwardEntityOptions } from '../../convex/contractAwardsAnalysisHelpers';
 import { isSourceCaptureRun } from './document-run';
 import { reconciliationSummary, type ListingReconciliation } from '../src/listing-reconciliation';
@@ -58,10 +58,11 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
         history.get(record.runId)!.set(found.sourceKey, next);
       }
     } else if (doc.kind === 'awards') {
+      deduplicateContractAwards(doc.records ?? []);
       for (const row of doc.records ?? []) {
-        const importKey = buildContractAwardImportKey(row);
+        const { importKey } = reconcileContractAwardIdentity(row, [...awards.values()]);
         const time = Date.parse(record.createdAt);
-        awards.set(importKey, { ...row, _id: importKey, _creationTime: time, importKey, contractValue: parseContractAwardValue(row.contractValueText), searchText: buildContractAwardSearchText(row), sourceFileName: doc.fileName, sourceUrl: doc.sourceUrl ?? null, createdAt: awards.get(importKey)?.createdAt ?? time, updatedAt: time });
+        awards.set(importKey, { ...row, _id: importKey, _creationTime: time, importKey, contractValue: parseContractAwardValue(row.contractValueText, row.currency), searchText: buildContractAwardSearchText(row), sourceFileName: doc.fileName, sourceUrl: doc.sourceUrl ?? null, createdAt: awards.get(importKey)?.createdAt ?? time, updatedAt: time });
       }
     }
   }

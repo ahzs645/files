@@ -105,6 +105,9 @@ export interface OpportunityFilters {
 }
 
 export interface ContractAwardImportRecord {
+  /** Stable source namespace and award ID, when the source actually supplies one. */
+  sourceId?: string;
+  sourceAwardId?: string;
   opportunityId: string | null;
   opportunityDescription: string;
   opportunityType: string | null;

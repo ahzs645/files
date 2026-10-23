@@ -5,7 +5,7 @@ import { scrapeFull, fullScrapeResume } from './full-scrape';
 import { createHostChannel, isPauseError, paused } from './pause';
 import { scrapeSample } from './scrape';
 import { scrapeTargeted, writeTargetedReceipt } from './targeted-scrape';
-import { normalizeContractAwardImportRecord, buildContractAwardImportKey, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
+import { normalizeContractAwardImportRecord, deduplicateContractAwards, hasMeaningfulContractAwardData } from '../../packages/shared/src/contractAwards';
 import { createInterface } from 'node:readline';
 import { parseCapture, type PageCapture } from './capture';
 import { collectionSlice, runCollection } from './collection-run';
@@ -125,11 +125,11 @@ try {
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'awards.import') {
     if (!Array.isArray(request.input?.records) || request.input.records.length > 200) throw new Error('Import at most 200 award rows per batch.');
-    const records = [...new Map(request.input.records.map((value: any) => {
+    const records = deduplicateContractAwards(request.input.records.map((value: any) => {
       const row = { ...normalizeContractAwardImportRecord(value), ...(typeof value?.starred === 'boolean' ? {starred:value.starred}:{}), ...(typeof value?.sourceUrl === 'string' ? {sourceUrl:value.sourceUrl}:{}) };
       if (!hasMeaningfulContractAwardData(row)) throw new Error('Award row has no meaningful data.');
-      return [buildContractAwardImportKey(row), row];
-    })).values()];
+      return row;
+    }));
     const artifactId = await save({ version: 1, kind: 'awards', records, fileName: request.input.fileName, capturedAt: new Date().toISOString() });
     write({ protocolVersion: '1', runId, ok: true, output: { artifactId, count: records.length } });
   } else if (request.action.id === 'opportunities.import') {

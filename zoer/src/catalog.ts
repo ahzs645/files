@@ -1,14 +1,31 @@
 import { filterReferenceRecords, sourceMetadata } from './source-metadata';
 import { isDeepStrictEqual } from 'node:util';
+import { createHash } from 'node:crypto';
+import { publicationBuyerMetadata } from './publication-metadata';
 import { buildModel, type SavedDocument } from '../dashboard/model';
 import { enrichNotice } from '../dashboard/procurement/enrich';
 import { classifyCatalogRecords } from './taxonomy';
 import { listingDetailRefresh } from './detail-policy';
-import { buildContractAwardImportKey, buildContractAwardSearchText, parseContractAwardValue } from '../../packages/shared/src/contractAwards';
+import { buildContractAwardImportKey, buildLegacyContractAwardImportKey, buildContractAwardSearchText, contractAwardIdentity, deduplicateContractAwards, normalizeContractAwardImportRecord, parseContractAwardMoney, reconcileContractAwardIdentity } from '../../packages/shared/src/contractAwards';
 
 type Host = (method: string, input: any) => Promise<any>;
+type AwardInventory = { revision: number; byIdentity: Map<string, Set<string>>; byId: Map<string, string> };
+// A worker keeps the same host channel for the whole action. Reuse its complete
+// identity index across captured pages, but invalidate on any outside revision.
+const awardInventories = new WeakMap<Host, AwardInventory>();
+function indexAward(inventory: AwardInventory, id: string, data: any) {
+  const prior = inventory.byId.get(id);
+  if (prior) inventory.byIdentity.get(prior)?.delete(id);
+  inventory.byId.delete(id);
+  const identity = contractAwardIdentity(data);
+  if (identity.status === 'legacy_unresolved') return;
+  inventory.byId.set(id, identity.key);
+  if (!inventory.byIdentity.has(identity.key)) inventory.byIdentity.set(identity.key, new Set());
+  inventory.byIdentity.get(identity.key)!.add(id);
+}
 const defaults = { descriptionText: '', detailFields: [], attachments: [], addenda: [], commodities: [], searchText: '' };
-export const catalogRow = (kind: string, row: any) => ({ id: kind + ':' + (kind === 'award' ? row.importKey : row.sourceKey), kind, title: kind === 'award' ? row.opportunityDescription : row.description, data: kind==='award' ? {...row,attachmentLookup:row.opportunityId?{kind:'opportunity',field:'opportunityId',value:row.opportunityId}:null} : row });
+export const catalogRow = (kind: 'award' | 'opportunity', row: any) => ({ id: kind + ':' + (kind === 'award' ? row.importKey : row.sourceKey), kind, title: kind === 'award' ? row.opportunityDescription : row.description,
+  data: { ...row, ...publicationBuyerMetadata(kind, row), ...(kind === 'award' ? { attachmentLookup: row.opportunityId ? { kind: 'opportunity', field: 'opportunityId', value: row.opportunityId } : null } : {}) } });
 export function metadata(doc: any, record: any) {
   const { records, ...summary } = doc;
   return { key: 'run:' + record.runId, value: { record, document: { ...summary, knownKeys: doc.knownKeys ?? records?.map((row: any) => row.sourceKey).filter(Boolean), recordsCount: records?.length ?? 0 } } };
@@ -62,15 +79,54 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     if (!found) throw new Error('The saved bid no longer exists.');
     records = [{ ...found, data: { ...found.data, starred: doc.starred } }];
   } else if (doc.kind === 'awards') {
-    const ids = doc.records.map((row: any) => 'award:' + buildContractAwardImportKey(row));
-    const previous = new Map((await call('catalog.read', { ids })).records.map((row: any) => [row.id, row.data]));
+    deduplicateContractAwards(doc.records);
+    const ids = new Set<string>(doc.records.flatMap((row: any) => [buildContractAwardImportKey(row), buildLegacyContractAwardImportKey(row)]).map((key: string) => 'award:' + key));
+    const previous = new Map<string, any>();
+    // Legacy keys contained mutable facts. Page once over the complete award inventory:
+    // exact field lookups miss normalized anchors and can silently omit byte-limited matches.
+    // Cache only identity-to-ID references, not complete source records.
+    const wanted = new Set<string>(doc.records.map((row: any) => contractAwardIdentity(row)).filter((identity: any) => identity.status !== 'legacy_unresolved').map((identity: any) => identity.key));
+    if (wanted.size) {
+      let inventory = awardInventories.get(call);
+      if (!inventory || inventory.revision !== initial.revision) {
+        inventory = { revision: initial.revision, byIdentity: new Map(), byId: new Map() };
+        let after = '';
+        while (true) {
+          const page = await call('catalog.read', { kind: 'award', after, limit: 200 });
+          if (page.revision !== initial.revision) throw new Error('Catalog changed; retry transaction.');
+          for (const item of page.records) indexAward(inventory, item.id, item.data);
+          if (!page.next) break;
+          if (typeof page.next !== 'string' || page.next <= after) throw new Error('Award identity inventory did not advance; retry safely.');
+          after = page.next;
+        }
+        awardInventories.set(call, inventory);
+      }
+      for (const key of wanted) for (const id of inventory.byIdentity.get(key) ?? []) ids.add(id);
+    }
+    const requestedIds = [...ids];
+    for (let offset = 0, size = 200; offset < requestedIds.length;) {
+      let page;
+      try { page = await call('catalog.read', { ids: requestedIds.slice(offset, offset + size) }); }
+      catch (error) {
+        if (size <= 1 || !/Record lookup too large/.test(String(error))) throw error;
+        size = Math.max(1, Math.floor(size / 2)); continue;
+      }
+      if (page.revision !== initial.revision) throw new Error('Catalog changed; retry transaction.');
+      for (const row of page.records) previous.set(row.id, row.data);
+      offset += size;
+    }
     records = doc.records.map((row: any) => {
-      const importKey = buildContractAwardImportKey(row), old: any = previous.get('award:' + importKey);
-      const candidate = catalogRow('award', { ...old, ...row, _id: importKey, _creationTime: old?._creationTime ?? time, importKey, contractValue: parseContractAwardValue(row.contractValueText), searchText: buildContractAwardSearchText(row), sourceFileName: doc.fileName ?? old?.sourceFileName, sourceUrl: doc.sourceUrl ?? row.sourceUrl ?? old?.sourceUrl ?? null, createdAt: old?.createdAt ?? time, updatedAt: old?.updatedAt ?? time, starred: old?.starred ?? row.starred === true });
+      const { importKey, previous: old, identity } = reconcileContractAwardIdentity(row, [...previous.values()]);
+      const contractValueParsed = parseContractAwardMoney(row.contractValueText, { currency: row.currency });
+      const sourceRevision = createHash('sha256').update(JSON.stringify(normalizeContractAwardImportRecord(row))).digest('hex');
+      const candidate = catalogRow('award', { ...old, ...row, _id: importKey, _creationTime: old?._creationTime ?? time, importKey, identityKey: identity.key, identityStatus: identity.status, identityVersion: identity.version, sourceRevision,
+        contractValueParsed, contractValue: contractValueParsed.value, searchText: buildContractAwardSearchText(row), sourceFileName: doc.fileName ?? old?.sourceFileName, sourceUrl: doc.sourceUrl ?? row.sourceUrl ?? old?.sourceUrl ?? null, createdAt: old?.createdAt ?? time, updatedAt: old?.updatedAt ?? time, starred: old?.starred ?? row.starred === true });
       // Do not manufacture a change by replacing updatedAt on every backfill.
       // Canonical JSON also omits undefined properties absent from SQLite JSON.
       if (old && isDeepStrictEqual(JSON.parse(JSON.stringify(candidate.data)), old)) return null;
       candidate.data.updatedAt = time;
+      candidate.data.observedAt = typeof doc.capturedAt === 'string' ? doc.capturedAt : now;
+      candidate.data.collectionRunId = runId;
       return candidate;
     }).filter(Boolean);
     if (doc.checkpoint) entries.push({ key: doc.checkpointKey === 'checkpoint:awards:recent' ? doc.checkpointKey : 'checkpoint:awards', value: { ...doc.checkpoint, runId } });
@@ -133,5 +189,10 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
   }
   const committed=await call('catalog.commit', { revision, records: classified.records, entries, history });
   if(committed.conflict) throw new Error('Catalog changed; retry transaction.');
+  const inventory = awardInventories.get(call);
+  if (inventory?.revision === initial.revision) {
+    for (const row of classified.records) if (row.kind === 'award') indexAward(inventory, row.id, row.data);
+    inventory.revision = committed.revision;
+  }
   return 'catalog:' + runId;
 }
