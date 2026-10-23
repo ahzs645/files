@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { fieldValidator, nullableNumber, nullableString, runCountsValidator, runProgressValidator, runStatusValidator } from "./validators";
+import { fieldValidator, nullableNumber, nullableString, awardMoneyValidator, runCountsValidator, runProgressValidator, runStatusValidator } from "./validators";
 export default defineSchema({
     opportunities: defineTable({
         sourceKey: v.string(),
@@ -66,6 +66,12 @@ export default defineSchema({
         .index("by_processId", ["processId"]),
     contractAwards: defineTable({
         importKey: v.string(),
+        sourceId: v.optional(v.string()),
+        sourceAwardId: v.optional(v.string()),
+        identityKey: v.optional(v.string()),
+        identityStatus: v.optional(v.union(v.literal('source_id'), v.literal('contract'), v.literal('legacy_unresolved'))),
+        identityVersion: v.optional(v.literal('award-identity-v2')),
+        contractValueParsed: v.optional(awardMoneyValidator),
         opportunityId: nullableString,
         opportunityDescription: v.string(),
         opportunityType: nullableString,
@@ -86,6 +92,10 @@ export default defineSchema({
         updatedAt: v.number()
     })
         .index("by_importKey", ["importKey"])
+        .index("by_identityKey", ["identityKey"])
+        .index("by_identityVersion", ["identityVersion"])
+        .index("by_sourceId_and_sourceAwardId", ["sourceId", "sourceAwardId"])
+        .index("by_opportunityId_and_contractNumber", ["opportunityId", "contractNumber"])
         .index("by_updatedAt", ["updatedAt"])
         .index("by_awardDate", ["awardDate"]),
     scrapeRuns: defineTable({

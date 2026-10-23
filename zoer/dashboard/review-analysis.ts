@@ -3,12 +3,18 @@
  * review coverage by source, and reviewed opportunities that close soon.
  */
 import { fieldLabel } from './procurement/ai';
-import { passedOrder } from './procurement/catalog';
-import { closesWithin, deadlineSortTime, deadlineState, zoneDate, type DeadlineState } from './procurement/deadline';
+import { deadlineSortTime, deadlineState, type DeadlineState } from './procurement/deadline';
+import { opportunityLifecycle } from './procurement/lifecycle';
 import { DEFAULT_SCALE, MONEY_ROLE_LABELS, checkFields, fieldValue, moneyRole, parsePrompt, type ReviewField } from './review-fields';
 
-type Query = (method: 'catalog.query', input: { statement: string; parameters: (string | number)[] }) => Promise<{ rows: any[] }>;
-const PAGE = 200, MAX_ROWS = 4000;
+type Query = (method: 'catalog.query', input: { statement: string; parameters: (string | number)[] }) => Promise<{ rows: any[]; truncated?: boolean }>;
+const PAGE = 200;
+
+async function completeQuery(query: Query, input: { statement: string; parameters: (string | number)[] }) {
+  const result = await query('catalog.query', input);
+  if (result.truncated) throw new Error('The catalog truncated a review projection page; narrow the selected fields before relying on totals.');
+  return result;
+}
 
 const data = (key: string) => `json_extract(rec.data,'$.${key}')`;
 // Same expressions as the Procurement search (procurement/catalog.ts), limited to the host's SQL functions.
@@ -25,7 +31,7 @@ export type AnalysisRow = {
 const parse = (text: unknown, fallback: any) => { if (typeof text !== 'string') return fallback; try { return JSON.parse(text) ?? fallback; } catch { return fallback; } };
 
 /**
- * Latest successful result per record and prompt, optionally for one prompt and source. With `promptVersion`,
+ * Latest successful attempt per record and prompt, optionally for one prompt and source. A newer failed attempt excludes an older success. With `promptVersion`,
  * only results from that version count (latest per record within it): field definitions can change between
  * versions, so results from different versions are never aggregated together.
  */
@@ -35,21 +41,24 @@ export async function readAnalysisRows(query: Query, scope: { promptId?: string;
   const sameVersion = scope.promptVersion !== undefined ? ' AND n.prompt_version=r.prompt_version' : '';
   if (scope.promptVersion !== undefined) { filters.push('r.prompt_version=?'); parameters.push(scope.promptVersion); }
   if (scope.source) { filters.push(`${SOURCE}=?`); parameters.push(scope.source); }
-  const statement = `SELECT r.record_id,r.prompt_id,r.prompt_version,r.created_at,json_extract(r.result,'$.fields') fields,json_extract(r.result,'$.labels') labels,
+  const statement = `SELECT r.id,r.record_id,r.prompt_id,r.prompt_version,r.created_at,json_extract(r.result,'$.fields') fields,json_extract(r.result,'$.labels') labels,
     rec.title,rec.kind,${SOURCE} source,${DEADLINE} deadline,${BUYER} buyer,${data('status')} status
     FROM reviews r JOIN records rec ON rec.id=r.record_id
-    WHERE ${filters.join(' AND ')} AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND n.status='succeeded' AND n.created_at>r.created_at${sameVersion})
-    ORDER BY r.created_at DESC,r.id LIMIT ? OFFSET ?`;
+    WHERE ${filters.join(' AND ')} AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND CASE WHEN n.created_at>r.created_at OR n.created_at=r.created_at AND n.id>r.id THEN 1 ELSE 0 END=1${sameVersion})
+    AND r.id>? ORDER BY r.id LIMIT ?`;
   const rows: AnalysisRow[] = [];
-  for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
-    const page = (await query('catalog.query', { statement, parameters: [...parameters, PAGE, offset] })).rows;
+  let after = '';
+  while (true) {
+    const page = (await completeQuery(query, { statement, parameters: [...parameters, after, PAGE] })).rows;
     rows.push(...page.map(row => ({
       recordId: row.record_id, promptId: row.prompt_id, promptVersion: row.prompt_version, reviewedAt: row.created_at, title: row.title ?? row.record_id, kind: row.kind,
       source: row.source, deadline: row.deadline ?? null, buyer: row.buyer ?? '', status: row.status ?? null, fields: parse(row.fields, {}), labels: parse(row.labels, []),
     })));
     if (page.length < PAGE) return { rows, truncated: false };
+    const next = page.at(-1)?.id;
+    if (typeof next !== 'string' || next <= after) throw new Error('Review projection did not advance; reload the catalog.');
+    after = next;
   }
-  return { rows, truncated: true };
 }
 
 export type PromptVersionCount = { version: number; records: number };
@@ -71,17 +80,34 @@ export async function readPromptVersions(query: Query, promptId: string, current
 
 /** The saved instructions of one prompt version, read from a result it produced (older versions are not stored elsewhere). */
 export async function readVersionInstructions(query: Query, promptId: string, version: number): Promise<string | undefined> {
-  const { rows } = await query('catalog.query', { parameters: [promptId, version], statement: `SELECT json_extract(r.result,'$.prompt.instructions') instructions FROM reviews r
-    WHERE r.prompt_id=? AND r.prompt_version=? AND r.status='succeeded' ORDER BY r.created_at DESC LIMIT 1` });
+  const { rows } = await completeQuery(query, { parameters: [promptId, version], statement: `SELECT json_extract(r.result,'$.prompt.instructions') instructions FROM reviews r
+    WHERE r.prompt_id=? AND r.prompt_version=? AND r.status='succeeded' ORDER BY r.created_at DESC,r.id DESC LIMIT 1` });
   return typeof rows[0]?.instructions === 'string' ? rows[0].instructions : undefined;
 }
 
-/** Open opportunities per source, and how many have a categorizing review. */
-export async function readCoverage(query: Query) {
-  const { rows } = await query('catalog.query', { parameters: [], statement: `SELECT ${SOURCE} source,count(*) open,
-    count(CASE WHEN EXISTS (SELECT 1 FROM reviews r WHERE r.record_id=rec.id AND ${CATEGORIZING}) THEN 1 END) reviewed
-    FROM records rec WHERE rec.kind='opportunity' AND lower(coalesce(${data('status')},'open')) IN ('open','active','') GROUP BY source ORDER BY open DESC` });
-  return rows.map(row => ({ source: String(row.source), open: Number(row.open), reviewed: Number(row.reviewed) }));
+/** Open opportunities per source, using the same status/deadline rules as closingSoon and the dashboard. */
+export async function readCoverage(query: Query, asOf = Date.now()) {
+  const coverage = new Map<string, { source: string; open: number; reviewed: number; reviewFailed: number }>();
+  let after = '';
+  while (true) {
+    const { rows } = await completeQuery(query, { parameters: [after, PAGE], statement: `SELECT rec.id,${SOURCE} source,${DEADLINE} deadline,${data('status')} status,
+      CASE WHEN EXISTS (SELECT 1 FROM reviews r WHERE r.record_id=rec.id AND ${CATEGORIZING}
+        AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND CASE WHEN n.created_at>r.created_at OR n.created_at=r.created_at AND n.id>r.id THEN 1 ELSE 0 END=1)) THEN 1 ELSE 0 END reviewed,
+      CASE WHEN EXISTS (SELECT 1 FROM reviews r WHERE r.record_id=rec.id AND r.status='failed' AND r.prompt_id NOT LIKE 'procurement:%' AND r.prompt_id NOT LIKE 'evidence:%'
+        AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND CASE WHEN n.created_at>r.created_at OR n.created_at=r.created_at AND n.id>r.id THEN 1 ELSE 0 END=1)) THEN 1 ELSE 0 END failed
+      FROM records rec WHERE rec.kind='opportunity' AND rec.id>? ORDER BY rec.id LIMIT ?` });
+    for (const row of rows) {
+      if (!opportunityLifecycle(row, asOf).open) continue;
+      const source = String(row.source), group = coverage.get(source) ?? { source, open: 0, reviewed: 0, reviewFailed: 0 };
+      group.open++; group.reviewed += Number(row.reviewed) ? 1 : 0; group.reviewFailed += Number(row.failed) ? 1 : 0;
+      coverage.set(source, group);
+    }
+    if (rows.length < PAGE) break;
+    const next = rows.at(-1)?.id;
+    if (typeof next !== 'string' || next <= after) throw new Error('Opportunity coverage did not advance; reload the catalog.');
+    after = next;
+  }
+  return [...coverage.values()].sort((a, b) => b.open - a.open || a.source.localeCompare(b.source));
 }
 
 export type Bucket = { label: string; count: number; recordIds: string[] };
@@ -224,7 +250,7 @@ export const deadlineTime = (raw: string | null): number | null => deadlineSortT
  */
 export function closingSoon(rows: AnalysisRow[], now = Date.now(), days = 14): Array<AnalysisRow & { time: number; state: DeadlineState }> {
   const seen = new Set<string>();
-  return rows.filter(row => row.kind === 'opportunity' && closesWithin(row.deadline, days, now) && !seen.has(row.recordId) && seen.add(row.recordId))
+  return rows.filter(row => row.kind === 'opportunity' && opportunityLifecycle(row, now, days).closingSoon && !seen.has(row.recordId) && seen.add(row.recordId))
     .map(row => ({ ...row, time: deadlineSortTime(row.deadline)!, state: deadlineState(row.deadline, now) }))
     .sort((a, b) => a.time - b.time);
 }
@@ -236,9 +262,19 @@ export function scoreField(promptText: string | undefined): ReviewField | undefi
 
 /** Open opportunities from one source with no categorizing review yet, upcoming deadlines first. */
 export async function readUnreviewed(query: Query, source: string, limit = 50, now = Date.now()) {
-  const { rows } = await query('catalog.query', { parameters: [source, zoneDate(now), limit], statement: `SELECT rec.id FROM records rec
-    WHERE rec.kind='opportunity' AND lower(coalesce(${data('status')},'open')) IN ('open','active','') AND ${SOURCE}=?
-    AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.record_id=rec.id AND ${CATEGORIZING})
-    ORDER BY ${passedOrder(DEADLINE)},${DEADLINE},rec.id LIMIT ?` });
-  return rows.map(row => String(row.id));
+  const candidates: Array<{ id: string; time: number }> = [];
+  let after = '';
+  while (true) {
+    const { rows } = await completeQuery(query, { parameters: [source, after, PAGE], statement: `SELECT rec.id,${DEADLINE} deadline,${data('status')} status FROM records rec
+      WHERE rec.kind='opportunity' AND ${SOURCE}=? AND rec.id>?
+      AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.record_id=rec.id AND ${CATEGORIZING}
+        AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND CASE WHEN n.created_at>r.created_at OR n.created_at=r.created_at AND n.id>r.id THEN 1 ELSE 0 END=1))
+      ORDER BY rec.id LIMIT ?` });
+    for (const row of rows) if (opportunityLifecycle(row, now).open) candidates.push({ id: String(row.id), time: deadlineSortTime(row.deadline) ?? Infinity });
+    if (rows.length < PAGE) break;
+    const next = rows.at(-1)?.id;
+    if (typeof next !== 'string' || next <= after) throw new Error('Unreviewed opportunity inventory did not advance; reload the catalog.');
+    after = next;
+  }
+  return candidates.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id)).slice(0, Math.min(200, Math.max(1, limit))).map(row => row.id);
 }

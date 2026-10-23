@@ -1,8 +1,9 @@
-import { buildContractAwardImportKey, buildContractAwardSearchText, hasMeaningfulContractAwardData, normalizeContractAwardImportRecord, parseContractAwardValue, } from "@bcbid/shared";
+import { buildContractAwardImportKey, deduplicateContractAwards, buildContractAwardSearchText, hasMeaningfulContractAwardData, normalizeContractAwardImportRecord, parseContractAwardMoney, contractAwardIdentity, } from "@bcbid/shared";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { action, mutation } from "./_generated/server";
+import { action, internalMutation, mutation } from "./_generated/server";
 import { contractAwardImportValidator } from "./validators";
+import { assertAwardIdentityIndexReady, backfillAwardIdentityBatch, resolveAwardImportIdentity } from './contractAwardIdentityMigration';
 const MAX_LIST_LIMIT = 200;
 const CONTRACT_AWARD_PAGE_SIZE = 200;
 const CONTRACT_AWARD_PAGE_MAX_BYTES = 8_000_000;
@@ -133,15 +134,24 @@ export const summary = action({
         };
     },
 });
+export const backfillIdentityBatch = internalMutation({
+    args: {},
+    returns: v.object({ updated: v.number(), done: v.boolean() }),
+    handler: async (ctx) => backfillAwardIdentityBatch(ctx.db),
+});
 export const importBatch = mutation({
     args: {
         records: v.array(contractAwardImportValidator),
         fileName: v.optional(v.union(v.string(), v.null())),
     },
+    returns: v.object({ received: v.number(), processed: v.number(), deduped: v.number(), inserted: v.number(), updated: v.number() }),
     handler: async (ctx, args) => {
+        if (args.records.length > 200)
+            throw new Error('Import at most 200 award rows per batch.');
+        await assertAwardIdentityIndexReady(ctx.db);
         const now = Date.now();
         const dedupedRecords = new Map();
-        for (const record of args.records) {
+        for (const record of deduplicateContractAwards(args.records)) {
             const normalized = normalizeContractAwardImportRecord(record);
             if (!hasMeaningfulContractAwardData(normalized)) {
                 continue;
@@ -150,9 +160,16 @@ export const importBatch = mutation({
         }
         let inserted = 0;
         let updated = 0;
-        for (const [importKey, record] of dedupedRecords) {
+        for (const record of dedupedRecords.values()) {
+            const identity = contractAwardIdentity(record);
+            const { importKey, previous: existing } = await resolveAwardImportIdentity(ctx.db, record);
+            const contractValueParsed = parseContractAwardMoney(record.contractValueText, { currency: record.currency });
             const payload = {
                 importKey,
+                sourceId: record.sourceId ?? 'bc-bid',
+                ...(record.sourceAwardId ? { sourceAwardId: record.sourceAwardId } : {}),
+                identityKey: identity.key, identityStatus: identity.status, identityVersion: identity.version,
+                contractValueParsed,
                 opportunityId: record.opportunityId,
                 opportunityDescription: record.opportunityDescription,
                 opportunityType: record.opportunityType,
@@ -161,7 +178,7 @@ export const importBatch = mutation({
                 contractNumber: record.contractNumber,
                 contactEmail: record.contactEmail,
                 contractValueText: record.contractValueText,
-                contractValue: parseContractAwardValue(record.contractValueText),
+                contractValue: contractValueParsed.value,
                 currency: record.currency,
                 successfulSupplier: record.successfulSupplier,
                 supplierAddress: record.supplierAddress,
@@ -171,10 +188,6 @@ export const importBatch = mutation({
                 sourceFileName: args.fileName ?? null,
                 updatedAt: now,
             };
-            const existing = await ctx.db
-                .query("contractAwards")
-                .withIndex("by_importKey", (queryBuilder) => queryBuilder.eq("importKey", importKey))
-                .unique();
             if (existing) {
                 await ctx.db.patch(existing._id, payload);
                 updated += 1;

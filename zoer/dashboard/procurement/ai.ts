@@ -4,8 +4,12 @@ import { MONEY_ROLE_LABELS, checkFields, fieldValue, isBudgetRole, moneyRole, pa
 /** Evidence runs (on-demand modes) are saved as reviews with a `procurement:` prompt id and a `purpose`. */
 export const isEvidence = (review: any) => !!review?.result?.purpose || String(review?.prompt_id ?? '').startsWith('procurement:') || String(review?.prompt_id ?? '').startsWith('evidence:');
 /** The newest successful categorizing review (not an on-demand evidence run). */
-export const latestReview = (reviews: any[] = []) => reviews.find(review => review.status === 'succeeded' && review.result && !isEvidence(review));
-export const latestEvidence = (reviews: any[] = [], purpose: string) => reviews.find(review => review.status === 'succeeded' && review.result?.purpose === purpose);
+const newest = (a: any, b: any) => {
+  const compared = (left: unknown, right: unknown) => String(left ?? '') < String(right ?? '') ? 1 : String(left ?? '') > String(right ?? '') ? -1 : 0;
+  return compared(a.created_at ?? a.createdAt, b.created_at ?? b.createdAt) || compared(a.id, b.id);
+};
+export const latestReview = (reviews: any[] = []) => reviews.filter(review => review.status === 'succeeded' && review.result && !isEvidence(review)).sort(newest)[0];
+export const latestEvidence = (reviews: any[] = [], purpose: string) => reviews.filter(review => review.status === 'succeeded' && review.result?.purpose === purpose).sort(newest)[0];
 
 export type LabelGroup = 'Work type' | 'Requirements' | 'Signals';
 const REQUIREMENT = /requir|bond|clearance|meeting|insurance|certif|licen|security|mandatory|\bcor\b|designation|registration|seal|wcb|worksafe/i;

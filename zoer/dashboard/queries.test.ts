@@ -1,6 +1,11 @@
-import { validateCatalogSelect } from '../../../zoer/backend/src/catalog-reader';
 import { test, expect, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const readerSource = process.env.ZOER_SOURCE_ROOT
+  ? pathToFileURL(join(process.env.ZOER_SOURCE_ROOT, 'backend/src/catalog-reader.ts')).href
+  : new URL('../../../zoer/backend/src/catalog-reader.ts', import.meta.url).href;
+const { validateCatalogSelect } = await import(readerSource);
 const db = new Database(':memory:');
 db.exec('CREATE TABLE records(id TEXT PRIMARY KEY,kind TEXT,data TEXT)');
 db.exec('CREATE TABLE documents(id TEXT PRIMARY KEY,record_id TEXT,status TEXT)');
@@ -51,6 +56,17 @@ test('the shared catalog spans every source, filters by source and rejects inval
   expect(sorted.items[0].sourceId).toBe('canadabuys');
   await expect(queryCatalog('catalog.rows',{kind:'opportunity',sources:'bc-bid'},model,1)).rejects.toThrow('Invalid source filter');
   await expect(queryCatalog('catalog.rows',{kind:'opportunity',sources:[42]},model,1)).rejects.toThrow('Invalid source filter');
+});
+test('award summary exposes aggregate totals and supplier count as named values', async () => {
+  db.query("UPDATE records SET data=json_set(data,'$.issuingOrganization','Buyer') WHERE kind='award'").run();
+  db.query("UPDATE records SET data=json_set(data,'$.issuingOrganization','Buyer','$.successfulSupplier',?) WHERE id=?").run('Supplier A','award:0000');
+  db.query("UPDATE records SET data=json_set(data,'$.issuingOrganization','Buyer','$.successfulSupplier',?) WHERE id=?").run('Supplier B','award:0001');
+  revision++;
+  const summary=await queryCatalog('contractAwards.summary',{},model,revision);
+  expect(summary.total).toBe(413);
+  expect(summary.suppliers).toBe(2);
+  expect(summary.organizations).toBe(1);
+  expect(summary['0']).toBeUndefined();
 });
 test('full and starred exports include all pages and original details only when requested', async () => {
   calls.length=0;

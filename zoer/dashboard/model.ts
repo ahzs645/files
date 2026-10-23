@@ -1,5 +1,6 @@
 import { buyerSearchMatches, annotateBuyerRecord, resolveBuyer, BUYER_MAPPING_VERSION } from './market/buyers';
-import { closesWithin, deadlineState } from './procurement/deadline';
+import { opportunityLifecycle } from './procurement/lifecycle';
+import { deadlineState } from './procurement/deadline';
 import { queryBuyerProfiles } from './buyer-profiles';
 import { buildMarketView } from './market/model';
 import { buildContractAwardSearchText, deduplicateContractAwards, parseContractAwardValue, reconcileContractAwardIdentity } from '../../packages/shared/src/contractAwards';
@@ -98,8 +99,9 @@ export function queryModel(model: Model, name: string, args: any = {}): any {
   // A saved "Open" status goes stale; a passed closing date wins. Shared rules (procurement/deadline.ts): a
   // same-day date-only deadline is not closed, and calendar days are Vancouver days, not UTC.
   const notClosed = (row: { closingDate?: string }) => !row.closingDate || deadlineState(row.closingDate) !== 'closed';
-  if (name === 'dashboard.summary') return { total: opportunities.length, open: opportunities.filter(row => /open/i.test(row.status) && notClosed(row)).length,
-    closingSoon: opportunities.filter(row => closesWithin(row.closingDate, 7)).length,
+  const asOf = typeof args.asOf === 'number' && Number.isFinite(args.asOf) ? args.asOf : Date.now();
+  if (name === 'dashboard.summary') return { total: opportunities.length, open: opportunities.filter(row => opportunityLifecycle(row, asOf).open).length,
+    closingSoon: opportunities.filter(row => opportunityLifecycle(row, asOf).closingSoon).length,
     organizations: new Set(opportunities.map(row => resolveBuyer(row.issuedBy).organization)).size, buyerMappingVersion: BUYER_MAPPING_VERSION,
     statusOptions: [...new Set(opportunities.map(row => row.status).filter(Boolean))].sort(), typeOptions: [...new Set(opportunities.map(row => row.type).filter(Boolean))].sort(),
     latestRun: runs[0] ?? null, latestSuccessfulRun: runs.find(run => run.status === 'succeeded') ?? null };

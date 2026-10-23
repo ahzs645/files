@@ -40,6 +40,8 @@ export const opportunityValidator = v.object({
     sourceCapturedAt: v.string()
 });
 export const contractAwardImportValidator = v.object({
+    sourceId: v.optional(v.string()),
+    sourceAwardId: v.optional(v.string()),
     opportunityId: nullableString,
     opportunityDescription: v.string(),
     opportunityType: nullableString,
@@ -53,6 +55,12 @@ export const contractAwardImportValidator = v.object({
     supplierAddress: nullableString,
     awardDate: nullableString,
     justification: nullableString
+});
+export const awardMoneyValidator = v.object({
+    raw: nullableString,
+    status: v.union(v.literal('parsed'), v.literal('missing'), v.literal('invalid'), v.literal('ambiguous'), v.literal('out_of_bounds')),
+    currency: nullableString, scale: v.number(), decimal: nullableString, minorUnits: nullableString, value: nullableNumber,
+    parserVersion: v.literal('award-money-v2'),
 });
 export const contractAwardAnalysisDatePresetValidator = v.union(v.literal("all"), v.literal("1y"), v.literal("3y"), v.literal("custom"));
 export const contractAwardEntityKindValidator = v.union(v.literal("supplier"), v.literal("organization"));

@@ -72,14 +72,14 @@ describe('AI review analysis', () => {
   });
   it('pages through every result with SQL the host accepts', async () => {
     const calls: any[] = [];
-    const { rows, truncated } = await readAnalysisRows(async (_, input) => { calls.push(input); const offset = input.parameters.at(-1) as number;
-      return { rows: offset === 0 ? Array.from({ length: 200 }, (_, i) => ({ record_id: `r${i}`, fields: '{"a":1}', labels: '["x"]' })) : [{ record_id: 'last', fields: null, labels: null }] }; }, { promptId: 'p', source: 'canadabuys' });
+    const { rows, truncated } = await readAnalysisRows(async (_, input) => { calls.push(input); const after = input.parameters.at(-2) as string;
+      return { rows: after === '' ? Array.from({ length: 200 }, (_, i) => ({ id: `r${String(i).padStart(3,'0')}`, record_id: `r${i}`, fields: '{"a":1}', labels: '["x"]' })) : [{ id: 'z', record_id: 'last', fields: null, labels: null }] }; }, { promptId: 'p', source: 'canadabuys' });
     expect(rows).toHaveLength(201); expect(truncated).toBe(false);
     expect(rows[200].fields).toEqual({}); expect(rows[0].labels).toEqual(['x']);
-    expect(calls[0].parameters).toEqual(['p', 'canadabuys', 200, 0]); expect(calls[1].parameters).toEqual(['p', 'canadabuys', 200, 200]);
-    const coverage = await readCoverage(async (_, input) => { calls.push(input); return { rows: [{ source: 'bc-bid', open: '5', reviewed: '2' }] }; });
-    expect(coverage).toEqual([{ source: 'bc-bid', open: 5, reviewed: 2 }]);
-    expect(await readUnreviewed(async (_, input) => { calls.push(input); expect(input.parameters).toEqual(['canadabuys', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), 50]); return { rows: [{ id: 'x' }] }; }, 'canadabuys')).toEqual(['x']);
+    expect(calls[0].parameters).toEqual(['p', 'canadabuys', '', 200]); expect(calls[1].parameters).toEqual(['p', 'canadabuys', 'r199', 200]);
+    const coverage = await readCoverage(async (_, input) => { calls.push(input); return { rows: Array.from({length: 5}, (_, i) => ({ id: `o${i}`, source: 'bc-bid', status: 'Open', deadline: null, reviewed: i < 2 ? 1 : 0, failed: 0 })) }; });
+    expect(coverage).toEqual([{ source: 'bc-bid', open: 5, reviewed: 2, reviewFailed: 0 }]);
+    expect(await readUnreviewed(async (_, input) => { calls.push(input); expect(input.parameters).toEqual(['canadabuys', '', 200]); return { rows: [{ id: 'x', status: 'Open', deadline: null }] }; }, 'canadabuys')).toEqual(['x']);
     for (const call of calls) {
       expect(call.statement).not.toMatch(/;|\bcontent\b|\bupdate\b|\bdelete\b|\btemp\b|\bmain\b|\bpragma\b/i);
       const functions = [...call.statement.matchAll(/([a-z_][a-z0-9_]*)\s*\(/gi)].map((m: RegExpMatchArray) => m[1].toLowerCase());

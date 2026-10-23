@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { migrateCatalog, saveCatalogDocument } from '../zoer/src/catalog';
 import { exportRecords } from '../zoer/dashboard/export';
+import { buildLegacyContractAwardImportKey } from '../packages/shared/src/contractAwards';
 function database(legacy:any[]=[]){
   const records=new Map<string,any>(),state=new Map<string,any>(),history=new Map<string,any>();let revision=0,primary=false;
   const call=async(method:string,input:any):Promise<any>=>{
     if(method==='catalog.legacy')return {documents:legacy,next:null};
-    if(method==='catalog.read')return {revision,primary,records:[...records.values()].filter(row=>input.ids?input.ids.includes(row.id):input.match?row.kind===input.match.kind&&row.data[input.match.field]===input.match.value:true).map(row=>structuredClone(row))};
+    if(method==='catalog.read'){
+      const found=[...records.values()].filter(row=>input.ids?input.ids.includes(row.id):input.match?row.kind===input.match.kind&&row.data[input.match.field]===input.match.value:(!input.kind||row.kind===input.kind)&&row.id>(input.after??'')).sort((a,b)=>a.id.localeCompare(b.id));
+      const page=input.ids?found:found.slice(0,input.limit??100);
+      return {revision,primary,records:page.map(row=>structuredClone(row)),next:!input.ids&&!input.match&&page.length?page.at(-1)!.id:null};
+    }
     if(method==='catalog.workspace')return {entries:[...state].filter(([key])=>!input.keys||input.keys.includes(key)).map(([key,value])=>({key,value:structuredClone(value)})),next:null};
     if(method==='catalog.commit'){
       if(revision!==input.revision)return {conflict:true};
@@ -19,6 +24,45 @@ function database(legacy:any[]=[]){
 }
 const opportunity={sourceKey:'123',processId:'123',description:'Original',status:'Open',detailFields:[{label:'Scope',value:'Keep'}],attachments:[{url:'https://bcbid.gov.bc.ca/a.pdf'}],addenda:[]};
 describe('unified database transport',()=>{
+  it('reconciles a corrected legacy award without changing its ID, reviews target, or user star',async()=>{
+    const db=database();await migrateCatalog(db.call);
+    const source={opportunityId:'A-1',opportunityDescription:'Original title',issuingOrganization:'Buyer',successfulSupplier:'Supplier',contractNumber:'C-1',contractValueText:'1,234.50',currency:'CAD',awardDate:'2026-01-01'};
+    const importKey=buildLegacyContractAwardImportKey(source as any), id='award:'+importKey;
+    db.records.set(id,{id,kind:'award',title:source.opportunityDescription,data:{...source,importKey,_id:importKey,starred:true,createdAt:1,updatedAt:1}});
+    await saveCatalogDocument(db.call,{kind:'awards',records:[{...source,opportunityDescription:'Corrected title',successfulSupplier:'Corrected supplier',contractValueText:'1.2 million',starred:false}]},'correction');
+    expect(db.records.size).toBe(1);expect(db.records.has(id)).toBe(true);
+    const saved=db.records.get(id).data;
+    expect(saved).toMatchObject({importKey,starred:true,opportunityDescription:'Corrected title',successfulSupplier:'Corrected supplier',contractValue:1200000,identityStatus:'contract',contractValueParsed:{decimal:'1200000.00',minorUnits:'120000000',parserVersion:'award-money-v2'}});
+    expect(saved.sourceRevision).toMatch(/^[a-f0-9]{64}$/);expect(saved.mappingProvenance.authority).toBe('proposed-source-label-mapping');
+    const revision=saved.sourceRevision;
+    await saveCatalogDocument(db.call,{kind:'awards',records:[{...source,opportunityDescription:'Another correction'}]},'next');
+    expect(db.records.get(id).data.sourceRevision).not.toBe(revision);
+  });
+  it('rejects ambiguous legacy anchors before committing source facts',async()=>{
+    const db=database();await migrateCatalog(db.call);
+    const row={opportunityId:'A-1',opportunityDescription:'Title',issuingOrganization:'Buyer',successfulSupplier:'Supplier',contractNumber:'C-1'};
+    for(const importKey of ['legacy-one','legacy-two'])db.records.set('award:'+importKey,{id:'award:'+importKey,kind:'award',title:'Title',data:{...row,importKey}});
+    const before=JSON.stringify([...db.records]);
+    await expect(saveCatalogDocument(db.call,{kind:'awards',records:[row]},'ambiguous')).rejects.toThrow('multiple saved');
+    expect(JSON.stringify([...db.records])).toBe(before);
+  });
+  it('adopts normalized legacy anchors beyond one bounded page and refuses case-variant duplicates',async()=>{
+    const db=database();await migrateCatalog(db.call);
+    const row={opportunityId:'A-1',opportunityDescription:'Title',issuingOrganization:'Buyer',successfulSupplier:'Supplier',contractNumber:'c-1'};
+    for(let i=0;i<205;i++){
+      const importKey='filler-'+String(i).padStart(3,'0');
+      db.records.set('award:'+importKey,{id:'award:'+importKey,kind:'award',title:'Other',data:{opportunityId:'Other-'+i,contractNumber:'Other',opportunityDescription:'Other',importKey}});
+    }
+    const importKey='z-legacy';
+    db.records.set('award:'+importKey,{id:'award:'+importKey,kind:'award',title:'Title',data:{...row,opportunityId:'a-1',contractNumber:' C-1 ',importKey,starred:true}});
+    await saveCatalogDocument(db.call,{kind:'awards',records:[{...row,opportunityDescription:'Correction'}]},'normalized');
+    expect(db.records.size).toBe(206);expect(db.records.get('award:'+importKey).data).toMatchObject({opportunityDescription:'Correction',starred:true,importKey});
+    const {revision}=await db.call('catalog.read',{ids:[]});
+    await db.call('catalog.commit',{revision,records:[{id:'award:another-legacy',kind:'award',title:'Title',data:{...row,contractNumber:'C-1',importKey:'another-legacy'}}]});
+    const before=JSON.stringify([...db.records]);
+    await expect(saveCatalogDocument(db.call,{kind:'awards',records:[row]},'ambiguous-case')).rejects.toThrow('multiple saved');
+    expect(JSON.stringify([...db.records])).toBe(before);
+  });
   it('refreshes status from detail evidence while preserving the saved identity and star',async()=>{
     const db=database();await migrateCatalog(db.call);
     await saveCatalogDocument(db.call,{kind:'listing',records:[{...opportunity,starred:true}]},'listing');

@@ -7,6 +7,7 @@ import {
   fieldValidator,
   nullableNumber,
   nullableString,
+  awardMoneyValidator,
   runCountsValidator,
   runProgressValidator,
   runStatusValidator
@@ -80,6 +81,12 @@ export default defineSchema({
 
   contractAwards: defineTable({
     importKey: v.string(),
+    sourceId: v.optional(v.string()),
+    sourceAwardId: v.optional(v.string()),
+    identityKey: v.optional(v.string()),
+    identityStatus: v.optional(v.union(v.literal('source_id'), v.literal('contract'), v.literal('legacy_unresolved'))),
+    identityVersion: v.optional(v.literal('award-identity-v2')),
+    contractValueParsed: v.optional(awardMoneyValidator),
     opportunityId: nullableString,
     opportunityDescription: v.string(),
     opportunityType: nullableString,
@@ -100,6 +107,10 @@ export default defineSchema({
     updatedAt: v.number()
   })
     .index("by_importKey", ["importKey"])
+    .index("by_identityKey", ["identityKey"])
+    .index("by_identityVersion", ["identityVersion"])
+    .index("by_sourceId_and_sourceAwardId", ["sourceId", "sourceAwardId"])
+    .index("by_opportunityId_and_contractNumber", ["opportunityId", "contractNumber"])
     .index("by_updatedAt", ["updatedAt"])
     .index("by_awardDate", ["awardDate"]),
 

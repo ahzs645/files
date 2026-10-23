@@ -6,7 +6,9 @@ The collector now parses raw money with explicit currency/scale/status, separate
 
 Legacy adoption uses a complete revision-checked identity index, read through the existing 200-row / byte-bounded catalog interface. The index retains identity-to-physical-ID references and is reused across captured pages within one worker action. Outside catalog revisions invalidate it. A real SQLite/JSON fixture with 21,877 awards, byte-limited pages, normalized legacy anchors and competing identities verifies this behavior. This does not update existing rows until their normal source save, resume paused work, or recollect any source.
 
-Build from this clean commit:
+The retained-asset release builder is frozen to commit `1d9d522a2d759bca9725df215c93a5b6f26eb329` and its direct parent `feb431b6cfb532d70aaa0da0c82382aa70815baf`. To reproduce that release, check out `1d9d522` in a clean checkout before running the command below. It intentionally rejects later main commits; normal future builds use the repository's ordinary build workflow.
+
+Build from that clean release commit:
 
 ```sh
 bun zoer/build-collector-release.ts --retained-package /private/path/to/verified-installed-package --output /private/path/to/new-package

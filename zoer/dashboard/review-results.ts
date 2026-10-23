@@ -19,13 +19,13 @@ export const reviewFromRow = (row: any) => ({
   } : null,
 });
 
-const LATEST = `r.prompt_id=? AND r.status='succeeded' AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND n.status='succeeded' AND n.created_at>r.created_at)`;
+const LATEST = `r.prompt_id=? AND r.status='succeeded' AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND n.status='succeeded' AND CASE WHEN n.created_at>r.created_at OR n.created_at=r.created_at AND n.id>r.id THEN 1 ELSE 0 END=1)`;
 /** Latest successful result per record for one prompt, newest first. */
 export async function readReviewResults(query: Query, promptId: string, offset = 0) {
   const { rows } = await query('catalog.query', { parameters: [promptId, RESULTS_PAGE + 1, offset], statement: `SELECT ${RESULT_COLUMNS},rec.title
     FROM reviews r JOIN records rec ON rec.id=r.record_id
     WHERE ${LATEST}
-    ORDER BY r.created_at DESC,r.id LIMIT ? OFFSET ?` });
+    ORDER BY r.created_at DESC,r.id DESC LIMIT ? OFFSET ?` });
   return { rows: rows.slice(0, RESULTS_PAGE).map(reviewFromRow), more: rows.length > RESULTS_PAGE };
 }
 
@@ -59,7 +59,7 @@ export async function readAllReviewResults(query: Query, promptId: string, ceili
 
 /** The review a single-record run produced, or null while it is still running. */
 export async function readRunReview(query: Query, runId: string, recordId: string) {
-  const { rows } = await query('catalog.query', { parameters: [runId, recordId], statement: `SELECT ${RESULT_COLUMNS} FROM reviews r WHERE r.run_id=? AND r.record_id=? ORDER BY r.created_at DESC LIMIT 1` });
+  const { rows } = await query('catalog.query', { parameters: [runId, recordId], statement: `SELECT ${RESULT_COLUMNS} FROM reviews r WHERE r.run_id=? AND r.record_id=? ORDER BY r.created_at DESC,r.id DESC LIMIT 1` });
   return rows[0] ? reviewFromRow(rows[0]) : null;
 }
 
@@ -73,7 +73,7 @@ export async function readRunResults(query: Query, run: RunScope, ceiling = EXPO
   // Pages of 100 keep each response well under the host's 200-row and 4 MiB limits.
   for (let offset = 0; offset < ceiling; offset += RESULTS_PAGE) {
     const { rows } = await query('catalog.query', { parameters: [run.id, RESULTS_PAGE, offset], statement: `SELECT ${RESULT_COLUMNS},rec.title
-      FROM reviews r LEFT JOIN records rec ON rec.id=r.record_id WHERE r.run_id=? ORDER BY r.created_at DESC,r.id LIMIT ? OFFSET ?` });
+      FROM reviews r LEFT JOIN records rec ON rec.id=r.record_id WHERE r.run_id=? ORDER BY r.created_at DESC,r.id DESC LIMIT ? OFFSET ?` });
     for (const row of rows) if (!produced.has(row.record_id)) produced.set(row.record_id, { ...reviewFromRow(row), outcome: row.status });
     if (rows.length < RESULTS_PAGE) break;
   }
@@ -86,8 +86,8 @@ export async function readRunResults(query: Query, run: RunScope, ceiling = EXPO
     const cutoff = run.finishedAt ?? '9999';
     const { rows } = await query('catalog.query', { parameters: [run.promptId, cutoff, cutoff, ...chunk], statement: `SELECT ${RESULT_COLUMNS},rec.title
       FROM reviews r LEFT JOIN records rec ON rec.id=r.record_id WHERE r.prompt_id=? AND r.status='succeeded' AND r.created_at<=?
-      AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND n.status='succeeded' AND n.created_at<=? AND n.created_at>r.created_at)
-      AND r.record_id IN (${chunk.map(() => '?').join(',')}) ORDER BY r.created_at DESC LIMIT 200` });
+      AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND n.status='succeeded' AND n.created_at<=? AND CASE WHEN n.created_at>r.created_at OR n.created_at=r.created_at AND n.id>r.id THEN 1 ELSE 0 END=1)
+      AND r.record_id IN (${chunk.map(() => '?').join(',')}) ORDER BY r.created_at DESC,r.id DESC LIMIT 200` });
     for (const row of rows) if (!reused.has(row.record_id)) reused.set(row.record_id, { ...reviewFromRow(row), outcome: 'reused' });
   }
   const unknown = missing.filter(id => !reused.has(id));

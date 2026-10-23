@@ -3,6 +3,7 @@ import { BUYER_MAPPING_VERSION, annotateBuyerRecord, resolveBuyer, isBuyerLevel 
 import { host } from './bridge';
 import { queryModel, type Model } from './model';
 import { zoneDate } from './procurement/deadline';
+import { opportunityLifecycle } from './procurement/lifecycle';
 import { OPEN_FIRST_ORDER, closingSql, deadlineTimeSql } from './procurement/catalog';
 const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
 const field = (name: string) => `json_extract(data, '$.${name}')`;
@@ -144,16 +145,28 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     }))) };
   }
   if (name === 'dashboard.summary') {
+    const asOf = typeof args.asOf === 'number' && Number.isFinite(args.asOf) ? args.asOf : Date.now();
+    const countLifecycles = async () => {
+      await host('catalog.read', { ids: [], revision });
+      let after = '', total = 0, open = 0, closingSoon = 0;
+      while (true) {
+        const rows = await sql(`SELECT id,${field('status')} status,${field('closingAt')} closingAt,${field('closingDate')} closingDate FROM records WHERE kind='opportunity' AND id>? ORDER BY id LIMIT 200`, [after]);
+        for (const row of rows) { const lifecycle = opportunityLifecycle(row, asOf); total++; open += Number(lifecycle.open); closingSoon += Number(lifecycle.closingSoon); }
+        if (rows.length < 200) break;
+        const next = rows.at(-1)?.id;
+        if (typeof next !== 'string' || next <= after) throw new Error('Opportunity summary did not advance; reload the catalog.');
+        after = next;
+      }
+      await host('catalog.read', { ids: [], revision });
+      return { total, open, closingSoon };
+    };
     const [counts, statuses, types] = await Promise.all([
-      // Deadlines (procurement/deadline.ts, approximated in SQL): compare against today's America/Vancouver date, not the
-      // UTC day, so a same-day date-only closingDate stays open (time unverified) until the Vancouver day ends. Timestamps
-      // that passed earlier on that date also count as open here: lenient rather than silently closed.
-      sql(`SELECT count(*) AS total, sum(CASE WHEN lower(${field('status')}) LIKE '%open%' AND coalesce(julianday(${field('closingDate')}), 9999999) >= julianday(?) THEN 1 ELSE 0 END) AS open, sum(CASE WHEN julianday(${field('closingDate')}) BETWEEN julianday(?) AND julianday(?) OR ${field('closingDate')}=? THEN 1 ELSE 0 END) AS closingSoon, count(DISTINCT CASE WHEN ${field('issuedBy')} <> '' THEN ${field('issuedBy')} END) AS organizations FROM records WHERE kind='opportunity'`, [zoneDate(), new Date().toISOString(), new Date(Date.now()+7*86400000).toISOString(), zoneDate()]),
+      countLifecycles(),
       sql(`SELECT DISTINCT ${field('status')} AS value FROM records WHERE kind='opportunity' AND ${field('status')} <> '' ORDER BY value`),
       sql(`SELECT DISTINCT ${field('type')} AS value FROM records WHERE kind='opportunity' AND ${field('type')} <> '' ORDER BY value`),
     ]);
     const sources = await buyerSources('opportunity', revision, ['bc-bid']);
-    return { ...counts[0], organizations: new Set(sources.map(s => resolveBuyer(s).organization)).size, originalOrganizations: sources.length, buyerMappingVersion: BUYER_MAPPING_VERSION, open: counts[0].open ?? 0, closingSoon: counts[0].closingSoon ?? 0, statusOptions: statuses.map(row => row.value), typeOptions: types.map(row => row.value) };
+    return { ...counts, organizations: new Set(sources.map(s => resolveBuyer(s).organization)).size, originalOrganizations: sources.length, buyerMappingVersion: BUYER_MAPPING_VERSION, open: counts.open, closingSoon: counts.closingSoon, statusOptions: statuses.map(row => row.value), typeOptions: types.map(row => row.value) };
   }
   if (name === 'opportunities.getByProcessId') {
     // Details resolve across every source: the shared grid lists them all.

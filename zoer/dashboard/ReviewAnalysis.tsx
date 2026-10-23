@@ -7,6 +7,7 @@ import { SOURCES } from './procurement/catalog';
 import { ago } from './procurement/ai';
 import { sourceName } from './procurement/display';
 import { CLOSING_TODAY_TEXT } from './procurement/deadline';
+import { useProcurementClock } from './procurement/clock';
 import { closingSoon, labelCounts, readAnalysisRows, readCoverage, readPromptVersions, readUnreviewed, readVersionInstructions, scoreField, summarize, type AnalysisRow, type Bucket, type FieldSummary, type PromptVersionCount } from './review-analysis';
 import { fieldValue, formatTyped } from './review-fields';
 
@@ -56,17 +57,20 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
   const version = prompt && /^\d+$/.test(versionParam) ? Number(versionParam) : current;
   const [versions, setVersions] = useState<{ versions: PromptVersionCount[]; olderOnly: number } | null>(null), [instructions, setInstructions] = useState<string | undefined>();
   const [rows, setRows] = useState<AnalysisRow[] | null>(null), [truncated, setTruncated] = useState(false);
-  const [coverage, setCoverage] = useState<{ source: string; open: number; reviewed: number }[]>([]);
+  const [coverage, setCoverage] = useState<{ source: string; open: number; reviewed: number; reviewFailed?: number }[]>([]);
   const [focus, setFocus] = useState<Focus | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState('');
   const focusRef = useRef<HTMLElement>(null);
+  const deadlines = rows?.map(row => row.deadline) ?? [];
+  const asOf = useProcurementClock(deadlines);
+  useEffect(() => { let active = true; void readCoverage(host, asOf).then(value => { if (active) setCoverage(value); }, error => { if (active) setError(error.message); }); return () => { active = false; }; }, [asOf]);
   useEffect(() => {
     let active = true;
     setRows(null); setFocus(null); setVersions(null); setInstructions(undefined);
     const scoped = prompt && version !== undefined;
-    Promise.all([readAnalysisRows(host, { promptId: promptId || undefined, promptVersion: prompt ? version : undefined, source: source || undefined }), readCoverage(host),
+    Promise.all([readAnalysisRows(host, { promptId: promptId || undefined, promptVersion: prompt ? version : undefined, source: source || undefined }),
       scoped && current !== undefined ? readPromptVersions(host, prompt.id, current, source || undefined) : null,
       scoped && version !== current ? readVersionInstructions(host, prompt.id, version!) : prompt?.prompt])
-      .then(([result, cover, counts, text]) => { if (active) { setRows(result.rows); setTruncated(result.truncated); setCoverage(cover); setVersions(counts); setInstructions(text); setError(''); } }, e => { if (active) setError(e.message); });
+      .then(([result, counts, text]) => { if (active) { setRows(result.rows); setTruncated(result.truncated); setVersions(counts); setInstructions(text); setError(''); } }, e => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [promptId, source, version, current]);
   useEffect(() => { if (focus) focusRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [focus]);
@@ -83,7 +87,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
   const summaries = prompt ? summarize(instructions, all) : [];
   const labels = labelCounts(all).slice(0, 15);
   const score = prompt ? scoreField(instructions) : undefined;
-  const soon = closingSoon(all);
+  const soon = closingSoon(all, asOf);
   const open = coverage.filter(c => !source || c.source === source);
   const reviewedOpen = open.reduce((n, c) => n + c.reviewed, 0), openTotal = open.reduce((n, c) => n + c.open, 0);
   const latest = all.reduce((t, r) => r.reviewedAt > t ? r.reviewedAt : t, '');
@@ -114,7 +118,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
         <div><dt>Closing in 14 days</dt><dd>{soon.length.toLocaleString()}</dd></div>
         <div><dt>Last review</dt><dd>{latest ? ago(latest) : '—'}</dd></div>
       </dl>
-      {truncated && <p className="research-note">Showing the newest 4,000 results. Choose a prompt or source to narrow the analysis.</p>}
+      {truncated && <p className="research-note">The current result projection is incomplete. Reload before relying on these totals.</p>}
       {prompt && version !== undefined && <p className="research-note" role="status">{version === current ? `Showing results from the current version ${version} only.` : `Showing results from older version ${version} only; its fields may differ from the current version.`}
         {versions && version === current && versions.olderOnly > 0 && ` ${versions.olderOnly.toLocaleString()} record${versions.olderOnly === 1 ? ' has' : 's have'} results only from older versions and ${versions.olderOnly === 1 ? 'is' : 'are'} excluded, because field definitions can change between versions. Choose a version above to view them separately.`}</p>}
 
@@ -131,11 +135,11 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
         <section className="zoer-history" aria-label="Review coverage">
           <h2>Coverage of open opportunities</h2>
           {!open.length ? <p className="research-note">No open opportunities are saved.</p> : <ul className="ai-coverage">{open.map(c => <li key={c.source}>
-            <div><strong>{sourceName(c.source)}</strong><span className="research-count">{c.reviewed.toLocaleString()} of {c.open.toLocaleString()} reviewed</span></div>
+            <div><strong>{sourceName(c.source)}</strong><span className="research-count">{c.reviewed.toLocaleString()} of {c.open.toLocaleString()} reviewed{c.reviewFailed ? ` · ${c.reviewFailed.toLocaleString()} with a failed current review` : ''}</span></div>
             <span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${c.open ? (c.reviewed / c.open) * 100 : 0}%` }} /></span>
             {onSelect && c.open > c.reviewed && <Button variant="ghost" disabled={!!busy} onClick={() => void selectUnreviewed(c.source)}>{busy === c.source ? 'Selecting…' : `Select ${Math.min(50, c.open - c.reviewed)} unreviewed`}</Button>}
           </li>)}</ul>}
-          <p className="research-note">Open means the saved status is open or active; source status may be stale. Unreviewed notices are selected soonest-closing first.</p>
+          <p className="research-note">Open requires an accepting source status and no passed deadline. Same-day dates without a timezone remain time unverified. A newer failed review excludes an older successful result. Unreviewed notices are selected soonest-closing first.</p>
         </section>
 
         <section className="zoer-history" aria-label="Closing soon">
