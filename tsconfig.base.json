@@ -12,12 +12,11 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": false,
-    "baseUrl": ".",
     "paths": {
-      "@bcbid/shared": ["packages/shared/src/index.ts"],
-      "@bcbid/shared/*": ["packages/shared/src/*"],
-      "@bcbid/procurement-core": ["packages/procurement-core/src/index.ts"],
-      "@convex/*": ["convex/*"]
+      "@bcbid/shared": ["./packages/shared/src/index.ts"],
+      "@bcbid/shared/*": ["./packages/shared/src/*"],
+      "@bcbid/procurement-core": ["./packages/procurement-core/src/index.ts"],
+      "@convex/*": ["./convex/*"]
     }
   }
 }

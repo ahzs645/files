@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "scrape:live": "tsx src/scripts/liveScrape.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsgo -p tsconfig.json --noEmit",
+    "typecheck:tsc": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "dotenv": "^17.3.1",
