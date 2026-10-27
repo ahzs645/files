@@ -179,7 +179,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .review-preview pre,.review-raw{margin:0;padding:10px 12px;max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:var(--color-bg-subtle);border-radius:0 0 8px 8px}
 .review-raw{border-radius:8px;margin-top:8px}
 .review-test{display:grid;gap:8px;margin-top:8px}.research .review-test-verdict{padding:8px 12px;border-radius:8px;background:var(--color-bg-subtle);color:var(--color-text-primary)}.review-test-verdict[data-ok=false]{box-shadow:inset 3px 0 var(--color-orange)}.review-test-verdict[data-ok=true]{box-shadow:inset 3px 0 var(--color-green)}
-.pc-ai-fields>div[data-state=invalid] dd,.pc-ai-fields>div[data-state=missing] dd{color:var(--color-orange)}.pc-field-problem{display:block;font-size:11.5px;color:var(--color-orange)}
+.pc-ai-fields>div[data-state=invalid] dd,.pc-ai-fields>div[data-state=missing] dd{color:var(--color-orange)}.pc-field-problem{display:block;font-size:12px;color:var(--color-orange)}
 /* Grid items default to min-width:auto, so wide result tables would otherwise widen the page. */
 .research>section{min-width:0}.review-results tbody th button{text-align:left}
 .review-results-head{align-items:center;margin-top:0}.review-results-head h2{margin:0}
@@ -187,10 +187,10 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .review-results{border-collapse:collapse;font-size:12.5px;min-width:100%}
 .review-results th,.review-results td{padding:8px 10px;border-bottom:1px solid var(--color-border-default);text-align:left;vertical-align:top;min-width:9rem;max-width:22rem;overflow-wrap:anywhere}
 .review-results thead th{position:sticky;top:0;z-index:1;background:var(--color-bg-subtle);font-weight:600;white-space:nowrap}
-.review-results tbody th{position:sticky;left:0;background:var(--color-bg-surface);font-weight:500;min-width:14rem}.review-results tbody th small{display:block;margin-top:2px;font-size:11.5px;color:var(--color-text-tertiary)}
+.review-results tbody th{position:sticky;left:0;background:var(--color-bg-surface);font-weight:500;min-width:14rem}.review-results tbody th small{display:block;margin-top:2px;font-size:12px;color:var(--color-text-tertiary)}
 .review-results ul{margin:0;padding-left:14px;list-style:disc}.review-results td[data-state]{color:var(--color-orange)}.review-flag{color:var(--color-orange);white-space:nowrap}
 @media(max-width:767px){.review-field-head{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.review-field-name,.review-field-tools{grid-column:1/-1}.review-results tbody th{position:static}}
-.research-source{margin:0;min-width:10rem}.research-source-tag{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;background:var(--color-bg-subtle);color:var(--color-text-secondary);font-size:11px;line-height:18px}
+.research-source{margin:0;min-width:10rem}.research-source-tag{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;background:var(--color-bg-subtle);color:var(--color-text-secondary);font-size:12px;line-height:18px}
 .research-batch-item>div[id^=run-]{padding:4px 0 12px;border-bottom:1px solid var(--color-border-default)}.review-run-results .review-results-head{margin-top:4px}
 .review-results tr[data-outcome=reused] th small,.review-results tr[data-outcome=waiting] th small{color:var(--color-text-tertiary)}.review-results-status{color:var(--color-text-secondary)}.review-results-status[data-status=failed]{color:var(--color-red)}
 .review-field-scale{display:grid;grid-template-columns:minmax(0,.6fr) minmax(0,1.4fr) minmax(0,.6fr) minmax(0,1.4fr);gap:8px}.review-field-scale .research-label{margin:6px 0 0}.review-editor [tabindex='-1']:focus{outline:none}
@@ -205,7 +205,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .ai-bars button:hover:not(:disabled){background:var(--color-bg-hover)}.ai-bars button:disabled{opacity:.55;cursor:default}
 .ai-bar-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ai-bar-count{font-variant-numeric:tabular-nums;color:var(--color-text-secondary)}
 .ai-bar-track{display:block;height:8px;border-radius:4px;background:var(--color-bg-subtle);overflow:hidden}.ai-bar-track>span{display:block;height:100%;border-radius:4px;background:var(--color-accent)}
-.ai-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 8px}.ai-stats dt{font-size:11px;color:var(--color-text-tertiary)}.ai-stats dd{margin:2px 0 0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.ai-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 8px}.ai-stats dt{font-size:12px;color:var(--color-text-tertiary)}.ai-stats dd{margin:2px 0 0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .ai-coverage{display:grid;gap:12px;margin:8px 0}.ai-coverage li{display:grid;gap:6px}.ai-coverage li>div{display:flex;justify-content:space-between;gap:8px;font-size:13px}.ai-coverage li>button{justify-self:start}
 .ai-record-list{display:grid;margin:6px 0;max-height:26rem;overflow:auto}.ai-record-list li{display:grid;gap:2px;padding:8px 0;border-bottom:1px solid var(--color-border-default);font-size:13px}.ai-record-list button{text-align:left}.ai-record-list small{font-size:12px;color:var(--color-text-secondary)}
 @media(max-width:767px){.ai-grid{grid-template-columns:minmax(0,1fr)}.ai-bars button{grid-template-columns:minmax(0,8rem) minmax(0,1fr) auto;min-height:40px}.ai-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ai-analysis-filters .research-label{flex:1 1 100%}}
@@ -220,7 +220,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .doc-subhead{margin-top:4px}.research h2.doc-subhead{font-size:14px;color:var(--color-text-secondary);font-weight:500}
 .doc-download .research-toolbar{margin-top:10px}.doc-download .research-label{margin:0}
 .doc-clamp{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
-.doc-chip{display:inline-flex;align-items:center;flex-shrink:0;border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:500;background:var(--color-bg-subtle);color:var(--color-text-secondary);text-transform:none}
+.doc-chip{display:inline-flex;align-items:center;flex-shrink:0;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:500;background:var(--color-bg-subtle);color:var(--color-text-secondary);text-transform:none}
 .doc-chip[data-tone=good],.doc-chip[data-status=succeeded]{color:var(--color-green)}
 .doc-chip[data-tone=warn],.doc-chip[data-status=waiting_for_user]{color:var(--color-orange)}
 .doc-chip[data-tone=bad],.doc-chip[data-status=failed]{color:var(--color-red)}
@@ -229,7 +229,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .doc-file-actions{flex-wrap:nowrap}
 .doc-steps>summary{margin-top:4px;font-size:12px;color:var(--color-text-tertiary);cursor:pointer}
 @media(max-width:640px){.doc-file-list article{flex-direction:row;flex-wrap:wrap;align-items:center}.doc-file-list .research-file-info{flex-basis:100%}}
-@media(max-width:640px){.doc-page .research-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.doc-page .research-metrics>div{padding:6px 8px}.doc-page .research-metrics dt{font-size:11px}.doc-page .research-metrics dd{font-size:15px}}
+@media(max-width:640px){.doc-page .research-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.doc-page .research-metrics>div{padding:6px 8px}.doc-page .research-metrics dt{font-size:12px}.doc-page .research-metrics dd{font-size:15px}}
 /* Opened from a "Continue scrape" notification. */
 .zoer-continue { border-color:var(--color-accent); box-shadow:inset 3px 0 0 var(--color-accent); }
 .zoer-continue .zoer-continue-reason { color:var(--color-orange); overflow-wrap:anywhere; }
@@ -264,9 +264,13 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .bid-targeted-receipt{margin-top:10px;padding-top:8px;border-top:1px solid var(--color-border-default)}
 .bid-targeted-receipt p{margin-top:2px;overflow-wrap:anywhere}
 .bid-targeted .bid-targeted-error{color:var(--color-red)}
+@media(min-width:640px) and (max-width:1023px){.bid-targeted-form{grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}}
 @media(min-width:1024px){
-  .bid-targeted-form{grid-template-columns:minmax(0,1.6fr) minmax(0,1.2fr) minmax(0,1.2fr) 76px auto auto;align-items:end}
+  .bid-targeted-form{grid-template-columns:minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr) 76px auto auto;align-items:end}
   .bid-targeted-field input,.bid-targeted-field .ui-select-trigger{height:36px}
   .bid-targeted-check{height:36px;white-space:nowrap}
   .bid-targeted-run{width:auto;height:36px}
 }
+/* Zoer copy rules: sentence case (uppercase is the sidebar's alone) and at least 12px labels in the BC Bid source pages. */
+.zoer-content .uppercase{text-transform:none;letter-spacing:normal}
+.zoer-content .text-\[10px\],.zoer-content .text-\[11px\]{font-size:12px}

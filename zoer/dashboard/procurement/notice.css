@@ -22,7 +22,7 @@
 
 .pc-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
 .pc-facts>div{border:1px solid var(--border-default);border-radius:.5rem;padding:.5rem .625rem;min-width:0}
-.pc-facts dt{font-size:11.5px;color:var(--text-secondary)}
+.pc-facts dt{font-size:12px;color:var(--text-secondary)}
 .pc-facts dd{font-size:13.5px;font-weight:600;margin-top:.125rem;overflow-wrap:anywhere}
 .pc-facts [data-tone=soon] dd{color:var(--status-warning)}
 .pc-facts [data-tone=passed] dd{color:var(--text-muted)}
@@ -31,7 +31,7 @@
 .pc-card>header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
 .pc-card p{line-height:1.5;overflow-wrap:anywhere}
 .pc-card-empty{border-style:dashed;align-items:flex-start}
-.pc-card-meta{font-size:11.5px;color:var(--text-muted)}
+.pc-card-meta{font-size:12px;color:var(--text-muted)}
 .pc-link-btn{color:var(--accent);font-size:12.5px}
 .pc-link-btn:hover{text-decoration:underline}
 .pc-verdict{font-size:18px;font-weight:700;color:var(--text-secondary)}
@@ -47,7 +47,7 @@
 
 /* AI categories */
 .pc-labels{display:inline-flex;flex-wrap:wrap;gap:.25rem}
-.pc-label{font-size:11px;line-height:1.1rem;padding:0 .4375rem;border-radius:999px;border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);background:var(--accent-subtle);color:var(--accent);white-space:nowrap}
+.pc-label{font-size:12px;line-height:1.1rem;padding:0 .4375rem;border-radius:999px;border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);background:var(--accent-subtle);color:var(--accent);white-space:nowrap}
 .pc-label[data-group=Requirements]{border-color:color-mix(in srgb,var(--status-warning) 40%,transparent);background:color-mix(in srgb,var(--status-warning) 10%,transparent);color:var(--status-warning)}
 .pc-label[data-group=more]{border-color:var(--border-default);background:transparent;color:var(--text-muted)}
 button.pc-label{cursor:pointer}
@@ -62,7 +62,7 @@ button.pc-label[aria-pressed=true]{outline:2px solid currentColor;outline-offset
 .pc-spinner{width:14px;height:14px;border-radius:50%;border:2px solid var(--border-default);border-top-color:var(--accent);animation:pc-spin .8s linear infinite;flex:none}
 @keyframes pc-spin{to{transform:rotate(360deg)}}
 .pc-ai-result{border:1px solid var(--border-default);border-radius:.625rem;padding:.75rem .875rem;display:flex;flex-direction:column;gap:.5rem;min-width:0}
-.pc-ai-result>header p{font-size:11.5px;color:var(--text-muted)}
+.pc-ai-result>header p{font-size:12px;color:var(--text-muted)}
 .pc-ai-question{display:block;font-weight:400;color:var(--text-secondary);margin-top:.125rem}
 .pc-ai-summary{line-height:1.55;overflow-wrap:anywhere}
 .pc-ai-fields{display:flex;flex-direction:column;gap:.375rem;font-size:12.5px}
@@ -73,7 +73,7 @@ button.pc-label[aria-pressed=true]{outline:2px solid currentColor;outline-offset
 .pc-citations{display:flex;flex-direction:column;gap:.375rem}
 .pc-citations h4{font-size:12px;color:var(--text-secondary);font-weight:600}
 .pc-citations blockquote{border-left:2px solid var(--accent);padding-left:.625rem;font-size:12.5px;overflow-wrap:anywhere}
-.pc-citations footer{font-size:11.5px;color:var(--text-muted);margin-top:.125rem}
+.pc-citations footer{font-size:12px;color:var(--text-muted);margin-top:.125rem}
 .pc-citations footer button{color:var(--accent)}
 .pc-citations footer button:hover{text-decoration:underline}
 

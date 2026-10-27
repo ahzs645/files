@@ -43,7 +43,7 @@ export function HistoricalReference() {
     {collection && currentState?.canCancel && <Btn variant="secondary" disabled={busy} onClick={() => void control('cancel')}>Stop historical import</Btn>}
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
     <p>The public portal determines availability. Private invitations, supplier responses and restricted files remain outside this import. GSIN labels are stored as separate reference terms; their hierarchy is recorded only if a source provides it.</p>
-    <details data-zoer-disclosure><summary>33 original historical opportunity types</summary><ul className="pc-taxonomy-list">{reference.types.map(t => <li key={t.code}><strong>{t.code}</strong> · {t.title}</li>)}</ul><a href={reference.sourceUrl} target="_blank" rel="noopener noreferrer">BC Bid public source ↗</a><p>Dropdown captured {reference.capturedAt}. These codes retain their original meanings; no automatic mapping to current types is assumed.</p></details>
+    <details><summary data-zoer-disclosure>33 original historical opportunity types</summary><ul className="pc-taxonomy-list">{reference.types.map(t => <li key={t.code}><strong>{t.code}</strong> · {t.title}</li>)}</ul><a href={reference.sourceUrl} target="_blank" rel="noopener noreferrer">BC Bid public source ↗</a><p>Dropdown captured {reference.capturedAt}. These codes retain their original meanings; no automatic mapping to current types is assumed.</p></details>
   </section>;
 }
 export function NoticeHistorical({ data }: { data: any }) {

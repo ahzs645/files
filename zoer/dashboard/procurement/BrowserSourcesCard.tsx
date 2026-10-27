@@ -74,16 +74,16 @@ export function BrowserSourcesCard({ run }: { run?: RecentRun }) {
       <thead><tr><th scope="col">Site</th><th scope="col">Status</th><th scope="col">Last collected</th><th scope="col">Listed</th><th scope="col">Saved</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
       <tbody>{rows.map(row => <SiteRow key={row.site.id} row={row} busy={busy} running={running} onCollect={() => void collect([row.site.id], row.site.id)} countsError={!!counts.error} />)}</tbody>
     </table>
-    <details><summary>Scheduled collection</summary>
+    <details><summary data-zoer-disclosure>Scheduled collection</summary>
       {schedules.error ? <p role="alert">Schedules could not be read: {(schedules.error as Error).message}</p> : <p><span className="pc-status" data-tone={scheduled.tone}>{scheduled.status}</span>{[scheduled.next, scheduled.last].filter(Boolean).length > 0 && <> {[scheduled.next, scheduled.last].filter(Boolean).join(' · ')}</>}</p>}
       {scheduled.stopped && <p role="alert" title={scheduled.error ?? undefined}>{scheduled.stopped}</p>}
       <p className="procurement-coverage">These sites load in your Zoer browser, so their schedule is set in Zoer’s plugin settings with the browser it should use, not here. A scheduled run that meets a check leaves that site waiting for you and still collects the others. <a className="procurement-link" href={hostHref('#/settings/plugins')}>Open plugin settings</a></p>
     </details>
-    <details><summary>Not collected: robots.txt forbids it ({robotsOnly().length})</summary>
+    <details><summary data-zoer-disclosure>Not collected: robots.txt forbids it ({robotsOnly().length})</summary>
       <p className="procurement-coverage">These sites’ robots.txt asks automated visitors to stay away, so Procurement does not collect them, even in your browser. Open them yourself.</p>
       <ul className="pc-link-sources">{robotsOnly().map(item => <li key={item.id}><a href={item.url} target="_blank" rel="noreferrer">{item.label} ↗</a><small>{item.region ?? 'British Columbia'}</small></li>)}</ul>
     </details>
-    <details><summary>How browser collection works</summary>
+    <details><summary data-zoer-disclosure>How browser collection works</summary>
       <ul className="pc-browser-notes">
         <li>Zoer reads each site’s robots.txt (through your browser when the site blocks plain requests, once a day) and obeys it, including its rules for AI crawlers: pages it disallows are never loaded and show “robots.txt disallows collection”, and page loads on a site are spaced as its Crawl-delay asks (at least 5 seconds; 10 for Chilliwack, Whistler and BC Ferries).</li>
         <li>Each site is one step of the run: a Zoer restart or update, or Pause under Collection runs, continues with the next site.</li>

@@ -22,7 +22,7 @@ export function ResultRow({ row, asOf, writes, checked, open, onCheck, onOpen, f
     <div className="pc-row-main">
       <button type="button" className="pc-row-title" aria-expanded={open} title={row.externalId ? `${row.title || 'Untitled notice'} · ${row.externalId}` : undefined} onClick={onOpen}>{row.title || 'Untitled notice'}</button>
       <p className="pc-row-buyer">{row.buyer || 'Buyer not provided'}{region ? ` · ${region}` : ''}</p>
-      <p className="pc-row-meta">{meta.flatMap((item, i) => i ? [<span key={`dot-${i}`} className="pc-row-dot" aria-hidden="true">·</span>, item] : [item])}{flags}</p>
+      <p className="pc-row-meta"><span className="pc-row-meta-items"><span className="pc-row-meta-list">{meta.map((item, i) => <span key={i} className="pc-row-meta-item"><span className="pc-row-dot" aria-hidden="true">·</span>{item}</span>)}</span></span>{flags}</p>
       {children}
     </div>
     <div className="pc-row-side">

@@ -33,8 +33,8 @@ function DashboardPage() {
   const closingSoon = useQuery(api.opportunities.list, {
     limit: 8,
     cursor: null,
-    // The Zoer catalog can skip notices whose closing date has passed.
-    ...(plugin ? { upcoming: true } : {}),
+    // The Zoer catalog can skip notices whose closing date has passed; this page is BC Bid's own, so other sources stay out.
+    ...(plugin ? { upcoming: true, sources: ["bc-bid"], sort: { id: "closingDate", desc: false } } : {}),
   });
 
   if (!summary) {
@@ -69,19 +69,19 @@ function DashboardPage() {
         <StatCard
           accent="#2fd89f"
           icon={TrendingUp}
-          label="Open Now"
+          label="Open now"
           value={summary.open ?? 0}
         />
         <StatCard
           accent="#ff9f66"
           icon={AlertCircle}
-          label="Closing Soon"
+          label="Closing soon"
           value={summary.closingSoon ?? 0}
         />
         <StatCard
           accent="#f6d56a"
           icon={Building2}
-          label="Issuing Orgs"
+          label="Issuing orgs"
           value={summary.organizations ?? 0}
         />
       </div>
@@ -160,7 +160,7 @@ function DashboardPage() {
         <div className={plugin ? "" : "lg:col-span-3"}>
           <Card>
             <CardHeader
-              eyebrow="Closing Soon"
+              eyebrow="Closing soon"
               title={plugin ? "Closing soon" : "Upcoming Deadlines"}
               icon={Calendar}
               action={
@@ -168,7 +168,7 @@ function DashboardPage() {
                   to="/opportunities"
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-strong transition-colors"
                 >
-                  View All <ArrowRight size={12} />
+                  View all <ArrowRight size={12} />
                 </Link>
               }
             />

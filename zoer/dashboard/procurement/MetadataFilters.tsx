@@ -7,6 +7,8 @@ import { host } from '../bridge';
 import { sql } from './display';
 import { TAXONOMY_ACTIVE_KEY, taxonomyNodesQuery, taxonomyFilter, parseTaxonomyFilter } from './taxonomy-contract';
 import { METADATA_FILTER_KEYS } from './metadata-filter';
+/** "Any industry category", but acronyms stay as written ("Any BC Bid region", "Any historical GSIN code"). */
+const anyName = (name: string) => /^[A-Z]{2}/.test(name) ? name : name.charAt(0).toLowerCase() + name.slice(1);
 const facets = {region:"coalesce(json_extract(data,'$.region'),json_extract(data,'$.issuingLocation'),'')",category:"coalesce(json_extract(data,'$.category'),json_extract(data,'$.classification'),'')",buyer:"coalesce(json_extract(data,'$.issuedBy'),json_extract(data,'$.issuingOrganization'),'')",supplier:"coalesce(json_extract(data,'$.successfulSupplier'),'')",status:"coalesce(json_extract(data,'$.status'),'')",opportunityType:"coalesce(json_extract(data,'$.type'),json_extract(data,'$.opportunityType'),'')"};
 /** Page the complete saved inventory; a partial first page must never masquerade as all options. */
 export async function metadataOptions() {
@@ -50,7 +52,7 @@ export function MetadataFilters({params,filter}:{params:URLSearchParams;filter:(
   const options=useQuery({queryKey:['catalog','metadata-filter-options'],queryFn:metadataOptions,staleTime:30000});
   const select=(key:string,name:string,values:[string,string][],missing=false)=>{
     const value=params.get(key)||'',items=[...values]; if(value && value!=='__missing__' && !items.some(([v])=>v===value)) items.unshift([value,value]);
-    return <label key={key}><span>{name}</span><Select aria-label={`Filter ${name}`} value={value} onChange={e=>filter({[key]:e.target.value})}><option value="">Any {name.toLowerCase()}</option>{missing && <option value="__missing__">Not captured / not published</option>}{items.map(([v,text])=><option key={v} value={v}>{text}</option>)}</Select></label>;
+    return <label key={key}><span>{name}</span><Select aria-label={`Filter ${name}`} value={value} onChange={e=>filter({[key]:e.target.value})}><option value="">Any {anyName(name)}</option>{missing && <option value="__missing__">Not captured / not published</option>}{items.map(([v,text])=><option key={v} value={v}>{text}</option>)}</Select></label>;
   };
   const categories=[...new Set([...reference.industryCategories.map(t=>t.title),...(options.data?.category??[]).map(([v])=>v)])].sort().map(v=>[v,v] as [string,string]);
   const types=new Map(historical.types.map(t=>[`reference-term:BCBID:historical-type:${t.code}`,`${t.code} · ${t.title}`])); for(const [v,t] of options.data?.historicalType??[]) types.set(v,t);

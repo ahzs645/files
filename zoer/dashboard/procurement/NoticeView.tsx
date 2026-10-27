@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ChevronLeft, Download, FileText, FileWarning, RefreshCw, X } from 'lucide-react';
+import { Archive, ChevronLeft, Download, FileText, FileWarning, RefreshCw, Star, X } from 'lucide-react';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
@@ -82,7 +82,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
   const head = <div className="pc-notice-head">
     <p className="pc-notice-meta">{sourceName(source)} · {award ? 'Award' : 'Opportunity'}{data.externalId || data.opportunityId ? ` · ${data.externalId || data.opportunityId}` : ''}{url && <> · <a className="procurement-link" href={url} target="_blank" rel="noopener noreferrer">Open on {sourceName(source)} ↗</a></>}</p>
     {record && <div className="pc-notice-actions">
-      {!writes ? <>{data.starred && <span className="pc-tag">★ Shortlisted</span>}{pursuit && <span className="pc-tag">Pursuit: {pursuit.stage}</span>}</> : <><Btn size="sm" variant="secondary" disabled={!!busy} aria-pressed={!!data.starred} onClick={() => void act('star', () => setStar(record.kind, award ? data.importKey : data.sourceKey, !data.starred))}>{busy === 'star' ? 'Saving…' : data.starred ? '★ Shortlisted' : '☆ Shortlist'}</Btn>
+      {!writes ? <>{data.starred && <span className="pc-tag">★ Shortlisted</span>}{pursuit && <span className="pc-tag">Pursuit: {pursuit.stage}</span>}</> : <><Btn size="sm" variant="secondary" disabled={!!busy} aria-pressed={!!data.starred} icon={<Star aria-hidden="true" className="h-3.5 w-3.5" fill={data.starred ? 'currentColor' : 'none'} />} onClick={() => void act('star', () => setStar(record.kind, award ? data.importKey : data.sourceKey, !data.starred))}>{busy === 'star' ? 'Saving…' : data.starred ? 'Shortlisted' : 'Shortlist'}</Btn>
       <NoticeHideButton id={id} title={title} />
       <label className="pc-notice-stage"><span className="sr-only">Pursuit stage</span><Select aria-label="Pursuit stage" presentation="dropdown" searchable={false} value={pursuit?.stage ?? ''} disabled={!!busy || state.isPending || !!state.error} onChange={event => void setStage(event.target.value as PursuitStage)}><option value="" disabled>{busy === 'pursuit' ? 'Saving…' : 'Add to pursuits'}</option>{PURSUIT_STAGES.map(stage => <option key={stage} value={stage}>Pursuit: {stage}</option>)}</Select></label></>}
     </div>}

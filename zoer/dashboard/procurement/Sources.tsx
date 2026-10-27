@@ -37,7 +37,7 @@ function Card({ id, name, region, status, tone, stats, actions, children, wide }
 function Capabilities({ id }: { id: string }) {
   const adapter = PROCUREMENT_SOURCE_ADAPTERS.find(source => source.id === id);
   if (!adapter) return null;
-  return <details><summary>Connector details</summary><p className="procurement-coverage">{adapter.coverage}</p><dl className="pc-detail-list">{Object.entries(adapter.capabilities).map(([name, value]) => <div key={name}><dt>{name} · {value.status}</dt><dd>{value.method}</dd></div>)}</dl>{adapter.documentation && <a className="procurement-link" href={adapter.documentation} target="_blank" rel="noreferrer">Source documentation ↗</a>}</details>;
+  return <details><summary data-zoer-disclosure>Connector details</summary><p className="procurement-coverage">{adapter.coverage}</p><dl className="pc-detail-list">{Object.entries(adapter.capabilities).map(([name, value]) => <div key={name}><dt>{name} · {value.status}</dt><dd>{value.method}</dd></div>)}</dl>{adapter.documentation && <a className="procurement-link" href={adapter.documentation} target="_blank" rel="noreferrer">Source documentation ↗</a>}</details>;
 }
 
 type OverviewRow = { id: string; name: string; region: string; tone: Tone; status: string; saved: string; lastSuccess: string; next: ReactNode; action: ReactNode };
@@ -136,7 +136,7 @@ export function Sources() {
       <Card id="bc-bid" name="BC Bid" region="British Columbia · browser scraping" tone={overview[0].tone} status={overview[0].status}
         stats={[['Opportunities', saved('bc-bid')], ['Awards', saved('bc-bid', 'award')], ['Last successful scrape', overview[0].lastSuccess]]}
         actions={<><Btn variant="primary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn><Btn variant="secondary" onClick={() => navigatePlugin('/scraper')}>Scraper</Btn><Btn variant="ghost" onClick={() => navigatePlugin('/scraper/history')}>Run history</Btn></>}>
-        <details open={bcIssue}><summary>Collection checkpoints</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · checkpoint {item.checkpointTime === 'Not recorded' ? 'not recorded' : when(item.checkpointTime)}</p>{item.error && <p role="alert" title={item.error}>{shortError(item.error)}</p>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
+        <details open={bcIssue}><summary data-zoer-disclosure>Collection checkpoints</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · checkpoint {item.checkpointTime === 'Not recorded' ? 'not recorded' : when(item.checkpointTime)}</p>{item.error && <p role="alert" title={item.error}>{shortError(item.error)}</p>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
         <BcBidSchedules rows={schedules.data} error={schedules.error as Error | null} />
         <Capabilities id="bc-bid" />
       </Card>
@@ -144,7 +144,7 @@ export function Sources() {
         stats={[['Opportunities', saved('canadabuys')], ['Last collection', overview[1].lastSuccess], ['Last CSV import', when(importedAt)], ['Next scheduled run', nextRun('canadabuys')]]}
         actions={<><Btn variant="primary" disabled={!!busy || !!canadaBuysRun} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Starting…' : 'Collect latest'}</Btn><Btn variant="secondary" onClick={() => setScheduleFor('canadabuys')}>Schedule</Btn><Btn variant="ghost" onClick={() => setImportOpen(true)}>Import CSV</Btn></>}>
         <SourceError error={collection?.error} />
-        <details><summary>Collection options</summary><div className="pc-collect-options"><label><span>Batches per run</span><Select aria-label="Collection batches" value={batches} onChange={e => setBatches(e.target.value)}>{[1, 5, 10, 20].map(n => <option key={n} value={n}>{n} batches</option>)}</Select></label><Btn variant="secondary" disabled={!!busy || !!canadaBuysRun} onClick={() => void collectCanadaBuys('restart')}>Start a new snapshot</Btn></div><p className="procurement-coverage">Start a new snapshot when CanadaBuys publishes a changed dataset. Saved notices are kept.</p>
+        <details><summary data-zoer-disclosure>Collection options</summary><div className="pc-collect-options"><label><span>Batches per run</span><Select aria-label="Collection batches" value={batches} onChange={e => setBatches(e.target.value)}>{[1, 5, 10, 20].map(n => <option key={n} value={n}>{n} batches</option>)}</Select></label><Btn variant="secondary" disabled={!!busy || !!canadaBuysRun} onClick={() => void collectCanadaBuys('restart')}>Start a new snapshot</Btn></div><p className="procurement-coverage">Start a new snapshot when CanadaBuys publishes a changed dataset. Saved notices are kept.</p>
           {collection?.receipt && <><h3>Last receipt</h3><dl className="pc-detail-list">{['retrievedAt', 'importedAt', 'totalSourceRecords', 'totalRecords', 'excludedCount', 'byteCount', 'sha256'].map(key => <div key={key}><dt>{key}</dt><dd>{collection.receipt[key] ?? 'Not reported'}</dd></div>)}</dl>{collection.receipt.excluded?.length > 0 && <><p>Some notices were excluded. Find them by CSV record number in the snapshot with this SHA-256.</p><ul>{collection.receipt.excluded.map((item: any) => <li key={item.csvRecord}>CSV record {item.csvRecord}: {item.bytes.toLocaleString()} bytes · {item.reason}</li>)}</ul></>}</>}
         </details>
         <Capabilities id="canadabuys" />
@@ -179,7 +179,7 @@ function SourceError({ error }: { error: CollectionError | null | undefined }) {
 /** BC Bid scrapes need a browser, which dashboard schedules cannot attach, so they are read here and changed in Zoer. */
 function BcBidSchedules({ rows, error }: { rows?: ScheduleRow[]; error: Error | null }) {
   const items = [['scrape.full', 'Current opportunities'], ['awards.history', 'Historical awards']] as const;
-  return <details><summary>Scheduled scraping</summary>
+  return <details><summary data-zoer-disclosure>Scheduled scraping</summary>
     {error ? <p role="alert">Schedules could not be read: {error.message}</p> : !rows ? <p role="status">Loading schedules…</p> : <ul className="pc-checkpoints">{items.map(([id, text]) => {
       const row = findSchedule(rows, id), state = scheduleState(row);
       return <li key={id}><div><strong>{text}</strong><span className="pc-status" data-tone={state.tone}>{state.status}</span></div>{(state.next || state.last) && <p>{[state.next, state.last].filter(Boolean).join(' · ')}</p>}{state.stopped && <p role="alert" title={state.error ?? undefined}>{state.stopped}</p>}</li>;
@@ -225,7 +225,7 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
       </tr>)}</tbody>
     </table>}
     {shown.length > limit && <Btn size="sm" variant="ghost" onClick={() => setAll(true)}>Show all {shown.length} portals</Btn>}
-    <details><summary>Connector details</summary><p className="procurement-coverage">{source.coverage}</p></details>
+    <details><summary data-zoer-disclosure>Connector details</summary><p className="procurement-coverage">{source.coverage}</p></details>
   </Card>;
 }
 

@@ -79,7 +79,7 @@ export function EvidenceGrid() {
       </div>}
     </header>
     {counts.isPending ? <p role="status" className="rw-o-muted">Loading evidence…</p> : catalogEmpty ? <div className="procurement-empty">
-      <h2>No notices have a current extraction yet</h2>
+      <h2>No extracted evidence yet</h2>
       <p>{writes ? 'Select notices in Opportunities and choose Extract requirements.' : 'Requirements have not been extracted for any notice in this copy.'}</p>
       <div className="procurement-actions"><Btn variant="secondary" onClick={() => navigatePlugin('/procurement')}>Open Opportunities</Btn></div>
     </div> : <>

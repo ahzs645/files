@@ -86,7 +86,7 @@ function ScraperPage() {
                   to="/scraper/history"
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-strong transition-colors"
                 >
-                  View All <ArrowRight size={12} />
+                  View all <ArrowRight size={12} />
                 </Link>
               }
             />

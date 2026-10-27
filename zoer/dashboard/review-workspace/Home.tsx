@@ -214,7 +214,7 @@ export function Home() {
       <div className="rw-controls">
         <label className="rw-control"><span>Source</span><Select aria-label="Source" presentation="dropdown" searchable={false} value={source} onChange={event => patchPluginQuery({ source: event.target.value || null })}><option value="">All saved sources</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}</option>)}</Select></label>
         {available ? <span title={policy}><ProfilePicker /></span> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
-        {surface !== 'societyer' && <Btn size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={refresh} tooltip={`As of ${when(new Date(asOf).toISOString())}`}>Refresh</Btn>}
+        {surface !== 'societyer' && <Btn size="sm" variant="secondary" className="rw-scope-refresh" aria-label="Refresh" icon={<RefreshCw size={14} />} onClick={refresh} tooltip={`As of ${when(new Date(asOf).toISOString())}`}><span className="rw-scope-refresh-label">Refresh</span></Btn>}
       </div>
     </header>
     {!workspace.isPending && !available && <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved notices, documents, deadlines and pursuits are still shown below.</p>}

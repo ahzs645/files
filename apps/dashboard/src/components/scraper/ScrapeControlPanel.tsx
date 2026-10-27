@@ -43,7 +43,7 @@ export function ScrapeControlPanel({
           onClick={onStart}
         >
           <Play size={15} />
-          <span>{startPending ? "Starting..." : "Start Scrape"}</span>
+          <span>{startPending ? "Starting…" : "Start scrape"}</span>
         </Button>
         <Button
           variant="ghost"
@@ -57,7 +57,7 @@ export function ScrapeControlPanel({
               ? "Stopping..."
               : activeRun?.status === "stopping"
                 ? "Stopping..."
-                : "Stop Active"}
+                : "Stop active run"}
           </span>
         </Button>
 
@@ -78,13 +78,13 @@ export function ScrapeControlPanel({
       {hasActiveRun && activeRun ? (
         <ActiveRunCard run={activeRun} />
       ) : plugin ? (
-        <p className="rounded-lg border border-border-subtle bg-bg-subtle px-3 py-2 text-xs text-text-secondary">No active scrape. Start Scrape launches a manual run.</p>
+        <p className="rounded-lg border border-border-subtle bg-bg-subtle px-3 py-2 text-xs text-text-secondary">No active scrape. Start scrape launches a manual run.</p>
       ) : (
         <div className="rounded-xl border border-border-subtle bg-bg-subtle p-6 text-center">
           <Radio size={24} className="mx-auto mb-3 text-text-tertiary" />
           <p className="text-sm text-text-secondary">No active scrape running.</p>
           <p className="text-xs text-text-tertiary mt-1">
-            Click Start Scrape to launch a manual run.
+            Choose Start scrape to launch a manual run.
           </p>
         </div>
       )}
