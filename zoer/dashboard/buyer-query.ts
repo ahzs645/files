@@ -25,11 +25,15 @@ export function buyerQuery(sources: string[], kind: 'award' | 'opportunity', lev
   const sorting = isBuyerColumn(args.sort?.id ?? '');
   const labels = sorting ? [...new Set(rows.map(r => String((r.data as any)[args.sort.id])))].sort((a,b) => a.localeCompare(b)) : [];
   const ranks = new Map(labels.map((label, i) => [label, i]));
+  const filtering = !!args.organization || filters.length > 0, searching = !!args.search?.trim();
   const plain: Record<string, number[]> = Object.create(null), quoted: { source: string; values: number[] }[] = [];
   for (const {source, data} of rows) {
     const values = [sorting ? ranks.get(String((data as any)[args.sort.id]))! : 0,
       (!args.organization || data.buyer === args.organization) && filters.every((f: any) => matches(String((data as any)[f.column]), f)) ? 1 : 0,
-      args.search?.trim() && buyerSearchMatches(resolveBuyer(source), args.search) ? 1 : 0];
+      searching && buyerSearchMatches(resolveBuyer(source), args.search) ? 1 : 0];
+    // Absent names read as 0 for both flags, so without a buyer sort only matching names are sent.
+    // This keeps searches and buyer filters within the bounded parameter as the name inventory grows.
+    if (!sorting && !(filtering && values[1]) && !(searching && values[2])) continue;
     if (/["\\\u0000-\u001f]/.test(source)) quoted.push({ source, values }); else plain[source] = values;
   }
   const parameter = JSON.stringify({ plain, quoted });

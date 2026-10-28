@@ -142,6 +142,7 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
     }
     const work = [...state.pending];
     for (const row of work) {
+      const failuresBefore = state.failures.length;
       try {
         const page = await capture(row.detailUrl);
         const doc = parseCapture(page, 'detail').document;
@@ -156,7 +157,7 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
         state.failures.push({ sourceKey: row.sourceKey, message });
         if (/manual|browser check|cancel|unavailable|budget|invalid.ticket/i.test(message)) throw error;
       }
-      if (state.detailsCompleted % 10 === 0 || state.failures.length) await checkpoint();
+      if (state.detailsCompleted % 10 === 0 || state.failures.length > failuresBefore) await checkpoint();
       if (state.failures.length >= 5) throw new Error('Five detail pages failed. Saved progress; resume after checking the browser.');
     }
     if (state.pending.length) throw new Error(`${state.pending.length} detail pages remain incomplete. Resume to retry them.`);
@@ -172,7 +173,8 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
       return paused(compactOrNull(state));
     }
     state.error = error instanceof Error ? error.message : String(error);
-    await checkpoint();
+    // Report the original failure (browser check, cancellation…) even if saving the checkpoint also fails.
+    await checkpoint().catch(() => undefined);
     throw error;
   }
 }

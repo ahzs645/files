@@ -494,6 +494,13 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 20000
+                  },
+                  "starred": {
+                    "type": "boolean"
+                  },
+                  "sourceUrl": {
+                    "type": "string",
+                    "maxLength": 20000
                   }
                 },
                 "required": [

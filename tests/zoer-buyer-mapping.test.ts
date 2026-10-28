@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { annotateBuyerRecord, buyerRegistry, resolveBuyer, buyerLevels, parseBuyerTrail, BUYER_MAPPING_VERSION } from '../zoer/dashboard/market/buyers';
 import { buildMarketView, inspectionFilters, type Overview, type Award, type Trends, type Matrix, type Comparison, type MappingOverview } from '../zoer/dashboard/market/model';
 import { exportRecords } from '../zoer/dashboard/export';
+import { buyerQuery } from '../zoer/dashboard/buyer-query';
 import { buildContractAwardImportKey } from '../packages/shared/src/contractAwards';
 const today = '2026-09-13';
 const ministry = 'Ministry of Transportation and Transit';
@@ -163,5 +164,18 @@ describe('buyer drill-down skips redundant directories',()=>{
     const result=overview(filters);expect(result.buyers[0].nextLevel).toBeNull();expect(result.count).toBe(1);
     expect(matching(filters,{buyer:ministry}).map(r=>r.importKey)).toEqual(['south']);
     const jointResult=overview({buyerSearch:'Providence'});expect(jointResult.buyers).toHaveLength(1);expect(jointResult.buyers[0].nextLevel).toBeNull();expect(jointResult.count).toBe(1);
+  });
+});
+describe('bounded buyer query parameter', () => {
+  const names = (parameter: string) => Object.keys(JSON.parse(parameter).plain);
+  it('sends only matching names for searches and filters without a buyer sort', () => {
+    const sources = [ministry + 'South Coast Regional Office', ministry + 'Northern Regional Office', joint];
+    expect(names(buyerQuery(sources, 'award', 'organization', { search: 'Providence' }).parameter)).toEqual([joint]);
+    expect(names(buyerQuery(sources, 'award', 'organization', { organization: ministry }).parameter)).toHaveLength(2);
+    expect(names(buyerQuery(sources, 'award', 'organization', { search: 'Providence', sort: { id: 'buyer' } }).parameter)).toHaveLength(3);
+  });
+  it('searches a name inventory larger than the parameter bound', () => {
+    const sources = Array.from({ length: 2000 }, (_, i) => `Unlisted Buyer Office Number ${i} With A Long Descriptive Name`);
+    expect(() => buyerQuery(sources, 'award', 'source', { search: 'Number 1999 ' })).not.toThrow();
   });
 });

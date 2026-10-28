@@ -18,6 +18,12 @@ describe('Zoer scraping pipeline and source dashboard model', () => {
     expect(50 * detailCost).toBeLessThanOrEqual(grant('scrape.details'));
     expect(2 * detailCost).toBeLessThanOrEqual(grant('scrape.historical'));
   });
+  it('lets exported award JSON, with its star and source address, back through awards.import', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../zoer/manifest.json', import.meta.url), 'utf8'));
+    const item = manifest.integration.actions.find((action: any) => action.id === 'awards.import').inputSchema.properties.records.items;
+    expect(item.additionalProperties).toBe(false);
+    expect(item.properties).toMatchObject({ starred: { type: 'boolean' }, sourceUrl: { type: 'string' } });
+  });
   it('captures a listing page and details, checkpoints each result, and fills dashboard/detail/history queries', async () => {
     const saved: any[] = [], urls: string[] = [];
     const output = await scrapeSample({ captureUrl: async url => {

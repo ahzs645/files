@@ -40,6 +40,11 @@ describe('full current public crawl', () => {
     expect(urls).toEqual(checkpoint.pending.map((row: any) => row.detailUrl));
     expect(result.detailCount).toBe(2);
     expect(() => validateCheckpoint({ ...checkpoint, pending: [{ ...checkpoint.pending[0], detailUrl: 'https://evil.example/' }] })).toThrow('Invalid');
+  });  it('reports the original failure when the final checkpoint save also fails', async () => {
+    await expect(scrapeFull({ captureUrl: async (url, number) => {
+      if (url === LISTING_URL) return listing(number!, 1);
+      throw new Error('Manual browser check required');
+    } }, async doc => { if (doc.kind === 'scrape' && doc.error) throw new Error('Disk full'); return 'a'; })).rejects.toThrow('Manual');
   });
 });
 
