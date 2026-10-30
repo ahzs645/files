@@ -1,0 +1,41 @@
+name: Check
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      # convex/_generated is ignored and the web app imports it. Codegen needs a configured
+      # deployment but only reads local files, so placeholder self-hosted settings suffice. It
+      # exits non-zero after writing the types because compiled convex/*.js files sit beside
+      # their .ts sources, so the step only requires the generated declarations.
+      - name: Generate Convex types
+        env:
+          CONVEX_SELF_HOSTED_URL: http://127.0.0.1:3210
+          CONVEX_SELF_HOSTED_ADMIN_KEY: ci-placeholder
+        run: |
+          npx convex codegen --typecheck disable || true
+          test -s convex/_generated/api.d.ts && test -s convex/_generated/server.d.ts
+      - name: Typecheck
+        run: |
+          npm run typecheck
+          npm run zoer:typecheck:market
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test
+        run: npm test

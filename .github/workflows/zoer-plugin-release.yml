@@ -6,15 +6,31 @@
 # Repository secrets:
 #   ZOER_SOURCE_TOKEN        read access to ahzs645/zoer; the sandbox dashboard
 #                            builds against Zoer's shared UI source
-#   ZOER_PLUGIN_SIGNING_KEY  optional: Ed25519 private key (PEM) whose public key is trusted in Zoer
-#   ZOER_PLUGIN_KEY_ID       optional: key ID registered with that public key in Zoer
-# Without both signing secrets the release is published unsigned. Zoer's default
-# native UI policy still trusts GitHub release installs; PLUGIN_NATIVE_UI=signed does not.
+#   ZOER_PLUGIN_SIGNING_KEY  Ed25519 private key (PEM) whose public key is trusted in Zoer
+#   ZOER_PLUGIN_KEY_ID       key ID registered with that public key in Zoer
+# Without both signing secrets the release fails. To publish an unsigned release on
+# purpose (Zoer's default native UI policy still trusts GitHub release installs;
+# PLUGIN_NATIVE_UI=signed does not), run it manually on the tag:
+#   gh workflow run zoer-plugin-release.yml --ref zoer-v<version> -f allow_unsigned=true
+#
+# Zoer's shared UI source is checked out at a pinned commit (ZOER_REF below) so a
+# tag always rebuilds the same package. Move the pin deliberately in a commit; a
+# manual run can pass zoer_ref (another commit, or "main" as an explicit opt-in).
 name: Zoer plugin release
 
 on:
   push:
     tags: ["zoer-v*"]
+  workflow_dispatch:
+    inputs:
+      zoer_ref:
+        description: ahzs645/zoer commit to build against (empty uses the pinned commit; "main" only as a deliberate opt-in)
+        type: string
+        default: ""
+      allow_unsigned:
+        description: Publish without signing when the signing secrets are missing
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -28,23 +44,46 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ZOER_UI_ROOT: ${{ github.workspace }}/.zoer-host
+      # Pinned ahzs645/zoer commit ("Guard legacy agent scrape and workflow lookups").
+      ZOER_REF: ${{ inputs.zoer_ref || '3262f039779f7c5c8c6b4598d5d752154875ae83' }}
+      ALLOW_UNSIGNED: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_unsigned }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Require signing secrets
+        env:
+          HAS_KEY: ${{ secrets.ZOER_PLUGIN_SIGNING_KEY != '' }}
+          HAS_KEY_ID: ${{ secrets.ZOER_PLUGIN_KEY_ID != '' }}
+        run: |
+          if [ "$HAS_KEY" = true ] && [ "$HAS_KEY_ID" = true ]; then exit 0; fi
+          if [ "$ALLOW_UNSIGNED" = true ]; then
+            echo "::warning::Signing secrets are not set; publishing an unsigned release because allow_unsigned is true."
+            exit 0
+          fi
+          echo "::error::ZOER_PLUGIN_SIGNING_KEY and ZOER_PLUGIN_KEY_ID are required. Re-run manually on the tag with allow_unsigned=true to publish unsigned."
+          exit 1
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check out Zoer shared UI source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ahzs645/zoer
+          ref: ${{ env.ZOER_REF }}
           token: ${{ secrets.ZOER_SOURCE_TOKEN }}
           path: .zoer-host
           sparse-checkout: |
             frontend
             packages/api-types
 
-      - uses: actions/setup-node@v4
+      - name: Record the Zoer source commit
+        run: |
+          commit=$(git -C .zoer-host rev-parse HEAD)
+          echo "ZOER_COMMIT=$commit" >> "$GITHUB_ENV"
+          if [ "$ZOER_REF" != "$commit" ]; then echo "::warning::Building against ahzs645/zoer $ZOER_REF ($commit), not a pinned commit."; fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       - name: Check the tag matches the manifest version
         run: |
@@ -71,11 +110,16 @@ jobs:
           ZOER_PLUGIN_SIGNING_KEY: ${{ secrets.ZOER_PLUGIN_SIGNING_KEY }}
           ZOER_PLUGIN_KEY_ID: ${{ secrets.ZOER_PLUGIN_KEY_ID }}
         run: |
+          set -o pipefail
           if [ -z "$ZOER_PLUGIN_SIGNING_KEY" ] || [ -z "$ZOER_PLUGIN_KEY_ID" ]; then
-            echo "::notice::Signing secrets are not set; publishing an unsigned release."
+            # Only reachable with allow_unsigned (see "Require signing secrets").
             unset ZOER_PLUGIN_SIGNING_KEY ZOER_PLUGIN_KEY_ID
           fi
-          bun zoer/tools/zoer-plugin.mjs release dist/zoer-bcbid --output release
+          bun zoer/tools/zoer-plugin.mjs release dist/zoer-bcbid --output release | tee "$RUNNER_TEMP/release-result.json"
+          if [ "$(tail -n 1 "$RUNNER_TEMP/release-result.json" | jq -r .signed)" != true ] && [ "$ALLOW_UNSIGNED" != true ]; then
+            echo "::error::The package was not signed."
+            exit 1
+          fi
 
       - name: Publish the release
         env:
@@ -84,4 +128,4 @@ jobs:
           digest=$(jq -r .digestSha256 release/zoer-plugin.json)
           gh release create "$GITHUB_REF_NAME" release/* --verify-tag \
             --title "Procurement plugin $PLUGIN_VERSION" \
-            --notes "Install in Zoer: Extensions → Stage package → GitHub release → ahzs645/files (tag $GITHUB_REF_NAME). Package digest $digest."
+            --notes "Install in Zoer: Extensions → Stage package → GitHub release → ahzs645/files (tag $GITHUB_REF_NAME). Package digest $digest. Built against ahzs645/zoer $ZOER_COMMIT."
