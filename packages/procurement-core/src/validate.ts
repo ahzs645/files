@@ -96,7 +96,7 @@ type Parsed = { ok: true; value: unknown } | { ok: false; message: string };
 export function parseModelJson(raw: unknown): Parsed {
   if (raw !== null && typeof raw === 'object') return { ok: true, value: raw };
   if (typeof raw !== 'string') return { ok: false, message: `Expected a JSON object or string, received ${raw === null ? 'null' : typeof raw}.` };
-  let text = raw.trim().replace(/^﻿/, '');
+  let text = raw.trim().replace(/^\uFEFF/, '');
   const fence = /```(?:json|JSON)?\s*\n?([\s\S]*?)```/.exec(text);
   if (fence) text = fence[1]!.trim();
   const attempt = (candidate: string): Parsed => {

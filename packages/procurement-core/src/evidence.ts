@@ -19,7 +19,7 @@ export interface QuoteAlignment {
 /** Preferred start (code points) used to choose between repeated matches, e.g. a chunk offset. */
 export type AlignmentHint = number | { start?: number | null } | null | undefined;
 
-const IGNORABLE = /^[­​-‍⁠﻿]$/u;
+const IGNORABLE = /^[\u00AD\u200B-\u200D\u2060\uFEFF]$/u;
 const WHITESPACE = /^\s$/u;
 const MARK = /^\p{M}$/u;
 const FOLD: Record<string, string> = {
