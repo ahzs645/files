@@ -40,7 +40,7 @@ Version 0.20 packages the existing `apps/dashboard` React experience and shared 
 
 ## Build
 
-Use Bun and a Zoer checkout with its frontend dependencies installed. Keep the checkouts next to each other, or set `ZOER_UI_ROOT=/absolute/path/to/zoer`. The build imports Zoer's shared database controls from `frontend/src/plugin-ui/database.ts` and `database.css`; the host checkout must include those entry points. From this repository:
+Use Bun and a Zoer checkout with its workspace dependencies installed at the repository root (`bun install --frozen-lockfile`). Keep the checkouts next to each other, or set `ZOER_UI_ROOT=/absolute/path/to/zoer`. The build imports Zoer's shared database controls from `frontend/src/plugin-ui/database.ts` and `database.css`; the host checkout must include those entry points. Shared dependencies resolve from the host's root `node_modules`, and the public types live in `sdk/packages/api-types`. From this repository:
 
 ```sh
 npm ci --ignore-scripts

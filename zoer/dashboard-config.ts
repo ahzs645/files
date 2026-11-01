@@ -23,7 +23,7 @@ export function dashboardConfig(): InlineConfig {
     }, tailwindcss(), react()],
     define: { 'import.meta.env.VITE_ZOER_PLUGIN': 'true' },
     resolve: { dedupe: ['react','react-dom'], alias: [
-      { find: '@tanstack/react-query', replacement: resolve(zoerRoot, 'frontend/node_modules/@tanstack/react-query') },
+      { find: '@tanstack/react-query', replacement: resolve(zoerRoot, 'node_modules/@tanstack/react-query') },
       { find: '@zoer/plugin-ui/controls', replacement: resolve(zoerRoot, 'frontend/src/plugin-ui/controls.ts') },
       { find: '@zoer/plugin-ui/analysis', replacement: resolve(zoerRoot, 'frontend/src/plugin-ui/analysis.ts') },
       { find: '@zoer/plugin-ui/button', replacement: resolve(zoerRoot, 'frontend/src/components/ui/Btn.tsx') },
