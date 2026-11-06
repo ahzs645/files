@@ -534,7 +534,9 @@ export async function runScrapeJob(
 
     context = await chromium.launchPersistentContext(config.userDataDir, {
       headless: config.browser.headless,
-      channel: config.browser.channel,
+      // macOS: patched system Chrome with the sandbox on. Docker keeps its own browser.
+      channel: config.browser.channel || (process.platform === "darwin" ? "chrome" : undefined),
+      chromiumSandbox: process.platform === "darwin",
       viewport: { width: 1440, height: 960 },
       args: [...stealthArgs, ...config.browser.launchArgs],
       userAgent:
