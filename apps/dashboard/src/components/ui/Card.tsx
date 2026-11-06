@@ -42,7 +42,7 @@ export function CardHeader({
   return (
     <div className="flex min-w-0 flex-wrap items-start justify-between gap-4 mb-5">
       <div>
-        <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-accent mb-2">
+        <div className="inline-flex items-center gap-2 text-[12px] font-medium uppercase tracking-[0.14em] text-accent mb-2">
           {Icon ? <Icon size={13} /> : null}
           <span>{eyebrow}</span>
         </div>

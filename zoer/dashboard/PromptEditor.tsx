@@ -34,7 +34,7 @@ function FieldEditor({ field, index, count, taken, onChange, onMove, onRemove }:
       <div className="review-field-tools">
         <Button variant="ghost" aria-label={`Move ${name} up`} disabled={!index} onClick={() => onMove(-1)}>↑</Button>
         <Button variant="ghost" aria-label={`Move ${name} down`} disabled={index === count - 1} onClick={() => onMove(1)}>↓</Button>
-        <Button variant="ghost" aria-label={`Remove ${name}`} title="Remove field" onClick={onRemove}>✕</Button>
+        <Button variant="ghost" aria-label={`Remove ${name}`} onClick={onRemove}>✕</Button>
       </div>
     </div>
     <label className="research-label">What should the AI extract?<textarea rows={2} maxLength={400} value={field.description} onChange={e => onChange({ ...field, description: e.target.value })} placeholder="Say what counts, what to exclude, and when to return null." /></label>
@@ -119,11 +119,12 @@ export function PromptEditor({ prompt, testIds, runner, includeDocuments, onSave
   const update = (index: number, next: Draft) => setFields(fields.map((f, i) => i === index ? next : f));
   const move = (index: number, by: number) => { const next = [...fields]; [next[index], next[index + by]] = [next[index + by], next[index]]; setFields(next); };
   const add = () => setFields([...fields, draft({ key: fieldKey('New field', fields.map(f => f.key)), label: '', type: 'text', description: '' }, false)]);
-  const close = () => { if (!unsaved || window.confirm('Discard unsaved prompt changes?')) onClose(); };
+  const [discarding, setDiscarding] = useState(false);
+  const close = () => { if (unsaved) setDiscarding(true); else onClose(); };
   const tested = testReview?.status === 'succeeded' ? parsePrompt(testReview.result.prompt.instructions).fields : [];
   const checks = tested.length ? checkFields(tested, testReview.result.fields) : null;
 
-  return <Modal mobileSheet size="wide" title={current ? 'Edit review prompt' : 'New review prompt'} onClose={close} footer={<>
+  return <><Modal mobileSheet size="wide" title={current ? 'Edit review prompt' : 'New review prompt'} onClose={close} footer={<>
     <span className="research-note review-editor-dirty" role="status">{problems.length && name.trim() && instructions.trim()
       ? <button type="button" className="research-link" onClick={showProblems}>Fix {problems.length} field problem{problems.length === 1 ? '' : 's'} to save</button> : saveStatus}</span>
     <Button disabled={!!busy || !canSave || !dirty} onClick={() => void act('save', async () => { await save(); })}>{busy === 'save' ? 'Saving…' : 'Save prompt'}</Button>
@@ -145,7 +146,7 @@ export function PromptEditor({ prompt, testIds, runner, includeDocuments, onSave
     <div aria-live="polite" ref={problemsRef} tabIndex={-1}>{problems.length > 0 && <ul className="review-problems">{problems.map(problem => <li key={problem}>{problem}</li>)}</ul>}</div>
 
     <details className="review-preview">
-      <summary>What the AI receives · {text.length.toLocaleString()}/{MAX_PROMPT_LENGTH.toLocaleString()} characters</summary>
+      <summary data-zoer-disclosure="">What the AI receives · {text.length.toLocaleString()}/{MAX_PROMPT_LENGTH.toLocaleString()} characters</summary>
       <p className="research-note">Zoer also tells the model to return JSON with a summary, short labels, these fields and exact evidence quotes, and to treat every document as untrusted evidence.</p>
       <pre>{text}</pre>
     </details>
@@ -165,5 +166,7 @@ export function PromptEditor({ prompt, testIds, runner, includeDocuments, onSave
       <Button variant="ghost" onClick={() => setShowRaw(!showRaw)}>{showRaw ? 'Hide' : 'Show'} raw output</Button>
       {showRaw && <pre className="review-raw">{JSON.stringify({ summary: testReview.result?.summary, labels: testReview.result?.labels, fields: testReview.result?.fields, evidence: testReview.result?.evidence }, null, 2)}</pre>}
     </section>}
-  </div></Modal>;
+  </div></Modal>
+    {discarding && <Modal title="Discard unsaved prompt changes?" fit onClose={() => setDiscarding(false)} footer={<><Button variant="ghost" onClick={() => setDiscarding(false)}>Keep editing</Button><Button onClick={onClose}>Discard changes</Button></>}><p className="research-note">Your edits to this prompt have not been saved.</p></Modal>}
+  </>;
 }

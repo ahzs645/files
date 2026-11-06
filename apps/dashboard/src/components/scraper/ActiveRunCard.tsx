@@ -8,7 +8,7 @@ type RunRecord = ScrapeRun & { _id: string };
 function MetricTile({ label, value, icon: Icon }: { label: string; value: string | number; icon?: React.ComponentType<{ size?: number; className?: string }> }) {
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-subtle p-3">
-      <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary mb-1.5">
+      <div className="flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-wider text-text-tertiary mb-1.5">
         {Icon ? <Icon size={12} className="text-text-tertiary" /> : null}
         {label}
       </div>

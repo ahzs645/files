@@ -58,7 +58,9 @@ export function Modal({ title, onClose, children, footer, headerContent, size = 
 
 type TabOption<T extends string> = { id: T; label: string };
 /** Zoer's PageTabs contract (roving tab index, arrow/Home/End keys, optional real links) on Societyer's `tabs` strip. */
-export function PageTabs<T extends string>({ id, label, tabs, value, onChange, href }: { id: string; label: string; tabs: readonly TabOption<T>[]; value: T; onChange: (value: T) => void; href?: (value: T) => string }) {
+export function PageTabs<T extends string>({ id, label, tabs: listed, moreTabs, value, onChange, href }: { id: string; label: string; tabs: readonly TabOption<T>[]; moreTabs?: readonly TabOption<T>[]; value: T; onChange: (value: T) => void; href?: (value: T) => string }) {
+  // Societyer's strip scrolls and shows too few sections to need a menu, so overflow sections join it.
+  const tabs = moreTabs?.length ? [...listed, ...moreTabs] : listed;
   const move = (event: KeyboardEvent<HTMLElement>, index: number) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (href && event.key === ' ') { event.preventDefault(); onChange(tabs[index].id); return; }

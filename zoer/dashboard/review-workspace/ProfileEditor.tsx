@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Btn, Select } from '@zoer/plugin-ui/controls';
@@ -228,7 +229,7 @@ function DraftForm({ name, setName, draft, setDraft, disabled, issueFor }: { nam
           {kind !== 'reference' && <Field label={kind === 'equipment' ? 'Access until' : 'Expires on'} issues={issueFor(`${at}.expiresAt`)}><input type="date" value={e.expiresAt ?? ''} disabled={disabled} onChange={x => setEvidence(e.id, { expiresAt: x.target.value || null })} /></Field>}
           <Field label="Source note" hint="Where the document or proof can be found."><input value={e.sourceRef ?? ''} disabled={disabled} onChange={x => setEvidence(e.id, { sourceRef: x.target.value })} /></Field>
         </div>
-        <div className="rw-row rw-row-end"><small className="rw-note" title={e.id}>Evidence ID {e.id.slice(0, 8)}</small><Btn size="sm" variant="ghost" disabled={disabled} onClick={() => patch({ evidence: draft.evidence.filter(x => x.id !== e.id) })}>Remove</Btn></div>
+        <div className="rw-row rw-row-end"><Hint content={e.id}><small className="rw-note">Evidence ID {e.id.slice(0, 8)}</small></Hint><Btn size="sm" variant="ghost" disabled={disabled} onClick={() => patch({ evidence: draft.evidence.filter(x => x.id !== e.id) })}>Remove</Btn></div>
       </div>; })}
       <Btn size="sm" variant="ghost" disabled={disabled} onClick={() => patch({ evidence: [...draft.evidence, emptyEvidence(kind)] })}>{KIND_LABEL[kind][2]}</Btn>
     </fieldset>)}

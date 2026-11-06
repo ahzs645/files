@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
@@ -70,7 +71,7 @@ function TaskTable({ tasks, passed, onEdit }: { tasks: TaskRow[]; passed?: Set<s
     <thead><tr><th scope="col">Task</th><th scope="col">Notice</th><th scope="col">Linked to</th><th scope="col">Owner</th><th scope="col">Due</th><th scope="col">Status</th>{onEdit && <th scope="col"><span className="sr-only">Actions</span></th>}</tr></thead>
     <tbody>{tasks.map(task => <tr key={task.id}>
       <td><strong>{task.title}</strong><small className="rw-note">{kindLabel(task.kind)}</small></td>
-      <td data-label="Notice">{task.recordTitle ?? task.recordId}{passed?.has(task.recordId) && <small className="rw-warn" title={DEADLINE_PASSED_HINT}>Deadline passed</small>}</td>
+      <td data-label="Notice">{task.recordTitle ?? task.recordId}{passed?.has(task.recordId) && <Hint content={DEADLINE_PASSED_HINT}><small className="rw-warn">Deadline passed</small></Hint>}</td>
       <td data-label="Linked to">{task.linkedType === 'requirement' ? (task.linkedText ? <>Requirement: {task.linkedText}</> : 'Requirement (not found in the current ledger)') : task.linkedType ? `${task.linkedType.replace(/_/g, ' ')}` : 'Not linked'}</td>
       <td data-label="Owner">{task.owner || 'Unassigned'}</td>
       <td data-label="Due">{dueText(task.dueAt)}</td>
@@ -89,7 +90,7 @@ function TaskEditor({ task, onClose, onSaved }: { task: TaskRow; onClose(): void
     try { await reviewWrite({ op: 'task.update', taskId: task.id, recordId: task.recordId, status, owner: owner.trim() || undefined, dueAt: due || undefined, ...(note.trim() ? { completionNote: note.trim() } : {}), expectedVersion: task.version }); await onSaved(); }
     catch (e) { setError(friendly(e)); } finally { setBusy(false); }
   };
-  return <Modal title={`Update task: ${task.title}`} mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant="primary" disabled={busy || needsNote} loading={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save task'}</Btn></div>}>
+  return <Modal fit title={`Update task: ${task.title}`} mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant="primary" disabled={busy || needsNote} loading={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save task'}</Btn></div>}>
     <div className="rw-form">
       <p className="rw-note">{task.recordTitle ?? task.recordId}{task.linkedText ? ` · Requirement: ${task.linkedText}` : ''}</p>
       <label className="rw-field"><span>Status</span><Select aria-label="Task status" presentation="dropdown" searchable={false} value={status} disabled={busy} onChange={e => setStatus(e.target.value as TaskRow['status'])}><option value="open">Open</option><option value="done">Done</option><option value="cancelled">Cancelled</option></Select></label>
@@ -110,7 +111,7 @@ function TaskCreator({ pursuits, onClose, onSaved }: { pursuits: PursuitDue[]; o
     try { await reviewWrite({ op: 'task.create', recordId, title: title.trim(), kind, ...(owner.trim() ? { owner: owner.trim() } : {}), ...(due ? { dueAt: due } : {}), expectedVersion: 0 }); await onSaved(); }
     catch (e) { setError(friendly(e)); } finally { setBusy(false); }
   };
-  return <Modal title="Add task" mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant="primary" disabled={busy || !recordId || title.trim().length < 3} loading={busy} onClick={() => void save()}>{busy ? 'Adding…' : 'Add task'}</Btn></div>}>
+  return <Modal fit title="Add task" mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant="primary" disabled={busy || !recordId || title.trim().length < 3} loading={busy} onClick={() => void save()}>{busy ? 'Adding…' : 'Add task'}</Btn></div>}>
     <div className="rw-form">
       <label className="rw-field"><span>Pursuit</span><Select aria-label="Pursuit" value={recordId} disabled={busy} onChange={e => setRecordId(e.target.value)}>{pursuits.map(item => <option key={item.recordId} value={item.recordId}>{item.title}</option>)}</Select></label>
       <label className="rw-field"><span>Task</span><input value={title} maxLength={300} disabled={busy} onChange={e => setTitle(e.target.value)} /></label>

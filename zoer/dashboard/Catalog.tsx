@@ -49,7 +49,7 @@ export function CatalogTools({ entity, showStarFilter=true, showCount=true }: { 
     <Button variant="ghost" disabled={!counts?.total || exporting} onClick={() => void exportRows('csv')}>Download CSV</Button>
     <Button variant="ghost" disabled={!counts?.total || exporting} onClick={() => void exportRows('json')}>Download JSON</Button>
     {exporting && <span role="status">Exporting…</span>}{exportError && <p role="alert">{exportError}</p>}
-    {collection&&<details><summary>Import {noun} JSON</summary><input type="file" accept=".json,application/json" aria-label={`Import ${noun} JSON`} disabled={importing} onChange={event => void importFile(event.currentTarget)} />{importing&&<p role="status">Saving {noun} records…</p>}{importError&&<p role="alert">{importError}</p>}</details>}
+    {collection&&<details><summary data-zoer-disclosure="">Import {noun} JSON</summary><input type="file" accept=".json,application/json" aria-label={`Import ${noun} JSON`} disabled={importing} onChange={event => void importFile(event.currentTarget)} />{importing&&<p role="status">Saving {noun} records…</p>}{importError&&<p role="alert">{importError}</p>}</details>}
   </div>;
 }
 /** Download / Resume / Stop for the public award history. Used in the awards header and on the Scraper tab. */
@@ -88,7 +88,7 @@ export function AwardHistoryPanel() {
       <div><h2>Award history</h2><p role="status">{status} {awardProgress(checkpoint)}</p>{isRecent && <p>Historical backfill: {model.awardCheckpoint?.version === 2 ? awardProgress(model.awardCheckpoint) : 'Date coverage has not been checked yet. Previously saved awards are retained.'}</p>}{lastError && <p role="alert">{lastError}</p>}</div>
       <div className="zoer-record-tools zoer-setup-actions"><AwardHistoryControls /></div>
     </div>
-    <details><summary>About this download</summary><p>Checks public awards in date ranges and saves each page. Completed ranges are skipped; oversized ranges are split into smaller periods. Resume rechecks only the unfinished range, and unchanged records are retained. Refresh recent awards checks the last 30 days for new or changed records without replacing historical coverage. Undated awards and attachments are outside this download. Older page-number checkpoints are retained when starting the date backfill.</p></details>
+    <details><summary data-zoer-disclosure="">About this download</summary><p>Checks public awards in date ranges and saves each page. Completed ranges are skipped; oversized ranges are split into smaller periods. Resume rechecks only the unfinished range, and unchanged records are retained. Refresh recent awards checks the last 30 days for new or changed records without replacing historical coverage. Undated awards and attachments are outside this download. Older page-number checkpoints are retained when starting the date backfill.</p></details>
   </section>;
 }
 /** Run history tab: award history runs, shown above the opportunity scrape runs. */

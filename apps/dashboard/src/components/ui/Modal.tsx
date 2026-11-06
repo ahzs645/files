@@ -51,7 +51,7 @@ export function Modal({
       >
         <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
           <div>
-            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+            <div className="text-[12px] font-medium uppercase tracking-[0.14em] text-accent">
               Contract Award
             </div>
             <h2 className="mt-1 text-lg font-semibold text-text-primary">{title}</h2>

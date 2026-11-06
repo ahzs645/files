@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Select } from '@zoer/plugin-ui/database';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
+import { Hint } from './host-ui';
 import { documentScope, readDocumentCandidates, type DocumentCandidate } from './document-scope';
 import { refresh, useWorkspace } from './backend';
 import { navigatePlugin } from './navigation';
@@ -54,7 +55,7 @@ export function BulkDocuments({running,onStarted}:{running:boolean;onStarted:()=
     <h2>Download all attachments</h2>
     <div className="research-toolbar research-stack">
       <label className="research-label"><span className="sr-only">Scope</span><Select aria-label="Download scope" value={scope} onChange={e=>setScope(e.target.value as 'current'|'all')} disabled={busy}><option value="current">Open opportunities</option><option value="all">All opportunities</option></Select></label>
-      <Button disabled={loading||busy||downloadRunning||sourceRunning||!preview?.ids.length} onClick={()=>void start()} title="Up to 100 files per opportunity, 150 MB each. Files already saved are reused.">{busy?'Starting…':downloadRunning?'Download running…':'Download all'}</Button>
+      <Hint action content="Up to 100 files per opportunity, 150 MB each. Files already saved are reused."><Button disabled={loading||busy||downloadRunning||sourceRunning||!preview?.ids.length} onClick={()=>void start()}>{busy?'Starting…':downloadRunning?'Download running…':'Download all'}</Button></Hint>
       <Button variant="ghost" disabled={loading||busy} onClick={()=>void load()}>Refresh</Button>
     </div>
     {loading?<p role="status">Counting attachments…</p>:preview&&<p>

@@ -26,7 +26,7 @@ function DetailField({
 }) {
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-subtle p-3">
-      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
+      <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
         {label}
       </div>
       <div className="mt-1 whitespace-pre-wrap break-words text-sm text-text-primary">

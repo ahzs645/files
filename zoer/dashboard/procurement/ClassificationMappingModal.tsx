@@ -37,7 +37,7 @@ export function ClassificationMappingModal({ sourceId, sourceLabel, rawClassific
     <div className="procurement-classification-form">
       <p>This is your display label for an exact classification in one source. Source records, classification codes, and amount groups remain unchanged.</p>
       <dl><div><dt>Source</dt><dd>{sourceLabel} <small>({sourceId})</small></dd></div><div><dt>Original classification</dt><dd>{classificationLabel(rawClassification)}</dd></div></dl>
-      <details><summary>Exact source value</summary><pre>{rawClassification}</pre></details>
+      <details><summary data-zoer-disclosure="">Exact source value</summary><pre>{rawClassification}</pre></details>
       <label htmlFor="procurement-classification-label">Your classification label<input id="procurement-classification-label" value={label} maxLength={160} disabled={busy} onChange={event => setLabel(event.target.value)} placeholder="For example, Building maintenance" /></label>
       <p className="procurement-market-note">Mappings stay source-specific. Identical labels do not merge records or imply equivalent UNSPSC, GSIN or BC commodity codes. Removing a mapping archives it and retains its version history marker.</p>
       {current && <p className="procurement-market-note">Version {current.version} · Updated {new Date(current.updatedAt).toLocaleString()}{current.archived ? ' · Archived' : ''}</p>}

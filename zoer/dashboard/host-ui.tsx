@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { Btn } from '@zoer/plugin-ui/controls';
 
@@ -28,4 +28,14 @@ export function MoreMenu({ label, items }: { label: string; items: MenuItem[] })
   const Menu = host.ActionMenu;
   if (Menu) return <Menu label={label} size="sm" items={items} />;
   return <>{items.map(item => <Btn key={item.label} size="sm" variant="ghost" disabled={item.disabled} onClick={item.onClick}>{item.label}</Btn>)}</>;
+}
+
+/**
+ * Hover and focus text through the host Tooltip, instead of a native `title`. The wrapper is `display: contents`, so the
+ * wrapped element keeps its place in flex and grid layouts. Non-actions stay open after a tap, so phones can read them.
+ */
+export function Hint({ content, action = false, children }: { content?: ReactNode; action?: boolean; children: ReactElement }) {
+  const Tooltip = host.Tooltip;
+  if (!content || !Tooltip) return children;
+  return <Tooltip content={content} className="pc-hint" persistOnClick={!action}>{children}</Tooltip>;
 }

@@ -50,13 +50,13 @@ export function BenchmarkCallout({
           >
             <div className="text-sm font-medium text-text-primary">{row.label}</div>
             <div className="text-sm text-text-secondary">
-              <span className="text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              <span className="text-[12px] uppercase tracking-[0.12em] text-text-tertiary">
                 Entity
               </span>
               <div className="mt-1 text-text-primary">{row.entity}</div>
             </div>
             <div className="text-sm text-text-secondary">
-              <span className="text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              <span className="text-[12px] uppercase tracking-[0.12em] text-text-tertiary">
                 Peer median
               </span>
               <div className="mt-1 text-text-primary">{row.peer}</div>

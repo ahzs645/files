@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bindNativeHost, host } from '../zoer/dashboard/bridge';
 import { READ_ONLY_MESSAGE, ZOER_CAPABILITIES, allowsMethod, capabilities, loadCapabilities, readCapabilities, resetCapabilities } from '../zoer/dashboard/capabilities';
-import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, gatedRedirectOf, sectionOf, sectionViews, viewHref, viewOf, visibleSections, withLabels } from '../zoer/dashboard/review-workspace/nav';
+import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, gatedRedirectOf, sectionOf, sectionViews, viewHref, viewOf, visibleSections, phoneSections } from '../zoer/dashboard/review-workspace/nav';
 
 afterEach(() => { resetCapabilities(); vi.restoreAllMocks(); });
 const REVIEW = { version: 1, surface: 'societyer', collection: false, writes: false, ai: false } as const;
@@ -75,11 +75,20 @@ describe('capability-gated navigation', () => {
     expect(sectionOf('/evidence', FULL)).toBe('evidence');
     expect(sectionOf('/evidence')).toBe('evidence');
   });
-  it('uses full section labels when five or fewer sections show', () => {
+  it('keeps five or fewer sections in the phone strip and folds the rest behind More', () => {
     const tabs = [...visibleSections(PRIMARY_SECTIONS, READ_ONLY), ...visibleSections(CONFIGURE_SECTIONS, READ_ONLY)];
-    expect(withLabels(tabs, tabs.length).map(([, label, , short]) => short ?? label)).toEqual(['Home', 'Opportunities', 'Pursuits', 'Documents', 'Insights']);
+    expect(phoneSections(tabs, 'documents')).toEqual({ tabs, more: [] });
+    const all = [...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS], ids = (list: typeof all) => list.map(([id]) => id);
+    const { tabs: strip, more } = phoneSections(all, 'home');
+    expect(ids(strip)).toEqual(['home', 'opportunities', 'pursuits', 'insights']);
+    expect(ids(more)).toEqual(['documents', 'evidence', 'workbench', 'profiles', 'sources', 'taxonomy']);
+  });
+  it('keeps the selected section in the phone strip, so its panel always has a tab', () => {
     const all = [...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS];
-    expect(withLabels(all, all.length).find(([id]) => id === 'opportunities')?.[3]).toBe('Opps');
+    const { tabs, more } = phoneSections(all, 'sources');
+    expect(tabs.map(([id]) => id)).toContain('sources');
+    expect(more.map(([id]) => id)).not.toContain('sources');
+    expect(tabs.length + more.length).toBe(all.length);
   });
   it('sends gated locations to Home or to the section’s remaining view', () => {
     for (const route of ['/sources', '/scraper', '/scraper/history', '/bc-bid-dashboard', '/settings', '/profiles', '/unknown', '/taxonomy', '/ai-review', '/workbench']) expect([route, gatedRedirectOf(route, READ_ONLY)]).toEqual([route, '/home']);

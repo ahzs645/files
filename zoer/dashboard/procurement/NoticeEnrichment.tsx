@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Mail, MapPin, Phone } from 'lucide-react';
@@ -93,7 +94,7 @@ export function usePageDuplicates(rows: readonly any[], enabled: boolean) {
 export function DuplicateFlag({ matches }: { matches: DuplicateMatch[] | undefined }) {
   if (!matches?.length) return null;
   const sources = [...new Set(matches.map(match => sourceName(match.notice.sourceId)))].join(', ');
-  return <span className="pc-dup-flag" title={`Possible duplicate: same title on ${sources}. ${explainDuplicate(matches[0].score)}.`}>Possible duplicate · {sources}</span>;
+  return <Hint content={`Possible duplicate: same title on ${sources}. ${explainDuplicate(matches[0].score)}.`}><span className="pc-dup-flag">Possible duplicate · {sources}</span></Hint>;
 }
 
 /** Place filter for the Opportunities filter sheet, with the one-off tagging of notices saved before places existed. */

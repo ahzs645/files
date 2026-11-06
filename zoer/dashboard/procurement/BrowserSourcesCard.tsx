@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
@@ -76,7 +77,7 @@ export function BrowserSourcesCard({ run }: { run?: RecentRun }) {
     </table>
     <details><summary data-zoer-disclosure>Scheduled collection</summary>
       {schedules.error ? <p role="alert">Schedules could not be read: {(schedules.error as Error).message}</p> : <p><span className="pc-status" data-tone={scheduled.tone}>{scheduled.status}</span>{[scheduled.next, scheduled.last].filter(Boolean).length > 0 && <> {[scheduled.next, scheduled.last].filter(Boolean).join(' · ')}</>}</p>}
-      {scheduled.stopped && <p role="alert" title={scheduled.error ?? undefined}>{scheduled.stopped}</p>}
+      {scheduled.stopped && <Hint content={scheduled.error ?? undefined}><p role="alert">{scheduled.stopped}</p></Hint>}
       <p className="procurement-coverage">These sites load in your Zoer browser, so their schedule is set in Zoer’s plugin settings with the browser it should use, not here. A scheduled run that meets a check leaves that site waiting for you and still collects the others. <a className="procurement-link" href={hostHref('#/settings/plugins')}>Open plugin settings</a></p>
     </details>
     <details><summary data-zoer-disclosure>Not collected: robots.txt forbids it ({robotsOnly().length})</summary>
@@ -98,7 +99,7 @@ export function BrowserSourcesCard({ run }: { run?: RecentRun }) {
 function SiteRow({ row, busy, running, onCollect, countsError }: { row: BrowserSiteRow; busy: string; running: boolean; onCollect: () => void; countsError: boolean }) {
   return <tr data-problem={row.status === 'waiting' || row.status === 'failed' || undefined}>
     <th scope="row"><a href={row.site.url} target="_blank" rel="noreferrer">{row.site.label}</a><small>{row.site.aggregator ? 'Many BC local governments' : [row.site.place.municipality, row.site.place.regionalDistrict].filter(Boolean).join(' · ') || 'British Columbia'}</small></th>
-    <td data-label="Status"><span className="pc-status" data-tone={row.tone}>{row.statusText}</span>{row.message && <small className="pc-portal-error" title={row.detail}>{row.message}</small>}</td>
+    <td data-label="Status"><span className="pc-status" data-tone={row.tone}>{row.statusText}</span>{row.message && <Hint content={row.detail}><small className="pc-portal-error">{row.message}</small></Hint>}</td>
     <td data-label="Last collected">{row.status === 'unknown' ? 'Unknown' : when(row.lastSuccessAt)}</td>
     <td data-label="Listed">{row.status === 'unknown' ? 'Unknown' : row.listed === null ? 'Not collected yet' : `${row.listed.toLocaleString()} listed`}</td>
     <td data-label="Saved">{row.saved === null ? (countsError ? 'Unknown' : '…') : row.saved.toLocaleString()}</td>

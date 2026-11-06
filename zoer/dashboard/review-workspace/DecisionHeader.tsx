@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
@@ -128,7 +129,7 @@ export function DecisionHeader({ recordId, pursuitStage, onTab }: { recordId: st
           {companyUnknowns.length > 0 && <p className="rw-nd-unknown-group">{companyUnknowns.length} requirement{companyUnknowns.length === 1 ? '' : 's'} {companyUnknowns.length === 1 ? 'has' : 'have'} no linked company evidence. <Btn size="sm" variant="ghost" onClick={matchRequirements}>Match requirements</Btn></p>}
           <ExpandableList items={otherUnknowns} label={n => `Show all ${n} unknowns`} />
         </>}
-        <p className="rw-nd-meta" title={`Assessed ${when(a.createdAt)} for ${active ? `${active.name} v${active.version}` : 'no company profile'} · policy ${a.policyVersion}`}>Assessed {when(a.createdAt)}{a.freshness === 'stale' ? ' · evidence changed since' : ''}</p>
+        <Hint content={`Assessed ${when(a.createdAt)} for ${active ? `${active.name} v${active.version}` : 'no company profile'} · policy ${a.policyVersion}`}><p className="rw-nd-meta">Assessed {when(a.createdAt)}{a.freshness === 'stale' ? ' · evidence changed since' : ''}</p></Hint>
       </> : <>
         <p className="rw-nd-action"><span className="rw-chip" data-tone="neutral"><b>Not assessed for this profile</b></span></p>
         <p className="rw-note">{active ? `No current assessment exists for ${active.name} v${active.version}. Another profile’s assessment is never shown in its place.` : 'Choose a profile in “Assess as” to assess eligibility.'}</p>
@@ -145,7 +146,7 @@ export function DecisionHeader({ recordId, pursuitStage, onTab }: { recordId: st
 
     <section className="rw-panel" aria-label="Evidence scope and status">
       <p className="rw-nd-scope-line"><strong>Evidence scope</strong> {scopeText(extract?.current?.coverage, scopeStage)}{scopeStage === 'triage' ? ' — requirements not yet extracted' : ''}</p>
-      {gaps.length > 0 && <details className="rw-nd-disclosure"><summary>{gaps.length} file{gaps.length === 1 ? '' : 's'} not processed</summary><ul className="rw-items">{gaps.map((gap, i) => <li key={i}>{gap.name}: {gap.reason}{gap.critical ? ' (may hold requirements)' : ''}</li>)}</ul></details>}
+      {gaps.length > 0 && <details className="rw-nd-disclosure"><summary data-zoer-disclosure="">{gaps.length} file{gaps.length === 1 ? '' : 's'} not processed</summary><ul className="rw-items">{gaps.map((gap, i) => <li key={i}>{gap.name}: {gap.reason}{gap.critical ? ' (may hold requirements)' : ''}</li>)}</ul></details>}
       {triage.data && <div className="rw-nd-triage">
         <h4 className="rw-subhead">Triage · based on the saved notice only</h4>
         <p><Chip value={triage.data.classification} text={TRIAGE_LABELS[triage.data.classification] ?? label(triage.data.classification)} /> <Chip value={triage.data.relevance} text={`Relevance: ${label(triage.data.relevance)}`} />{triage.data.workCategory ? <span className="rw-note"> · {triage.data.workCategory}</span> : null}</p>
@@ -186,7 +187,7 @@ function StagePanel({ recordId, runs, loading, error, profileVersionId }: { reco
           <strong>{stageName(stage)}</strong>
           <span className="rw-chip" data-tone={STAGE_TONE[status.tone]}><b>{STAGE_WORD[status.tone]}</b></span>
           {/* Model id and token usage stay off the line, in the tooltip. */}
-          {run && <span className="rw-note" title={[run.model && `Model: ${run.model}`, usageText(run.usage)].filter(Boolean).join(' · ') || undefined}>{[when(run.finishedAt ?? run.startedAt), run.quality && `quality: ${label(run.quality)}`].filter(Boolean).join(' · ')}</span>}
+          {run && <Hint content={[run.model && `Model: ${run.model}`, usageText(run.usage)].filter(Boolean).join(' · ') || undefined}><span className="rw-note">{[when(run.finishedAt ?? run.startedAt), run.quality && `quality: ${label(run.quality)}`].filter(Boolean).join(' · ')}</span></Hint>}
         </div>
         {status.tone !== 'ok' && <small className="rw-note">{status.note}</small>}
       </li>; })}</ul>}
@@ -218,7 +219,7 @@ function Judgements({ recordId, profileVersionId, profileName }: { recordId: str
           return <tr key={dimension.id}>
             <th>{dimension.name}</th>
             <td>{current ? <Chip value={current.value} text={JUDGEMENT_LABELS[current.value] ?? label(current.value)} /> : <span className="rw-chip" data-tone="neutral"><b>Not judged</b></span>}</td>
-            <td className="rw-nd-judge-note" title={current ? `${current.note} — ${current.reviewer}, ${when(current.updatedAt)}` : undefined}>{current ? `${current.note} — ${current.reviewer}, ${when(current.updatedAt)}` : '—'}</td>
+            <td className="rw-nd-judge-note"><Hint content={current ? `${current.note} — ${current.reviewer}, ${when(current.updatedAt)}` : undefined}><span>{current ? `${current.note} — ${current.reviewer}, ${when(current.updatedAt)}` : '—'}</span></Hint></td>
             {writes && <td><Btn size="sm" variant="ghost" aria-label={`Edit ${dimension.name}`} onClick={() => setEditing(editing === dimension.id ? '' : dimension.id)}>{current ? 'Edit' : 'Judge'}</Btn></td>}
           </tr>;
         })}</tbody>

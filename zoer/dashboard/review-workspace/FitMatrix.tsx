@@ -5,6 +5,7 @@ import { sql } from '../procurement/display';
 import { REVIEW_KEY } from './actions';
 import { MATRIX_CELLS, MATRIX_COLUMNS, MATRIX_ROWS, matrixCellHref, matrixCountsSql, type MatrixCell } from './opportunity-queries';
 import { READINESS_TEXT, RELEVANCE_TEXT, type Fragment } from './queue';
+import { ChooseProfile } from './ChooseProfile';
 import './review.css';
 
 const ROW_TEXT = { ready: 'Ready for human decision', conditions: 'Conditions / gaps', blocker: 'Confirmed blocker' } as const;
@@ -43,6 +44,8 @@ export function FitMatrix({ base, profileVersionId, profileText, params, ignored
       {decisions && decided > 0 && <span className="rw-chip" data-tone="neutral"><b>{decided.toLocaleString()} decided</b></span>}
     </a>;
   };
+  // Assessments can exist without a profile, so the prompt replaces the matrix only when no fit cell has anything; the unknown lanes alone say nothing about fit.
+  if (!profileVersionId && counts.isSuccess && MATRIX_ROWS.every(row => MATRIX_COLUMNS.every(column => n(`${row}_${column}`) === 0))) return <section className="rw-panel rw-fit-panel" aria-label="Fit matrix"><ChooseProfile picker /></section>;
   return <section className="rw-panel rw-fit-panel" aria-labelledby="rw-fit-title">
     <header>
       <h2 id="rw-fit-title">Relevance × qualification readiness</h2>

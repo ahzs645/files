@@ -7,6 +7,7 @@ export default defineConfig({
   // Same alias as tsconfig.base.json / zoer/dashboard-config.ts, so dashboard modules that use the core package are testable.
   resolve: { alias: {
     "@bcbid/procurement-core": new URL("./packages/procurement-core/src/index.ts", import.meta.url).pathname,
+    "@zoer/plugin-ui/controls": new URL("./tests/fixtures/plugin-ui-controls.tsx", import.meta.url).pathname,
     // Exercise real registered handlers without requiring a configured deployment's generated bridge.
     "./_generated/server": new URL("./tests/fixtures/convex-generated.ts", import.meta.url).pathname,
     "./_generated/api": new URL("./tests/fixtures/convex-generated.ts", import.meta.url).pathname,

@@ -1,3 +1,4 @@
+import { Hint } from './host-ui';
 import { useEffect, useState } from 'react';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
@@ -28,7 +29,7 @@ function ResultsTable({ columns, rows, version, onOpen }: { columns: ResultColum
         <th scope="row"><button type="button" className="research-link" onClick={() => onOpen(row.record_id)}>{row.title || row.record_id}</button>{meta && <small>{meta}</small>}</th>
         {done ? <>
           {columns.map(c => { const bad = check?.checks.find(x => x.field.key === c.key && (x.state === 'invalid' || x.state === 'missing')); return <td key={c.key} data-state={bad?.state}><Cell text={columnText(c, row)} /></td>; })}
-          {typed && <td>{check ? check.problems ? <span className="review-flag" title={check.checks.filter(x => x.note).map(x => `${x.field.label}: ${x.note}`).join('\n')}>{check.problems} problem{check.problems === 1 ? '' : 's'}</span> : '✓' : 'Untyped'}</td>}
+          {typed && <td>{check ? check.problems ? <Hint content={check.checks.filter(x => x.note).map(x => `${x.field.label}: ${x.note}`).join('\n')}><span className="review-flag">{check.problems} problem{check.problems === 1 ? '' : 's'}</span></Hint> : '✓' : 'Untyped'}</td>}
         </> : <td colSpan={columns.length + (typed ? 1 : 0) || 1} className="review-results-status" data-status={row.status}>{row.status === 'failed' ? `Failed: ${row.error || 'no error recorded'}` : OUTCOME[row.outcome]}</td>}
       </tr>;
     })}</tbody>

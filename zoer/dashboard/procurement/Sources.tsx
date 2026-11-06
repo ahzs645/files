@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
@@ -136,7 +137,7 @@ export function Sources() {
       <Card id="bc-bid" name="BC Bid" region="British Columbia · browser scraping" tone={overview[0].tone} status={overview[0].status}
         stats={[['Opportunities', saved('bc-bid')], ['Awards', saved('bc-bid', 'award')], ['Last successful scrape', overview[0].lastSuccess]]}
         actions={<><Btn variant="primary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn><Btn variant="secondary" onClick={() => navigatePlugin('/scraper')}>Scraper</Btn><Btn variant="ghost" onClick={() => navigatePlugin('/scraper/history')}>Run history</Btn></>}>
-        <details open={bcIssue}><summary data-zoer-disclosure>Collection checkpoints</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · checkpoint {item.checkpointTime === 'Not recorded' ? 'not recorded' : when(item.checkpointTime)}</p>{item.error && <p role="alert" title={item.error}>{shortError(item.error)}</p>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
+        <details open={bcIssue}><summary data-zoer-disclosure>Collection checkpoints</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · checkpoint {item.checkpointTime === 'Not recorded' ? 'not recorded' : when(item.checkpointTime)}</p>{item.error && <Hint content={item.error}><p role="alert">{shortError(item.error)}</p></Hint>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
         <BcBidSchedules rows={schedules.data} error={schedules.error as Error | null} />
         <Capabilities id="bc-bid" />
       </Card>
@@ -159,7 +160,7 @@ export function Sources() {
     </div>
     <CollectionRuns runs={runs} error={recent.error as Error | null} loading={recent.isPending} />
     <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} />
-    {scheduleFor && <Modal title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
+    {scheduleFor && <Modal fit title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
       <ScheduleControl actionId={COLLECT_ACTION} title={`Collect ${label(scheduleFor)}`} row={scheduleOf(scheduleFor) ?? null}
         onSave={async (enabled, hours) => { await saveSourceSchedule(host, scheduleFor, label(scheduleFor), enabled, hours); await client.invalidateQueries({ queryKey: PRESETS_KEY }); await client.invalidateQueries({ queryKey: SCHEDULES_KEY }); }} />
       <p className="procurement-coverage">{scheduleFor === 'canadabuys' ? 'Each scheduled run imports the whole daily file, a few minutes at a time; it continues the same file where it stopped and starts over when CanadaBuys publishes a new one. '
@@ -173,7 +174,7 @@ export function Sources() {
 function SourceError({ error }: { error: CollectionError | null | undefined }) {
   const explained = sourceErrorText(error);
   if (!explained) return null;
-  return <div className="pc-source-error" role="alert"><p>{explained.text}</p>{explained.detail !== explained.text && <details><summary>Details</summary><p><code>{explained.detail}</code></p></details>}</div>;
+  return <div className="pc-source-error" role="alert"><p>{explained.text}</p>{explained.detail !== explained.text && <details><summary data-zoer-disclosure="">Details</summary><p><code>{explained.detail}</code></p></details>}</div>;
 }
 
 /** BC Bid scrapes need a browser, which dashboard schedules cannot attach, so they are read here and changed in Zoer. */
@@ -182,7 +183,7 @@ function BcBidSchedules({ rows, error }: { rows?: ScheduleRow[]; error: Error | 
   return <details><summary data-zoer-disclosure>Scheduled scraping</summary>
     {error ? <p role="alert">Schedules could not be read: {error.message}</p> : !rows ? <p role="status">Loading schedules…</p> : <ul className="pc-checkpoints">{items.map(([id, text]) => {
       const row = findSchedule(rows, id), state = scheduleState(row);
-      return <li key={id}><div><strong>{text}</strong><span className="pc-status" data-tone={state.tone}>{state.status}</span></div>{(state.next || state.last) && <p>{[state.next, state.last].filter(Boolean).join(' · ')}</p>}{state.stopped && <p role="alert" title={state.error ?? undefined}>{state.stopped}</p>}</li>;
+      return <li key={id}><div><strong>{text}</strong><span className="pc-status" data-tone={state.tone}>{state.status}</span></div>{(state.next || state.last) && <p>{[state.next, state.last].filter(Boolean).join(' · ')}</p>}{state.stopped && <Hint content={state.error ?? undefined}><p role="alert">{state.stopped}</p></Hint>}</li>;
     })}</ul>}
     <p className="procurement-coverage">BC Bid scrapes use your Zoer browser, so they are scheduled in Zoer’s plugin settings, not here. <a className="procurement-link" href={hostHref('#/settings/plugins')}>Open plugin settings</a></p>
   </details>;
@@ -217,7 +218,7 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
       <thead><tr><th scope="col">Portal</th><th scope="col">Status</th><th scope="col">Last collected</th><th scope="col">Last run</th><th scope="col">Saved</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
       <tbody>{shown.slice(0, limit).map(row => <tr key={row.id} data-problem={row.problem || undefined}>
         <th scope="row"><a href={row.url} target="_blank" rel="noreferrer">{row.label}</a><small>{row.place}</small></th>
-        <td data-label="Status"><span className="pc-status" data-tone={row.tone}>{row.statusText}</span>{row.errorText && <small className="pc-portal-error" title={row.error}>{row.errorText}</small>}</td>
+        <td data-label="Status"><span className="pc-status" data-tone={row.tone}>{row.statusText}</span>{row.errorText && <Hint content={row.error}><small className="pc-portal-error">{row.errorText}</small></Hint>}</td>
         <td data-label="Last collected">{row.status === 'unknown' ? 'Unknown' : when(row.lastSuccessAt)}</td>
         <td data-label="Last run">{row.counts}</td>
         <td data-label="Saved">{row.saved === null ? (counts.error ? 'Unknown' : '…') : row.saved.toLocaleString()}</td>
@@ -283,7 +284,7 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any
       <thead><tr><th scope="col">Source</th>{['List', 'Details', 'Download', 'Addenda'].map(name => <th key={name} scope="col">{name}</th>)}<th scope="col">Saved</th><th scope="col">On the portal</th></tr></thead>
       <tbody>{PROCUREMENT_SOURCE_ADAPTERS.map(adapter => <tr key={adapter.id}>
         <th scope="row">{adapter.label}</th>
-        {capabilityMatrix(adapter.id, adapter.capabilities).map(cap => <td key={cap.name}><span className="rw-cap" data-status={cap.status} title={cap.method}>{CAPABILITY_TEXT[cap.status]}</span></td>)}
+        {capabilityMatrix(adapter.id, adapter.capabilities).map(cap => <td key={cap.name}><Hint content={cap.method}><span className="rw-cap" data-status={cap.status}>{CAPABILITY_TEXT[cap.status]}</span></Hint></td>)}
         <td>{inventory ? saved(adapter.id).toLocaleString() : 'Loading…'}</td>
         <td>{total(adapter.id)}</td>
       </tr>)}</tbody>
@@ -304,19 +305,19 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any
         <tbody>{health.map(row => <tr key={row.kind}>
           <th scope="row">{KIND_TEXT[row.kind] ?? row.kind}</th>
           <td>{when(row.attempt.updated_at)}</td>
-          <td><span className="rw-cap" data-status={row.attempt.problem ? 'partial' : 'available'}>{row.attempt.statusText}</span> {row.attempt.outcome}{row.attempt.error && <small className="rw-error" title={row.attempt.error}>{shortError(row.attempt.error)}</small>}{row.problems > 1 && <small className="rw-note">{row.problems} recent runs incomplete</small>}</td>
+          <td><span className="rw-cap" data-status={row.attempt.problem ? 'partial' : 'available'}>{row.attempt.statusText}</span> {row.attempt.outcome}{row.attempt.error && <Hint content={row.attempt.error}><small className="rw-error">{shortError(row.attempt.error)}</small></Hint>}{row.problems > 1 && <small className="rw-note">{row.problems} recent runs incomplete</small>}</td>
           <td>{row.success ? `${when(row.success.updated_at)} · ${Number(row.success.completed).toLocaleString()} of ${Number(row.success.total).toLocaleString()}` : 'No successful run recorded'}</td>
         </tr>)}</tbody>
       </table></div>}
 
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {failures.error ? <p role="alert">Failures could not be read: {(failures.error as Error).message}</p> : failures.isPending ? <p role="status">Loading failures…</p> : !queue.length ? <><h3>Failure queue</h3><p className="rw-note">Nothing failed.</p></> :
-    <details className="rw-failure-queue"><summary><h3>Failure queue · {queue.length.toLocaleString()} notice{queue.length === 1 ? '' : 's'}</h3></summary>
+    <details className="rw-failure-queue"><summary data-zoer-disclosure=""><h3>Failure queue · {queue.length.toLocaleString()} notice{queue.length === 1 ? '' : 's'}</h3></summary>
       <div className="rw-actions"><Btn size="sm" variant="secondary" disabled={!!busy || running || browserBusy || !retryable.length} onClick={() => void retry(retryable, 'all')}>{busy === 'all' ? 'Starting…' : `Retry downloads for ${Math.min(50, retryable.length)} notice${retryable.length === 1 ? '' : 's'}`}</Btn>{(running || browserBusy) && <span className="rw-note">Wait for active or paused browser work to finish.</span>}</div>
       {queue.some(group => group.waiting) && <p className="rw-note">Items marked “Needs you” need the BC Bid browser check completed in Zoer before retrying.</p>}
       <ul className="rw-failures">{(allFailures ? queue : queue.slice(0, 5)).map(group => <li key={group.recordId}>
         <div><strong>{group.title}</strong><small className="rw-note">{group.recordId.replace(/^opportunity:/, '')} · {when(group.updatedAt)}</small></div>
-        <ul>{group.tasks.slice(0, 2).map((task, i) => <li key={i} className="rw-clamp" title={task.error ?? undefined}>{task.status === 'waiting_for_user' ? 'Needs you' : 'Failed'} · {task.kind === 'attachment' ? (task.name ?? 'Download') : task.kind}{task.error ? `: ${shortError(task.error)}` : ''}</li>)}{group.tasks.length > 2 && <li>{group.tasks.length - 2} more</li>}</ul>
+        <ul>{group.tasks.slice(0, 2).map((task, i) => <li key={i} className="rw-clamp"><Hint content={task.error ?? undefined}><span>{task.status === 'waiting_for_user' ? 'Needs you' : 'Failed'} · {task.kind === 'attachment' ? (task.name ?? 'Download') : task.kind}{task.error ? `: ${shortError(task.error)}` : ''}</span></Hint></li>)}{group.tasks.length > 2 && <li>{group.tasks.length - 2} more</li>}</ul>
         {group.waiting ? null
           : group.retryable ? <Btn size="sm" variant="ghost" disabled={!!busy || running || browserBusy} onClick={() => void retry([group.recordId], group.recordId)}>{busy === group.recordId ? 'Starting…' : 'Retry'}</Btn>
           : <Btn size="sm" variant="ghost" onClick={() => navigatePlugin('/ai-review')}>Retry from AI review</Btn>}

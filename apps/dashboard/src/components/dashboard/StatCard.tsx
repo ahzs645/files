@@ -21,7 +21,7 @@ export function StatCard({
       </div>
       <div className="min-w-0">
         <div className="text-2xl font-bold tracking-tight text-text-primary">{value}</div>
-        <div className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary">{label}</div>
+        <div className="text-[12px] font-medium uppercase tracking-wider text-text-tertiary">{label}</div>
       </div>
     </div>
   );

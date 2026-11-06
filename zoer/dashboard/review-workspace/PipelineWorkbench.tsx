@@ -66,7 +66,7 @@ function StageDetails({ stage, templateText, prompt }: { stage: WorkbenchStage; 
       <h3>Prompt</h3>
       <p className="rw-note">Built-in stage prompts are read-only in this release; editing and publishing them is not supported. Custom prompts stay in the <a href={pluginHref('/ai-review')} onClick={event => { event.preventDefault(); navigatePlugin('/ai-review'); }}>AI review prompt editor</a>.</p>
       {prompt ? <pre className="rw-pre rw-prompt">{prompt}</pre> : <p className="rw-note">Prompt text is not bundled with this build.</p>}
-      {shared && <details><summary>Shared policy prepended to every stage ({SHARED!.id} v{SHARED!.version})</summary><pre className="rw-pre rw-prompt">{shared}</pre></details>}
+      {shared && <details><summary data-zoer-disclosure="">Shared policy prepended to every stage ({SHARED!.id} v{SHARED!.version})</summary><pre className="rw-pre rw-prompt">{shared}</pre></details>}
     </>}
   </article>;
 }
@@ -177,14 +177,14 @@ function RunResult({ run, current, stage }: { run: StageRun; current: StageRun |
       <p className="rw-note">Schema-valid means the item passed the output schema. Grounded means its quote was found in the source text. Neither means it is correct; only a reviewer’s acceptance does.</p>
       {(t && t.totalRequirements > t.requirements.length || p && p.totalRequirements > p.requirements.length) && <p className="rw-note">Comparison covers the first 200 requirements of each run.</p>}
       {diff && <div className="rw-diff">
-        <details open={diff.added.length > 0}><summary>Only in this test run ({diff.added.length})</summary><ul>{diff.added.map((text, i) => <li key={i}>{text}</li>)}</ul></details>
-        <details open={diff.removed.length > 0}><summary>Only in the current result ({diff.removed.length})</summary><ul>{diff.removed.map((text, i) => <li key={i}>{text}</li>)}</ul></details>
+        <details open={diff.added.length > 0}><summary data-zoer-disclosure="">Only in this test run ({diff.added.length})</summary><ul>{diff.added.map((text, i) => <li key={i}>{text}</li>)}</ul></details>
+        <details open={diff.removed.length > 0}><summary data-zoer-disclosure="">Only in the current result ({diff.removed.length})</summary><ul>{diff.removed.map((text, i) => <li key={i}>{text}</li>)}</ul></details>
         <p className="rw-note">{diff.unchanged} requirement{diff.unchanged === 1 ? '' : 's'} match after normalizing spacing and case.</p>
       </div>}
-      {t && t.requirements.length > 0 && <details><summary>Test requirements ({t.totalRequirements})</summary><ul className="rw-items">{t.requirements.map(item => <li key={item.id}><span>{item.text}</span><small className="rw-note">{label(item.strength)} · {item.category} · <span data-grounding={item.grounding}>{label(item.grounding)}</span></small></li>)}</ul></details>}
-      {t && t.facts.length > 0 && <details><summary>Test facts ({t.totalFacts})</summary><ul className="rw-items">{t.facts.map(item => <li key={item.id}><span>{item.text} · {item.category}</span><small className="rw-note">{label(item.strength)} · <span data-grounding={item.grounding}>{label(item.grounding)}</span></small></li>)}</ul></details>}
+      {t && t.requirements.length > 0 && <details><summary data-zoer-disclosure="">Test requirements ({t.totalRequirements})</summary><ul className="rw-items">{t.requirements.map(item => <li key={item.id}><span>{item.text}</span><small className="rw-note">{label(item.strength)} · {item.category} · <span data-grounding={item.grounding}>{label(item.grounding)}</span></small></li>)}</ul></details>}
+      {t && t.facts.length > 0 && <details><summary data-zoer-disclosure="">Test facts ({t.totalFacts})</summary><ul className="rw-items">{t.facts.map(item => <li key={item.id}><span>{item.text} · {item.category}</span><small className="rw-note">{label(item.strength)} · <span data-grounding={item.grounding}>{label(item.grounding)}</span></small></li>)}</ul></details>}
     </>}
-    {output && <details><summary>Stored output</summary><pre className="rw-pre">{output.length > 20000 ? `${output.slice(0, 20000)}\n… (truncated for display; the stored output is complete)` : output}</pre></details>}
-    {done && stage.testStage === 'triage' && current?.output && <details><summary>Current triage output</summary><pre className="rw-pre">{(() => { try { return JSON.stringify(JSON.parse(current.output!), null, 2); } catch { return current.output; } })()}</pre></details>}
+    {output && <details><summary data-zoer-disclosure="">Stored output</summary><pre className="rw-pre">{output.length > 20000 ? `${output.slice(0, 20000)}\n… (truncated for display; the stored output is complete)` : output}</pre></details>}
+    {done && stage.testStage === 'triage' && current?.output && <details><summary data-zoer-disclosure="">Current triage output</summary><pre className="rw-pre">{(() => { try { return JSON.stringify(JSON.parse(current.output!), null, 2); } catch { return current.output; } })()}</pre></details>}
   </div>;
 }

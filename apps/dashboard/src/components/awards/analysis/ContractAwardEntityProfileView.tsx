@@ -44,7 +44,7 @@ export function ContractAwardEntityProfileView({
   return (
     <div className="space-y-6">
       <div>
-        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-accent">
+        <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-accent">
           {entityLabel} Drilldown
         </div>
         <h2 className="mt-2 text-xl font-semibold text-text-primary">{profile.label}</h2>

@@ -170,14 +170,14 @@ function RunOpportunityRow({ item }: { item: RunOpportunityRecord }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}
             >
               {item.status}
             </span>
-            <span className="inline-flex items-center rounded-full bg-bg-subtle px-2 py-0.5 text-[10px] text-text-secondary">
+            <span className="inline-flex items-center rounded-full bg-bg-subtle px-2 py-0.5 text-[12px] text-text-secondary">
               {item.type}
             </span>
-            <span className="text-[11px] text-text-tertiary">{item.opportunityId}</span>
+            <span className="text-[12px] text-text-tertiary">{item.opportunityId}</span>
           </div>
           <div className="mt-2 text-sm font-medium text-text-primary line-clamp-2">
             {item.description}
@@ -193,7 +193,7 @@ function RunOpportunityRow({ item }: { item: RunOpportunityRecord }) {
         <span>Amendments {item.amendments}</span>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-text-tertiary">
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-text-tertiary">
         <span className="inline-flex items-center gap-1 rounded-full bg-bg-subtle px-2.5 py-1">
           <BookOpen size={11} />
           Fields {item.detailFieldCount}

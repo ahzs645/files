@@ -66,7 +66,7 @@ function SearchBox({
     <Card className="h-full">
       <div className="space-y-4">
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-accent">
+          <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-accent">
             Jump To {title}
           </div>
           <p className="mt-1 text-sm text-text-secondary">

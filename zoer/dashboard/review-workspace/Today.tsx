@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { host } from '../bridge';
@@ -40,7 +41,7 @@ function Column({ title, count, note, children, footer }: { title: string; count
 }
 /** Title, a primary line (when it closes, or the stage) and an optional secondary line (buyer · source). */
 function Row({ to, title, meta, detail, sub, tag }: { to: string; title: string; meta: string; detail?: string; sub?: string; tag?: string }) {
-  return <li><RouteLink to={to}><span className="rw-today-title">{tag && <b className="rw-today-tag">{tag}</b>}{title}</span><span className="rw-today-meta" title={detail || undefined}>{meta}</span>{sub && <span className="rw-today-sub">{sub}</span>}</RouteLink></li>;
+  return <li><RouteLink to={to}><span className="rw-today-title">{tag && <b className="rw-today-tag">{tag}</b>}{title}</span><Hint content={detail || undefined}><span className="rw-today-meta">{meta}</span></Hint>{sub && <span className="rw-today-sub">{sub}</span>}</RouteLink></li>;
 }
 const Failed = ({ what, error, retry }: { what: string; error: Error | null; retry: () => unknown }) => <p className="rw-error" role="alert">Could not load {what}: {error?.message ?? 'no result'}. Not shown as zero. <button type="button" onClick={() => void retry()}>Retry</button></p>;
 

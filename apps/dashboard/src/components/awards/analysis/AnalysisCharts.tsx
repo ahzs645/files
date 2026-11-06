@@ -271,7 +271,7 @@ export function TypeMixStackedBarCard({
         </ResponsiveContainer>
       </div>
       <details className="analysis-type-legend">
-        <summary>Procurement types ({typeKeys.length})</summary>
+        <summary data-zoer-disclosure="">Procurement types ({typeKeys.length})</summary>
         <ul>
           {typeKeys.map((typeKey, index) => (
             <li key={typeKey}>

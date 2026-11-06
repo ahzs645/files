@@ -55,7 +55,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .research-status[data-status=failed]{color:var(--color-red)}
 .research-status[data-status=running]{color:var(--color-accent)}
 .research-batch time{margin-left:8px;font-size:12px;color:var(--color-text-tertiary)}
-@media(max-width:767px){.research-grid{grid-template-columns:minmax(0,1fr)}.research-records{max-height:360px}.research-records article{flex-wrap:wrap}.research-records article>button{margin-left:28px}.research-label input,.research-label textarea{font-size:16px}.research button{min-height:44px}.research .zoer-record-tools{flex-wrap:wrap}.research-toolbar-end{margin-left:0;width:100%}.research-toolbar-end>button{flex:1}.research-stack>.research-label{flex:1 1 100%}.research-stack>button{flex:1}.research .research-link{min-height:0}}
+@media(max-width:767px){.research-grid{grid-template-columns:minmax(0,1fr)}.research-records article{flex-wrap:wrap}.research-records article>button{margin-left:28px}.research-label input,.research-label textarea{font-size:16px}.research button{min-height:44px}.research .zoer-record-tools{flex-wrap:wrap}.research-toolbar-end{margin-left:0;width:100%}.research-toolbar-end>button{flex:1}.research-stack>.research-label{flex:1 1 100%}.research-stack>button{flex:1}.research .research-link{min-height:0}}
 
 /* File controls have a browser-defined intrinsic width; contain them in narrow
    plugin workspaces without clipping the upload button or selected filename. */
@@ -115,9 +115,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .zoer-content .rounded-2xl, .zoer-content .rounded-xl { border-radius: .5rem; }
 
 /* Tab strip: fade whichever edge still hides sections so phones can tell the row scrolls. */
-.zoer-tabs[data-overflow-end]{mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent)}
-.zoer-tabs[data-overflow-start]{mask-image:linear-gradient(to right,transparent,#000 48px)}
-.zoer-tabs[data-overflow-start][data-overflow-end]{mask-image:linear-gradient(to right,transparent,#000 48px,#000 calc(100% - 48px),transparent)}
 
 /* Compact filters (phones): the search box leads; grouping, buyer and the mapping note sit under More filters. */
 /* Phones: the search row sits directly on the page, without the card holder. */
@@ -274,3 +271,16 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 /* Zoer copy rules: sentence case (uppercase is the sidebar's alone) and at least 12px labels in the BC Bid source pages. */
 .zoer-content .uppercase{text-transform:none;letter-spacing:normal}
 .zoer-content .text-\[10px\],.zoer-content .text-\[11px\]{font-size:12px}
+
+/* Phones scroll the page, not a list inside it. Documents reads as a page on every width; the AI workbench keeps its list beside the settings. */
+@media(max-width:767px){.research-records{max-height:none;overflow:visible}}
+.doc-page .research-records{max-height:none;overflow:visible}
+.research-metrics>div{position:relative}
+.doc-stat-link{color:inherit;font:inherit;text-decoration:underline;text-underline-offset:3px}
+.doc-stat-link::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.doc-stat-link:focus-visible{outline:2px solid var(--color-input-focus);outline-offset:2px}
+.doc-stat-hint{display:block;margin-top:2px;font-size:12px;line-height:1.3;color:var(--color-text-secondary)}
+/* The host's unlayered `small{font-size:80%}` beats plugin styles here and falls under the 12px floor inside 12px text. */
+.bcbid-native small{font-size:max(12px,.8em)!important}
+/* Touch targets: these rules sit last so they win over each control's desktop size. */
+@media(pointer:coarse),(max-width:640px){.bid-layout-toggle button,.bid-star{min-width:44px;min-height:44px}.rw-drill{min-height:44px}.procurement-board-card .procurement-title{min-height:44px}.rw-check{min-height:44px}}

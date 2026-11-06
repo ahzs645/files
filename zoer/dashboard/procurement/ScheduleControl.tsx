@@ -56,7 +56,7 @@ export function ScheduleControl({ actionId, input = {}, title, defaultHours = 24
     {schedules.error && <p role="alert">Schedules could not be read: {(schedules.error as Error).message}</p>}
     {(state.next || state.last) && <p className="pc-schedule-meta">{[state.next, state.last].filter(Boolean).join(' · ')}</p>}
     {other && <p className="pc-schedule-note">Zoer keeps one schedule per action. It is set to {describe ? describe(other) : 'a different input'} · {scheduleState(other).status}. Turning this on replaces that schedule.</p>}
-    {state.stopped && <div className="pc-schedule-stopped" role="alert"><p>{state.stopped}</p><details><summary>Zoer’s message</summary><p>{state.error}</p></details></div>}
+    {state.stopped && <div className="pc-schedule-stopped" role="alert"><p>{state.stopped}</p><details><summary data-zoer-disclosure="">Zoer’s message</summary><p>{state.error}</p></details></div>}
     <fieldset className="pc-presets" disabled={busy}>
       <legend>Repeat</legend>
       {SCHEDULE_PRESETS.map(([value, text]) => <button key={value} type="button" aria-pressed={selected === value} onClick={() => setChoice(value)}>{text}</button>)}

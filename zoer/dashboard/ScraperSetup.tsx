@@ -59,7 +59,7 @@ export function ScraperSetup() {
         : result?.status === 'cancelled' ? 'Test stopped. Saved records are retained.'
         : 'Test running. Progress appears in Recent runs.'}</p>}
       {error && !continuing && <p role="alert">{error}</p>}
-      <details><summary>What a full scrape includes</summary><p>Every current public opportunity with its detail tabs and attachment links. Progress is saved if you close this page. If BC Bid asks for a browser check, complete it in the selected browser and hand control back before resuming.</p></details>
+      <details><summary data-zoer-disclosure="">What a full scrape includes</summary><p>Every current public opportunity with its detail tabs and attachment links. Progress is saved if you close this page. If BC Bid asks for a browser check, complete it in the selected browser and hand control back before resuming.</p></details>
     </section>
     <TargetedRefreshPanel />
     <AwardHistoryPanel />

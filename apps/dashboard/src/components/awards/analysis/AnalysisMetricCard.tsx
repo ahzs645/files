@@ -14,7 +14,7 @@ export function AnalysisMetricCard({
   return (
     <div className="rounded-2xl border border-border-subtle bg-bg-subtle p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
+        <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
           {label}
         </div>
         {icon ? <div className="text-accent">{icon}</div> : null}

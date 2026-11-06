@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
@@ -61,7 +62,7 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
   };
   return <section className="procurement-workflow" aria-label="Pursuit board">
     <div className="pc-board-toolbar">
-      {writes && <><label className="pc-board-add"><span className="sr-only">Shortlisted notice to add</span><Select aria-label="Shortlisted notice to add" value={chosen?.id ?? ''} disabled={busy || !available.length || state.isPending} onChange={event => setAddId(event.target.value)}><option value="" disabled>{available.length ? 'Choose a shortlisted notice' : 'No shortlisted notices to add'}</option>{available.map(record => <option value={record.id} key={record.id}>{record.title} · {sourceName(record.sourceId)}</option>)}</Select></label>
+      {writes && available.length > 0 && <><label className="pc-board-add"><span className="sr-only">Shortlisted notice to add</span><Select aria-label="Shortlisted notice to add" value={chosen?.id ?? ''} disabled={busy || state.isPending} onChange={event => setAddId(event.target.value)}><option value="" disabled>Choose a shortlisted notice</option>{available.map(record => <option value={record.id} key={record.id}>{record.title} · {sourceName(record.sourceId)}</option>)}</Select></label>
       <Btn disabled={busy || !chosen || state.isPending || !!state.error} onClick={() => chosen && void save({ recordId: chosen.id, sourceId: chosen.sourceId, stage: 'Watching', notes: '' })}>Add to Watching</Btn></>}
       {surface !== 'societyer' && <Btn variant="ghost" disabled={busy} onClick={() => void state.refetch()}>Refresh</Btn>}
     </div>
@@ -74,7 +75,7 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
           {onOpenRecord ? <button type="button" className="procurement-title" onClick={() => onOpenRecord(item.recordId)}>{item.title}</button> : <h4>{item.title}</h4>}
           <p>{[info?.buyer, sourceName(item.sourceId)].filter(Boolean).join(' · ')}</p>
           {info?.deadline && <p className="pc-board-date" data-tone={when.tone || undefined}>{info.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</p>}
-          {info?.kind !== 'award' && deadlinePassed(item.stage, info?.deadline) && <span className="rw-chips" data-compact><span className="rw-chip" data-tone="blocker" title={DEADLINE_PASSED_HINT}><b>Deadline passed</b></span></span>}
+          {info?.kind !== 'award' && deadlinePassed(item.stage, info?.deadline) && <span className="rw-chips" data-compact><Hint content={DEADLINE_PASSED_HINT}><span className="rw-chip" data-tone="blocker"><b>Deadline passed</b></span></Hint></span>}
           {!!labels?.get(item.recordId)?.length && <LabelChips labels={labels.get(item.recordId)!} limit={2} />}
           {decisions && <PursuitReview recordId={item.recordId} stage={item.stage} notes={item.notes} decision={decisions.get(item.recordId)} tasks={tasks?.get(item.recordId) ?? []} />}
           {item.notes && <p className="procurement-board-notes">{item.notes}</p>}
@@ -85,7 +86,7 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
     </div>
     {/* Phones hide empty stage columns (procurement.css) and list them on this one line instead. */}
     {pursuits.length > 0 && PURSUIT_STAGES.some(stage => !pursuits.some(item => item.stage === stage)) && <p className="procurement-coverage pc-board-empty-stages">Empty stages: {PURSUIT_STAGES.filter(stage => !pursuits.some(item => item.stage === stage)).join(', ')}</p>}
-    {writes && confirm && <Modal title={confirm.stage === 'Submitted' ? 'Record submission' : confirm.stage === 'Awarded' ? 'Record award' : 'Close pursuit'} mobileSheet onClose={() => { if (!busy) setConfirm(undefined); }}
+    {writes && confirm && <Modal fit title={confirm.stage === 'Submitted' ? 'Record submission' : confirm.stage === 'Awarded' ? 'Record award' : 'Close pursuit'} mobileSheet onClose={() => { if (!busy) setConfirm(undefined); }}
       footer={<div className="procurement-actions"><Btn variant="secondary" disabled={busy} onClick={() => setConfirm(undefined)}>Cancel</Btn><Btn disabled={busy || (confirm.stage === 'Closed' && !reason)} onClick={confirmMove}>{confirm.stage === 'Submitted' ? 'Record as submitted' : confirm.stage === 'Awarded' ? 'Record award' : 'Close pursuit'}</Btn></div>}>
       <div className="rw-form">
         <p><strong>{confirm.item.title}</strong></p>
@@ -97,7 +98,7 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
         {error && <p role="alert">{error}</p>}
       </div>
     </Modal>}
-    {writes && editor && <Modal title={`Notes: ${editor.title}`} mobileSheet onClose={() => { if (!busy) setEditor(undefined); }} footer={<div className="procurement-actions"><Btn variant="secondary" disabled={busy} onClick={() => setEditor(undefined)}>Cancel</Btn><Btn disabled={busy} onClick={() => void save({ ...editor, notes })}>Save notes</Btn></div>}><label className="procurement-note-editor">Internal notes<textarea aria-label="Pursuit notes" rows={8} maxLength={4000} value={notes} disabled={busy} onChange={event => setNotes(event.target.value)} /></label><p className="procurement-coverage">{notes.length}/4,000 characters</p>{error && <p role="alert">{error}</p>}</Modal>}
+    {writes && editor && <Modal fit title={`Notes: ${editor.title}`} mobileSheet onClose={() => { if (!busy) setEditor(undefined); }} footer={<div className="procurement-actions"><Btn variant="secondary" disabled={busy} onClick={() => setEditor(undefined)}>Cancel</Btn><Btn disabled={busy} onClick={() => void save({ ...editor, notes })}>Save notes</Btn></div>}><label className="procurement-note-editor">Internal notes<textarea aria-label="Pursuit notes" rows={8} maxLength={4000} value={notes} disabled={busy} onChange={event => setNotes(event.target.value)} /></label><p className="procurement-coverage">{notes.length}/4,000 characters</p>{error && <p role="alert">{error}</p>}</Modal>}
   </section>;
 }
 
@@ -106,8 +107,8 @@ function PursuitReview({ stage, notes, decision, tasks }: { recordId: string; st
   const next = nextTask(tasks), reason = stage === 'Closed' ? closedReasonLabel(closedReason(notes)) : null;
   return <div className="rw-card-review">
     <span className="rw-chips" data-compact>
-      {decision ? <span className="rw-chip" data-tone="neutral" title={decision.note}>Decision: <b>{label(decision.decision)}</b></span> : <span className="rw-chip" data-tone="neutral">No decision recorded</span>}
-      {decision?.needsReconfirmation && <span className="rw-chip" data-tone="stale" title={decision.staleReason ?? undefined}><b>Evidence changed; reconfirm this decision</b></span>}
+      {decision ? <Hint content={decision.note}><span className="rw-chip" data-tone="neutral">Decision: <b>{label(decision.decision)}</b></span></Hint> : <span className="rw-chip" data-tone="neutral">No decision recorded</span>}
+      {decision?.needsReconfirmation && <Hint content={decision.staleReason ?? undefined}><span className="rw-chip" data-tone="stale"><b>Evidence changed; reconfirm this decision</b></span></Hint>}
       {stage === 'Closed' && <span className="rw-chip" data-tone="neutral">{reason ?? 'Closing reason not recorded'}</span>}
     </span>
     {decision?.note && <p className="rw-note rw-clamp">{decision.note}</p>}

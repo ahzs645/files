@@ -32,12 +32,12 @@ const internal = (value: string) => {
 };
 // Last catalog list location (with its query) so a record's Back link returns to the same filters.
 const catalogReturn = new Map<'opportunity' | 'award', string>();
-export function catalogReturnLocation(kind: 'opportunity' | 'award') { return catalogReturn.get(kind) ?? (kind === 'award' ? '/contract-awards' : '/opportunities'); }
+export function catalogReturnLocation(kind: 'opportunity' | 'award') { return catalogReturn.get(kind) ?? (kind === 'award' ? '/contract-awards' : '/procurement'); }
 function receive(value: string) {
   if (value === location) return;
   location = value;
   const path = value.split('?')[0];
-  if (path === '/opportunities') catalogReturn.set('opportunity', value);
+  if (path === '/procurement') catalogReturn.set('opportunity', value);
   if (path === '/contract-awards') catalogReturn.set('award', value);
   const next = internal(value);
   if (history && history.location.href !== next) { syncing = true; try { history.replace(next); } finally { syncing = false; } }

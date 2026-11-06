@@ -17,7 +17,7 @@ a.pc-contact-link:hover span{text-decoration:underline}
 .pc-dup-meta{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .625rem;margin-top:.25rem;font-size:12px;color:var(--text-secondary)}
 .pc-dup-why{margin-top:.125rem;font-size:12px;color:var(--text-secondary)}
 .pc-dup-why strong{color:var(--text-primary)}
-.pc-dup-flag{font-size:12px;padding:0 .4375rem;border-radius:999px;border:1px dashed color-mix(in srgb,var(--status-warning) 55%,transparent);color:var(--status-warning);white-space:nowrap}
+.pc-dup-flag{display:inline-block;max-width:100%;font-size:12px;padding:0 .4375rem;border-radius:.625rem;overflow-wrap:anywhere;border:1px dashed color-mix(in srgb,var(--status-warning) 55%,transparent);color:var(--status-warning)}
 .pc-place-filter h3{display:flex;align-items:center;gap:.375rem}
 .pc-place-filter .ui-select-trigger{width:100%}
 /* Phone: whole-row touch targets (≥ 44px) for call/email/copy and the duplicate links. */

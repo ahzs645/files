@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, RefreshCw } from 'lucide-react';
@@ -77,15 +78,15 @@ function QueueRow({ queue, profile, source, asOf, available, workspacePending, o
   const line = status === 'pending' ? (workspacePending ? 'Checking the review workspace…' : 'Loading…') : status === 'error' ? `Could not load: ${result.error?.message ?? 'no result'}` : QUEUE_SUMMARY[queue];
   return <li className="rw-queue-row" data-queue={queue} aria-labelledby={heading}>
     <RouteLink to={href} className="rw-queue-link" label={`${text.title}: ${status === 'active' ? n(result.data!.total) : line}`}>
-      <span className="rw-queue-count" title={text.description}>{status === 'active' ? n(result.data!.total) : '–'}</span>
+      <Hint content={text.description}><span className="rw-queue-count">{status === 'active' ? n(result.data!.total) : '–'}</span></Hint>
       <span className="rw-queue-text"><h3 id={heading}>{text.title}</h3><p className={status === 'error' ? 'rw-bad' : 'rw-muted'}>{line}</p></span>
       <ChevronRight size={16} className="rw-queue-chevron" aria-hidden="true" />
     </RouteLink>
     {status === 'active' && result.data!.items.length > 0 && <details className="rw-queue-examples">
-      <summary>Show examples</summary>
+      <summary data-zoer-disclosure="">Show examples</summary>
       <ul className="rw-queue-items">{result.data!.items.map(item => <li key={item.id}>
         <RouteLink to={`/procurement?notice=${encodeURIComponent(item.id)}`} className="rw-item-title">{item.title || item.id}</RouteLink>
-        <span className="rw-item-meta" title={deadlineText(item.closing, asOf).detail || undefined}>{[item.buyer, deadlineText(item.closing, asOf).text, item.reason ? ACQUIRE_REASON_TEXT[item.reason as keyof typeof ACQUIRE_REASON_TEXT] : ''].filter(Boolean).join(' · ')}</span>
+        <Hint content={deadlineText(item.closing, asOf).detail || undefined}><span className="rw-item-meta">{[item.buyer, deadlineText(item.closing, asOf).text, item.reason ? ACQUIRE_REASON_TEXT[item.reason as keyof typeof ACQUIRE_REASON_TEXT] : ''].filter(Boolean).join(' · ')}</span></Hint>
       </li>)}{result.data!.total > result.data!.items.length && <li className="rw-muted">and {n(result.data!.total - result.data!.items.length)} more</li>}</ul>
     </details>}
   </li>;
@@ -157,8 +158,8 @@ function SourceHealth({ inventory }: { inventory: any[] | undefined }) {
     <Loadable query={health} what="batch history">{kinds => kinds.length === 0 ? <p className="rw-muted">No batches recorded yet.</p> : <ul className="rw-list">{kinds.map(k => <li key={k.kind}>
       <strong>{BATCH_KINDS[k.kind] ?? k.kind}</strong>
       <span className="rw-muted">Last succeeded: {k.succeeded ? when(k.succeeded) : 'no successful run recorded'}{k.running ? ` · ${k.running} running` : ''}</span>
-      {k.partial && <details className="rw-queue-examples"><summary className="rw-warn">Partial run {when(k.partial.at)}: {n(k.partial.completed)}/{n(k.partial.total)} succeeded</summary><p className="rw-muted">{n(k.partial.failed)} failed of {n(k.partial.total)}. Saved results are kept.</p></details>}
-      {k.failed && <details className="rw-queue-examples"><summary className="rw-bad">Failed attempt {when(k.failed.at)}</summary><p className="rw-muted">{k.failed.error || 'No error message recorded.'} Earlier saved results are kept.</p></details>}
+      {k.partial && <details className="rw-queue-examples"><summary data-zoer-disclosure="" className="rw-warn">Partial run {when(k.partial.at)}: {n(k.partial.completed)}/{n(k.partial.total)} succeeded</summary><p className="rw-muted">{n(k.partial.failed)} failed of {n(k.partial.total)}. Saved results are kept.</p></details>}
+      {k.failed && <details className="rw-queue-examples"><summary data-zoer-disclosure="" className="rw-bad">Failed attempt {when(k.failed.at)}</summary><p className="rw-muted">{k.failed.error || 'No error message recorded.'} Earlier saved results are kept.</p></details>}
     </li>)}</ul>}</Loadable>
   </Panel>;
 }
@@ -183,7 +184,7 @@ function Deadlines({ source, asOf }: { source: string; asOf: number }) {
     <Loadable query={deadlines} what="deadlines">{({ total, rows }) => rows.length === 0 ? <p className="rw-muted">Nothing else saved closes in the next 14 days.</p> : <>
       <ul className="rw-list">{rows.map(row => { const d = deadlineText(row.closing, asOf); return <li key={row.id}>
         <RouteLink to={`/procurement?notice=${encodeURIComponent(row.id)}`} className="rw-item-title">{row.title || row.id}</RouteLink>
-        <span className="rw-muted" title={d.detail || undefined}>{[d.text, row.buyer].filter(Boolean).join(' · ')}</span>
+        <Hint content={d.detail || undefined}><span className="rw-muted">{[d.text, row.buyer].filter(Boolean).join(' · ')}</span></Hint>
       </li>; })}</ul>
       {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'notice')} in days {SOON_DAYS + 1}–14 · all open notices by closing date →</RouteLink>}
     </>}</Loadable>
@@ -213,7 +214,7 @@ export function Home() {
       <div className="rw-scope-title"><h1>What needs attention?</h1><p>{source ? sourceName(source) : 'All saved sources'} · as of {when(new Date(asOf).toISOString())}</p></div>
       <div className="rw-controls">
         <label className="rw-control"><span>Source</span><Select aria-label="Source" presentation="dropdown" searchable={false} value={source} onChange={event => patchPluginQuery({ source: event.target.value || null })}><option value="">All saved sources</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}</option>)}</Select></label>
-        {available ? <span title={policy}><ProfilePicker /></span> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
+        {available ? <Hint content={policy}><span><ProfilePicker /></span></Hint> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
         {surface !== 'societyer' && <Btn size="sm" variant="secondary" className="rw-scope-refresh" aria-label="Refresh" icon={<RefreshCw size={14} />} onClick={refresh} tooltip={`As of ${when(new Date(asOf).toISOString())}`}><span className="rw-scope-refresh-label">Refresh</span></Btn>}
       </div>
     </header>

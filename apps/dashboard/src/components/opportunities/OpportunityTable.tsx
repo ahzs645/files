@@ -11,13 +11,13 @@ export function OpportunityTable({ items }: { items: OpportunityListItem[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border-default text-left">
-            <th className="pb-3 pr-4 text-[11px] font-medium uppercase tracking-wider text-text-tertiary w-[100px]">Status</th>
-            <th className="pb-3 pr-4 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">Opportunity</th>
-            <th className="pb-3 pr-4 text-[11px] font-medium uppercase tracking-wider text-text-tertiary hidden md:table-cell">Organization</th>
-            <th className="pb-3 pr-4 text-[11px] font-medium uppercase tracking-wider text-text-tertiary hidden lg:table-cell w-[100px]">Type</th>
-            <th className="pb-3 pr-4 text-[11px] font-medium uppercase tracking-wider text-text-tertiary hidden sm:table-cell w-[100px]">Ends In</th>
-            <th className="pb-3 pr-4 text-[11px] font-medium uppercase tracking-wider text-text-tertiary hidden sm:table-cell w-[110px]">Closes</th>
-            <th className="pb-3 text-[11px] font-medium uppercase tracking-wider text-text-tertiary w-[36px]" />
+            <th className="pb-3 pr-4 text-[12px] font-medium uppercase tracking-wider text-text-tertiary w-[100px]">Status</th>
+            <th className="pb-3 pr-4 text-[12px] font-medium uppercase tracking-wider text-text-tertiary">Opportunity</th>
+            <th className="pb-3 pr-4 text-[12px] font-medium uppercase tracking-wider text-text-tertiary hidden md:table-cell">Organization</th>
+            <th className="pb-3 pr-4 text-[12px] font-medium uppercase tracking-wider text-text-tertiary hidden lg:table-cell w-[100px]">Type</th>
+            <th className="pb-3 pr-4 text-[12px] font-medium uppercase tracking-wider text-text-tertiary hidden sm:table-cell w-[100px]">Ends In</th>
+            <th className="pb-3 pr-4 text-[12px] font-medium uppercase tracking-wider text-text-tertiary hidden sm:table-cell w-[110px]">Closes</th>
+            <th className="pb-3 text-[12px] font-medium uppercase tracking-wider text-text-tertiary w-[36px]" />
           </tr>
         </thead>
         <tbody>
@@ -27,7 +27,7 @@ export function OpportunityTable({ items }: { items: OpportunityListItem[] }) {
             return (
               <tr key={item.sourceKey} className="group border-b border-border-subtle hover:bg-bg-hover/50 transition-colors">
                 <td className="py-3.5 pr-4">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}>
                     {item.status}
                   </span>
                 </td>
@@ -48,7 +48,7 @@ export function OpportunityTable({ items }: { items: OpportunityListItem[] }) {
                   <span className="line-clamp-1"><BuyerName record={item} /></span>
                 </td>
                 <td className="py-3.5 pr-4 hidden lg:table-cell">
-                  <span className="inline-flex items-center rounded-full bg-bg-subtle px-2 py-0.5 text-[10px] text-text-secondary">
+                  <span className="inline-flex items-center rounded-full bg-bg-subtle px-2 py-0.5 text-[12px] text-text-secondary">
                     {item.type}
                   </span>
                 </td>

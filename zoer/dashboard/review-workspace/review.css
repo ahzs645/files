@@ -23,9 +23,6 @@
 .rw-upgrade{border:1px dashed var(--border-default);border-radius:.625rem;padding:.75rem .875rem;color:var(--text-secondary);font-size:13px;line-height:1.5}
 
 /* Shell: Configure group is visually secondary; section views reuse the source header's segmented control. */
-.rw-nav-configure{display:flex;align-items:stretch;gap:.125rem;flex:none;margin-left:.5rem;padding-left:.5rem;border-left:1px solid var(--border-default)}
-.rw-nav-configure>a{font-weight:450;font-size:12.5px}
-@media(max-width:639px){.rw-nav-configure{margin-left:.25rem;padding-left:.25rem}}
 
 /* Home and Insights */
 .rw-muted{color:var(--text-secondary);font-size:12.5px;line-height:1.5}
@@ -185,7 +182,7 @@
 .rw-stage-rail>button{display:flex;flex-direction:column;align-items:flex-start;gap:.125rem;padding:.5rem .625rem;border:1px solid transparent;border-radius:.5rem;text-align:left;font-size:13px;color:var(--text-primary);background:transparent}
 .rw-stage-rail>button>span{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
 .rw-stage-rail>button[aria-current]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.rw-pre{max-height:22rem;overflow:auto;padding:.5rem .625rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-secondary);font-size:11.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.rw-pre{max-height:22rem;overflow:auto;padding:.5rem .625rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-secondary);font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .rw-picks{display:flex;flex-direction:column;max-height:12rem;overflow:auto;border:1px solid var(--border-default);border-radius:.5rem}
 .rw-picks>button{display:flex;flex-direction:column;align-items:flex-start;padding:.375rem .5rem;text-align:left;font-size:12.5px;color:var(--text-primary);border-bottom:1px solid var(--border-default);background:transparent}
 .rw-picks>button[aria-selected=true]{background:color-mix(in srgb,var(--accent) 10%,transparent)}
@@ -310,6 +307,7 @@
 .rw-eg-field .ui-select-trigger{height:32px;min-width:10rem;font-size:12.5px}
 .rw-eg-filters{display:flex;flex-wrap:wrap;gap:.375rem}
 .rw-eg-filters .pc-chip{min-height:32px;font-size:12.5px}
+@media(pointer:coarse),(max-width:640px){.rw-eg-filters .pc-chip{min-height:44px}}
 .rw-eg{border-collapse:separate;border-spacing:0;min-width:72rem;width:100%;font-size:12.5px}
 .rw-eg th,.rw-eg td{padding:.5rem .625rem;border-bottom:1px solid var(--border-default);text-align:left;vertical-align:top;min-width:8.5rem;max-width:14rem;overflow-wrap:anywhere;line-height:1.4}
 .rw-eg thead th{position:sticky;top:0;z-index:1;background:var(--surface-primary);font-weight:600;color:var(--text-secondary);font-size:12px}
@@ -459,14 +457,15 @@
 @media(min-width:640px){.rw-today-grid[data-columns="2"]{grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.rw-today-grid[data-columns="2"] .rw-today-col+.rw-today-col{border-top:0;padding-top:0;border-left:1px solid var(--border-default);padding-left:1rem}}
 .rw-today-sub{font-size:12px;line-height:1.4;color:var(--text-muted);overflow-wrap:anywhere}
 .rw-profile-quiet b{font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;min-width:0}
-/* Home scope bar on phones: title above, then each control full width; nothing runs past the right edge. */
+/* Home scope bar on phones: title above, then the controls on one row; nothing runs past the right edge. */
 @media(max-width:639px){
   .rw-scope{flex-direction:column;align-items:stretch}
-  .rw-scope .rw-controls{display:flex;flex-direction:column;align-items:stretch;width:100%;min-width:0}
+  .rw-scope .rw-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;width:100%;min-width:0}
+  .rw-insights .rw-scope .rw-controls>:last-child{grid-column:1/-1}
   .rw-scope .rw-control,.rw-scope .rw-profile-picker{display:flex;width:100%;min-width:0;white-space:normal}
-  .rw-scope .rw-control>span:first-child,.rw-scope .rw-profile-picker>span:first-child{flex:none;min-width:4.5rem}
+  /* Each select names its own value and keeps its accessible label, so the two sit on one row. */
+  .rw-scope .rw-control>span:first-child,.rw-scope .rw-profile-picker>span:first-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   .rw-scope .rw-control select,.rw-scope .rw-profile-picker select,.rw-scope .rw-control .ui-select-trigger,.rw-scope .rw-profile-picker .ui-select-trigger{flex:1 1 auto;width:100%;min-width:0;max-width:none}
-  .rw-scope .rw-controls>span[title]{display:block;width:100%;min-width:0}
   /* Refresh becomes an icon beside the title instead of a row of its own. */
   .rw-scope{position:relative}
   .rw-scope-title{padding-right:3rem}
@@ -475,3 +474,25 @@
 }
 /* Assessment metadata: one muted line; profile and policy version are in its tooltip. */
 .rw-nd-meta{font-size:12px;line-height:1.4;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* Evidence reads as one card per notice below md: a 72rem table leaves one column visible on a phone. Roles and arrow keys are unchanged. */
+@media(max-width:767px){
+  .rw-eg-page .rw-o-scroll{overflow:visible;border:0;background:none}
+  .rw-eg{display:block;min-width:0;width:100%}
+  .rw-eg thead{display:none}
+  .rw-eg tbody{display:flex;flex-direction:column;gap:.5rem}
+  .rw-eg tr{display:block;border:1px solid var(--border-default);border-radius:.75rem;background:var(--surface-primary);overflow:hidden}
+  .rw-eg th,.rw-eg td{display:block;min-width:0;max-width:none}
+  .rw-eg tbody th{position:static;font-size:14px}
+  .rw-eg td{display:grid;grid-template-columns:minmax(0,9rem) minmax(0,1fr);gap:.125rem .75rem;min-height:44px;align-items:start}
+  .rw-eg td::before{content:attr(data-label);grid-row:span 3;font-size:12px;color:var(--text-secondary)}
+  .rw-eg td>*{grid-column:2}
+  .rw-eg tr>:last-child{border-bottom:0}
+}
+.rw-insights-prompt{grid-column:1/-1}
+.rw-choose-profile{display:flex;justify-content:center;width:min(100%,20rem);margin-top:.75rem}
+.rw-choose-profile .rw-profile-picker{width:100%}
+/* Text links that act as rows or counts get a full touch target on touch screens. */
+@media(pointer:coarse),(max-width:640px){
+  .rw-stats dd a,.rw-item-title{display:inline-flex;align-items:center;min-height:44px}
+  .rw-lane-link{min-height:44px;display:inline-flex;align-items:center}
+}

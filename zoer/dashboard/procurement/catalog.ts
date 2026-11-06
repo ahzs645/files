@@ -44,6 +44,12 @@ export function deadlineLabel(raw: unknown, now: number | Date = Date.now()): st
   return parsed.precision === 'date' ? `${value} (timezone not specified)${judgement}` : `${value}${judgement}`;
 }
 
+/**
+ * Which records the Opportunities list holds: opportunities, unless the link names a type. A supplier filter also keeps
+ * awards, because only awards have suppliers. 'all' stays reachable through the Notice type filter.
+ */
+export const listKind = (kind: string | null, supplier: string, closingSoon: boolean) => closingSoon ? 'opportunity' : kind ?? (supplier ? 'all' : 'opportunity');
+
 export type ProcurementQueryOptions = MetadataFilters & {
   source?: string;
   kind?: 'all' | 'opportunity' | 'award';

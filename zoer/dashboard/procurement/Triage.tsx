@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff } from 'lucide-react';
@@ -54,9 +55,9 @@ export function useHideNotices(onError: (message: string) => void) {
 export function HideButton({ row, hidden, busy, onToggle }: { row: { id: string; title?: string }; hidden: boolean; busy: boolean; onToggle(): void }) {
   if (!useCapabilities().writes) return null;
   const title = row.title || 'untitled notice';
-  return <button type="button" className="pc-star pc-hide" disabled={busy} aria-pressed={hidden} aria-label={hidden ? `Show again in lists: ${title}` : `Hide, not relevant: ${title}`} title={hidden ? 'Show again in lists' : 'Hide: not relevant'} onClick={onToggle}>
+  return <Hint content={hidden ? 'Show again in lists' : 'Hide: not relevant'} action><button type="button" className="pc-star pc-hide" disabled={busy} aria-pressed={hidden} aria-label={hidden ? `Show again in lists: ${title}` : `Hide, not relevant: ${title}`} onClick={onToggle}>
     {hidden ? <Eye aria-hidden="true" className="h-4 w-4" /> : <EyeOff aria-hidden="true" className="h-4 w-4" />}
-  </button>;
+  </button></Hint>;
 }
 
 /** Status line after a hide/show, with Undo. */
@@ -83,7 +84,7 @@ export function useProfileFilterHits(ids: string[], profileVersionId: string | n
 }
 
 export function ProfileFilterLine({ hits }: { hits: ProfileFilterHit[] | undefined }) {
-  return hits?.length ? <p className="pc-profile-filter" title="From the company profile’s quick filters. Batch triage and extraction skip these unless you include them.">{filterReason(hits)}</p> : null;
+  return hits?.length ? <Hint content="From the company profile’s quick filters. Batch triage and extraction skip these unless you include them."><p className="pc-profile-filter">{filterReason(hits)}</p></Hint> : null;
 }
 
 /** Hide/show from the notice itself; the button reads back the stored state, so it doubles as undo. */

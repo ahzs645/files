@@ -17,7 +17,7 @@ export function AnalysisChartCard({
     <Card className="analysis-chart-card">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-accent">
+          <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-accent">
             Analysis
           </div>
           <h3 className="mt-2 text-lg font-semibold text-text-primary">{title}</h3>

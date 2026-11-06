@@ -1,3 +1,4 @@
+import { awardDateText } from './award-dates';
 // Pure row → display mappings for the phone list layout and grid cells. Kept free of React so they can be unit tested.
 import { shortDate } from './procurement/deadline';
 
@@ -49,7 +50,7 @@ export function awardSummary(row: BidRow) {
     title: text(row.opportunityDescription) || 'Untitled award',
     id: text(row.opportunityId),
     supplier: text(row.successfulSupplier) || 'Supplier not stated',
-    awardDate: text(row.awardDate) || 'Undated',
+    awardDate: awardDateText(row.awardDate) || 'Undated',
     type: text(row.opportunityType),
     valueText,
     originalValueText: formatAwardValue(row.contractValue, row.currency) ? text(row.contractValueText) : '',

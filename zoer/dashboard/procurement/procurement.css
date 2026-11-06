@@ -33,11 +33,11 @@
 .pc-chip{display:inline-flex;align-items:center;gap:.375rem;min-height:36px;padding:0 .75rem;border:1px solid var(--border-default);border-radius:999px;font-size:13px;color:var(--text-secondary);white-space:nowrap;flex:none}
 .pc-chip:hover{color:var(--text-primary);background:var(--surface-secondary)}
 .pc-chip[aria-pressed=true]{border-color:var(--accent);color:var(--text-primary);background:var(--accent-subtle)}
-.pc-count{display:inline-block;min-width:1.125rem;height:1.125rem;padding:0 .3rem;border-radius:999px;background:var(--accent);color:var(--accent-text);font-size:11px;line-height:1.125rem;text-align:center}
+.pc-count{display:inline-block;min-width:1.125rem;height:1.125rem;padding:0 .3rem;border-radius:999px;background:var(--accent);color:var(--accent-text);font-size:12px;line-height:1.125rem;text-align:center}
 .pc-count[hidden]{display:none}
 .pc-label-narrow,.pc-count-narrow{display:none}
 .pc-resultbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;min-height:32px;font-size:13px;color:var(--text-secondary)}
-.procurement-check{display:flex!important;flex-direction:row!important;align-items:center;gap:.5rem;min-height:40px;font-size:.8125rem}
+.procurement-check{display:flex!important;flex-direction:row!important;align-items:center;gap:.5rem;min-height:44px;font-size:.8125rem}
 .procurement-check input{width:18px;height:18px;accent-color:var(--accent)}
 .procurement-workflow input[type=number]{max-width:8rem}
 .pc-resultbar strong{color:var(--text-primary)}
@@ -47,11 +47,20 @@
 .pc-row:first-child{border-top:0}
 .pc-row[data-selected]{background:var(--accent-subtle)}
 .pc-row-check{margin-top:.2rem;width:16px;height:16px;accent-color:var(--accent);flex:none}
+/* Keeps the box small but gives a thumb a 44px target. */
+.pc-check{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:pointer}
+.pc-check input:not(.pc-row-check){width:16px;height:16px;accent-color:var(--accent)}
+@media(pointer:coarse),(max-width:640px){.pc-check::before{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}}
 .pc-row-main{flex:1;min-width:0}
 .pc-row-title{display:block;text-align:left;font-size:14px;font-weight:600;line-height:1.35;color:var(--text-primary);overflow-wrap:anywhere}
 .pc-row-title:hover{text-decoration:underline}
 .pc-row-buyer{margin-top:.125rem;font-size:13px;color:var(--text-secondary);overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .pc-resultbar>span{display:flex;align-items:center;gap:.5rem}
+.pc-resultbar-end{margin-left:auto}
+/* Table layout: the page holds still and the grid scrolls, as on the Award history table. */
+.zoer-catalog>.procurement-workspace[data-layout=table]{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto}
+.pc-table-pick{display:inline-flex;align-items:center;gap:2px}
+.bid-database-grid[data-select] .db-selection-head,.bid-database-grid[data-select] td:first-child{display:none}
 .pc-sort .ui-select-trigger{height:32px;border-color:transparent;background:transparent;font-size:13px;color:var(--text-secondary)}
 .pc-sort .ui-select-trigger:hover{color:var(--text-primary)}
 /* Plugin-owned so the host's utility order can't hide both labels. */
@@ -219,12 +228,11 @@
 .pc-board-toolbar{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .pc-board-add{flex:1 1 18rem;min-width:0;max-width:34rem}
 .procurement-workspace>.procurement-workflow[aria-label="Pursuit board"]{border:0;padding:0}
+/* Empty stages stay as narrow drop targets from tablet width, so a real card is not pushed off-screen. */
+@media(min-width:641px){.procurement-workspace .procurement-board-column[data-empty]{flex:0 0 6.5rem;min-width:0;padding:.5rem}}
 @media(min-width:1024px){.procurement-workspace .procurement-board-column{flex:1 0 10.5rem;padding:.5rem}.procurement-workspace .procurement-board-column[data-empty]{flex:0 0 6.5rem}.procurement-workspace .procurement-board-card{padding:.625rem .5rem}.procurement-board-card .ui-select-trigger{padding-left:.5rem;padding-right:1.625rem;font-size:12px}.pc-board-card-actions{gap:2px}}
 @media(max-width:640px){.procurement-board{scroll-snap-type:x mandatory}.procurement-board-column{scroll-snap-align:start}}
-@media(max-width:639px){nav.zoer-tabs[aria-label="Procurement sections"]{gap:0;padding:0 6px}nav.zoer-tabs[aria-label="Procurement sections"] a{padding:10px 9px}}
 /* Five or fewer sections fit a phone without scrolling: spread them across the strip instead of hiding the last one under the fade. */
-@media(max-width:639px){nav.zoer-tabs[data-fit]{padding:0;justify-content:space-between}nav.zoer-tabs[data-fit] a{flex:1 0 auto;justify-content:center;padding:10px 4px}}
-@media(max-width:370px){nav.zoer-tabs[data-fit] a{padding-inline:3px;font-size:12.5px}}
 
 /* Source page header: breadcrumb and a segmented control on desktop, one picker on phones. */
 .pc-source-header{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;width:100%;max-width:1400px;margin:0 auto;padding:.75rem .75rem 0}
@@ -358,3 +366,6 @@ p.pc-source-crumb{margin-bottom:.75rem}
 .pc-commodity-filter{min-width:0;max-width:100%}.pc-commodity-filter>input{box-sizing:border-box;width:100%;min-width:0;padding:.5rem .75rem;border:1px solid var(--border-default);border-radius:.5rem;background:var(--surface-primary);color:var(--text-primary);font-size:16px}.pc-commodity-row{display:flex;gap:8px;align-items:center;min-width:0}.pc-commodity-row .pc-commodity-choice{flex:1 1 0;min-width:0;max-width:100%;height:auto;min-height:44px;padding:.5rem .625rem;white-space:normal;overflow-wrap:anywhere;text-align:left;justify-content:flex-start}
 
 .pc-filter-sheet .pc-labels{max-width:100%;min-width:0}.pc-filter-sheet .pc-label{max-width:100%;min-width:0;white-space:normal;overflow-wrap:anywhere}
+/* Hint's Tooltip wrapper stays out of flex and grid layouts. */
+.pc-hint{display:contents}
+@media(pointer:coarse),(max-width:640px){.bid-layout-toggle button,.procurement-workspace .pc-chip{min-height:44px}}

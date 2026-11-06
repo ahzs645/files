@@ -5,7 +5,7 @@ import { host } from './bridge';
 import { researchRetry } from './research-retry';
 import { assertDocumentBrowserIdle } from './document-run';
 import { shortError } from './error-text';
-import { StatusBadge, type Tone } from './host-ui';
+import { StatusBadge, type Tone, Hint } from './host-ui';
 
 const STATUS_TEXT: Record<string, string> = { waiting_for_user: 'Needs you', succeeded: 'Done', failed: 'Failed', running: 'Running', cancelled: 'Stopped', stopped: 'Stopped', queued: 'Queued', paused: 'Paused for update' };
 const statusText = (status: string) => STATUS_TEXT[status] ?? (status.charAt(0).toUpperCase() + status.slice(1)).replace(/_/g, ' ');
@@ -51,8 +51,8 @@ export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], o
       <div>
         <StatusBadge tone={STATUS_TONE[batch.status] ?? 'neutral'}>{statusText(batch.status)}</StatusBadge>{batch.updated_at && <time dateTime={batch.updated_at}>{new Date(batch.updated_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>}
         <p>{batch.completed}/{batch.total} done{Number(batch.failed) ? ` · ${batch.failed} failed` : ''}</p>
-        {batch.error && <p role="alert" className="doc-clamp" title={batch.error}>{shortError(batch.error)}</p>}
-        {steps.length > 0 && <details className="doc-steps"><summary>Latest steps</summary>{steps.map((task, index) => <p className="research-task" key={index}><strong>{task.phase || task.kind}</strong> · {task.name || task.record_id} · {batch.status === 'paused' && task.status === 'running' ? 'Paused for update' : batch.status !== 'running' && task.status === 'running' ? 'Interrupted' : statusText(task.status)}{task.error ? ` · ${shortError(task.error)}` : ''}</p>)}</details>}
+        {batch.error && <Hint content={batch.error}><p role="alert" className="doc-clamp">{shortError(batch.error)}</p></Hint>}
+        {steps.length > 0 && <details className="doc-steps"><summary data-zoer-disclosure="">Latest steps</summary>{steps.map((task, index) => <p className="research-task" key={index}><strong>{task.phase || task.kind}</strong> · {task.name || task.record_id} · {batch.status === 'paused' && task.status === 'running' ? 'Paused for update' : batch.status !== 'running' && task.status === 'running' ? 'Interrupted' : statusText(task.status)}{task.error ? ` · ${shortError(task.error)}` : ''}</p>)}</details>}
       </div>
       {batch.status === 'running'
         ? <Button variant="ghost" disabled={busy} onClick={() => void act(() => host('cancel', { id: batch.id }))}>Stop</Button>

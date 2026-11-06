@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
@@ -52,7 +53,7 @@ export function CollectionRuns({ runs, error, loading }: { runs?: RecentRun[]; e
       const state = runState(run)!;
       return <li key={run.runId} data-live={isLive(run) || undefined}>
         <div className="pc-run-main"><strong>{runSource(run)}</strong><small>{when(run.createdAt)}{run.finishedAt ? ` → ${when(run.finishedAt)}` : ''}</small></div>
-        <div className="pc-run-state"><span className="pc-status" data-tone={state.tone}>{state.text}</span>{state.detail && <small title={state.detail}>{state.detail}</small>}</div>
+        <div className="pc-run-state"><span className="pc-status" data-tone={state.tone}>{state.text}</span>{state.detail && <Hint content={state.detail}><small>{state.detail}</small></Hint>}</div>
         {(state.canPause || state.canResume || state.canCancel) && <div className="pc-run-actions">
           {state.canPause && <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void act(run, 'run.pause')}>{busy === `run.pause:${run.runId}` ? 'Pausing…' : 'Pause'}</Btn>}
           {state.canResume && <Btn size="sm" variant="primary" disabled={!!busy} onClick={() => void act(run, 'run.resume')}>{busy === `run.resume:${run.runId}` ? 'Resuming…' : 'Resume'}</Btn>}

@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { MetadataFilters } from './MetadataFilters';
 import { METADATA_FILTER_KEYS } from './metadata-filter';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
@@ -5,6 +6,7 @@ import { useQuery as useCachedQuery, useQueryClient } from '@tanstack/react-quer
 import { Bookmark, Search, SlidersHorizontal, Star } from 'lucide-react';
 import { SUGGESTED_ACTIONS } from '@bcbid/procurement-core';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
+import { LayoutToggle, NoticeTable, TABLE_FILTER_PARAMS } from '../BidGrid';
 import { host } from '../bridge';
 import { useWorkspace, setStar } from '../backend';
 import { useCapabilities } from '../capabilities';
@@ -19,7 +21,7 @@ import { useActiveProfile } from '../review-workspace/profile-context';
 import { label } from '../review-workspace/queries';
 import { READINESS_BUCKETS, READINESS_TEXT, RELEVANCE_BUCKETS, RELEVANCE_TEXT } from '../review-workspace/queue';
 import { captureSnapshot, manualSnapshot, setSelection, toggleSelected, useSelection, type SelectionSnapshot } from '../review-workspace/selection';
-import { SOURCES, buildProcurementQuery, checkStatementSize } from './catalog';
+import { SOURCES, buildProcurementQuery, checkStatementSize, listKind } from './catalog';
 import { SavedSearches } from './SavedSearches';
 import { AlertSettings } from './AlertSettings';
 import { EvidencePanel } from './EvidencePanel';
@@ -44,7 +46,7 @@ const STATUS_SQL = "SELECT json_extract(data,'$.status') AS value, count(*) AS c
 const OPEN_WORDS = ['open', 'active'];
 // Views that used to be tabs on this page now live in their own sections.
 const MOVED_VIEWS: Record<string, string> = { board: '/pursuits', market: '/analysis/sources', sources: '/sources' };
-const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'exclude', 'hidden', 'place', ...METADATA_FILTER_KEYS];
+const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'exclude', 'hidden', 'place', ...METADATA_FILTER_KEYS, ...TABLE_FILTER_PARAMS];
 /** Notices hidden as not relevant: excluded unless the link asks to include them or show only them. */
 const HIDDEN_TEXT = { include: 'Including hidden notices', only: 'Hidden notices only' } as const;
 const PAGE = 25;
@@ -65,7 +67,9 @@ export function Procurement() {
   const region = params.get('region') || '', category = params.get('category') || '', buyer = params.get('buyer') || '', supplier = params.get('supplier') || '', classification = params.get('classification') || '';
   const metadataFilters = Object.fromEntries(METADATA_FILTER_KEYS.map(key => [key, params.get(key) || '']));
   const deadline: 'all' | 'week' = view === 'deadlines' || params.get('deadline') === 'week' ? 'week' : 'all';
-  const kind = deadline === 'week' ? 'opportunity' : params.get('kind') ?? 'all';
+  const kind = listKind(params.get('kind'), supplier, deadline === 'week');
+  const table = params.get('layout') === 'table' && view !== 'matrix' && view !== 'compare';
+  const [one, many] = kind === 'award' ? ['award', 'awards'] : kind === 'opportunity' ? ['opportunity', 'opportunities'] : ['notice', 'notices'];
   const starred = params.get('shortlist') === '1', page = Math.max(0, Number(params.get('page')) || 0);
   const aiLabel = params.get('aiLabel') ?? '', noticeId = params.get('notice') ?? '', place = params.get('place') ?? '';
   const exclude = params.get('exclude') ?? '', excludeCount = parseExcludeTerms(exclude).length;
@@ -88,6 +92,7 @@ export function Procurement() {
   // Back from the phone page returns to the list at the notice that was open.
   const backToList = () => { const id = noticeId; closeNotice(); requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' })); };
   const [saving, setSaving] = useState(''), [error, setError] = useState('');
+  const [tableTotal, setTableTotal] = useState<number | null>(null);
   const { collection, writes } = useCapabilities();
   const selected = useSelection(), selectedIds = new Set(selected.map(row => row.id));
   const [snapshot, setSnapshot] = useState<SelectionSnapshot | null>(null), [capturing, setCapturing] = useState(false);
@@ -105,6 +110,8 @@ export function Procurement() {
 
   // One "now" per minute keeps query keys stable while deadlines stay current.
   const asOf = Math.floor(Date.now() / 60_000) * 60_000;
+  // The table keeps one "now" while it is open, so the minute tick doesn't restart its loaded rows.
+  const [tableAsOf] = useState(asOf);
   const waitForWorkspace = workspace.isPending && needsWorkspace(scope, filters);
   const review = opportunityPredicate(scope, filters, { profileVersionId: active, asOf, workspace: available });
   const base = { ...metadataFilters, source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, aiLabel, exclude, hidden, place, asOf } as const;
@@ -117,10 +124,11 @@ export function Procurement() {
   const inventory = useCachedQuery({ queryKey: ['catalog', 'procurement-inventory'], enabled: !!model, queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60000 });
   const rows = (list.data?.rows ?? []).slice(0, PAGE), hasMore = (list.data?.rows.length ?? 0) > PAGE, total = list.data?.total ?? 0;
   const ids = rows.map(row => String(row.id));
-  const rowReview = useCachedQuery({ queryKey: [...REVIEW_KEY, 'opportunity-rows', ids, profile, available], enabled: ids.length > 0 && !workspace.isPending && view !== 'compare' && view !== 'matrix', queryFn: () => readRowReview(ids, profile, available), refetchInterval: 60000 });
-  const labels = useRecordLabels(ids, !!model && view !== 'matrix' && view !== 'compare');
-  const duplicates = usePageDuplicates(rows, !!model && view !== 'matrix' && view !== 'compare');
-  const profileFilter = useProfileFilterHits(ids, profile, available && view !== 'matrix' && view !== 'compare');
+  const rowReview = useCachedQuery({ queryKey: [...REVIEW_KEY, 'opportunity-rows', ids, profile, available], enabled: ids.length > 0 && !workspace.isPending && view !== 'compare' && view !== 'matrix' && !table, queryFn: () => readRowReview(ids, profile, available), refetchInterval: 60000 });
+  const listShown = view !== 'matrix' && view !== 'compare' && !table;
+  const labels = useRecordLabels(ids, !!model && listShown);
+  const duplicates = usePageDuplicates(rows, !!model && listShown);
+  const profileFilter = useProfileFilterHits(ids, profile, available && listShown);
   const hide = useHideNotices(setError);
   // The hide/undo line belongs to the list it was made in; another search or filter starts clean.
   useEffect(() => { hide.dismiss(); }, [query.where, query.countParameters.join('\u0000')]);
@@ -142,9 +150,12 @@ export function Procurement() {
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
   // Status (source status or the Open scope) sits in the toolbar, notice type in the sheet; "More filters" counts the sheet.
   const statusActive = !!metadataFilters.status || params.get('open') === '1';
-  const extraCount = [...Object.entries(metadataFilters).filter(([key]) => key !== 'status').map(([, value]) => value), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude', kind !== 'all' && deadline !== 'week'].filter(Boolean).length + reviewCount - (params.get('open') === '1' ? 1 : 0);
+  const extraCount = [...Object.entries(metadataFilters).filter(([key]) => key !== 'status').map(([, value]) => value), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude', kind !== 'opportunity' && deadline !== 'week'].filter(Boolean).length + reviewCount - (params.get('open') === '1' ? 1 : 0);
   const activeCount = extraCount + [source, statusActive, deadline === 'week', starred].filter(Boolean).length;
   const clearAll = () => { setTyped(''); filter(Object.fromEntries([...BASE_PARAMS, ...REVIEW_PARAMS].map(key => [key, '']))); };
+  // Rail filters narrow the table only, so "matching" counts and Select all use the shared list scope.
+  const railFilters = table && TABLE_FILTER_PARAMS.some(key => params.get(key));
+  const shown = table && tableTotal !== null ? tableTotal : total;
   const description = describeFilters(params, profileText, sourceName);
   const snapshotMeta = { description, filters: filterObject(params), profileVersionId: profile, profileText };
 
@@ -213,7 +224,7 @@ export function Procurement() {
   const selectionKey = selected.map(row => row.id).join('\n'), metaKey = JSON.stringify(snapshotMeta);
   const manual = useMemo(() => selected.length > 0 ? manualSnapshot(selected.map(row => row.id), snapshotMeta) : null, [selectionKey, metaKey]);
   const snapshotStale = snapshot && snapshot.description.join('|') !== description.join('|');
-  const selectAllButton = writes && total > 0 && <Btn size="sm" variant="ghost" disabled={capturing || !list.data} onClick={() => void selectAll()}>{capturing ? 'Capturing…' : `Select all ${total.toLocaleString()} matching`}</Btn>;
+  const selectAllButton = writes && total > 0 && !railFilters && <Btn size="sm" variant="ghost" disabled={capturing || !list.data} onClick={() => void selectAll()}>{capturing ? 'Capturing…' : `Select all ${total.toLocaleString()} matching`}</Btn>;
   const sortSelect = <Select aria-label="Sort" presentation="dropdown" searchable={false} value={sort === 'date-asc' ? 'deadline' : sort} onChange={event => patchPluginQuery({ sort: event.target.value, page: '' })}><option value="updated">Recently updated</option><option value="deadline">Closing soonest</option>{available && <option value="fit">Work fit</option>}</Select>;
   let bar: ReactNode;
   if (snapshot) bar = <>
@@ -229,8 +240,8 @@ export function Procurement() {
     </div>
   </>;
   else bar = <>
-    <span role="status">{list.isPending && !waitForWorkspace ? 'Loading…' : `${total.toLocaleString()} ${total === 1 ? 'result' : 'results'}`}{selectAllButton}{activeCount > 0 && <Btn size="sm" variant="ghost" onClick={clearAll}>Clear filters</Btn>}</span>
-    <span className="pc-resultbar-end">{available && <ProfilePicker />}<label className="pc-sort"><span className="sr-only">Sort</span>{sortSelect}</label></span>
+    <span role="status">{list.isPending && !waitForWorkspace ? 'Loading…' : `${shown.toLocaleString()} ${shown === 1 ? one : many}`}{selectAllButton}{activeCount > 0 && <Btn size="sm" variant="ghost" onClick={clearAll}>Clear filters</Btn>}</span>
+    <span className="pc-resultbar-end">{available && !table && <ProfilePicker />}{!table && <label className="pc-sort"><span className="sr-only">Sort</span>{sortSelect}</label>}</span>
   </>;
 
   // Matrix: the same scope without the matrix's own axes (they become the cells).
@@ -238,11 +249,14 @@ export function Procurement() {
   const matrixWhere = view === 'matrix' ? buildProcurementQuery({ ...base, where: opportunityPredicate(matrixScope, { ...filters, assessedYes: undefined }, { profileVersionId: active, asOf, workspace: available }) }) : null;
   const ignored = [scope.relevance && 'work fit', scope.readiness && 'readiness', (scope.assessed || filters.assessedYes) && 'assessment'].filter(Boolean) as string[];
   const compareIds = (params.get('ids') ?? '').split(',').filter(Boolean);
+  // Search goes to the table itself, whose search also knows mapped buyer names.
+  const tableQuery = table ? buildProcurementQuery({ ...base, asOf: tableAsOf, search: '', where: opportunityPredicate(scope, filters, { profileVersionId: active, asOf: tableAsOf, workspace: available }) }) : null;
+  const tableSelection = writes ? { has: (id: string) => selectedIds.has(id), toggle: (row: { id: string; title: string }, on: boolean) => toggleSelected(row, on) } : undefined;
 
   if (noticeId && phone) return <section className="procurement-workspace" aria-label="Opportunities"><NoticeView id={noticeId} layout="page" backLabel={view === 'compare' ? 'Back to comparison' : view === 'matrix' ? 'Back to matrix' : 'Back to opportunities'} onClose={backToList} /></section>;
-  return <section className="procurement-workspace" aria-label="Opportunities">
+  return <section className="procurement-workspace" data-layout={table ? 'table' : undefined} aria-label="Opportunities">
     <div className="pc-toolbar">
-      <label className="pc-search"><Search aria-hidden="true" className="h-4 w-4" /><span className="sr-only">Search procurement</span><input type="search" aria-label="Search procurement" placeholder="Search notices" value={typed} onChange={event => setTyped(event.target.value)} /></label>
+      <label className="pc-search"><Search aria-hidden="true" className="h-4 w-4" /><span className="sr-only">Search {many}</span><input type="search" aria-label={`Search ${many}`} placeholder={`Search ${many}`} value={typed} onChange={event => setTyped(event.target.value)} /></label>
       <div className="pc-inline-filters">{sourceSelect}{statusSelect}{closingChip}{shortlistChip}</div>
       <Btn variant="secondary" className="pc-more" aria-haspopup="dialog" aria-label={activeCount ? `Filters, ${activeCount} active` : 'Filters'} onClick={() => setPanel('filters')}><SlidersHorizontal aria-hidden="true" className="h-4 w-4" /><span className="pc-label-wide">More filters</span><span className="pc-label-narrow">Filters</span><span className="pc-count pc-count-wide" hidden={!extraCount}>{extraCount}</span><span className="pc-count pc-count-narrow" hidden={!activeCount}>{activeCount}</span></Btn>
       <Btn variant="secondary" aria-haspopup="dialog" aria-label="Saved searches" tooltip="Saved searches and alerts" onClick={() => setPanel('saved')}><Bookmark aria-hidden="true" className="h-4 w-4" /><span className="pc-label-saved">Saved</span></Btn>
@@ -250,7 +264,7 @@ export function Procurement() {
     {scope.profile !== undefined && <p className="rw-warn">This link shows {profileText}; your chosen profile is ignored until you remove it.</p>}
     {(aiLabel || place || chips.length > 0 || excludeCount > 0 || hidden !== 'exclude') && <div className="pc-active-filters">
       {place && <button type="button" className="pc-label" aria-label={`Remove place filter: ${place.replace(/^(m|rd):/, '')}`} onClick={() => filter({ place: '' })}>Place: {place.replace(/^(m|rd):/, '')} ×</button>}
-      {excludeCount > 0 && <button type="button" className="pc-label" aria-label={`Remove exclude words: ${parseExcludeTerms(exclude).join(', ')}`} title={parseExcludeTerms(exclude).join(', ')} onClick={() => filter({ exclude: '' })}>Excluding {excludeCount} word{excludeCount === 1 ? '' : 's'} ×</button>}
+      {excludeCount > 0 && <Hint content={parseExcludeTerms(exclude).join(', ')} action><button type="button" className="pc-label" aria-label={`Remove exclude words: ${parseExcludeTerms(exclude).join(', ')}`} onClick={() => filter({ exclude: '' })}>Excluding {excludeCount} word{excludeCount === 1 ? '' : 's'} ×</button></Hint>}
       {hidden !== 'exclude' && <button type="button" className="pc-label" aria-label={`Remove filter: ${HIDDEN_TEXT[hidden]}`} onClick={() => filter({ hidden: '' })}>{HIDDEN_TEXT[hidden]} ×</button>}
       {aiLabel && <button type="button" className="pc-label" data-group={labelGroup(aiLabel)} aria-label={`Remove AI category filter: ${aiLabel}`} onClick={() => filter({ aiLabel: '' })}>✦ {aiLabel} ×</button>}
       {chips.map(([keys, text]) => <button key={keys.join()} type="button" className="pc-label" aria-label={`Remove filter: ${text}`} onClick={() => filter(Object.fromEntries(keys.map(key => [key, ''])))}>{text} ×</button>)}
@@ -261,20 +275,23 @@ export function Procurement() {
         : review.unavailable ? <p className="rw-upgrade">{review.unavailable}</p>
         : <FitMatrix base={{ sql: matrixWhere!.where, parameters: matrixWhere!.countParameters }} profileVersionId={profile} profileText={profileText} params={params} ignored={ignored} />
       : <>
-        <div className="pc-resultbar">{bar}</div>
+        <div className="pc-resultbar">{bar}<LayoutToggle value={table ? 'table' : 'list'} onChange={layout => patchPluginQuery({ layout: layout === 'table' ? 'table' : '', page: '', after: '', notice: '' })} /></div>
         {(error || list.error || inventory.error) && <p role="alert">{error || list.error?.message || inventory.error?.message} <Btn size="sm" variant="secondary" onClick={() => void client.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></p>}
-        {!list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching notices</h2>
-          <p>{review.unavailable ?? (search.trim() ? `No saved notice matches “${search.trim()}”${activeCount ? ' with the filters below' : ''}.${hidden === 'exclude' ? ' Hidden notices are left out of lists.' : ''}` : !collection ? (activeCount ? 'No saved notice matches every filter below. Remove a filter.' : 'This copy has no saved notices.') : source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? 'No saved notice matches every filter below. Remove a filter, or collect more notices from Sources.' : 'No notices are saved yet. Collect notices from Sources.')}</p>
+        {!table && !list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching {many}</h2>
+          <p>{review.unavailable ?? (search.trim() ? `No saved ${one} matches “${search.trim()}”${activeCount ? ' with the filters below' : ''}.${hidden === 'exclude' ? ' Hidden notices are left out of lists.' : ''}` : !collection ? (activeCount ? `No saved ${one} matches every filter below. Remove a filter.` : `This copy has no saved ${many}.`) : source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? `No saved ${one} matches every filter below. Remove a filter, or collect more from Sources.` : `No ${many} are saved yet. Collect them from Sources.`)}</p>
           {activeCount > 0 && <ul className="pc-empty-filters">{description.map(line => <li key={line}>{line}</li>)}</ul>}
           <div className="procurement-actions">{(activeCount > 0 || !!search.trim()) && <Btn variant="secondary" onClick={clearAll}>{activeCount ? 'Clear filters' : 'Clear search'}</Btn>}{collection && <Btn variant="secondary" onClick={() => navigatePlugin('/sources')}>Open Sources</Btn>}</div></div>}
-        {noticeId && wide ? <div className="pc-search-split"><div className="pc-search-list">{results}</div><NoticeView id={noticeId} layout="panel" onClose={closeNotice} /></div> : results}
+        {table ? <>
+          {kind === 'all' && <p className="procurement-coverage">The table lists opportunities. Awards are in the list, or in Insights › Award history.</p>}
+          {!waitForWorkspace && !!tableQuery && <NoticeTable kind={kind === 'award' ? 'award' : 'opportunity'} scope={{ sql: tableQuery.where, parameters: tableQuery.countParameters }} search={search} selection={tableSelection} onOpen={row => openNotice(String(row.catalogId))} onTotal={setTableTotal} />}
+        </> : noticeId && wide ? <div className="pc-search-split"><div className="pc-search-list">{results}</div><NoticeView id={noticeId} layout="panel" onClose={closeNotice} /></div> : results}
       </>}
 
-    {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>{view === 'matrix' ? 'Show matrix' : `Show ${total.toLocaleString()} ${total === 1 ? 'result' : 'results'}`}</Btn></>}>
+    {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>{view === 'matrix' ? 'Show matrix' : `Show ${shown.toLocaleString()} ${shown === 1 ? one : many}`}</Btn></>}>
       <div className="pc-filter-sheet">
         <div className="pc-sheet-only"><label><span>Source</span>{sourceSelect}</label><label><span>Status</span>{statusSelect}</label><div className="procurement-actions">{closingChip}{shortlistChip}</div></div>
         {/* Phones keep only search, Filters and Saved in the toolbar; sort and the profile live here. */}
-        <div className="pc-sheet-phone">{available && <div className="pc-sheet-field"><span>Assess as</span><ProfilePicker label={false} /></div>}<label><span>Sort</span>{sortSelect}</label></div>
+        <div className="pc-sheet-phone">{available && <div className="pc-sheet-field"><span>Assess as</span><ProfilePicker label={false} /></div>}{!table && <label><span>Sort</span>{sortSelect}</label>}</div>
         <div className="pc-extra-fields"><label><span>Notice type</span>{typeSelect}</label></div>
         {extraFields}
         {reviewFields}
@@ -285,7 +302,7 @@ export function Procurement() {
       </div>
     </Modal>}
     {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || reviewCount > 0) && <p className="procurement-coverage">AI category and review filters aren’t included in saved searches or alerts yet.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
-    {noticeId && (!wide || view === 'compare' || view === 'matrix') && <NoticeView id={noticeId} layout="dialog" onClose={closeNotice} />}
+    {noticeId && (!wide || view === 'compare' || view === 'matrix' || table) && <NoticeView id={noticeId} layout="dialog" onClose={closeNotice} />}
     {writes && evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
   </section>;
 }

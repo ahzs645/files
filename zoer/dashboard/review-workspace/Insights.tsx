@@ -1,3 +1,4 @@
+import { ChooseProfile } from './ChooseProfile';
 import { useQuery } from '@tanstack/react-query';
 import { Select } from '@zoer/plugin-ui/controls';
 import { patchPluginQuery, usePluginLocation } from '../navigation';
@@ -33,7 +34,7 @@ function unplacedLanes(scope: ReviewScope, m: { count: (relevance: RelevanceBuck
   ];
 }
 
-function FitMatrix({ scope, filter, profile, profileActive }: { scope: ReviewScope; filter: Fragment; profile: string | null; profileActive: boolean }) {
+function FitMatrix({ scope, filter, profile }: { scope: ReviewScope; filter: Fragment; profile: string | null }) {
   const { versions } = useActiveProfile();
   const matrix = useQuery({ queryKey: [...REVIEW_KEY, 'insights', 'matrix', filter, profile], queryFn: () => readMatrix(filter, profile), refetchInterval: 60_000 });
   const versionName = (id: string | null) => { if (!id) return 'No company profile'; const v = versions.find(version => version.id === id); return v ? `${v.name} · v${v.version}` : 'Another profile version'; };
@@ -41,7 +42,6 @@ function FitMatrix({ scope, filter, profile, profileActive }: { scope: ReviewSco
     <Loadable query={matrix} what="the fit matrix">{m => {
       const lanes = unplacedLanes(scope, m), unplaced = lanes.reduce((sum, lane) => sum + lane.count, 0);
       const assessed = KNOWN_RELEVANCE.reduce((sum, relevance) => sum + KNOWN_READINESS.reduce((s, readiness) => s + m.count(relevance, readiness), 0), 0) + unplaced - m.notAssessed;
-      if (!profileActive) return <div className="rw-empty"><p>Choose a company profile in “Assess as” above to see fit and readiness.</p></div>;
       if (assessed === 0) return <div className="rw-empty"><p>No assessments yet — triage or extract notices in Opportunities.</p></div>;
       return <>
         <div className="rw-matrix-wrap"><table className="rw-matrix">
@@ -51,7 +51,7 @@ function FitMatrix({ scope, filter, profile, profileActive }: { scope: ReviewSco
         </table></div>
         <div className="rw-lane-bar">
           <p>{n(unplaced)} not yet assessable — unknowns are not counted as zero or failed.</p>
-          {unplaced > 0 && <details><summary>Show breakdown</summary><div className="rw-lane-links">{lanes.filter(lane => lane.count > 0).map(lane => <RouteLink key={lane.name} to={lane.href} className="rw-lane-link">{lane.name}: {n(lane.count)}</RouteLink>)}</div></details>}
+          {unplaced > 0 && <details><summary data-zoer-disclosure="">Show breakdown</summary><div className="rw-lane-links">{lanes.filter(lane => lane.count > 0).map(lane => <RouteLink key={lane.name} to={lane.href} className="rw-lane-link">{lane.name}: {n(lane.count)}</RouteLink>)}</div></details>}
         </div>
         {m.others.length > 0 && <p className="rw-muted">Also assessed under other profile versions: {m.others.map(o => `${versionName(o.profile)}: ${notices(o.count)}`).join('; ')}.</p>}
       </>;
@@ -61,7 +61,6 @@ function FitMatrix({ scope, filter, profile, profileActive }: { scope: ReviewSco
 
 function RequirementGaps({ scope, filter, profile }: { scope: ReviewScope; filter: Fragment; profile: string | null }) {
   const gaps = useQuery({ queryKey: [...REVIEW_KEY, 'insights', 'gaps', filter, profile], queryFn: () => readGaps(filter, profile), refetchInterval: 60_000 });
-  if (!profile) return <Panel title="Requirement gaps" note="Current extractions by category and company match."><p className="rw-muted">Choose a company profile to see which requirements are supported, gaps or unknown.</p></Panel>;
   return <Panel title="Requirement gaps" note="Current extractions by category and company match.">
     <Loadable query={gaps} what="requirement gaps">{rows => { const categories = [...new Set(rows.map(row => String(row.category)))]; const get = (category: string, status: string) => Number(rows.find(row => row.category === category && row.status === status)?.count ?? 0); return !categories.length ? <p className="rw-muted">No current extracted requirements in this scope.</p> : <div className="rw-matrix-wrap"><table className="rw-table rw-gaps">
       <thead><tr><th scope="col">Category</th>{MATCH_BUCKETS.map(bucket => <th key={bucket} scope="col">{MATCH_TEXT[bucket]}</th>)}</tr></thead>
@@ -132,8 +131,10 @@ export function Insights() {
     {workspace.isPending ? <p className="rw-muted" role="status">Checking the review workspace…</p>
       : !available ? <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} <RouteLink to="/analysis/overview">Market analysis</RouteLink> and <RouteLink to="/contract-awards">award history</RouteLink> keep working.</p>
       : <div className="rw-insights-grid">
-        <FitMatrix scope={scope} filter={filter} profile={profileVersionId} profileActive={active !== null} />
-        <RequirementGaps scope={scope} filter={filter} profile={profileVersionId} />
+        {active !== null ? <>
+          <FitMatrix scope={scope} filter={filter} profile={profileVersionId} />
+          <RequirementGaps scope={scope} filter={filter} profile={profileVersionId} />
+        </> : <div className="rw-panel rw-insights-prompt"><ChooseProfile /></div>}
         <ReviewCoverage scope={scope} filter={filter} />
         <Bottlenecks source={source} profile={profileVersionId} asOf={asOf} />
         <StaleDecisions scope={scope} filter={filter} profile={profileVersionId} />

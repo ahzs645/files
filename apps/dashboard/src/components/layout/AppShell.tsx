@@ -43,7 +43,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div>
             <div className="text-sm font-semibold text-text-primary">BC Bid</div>
-            <div className="text-[11px] text-text-tertiary">Monitor</div>
+            <div className="text-[12px] text-text-tertiary">Monitor</div>
           </div>
         </div>
 
@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="border-t border-border-default px-5 py-4">
-          <div className="text-[11px] text-text-tertiary">
+          <div className="text-[12px] text-text-tertiary">
             BC Bid Procurement Monitor
           </div>
         </div>

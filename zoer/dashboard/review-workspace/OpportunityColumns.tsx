@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { parseDeadline, deadlineState } from '@bcbid/procurement-core';
@@ -29,13 +30,13 @@ export function ReviewLine({ review, profileText }: { review: RowReview | undefi
   if (!review) return null;
   const { assessment: a, decision: d, evidence: e } = review, scope = evidenceScopeOf(e), items = [];
   if (a) {
-    items.push(<span key="action" className="rw-chip" data-tone={a.freshness === 'stale' ? 'stale' : toneOf(a.suggestedAction)} title={`AI suggestion for ${profileText}; not a decision`}><b>{a.freshness === 'stale' ? 'Evidence changed; reconfirm' : label(a.suggestedAction)}</b></span>);
+    items.push(<Hint key="action" content={`AI suggestion for ${profileText}; not a decision`}><span className="rw-chip" data-tone={a.freshness === 'stale' ? 'stale' : toneOf(a.suggestedAction)}><b>{a.freshness === 'stale' ? 'Evidence changed; reconfirm' : label(a.suggestedAction)}</b></span></Hint>);
     if (a.relevance !== 'not_assessed' && a.relevance !== 'unknown') items.push(<span key="fit" className="rw-o-inline">Fit <b>{label(a.relevance)}</b></span>);
     items.push(<span key="elig" className="rw-o-inline">Eligibility <b>{label(a.eligibility)}</b></span>);
   }
-  if (d) items.push(<span key="decision" className="rw-o-inline" title={d.note || undefined}>Your decision <b>{label(d.decision)}</b>{d.needsReconfirmation && <span className="rw-o-warn"> · reconfirm</span>}</span>);
+  if (d) items.push(<Hint key="decision" content={d.note || undefined}><span className="rw-o-inline">Your decision <b>{label(d.decision)}</b>{d.needsReconfirmation && <span className="rw-o-warn"> · reconfirm</span>}</span></Hint>);
   const basis = e.extracted || e.triaged ? `${scope.label}. ${scope.detail}.` : e.downloaded > 0 ? `${e.usable.toLocaleString()} of ${e.downloaded.toLocaleString()} file${e.downloaded === 1 ? '' : 's'} readable.` : undefined;
-  return items.length ? <div className="rw-o-line" title={basis}>{items}</div> : null;
+  return items.length ? <Hint content={basis}><div className="rw-o-line">{items}</div></Hint> : null;
 }
 
 export function EvidenceScopeCell({ review }: { review: RowReview | undefined }) {
@@ -136,7 +137,7 @@ export function PipelinePreflight({ snapshot, stage, onClose }: { snapshot: Sele
     } finally { setBusy(false); setProgress(''); void invalidate(); }
   };
   const blocker = busy ? 'Starting…' : !snapshot.ids.length ? 'The selection is empty.' : gateQuery.isPending ? 'Checking the profile’s quick filters…' : gateQuery.isError ? `Could not check the profile’s quick filters: ${(gateQuery.error as Error).message}` : !gate.run.length ? 'Every selected notice is filtered by the profile.' : !ReviewModelSelector ? 'Update Zoer to choose a review model.' : !model ? 'Choose a computer and review model.' : preflight.isPending ? 'Reading evidence scope…' : '';
-  return <Modal title={`${STAGE_TEXT[stage].title}: preflight`} mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<>
+  return <Modal fit title={`${STAGE_TEXT[stage].title}: preflight`} mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<>
     <Btn variant="ghost" disabled={busy} onClick={onClose}>{result?.ok ? 'Close' : 'Cancel'}</Btn>
     {!result?.ok && <Btn disabled={!!blocker} onClick={() => void start()}>{busy ? 'Starting…' : `Start ${runs.length === 1 ? 'run' : `${runs.length} runs`}`}</Btn>}
   </>}>

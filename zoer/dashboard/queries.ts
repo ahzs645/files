@@ -5,6 +5,7 @@ import { queryModel, type Model } from './model';
 import { zoneDate } from './procurement/deadline';
 import { opportunityLifecycle } from './procurement/lifecycle';
 import { OPEN_FIRST_ORDER, closingSql, deadlineTimeSql } from './procurement/catalog';
+import { implausibleAwardOrder } from './award-dates';
 const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
 const field = (name: string) => `json_extract(data, '$.${name}')`;
 // A record's home source. Records saved before multi-source support carry no sourceId.
@@ -207,9 +208,14 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     // Status and type accept one value or a list (multi-select); issuedBy stays a single value.
     for (const key of ['status','type','issuedBy']) { const values = (Array.isArray(args[key]) ? args[key] : [args[key]]).filter((value: unknown): value is string => typeof value === 'string' && value !== ''); if (values.length) { where.push(`${field(kind==='award'&&key==='type'?'opportunityType':key)} IN (${values.map(() => '?').join(',')})`); params.push(...values); } }
     if(mapped?.filter) where.push(mapped.filter);
+    // The Opportunities list's shared filters, already parameterized by buildProcurementQuery.
+    if (args.scope !== undefined) {
+      if (typeof args.scope?.sql !== 'string' || !Array.isArray(args.scope.parameters)) throw new Error('Invalid table scope.');
+      where.push(args.scope.sql); params.push(...args.scope.parameters);
+    }
     if (args.closingBefore) { where.push(`coalesce(${field('closingDate')}, '') <= ?`); params.push(args.closingBefore); }
     if (args.search?.trim()) {
-      const keys = kind === 'award' ? ['searchText','opportunityDescription','contractNumber','successfulSupplier','issuingOrganization'] : ['searchText','description','opportunityId','issuedBy'];
+      const keys = kind === 'award' ? ['searchText','opportunityDescription','contractNumber','successfulSupplier','issuingOrganization'] : ['searchText','description','opportunityId','issuedBy','externalId','sourceKey','status','region'];
       where.push(`CASE WHEN lower(${keys.map(key => `coalesce(${field(key)}, '')`).join(" || ' ' || ")}) LIKE ? ESCAPE '\\' THEN 1${mapped ? ` WHEN ${mapped.search} THEN 1` : ''} ELSE 0 END=1`);
       params.push('%' + args.search.trim().toLowerCase().replace(/[\\%_]/g, (c: string) => '\\' + c) + '%');
     }
@@ -247,8 +253,10 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     const limit = Math.max(1, Math.min(200, Math.floor(Number(args.limit) || 50))), offset = Math.max(0, Math.floor(Number(args.cursor) || 0));
     // Notices order by their parsed deadline (`deadlineTime`, see deadlineTimeSql): by default open first, soonest closing
     // first, then unknown/free-text deadlines, then closed newest-closed first; the Closing date column sorts by that time.
+    // Award dates past the plausible limit count as unknown, so a source typo (2107) never leads the list in either direction.
     const dated = kind === 'opportunity', closingSort = dated && ['closingDate', 'closingAt'].includes(args.sort?.id);
-    const order = mapped?.order ?? (closingSort ? `deadlineTime IS NULL, deadlineTime ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : args.sort ? `${column(args.sort.id)} IS NULL, ${column(args.sort.id)} ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : kind === 'award' ? `${field('awardDate')} DESC, id` : `${OPEN_FIRST_ORDER}, ${field('description')}, id`);
+    const awardOrder = kind === 'award' ? `${implausibleAwardOrder(field('awardDate'))}, ` : '';
+    const order = mapped?.order ?? (closingSort ? `deadlineTime IS NULL, deadlineTime ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : args.sort?.id === 'awardDate' ? `${awardOrder}${column('awardDate')} IS NULL, ${column('awardDate')} ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : args.sort ? `${column(args.sort.id)} IS NULL, ${column(args.sort.id)} ${args.sort.desc === true ? 'DESC' : 'ASC'}, id` : kind === 'award' ? `${awardOrder}${field('awardDate')} DESC, id` : `${OPEN_FIRST_ORDER}, ${field('description')}, id`);
     const [items, totals] = await Promise.all([
       unscopedSql(`SELECT id AS catalogId, ${fields.map(key => `${key === 'sourceId' ? SOURCE_EXPRESSION : field(key)} AS "${key}"`).join(', ')}${dated ? `, ${deadlineTimeSql(closingSql)} AS deadlineTime` : ''} FROM ${from} WHERE ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`, [...queryParams, limit, offset]), count,
     ]);

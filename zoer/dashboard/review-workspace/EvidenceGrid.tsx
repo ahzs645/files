@@ -1,3 +1,4 @@
+import { Hint } from '../host-ui';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn, Select } from '@zoer/plugin-ui/controls';
@@ -85,7 +86,7 @@ export function EvidenceGrid() {
     </div> : <>
       <div className="rw-eg-filters" role="group" aria-label="Field problem filters (counts cover every extracted notice)">
         <button type="button" className="pc-chip" aria-pressed={!problem} onClick={() => filter({ problem: '' })}>All extracted · {count('total').toLocaleString()}</button>
-        {PROBLEMS.filter(key => count(key) > 0).map(key => <button key={key} type="button" className="pc-chip" aria-pressed={problem === key} title={PROBLEM_TEXT[key].description} onClick={() => filter({ problem: problem === key ? '' : key })}>{PROBLEM_TEXT[key].title} · {count(key).toLocaleString()}</button>)}
+        {PROBLEMS.filter(key => count(key) > 0).map(key => <Hint key={key} content={PROBLEM_TEXT[key].description} action><button type="button" className="pc-chip" aria-pressed={problem === key} onClick={() => filter({ problem: problem === key ? '' : key })}>{PROBLEM_TEXT[key].title} · {count(key).toLocaleString()}</button></Hint>)}
       </div>
       {counts.isError && <p role="alert" className="rw-error">Could not count field problems: {counts.error.message}. Counts are not shown as zero.</p>}
       <p className="rw-o-muted" role="status">Counts are notices across the whole catalog{field ? `, for ${FIELD_TEXT[field]} only` : ''}.{note ? ` ${note}` : ''}</p>
@@ -106,12 +107,12 @@ export function EvidenceGrid() {
                 <a href={pluginHref(noticeHref(row.id))} tabIndex={-1} onClick={event => { event.preventDefault(); }}>{row.title || 'Untitled notice'}</a>
                 <small>{row.buyer || 'Buyer not provided'}{row.extractedAt ? ` · extracted ${row.extractedAt.slice(0, 10)}` : ''}</small>
               </th>;
-              if (c === COLUMNS.length - 1) return <td key={c} role="gridcell" tabIndex={tab} data-cell={key} onFocus={focusHere} onClick={() => activate(row, c)} aria-label={`${row.title}: ${row.mandatory} mandatory requirements, ${row.unreviewed} not reviewed. Open requirements.`}>
+              if (c === COLUMNS.length - 1) return <td key={c} role="gridcell" data-label={COLUMNS[c]} tabIndex={tab} data-cell={key} onFocus={focusHere} onClick={() => activate(row, c)} aria-label={`${row.title}: ${row.mandatory} mandatory requirements, ${row.unreviewed} not reviewed. Open requirements.`}>
                 <span className="rw-eg-value">{row.mandatory.toLocaleString()} mandatory</span>
                 <small>{row.mandatory ? `${row.unreviewed.toLocaleString()} not reviewed${row.ungrounded ? ` · ${row.ungrounded.toLocaleString()} ungrounded` : ''}` : 'None extracted · not proof there are none'}</small>
               </td>;
               const cell = row.cells[c - 1], extra = problem && cell.problems.has(problem) && cell.state !== problem ? PROBLEM_TEXT[problem].title : '';
-              return <td key={c} role="gridcell" tabIndex={tab} data-cell={key} data-match={(problem && cell.problems.has(problem)) || undefined} onFocus={focusHere} onClick={() => activate(row, c)}
+              return <td key={c} role="gridcell" data-label={COLUMNS[c]} tabIndex={tab} data-cell={key} data-match={(problem && cell.problems.has(problem)) || undefined} onFocus={focusHere} onClick={() => activate(row, c)}
                 aria-label={`${FIELD_TEXT[cell.field]}: ${cell.value}. ${CELL_TEXT[cell.state]}${extra ? `; ${extra}` : ''}. ${cell.factId ? 'Open evidence inspector.' : 'Open the notice evidence.'}`}>
                 <span className="rw-eg-value">{cell.value}</span>
                 <span className="rw-eg-badges">{cell.value !== CELL_TEXT[cell.state] && <span className="rw-chip" data-tone={CELL_TONE[cell.state]}><b>{CELL_TEXT[cell.state]}</b></span>}{extra && <span className="rw-chip" data-tone="needs_information"><b>{extra}</b></span>}{cell.lots > 1 && <small>{cell.lots} lots</small>}</span>

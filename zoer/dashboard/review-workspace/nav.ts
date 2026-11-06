@@ -3,16 +3,16 @@
  * without rendering the shell. Every pre-existing route keeps working; it now opens inside its matching section.
  */
 export type Section = 'home' | 'opportunities' | 'pursuits' | 'documents' | 'evidence' | 'insights' | 'workbench' | 'profiles' | 'sources' | 'taxonomy';
-/** [section, label, default route, short phone label?] */
-export type SectionTab = [Section, string, string, string?];
+/** [section, label, default route] */
+export type SectionTab = [Section, string, string];
 
 export const PRIMARY_SECTIONS: SectionTab[] = [
-  ['home', 'Home', '/home'], ['opportunities', 'Opportunities', '/procurement', 'Opps'], ['pursuits', 'Pursuits', '/pursuits'],
-  ['documents', 'Documents', '/documents', 'Docs'], ['evidence', 'Evidence', '/evidence'], ['insights', 'Insights', '/insights'],
+  ['home', 'Home', '/home'], ['opportunities', 'Opportunities', '/procurement'], ['pursuits', 'Pursuits', '/pursuits'],
+  ['documents', 'Documents', '/documents'], ['evidence', 'Evidence', '/evidence'], ['insights', 'Insights', '/insights'],
 ];
 /** Visually secondary: configuration rather than daily review work. */
 export const CONFIGURE_SECTIONS: SectionTab[] = [
-  ['workbench', 'AI workbench', '/ai-review', 'AI'], ['profiles', 'Profiles', '/profiles'], ['sources', 'Sources', '/sources'], ['taxonomy', 'Taxonomy', '/taxonomy'],
+  ['workbench', 'AI workbench', '/ai-review'], ['profiles', 'Profiles', '/profiles'], ['sources', 'Sources', '/sources'], ['taxonomy', 'Taxonomy', '/taxonomy'],
 ];
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + '/');
@@ -41,14 +41,32 @@ export function sectionOf(location: string, caps?: NavCapabilities): Section {
  */
 export function redirectOf(location: string): string | null {
   const [path, query] = location.split('?');
+  if (path === '/opportunities') return opportunitiesTableHref(query);
   if (path !== '/' && path !== '') return null;
-  return query ? `/procurement?${query}` : '/home';
+  if (!query) return '/home';
+  // Old root searches covered awards too; the list now starts on opportunities.
+  const params = new URLSearchParams(query);
+  if (params.has('search') && !params.has('kind')) params.set('kind', 'all');
+  return `/procurement?${params}`;
+}
+
+/** Keys that stay on the shared notice filters when a `/opportunities` link opens the table. */
+const TABLE_PARAMS: Record<string, string> = { search: 'search', buyerLevel: 'buyerLevel', organization: 'organization', status: 'tableStatus', type: 'tableType', sources: 'tableSources' };
+/**
+ * The old Grid tab's address: the Opportunities table now carries its filters. Records under `/opportunities/<id>` are
+ * unaffected. Grid's multi-select values keep their own `table*` keys because `status` on `/procurement` is one source status.
+ */
+export function opportunitiesTableHref(query = ''): string {
+  const from = new URLSearchParams(query), next = new URLSearchParams({ layout: 'table' });
+  for (const [key, target] of Object.entries(TABLE_PARAMS)) { const value = from.get(key); if (value) next.set(target, value); }
+  if (from.get('starred') === '1') next.set('shortlist', '1');
+  return `/procurement?${next}`;
 }
 
 /** A section's alternative views, shown as the host's second-level PageTabs under the section nav. [view id, label, route] */
 export type SectionView = [string, string, string];
 export const SECTION_VIEWS: Partial<Record<Section, SectionView[]>> = {
-  opportunities: [['table', 'List', '/procurement'], ['grid', 'Grid', '/opportunities'], ['matrix', 'Fit matrix', '/procurement?view=matrix'], ['compare', 'Compare', '/procurement?view=compare']],
+  opportunities: [['table', 'Browse', '/procurement'], ['matrix', 'Fit matrix', '/procurement?view=matrix'], ['compare', 'Compare', '/procurement?view=compare']],
   insights: [['decisions', 'Decision insights', '/insights'], ['market', 'Market analysis', '/analysis/overview'], ['awards', 'Award history', '/contract-awards']],
   documents: [['download', 'Download', '/documents'], ['files', 'Files', '/documents?tab=files'], ['history', 'History', '/documents?tab=history']],
   // Run reviews and Analysis used to be a second button row inside AI review; they are views of the section now.
@@ -78,10 +96,16 @@ export function sectionAllowed(section: Section, caps: NavCapabilities) {
   const views = sectionViews(section, caps);
   return has(caps, SECTION_NEEDS[section]) && (!views || views.length > 0);
 }
-/** Up to this many section tabs fit with full labels on a phone strip that scrolls; more need the short ones. */
-export const FULL_LABEL_SECTIONS = 5;
-/** Drop the short phone labels when the visible sections are few enough to read in full. */
-export const withLabels = (tabs: SectionTab[], total: number): SectionTab[] => total <= FULL_LABEL_SECTIONS ? tabs.map(([id, text, to]) => [id, text, to]) : tabs;
+/** The daily sections a phone keeps in its strip; the rest sit behind the pinned More menu. */
+export const PHONE_SECTIONS: readonly Section[] = ['home', 'opportunities', 'pursuits', 'insights'];
+/** Up to this many sections fit a phone strip without a More menu. */
+export const PHONE_STRIP_LIMIT = 5;
+/** Splits the visible sections for a phone. The selected section always stays in `tabs`, so the panel keeps its tab. */
+export function phoneSections(sections: SectionTab[], selected: Section): { tabs: SectionTab[]; more: SectionTab[] } {
+  if (sections.length <= PHONE_STRIP_LIMIT) return { tabs: sections, more: [] };
+  const inStrip = (id: Section) => PHONE_SECTIONS.includes(id) || id === selected;
+  return { tabs: sections.filter(([id]) => inStrip(id)), more: sections.filter(([id]) => !inStrip(id)) };
+}
 /** Section tabs this host can show; a section whose default view is gated opens on its first remaining view. */
 export function visibleSections(tabs: SectionTab[], caps: NavCapabilities): SectionTab[] {
   return tabs.filter(([id]) => sectionAllowed(id, caps)).map(tab => {
@@ -103,7 +127,7 @@ export function gatedRedirectOf(location: string, caps: NavCapabilities): string
 export function viewOf(location: string, caps?: NavCapabilities): string {
   const path = pathOf(location), params = new URLSearchParams(location.split('?')[1] ?? '');
   switch (sectionOf(location, caps)) {
-    case 'opportunities': { if (under(path, '/opportunities')) return 'grid'; const view = params.get('view'); return view === 'matrix' || view === 'compare' ? view : 'table'; }
+    case 'opportunities': { const view = params.get('view'); return view === 'matrix' || view === 'compare' ? view : 'table'; }
     case 'insights': return path === '/insights' ? 'decisions' : path === '/evidence' ? 'evidence' : under(path, '/analysis') || under(path, '/contract-awards/analysis') ? 'market' : 'awards';
     case 'workbench': return path === '/workbench' ? 'stages' : params.get('view') === 'analysis' ? 'analysis' : 'reviews';
     case 'documents': { const tab = params.get('tab'); return tab === 'files' || tab === 'history' ? tab : 'download'; }

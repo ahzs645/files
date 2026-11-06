@@ -1,3 +1,5 @@
+import { Hint } from '../host-ui';
+import { plausibleAwardDate } from '../award-dates';
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ChevronLeft, Download, FileText, FileWarning, RefreshCw, Star, X } from 'lucide-react';
@@ -171,7 +173,7 @@ function EvidenceInventory({ id, documents, attachments, onShowDocument }: { id:
 /** The notice's key facts and description: the first thing on the Decision tab, above the review workspace, on every width. */
 function NoticeFacts({ id, record, reviews, documents, workspace }: Pick<Parameters<typeof Overview>[0], 'id' | 'record' | 'reviews'> & { documents: Parameters<typeof documentCounts>[0]; workspace: boolean }) {
   const data = record.data, award = record.kind === 'award', review = latestReview(reviews);
-  const when = shortDate(award ? data.awardDate : data.closingAt ?? data.closingDate, Date.now(), !award);
+  const when = shortDate(award ? (plausibleAwardDate(data.awardDate) ? data.awardDate : undefined) : data.closingAt ?? data.closingDate, Date.now(), !award);
   const contract = award && typeof data.contractValue === 'number' ? new Intl.NumberFormat(undefined, { style: 'currency', currency: data.currency || 'CAD', maximumFractionDigits: 0 }).format(data.contractValue) : '';
   const factMoney = useFactMoney(id, workspace && !award);
   // Extracted facts win over the legacy review: only buyer budget / estimated value may fill the budget line.
@@ -191,7 +193,7 @@ function NoticeFacts({ id, record, reviews, documents, workspace }: Pick<Paramet
     ['Documents', listedDocumentsText(data, documents) ?? documentSummary(documentCounts(documents, data.attachments))],
   ];
   return <div className="pc-notice-section">
-    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd title={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate) : label === 'Place' && data.place ? placeHow(data.place) : undefined}>{text}</dd></div>)}</dl>
+    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd><Hint content={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate) : label === 'Place' && data.place ? placeHow(data.place) : undefined}><span>{text}</span></Hint></dd></div>)}</dl>
     {description && <section className="pc-description"><p data-clamped={!more && description.length > 600 || undefined}>{description}</p>{description.length > 600 && <button type="button" className="pc-link-btn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}</section>}
   </div>;
 }

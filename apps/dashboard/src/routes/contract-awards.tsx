@@ -13,7 +13,7 @@ function ContractAwardsLayout() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+        <div className="inline-flex items-center gap-2 text-[12px] font-medium uppercase tracking-[0.14em] text-accent">
           <BarChart3 size={13} />
           <span>Contract Awards</span>
         </div>
@@ -26,7 +26,7 @@ function ContractAwardsLayout() {
       <Card>
         <div className="space-y-4">
           <div>
-            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+            <div className="text-[12px] font-medium uppercase tracking-[0.14em] text-accent">
               Workspace
             </div>
             <div className="mt-2">

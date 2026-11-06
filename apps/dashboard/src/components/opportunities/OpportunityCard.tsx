@@ -18,7 +18,7 @@ export function OpportunityCard({ item }: { item: OpportunityListItem }) {
       className="group block rounded-xl border border-border-default bg-bg-subtle p-4 hover:border-border-strong hover:bg-bg-hover transition-all duration-150"
     >
       <div className="flex items-start justify-between gap-3 mb-3 pr-9">
-        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}>
+        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}>
           {item.status}
         </span>
         {isUrgent ? (
@@ -51,12 +51,12 @@ export function OpportunityCard({ item }: { item: OpportunityListItem }) {
       {item.commodities.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 mt-3">
           {item.commodities.slice(0, 3).map((c) => (
-            <span key={c} className="rounded-full bg-bg-surface px-2 py-0.5 text-[10px] text-text-secondary">
+            <span key={c} className="rounded-full bg-bg-surface px-2 py-0.5 text-[12px] text-text-secondary">
               {c}
             </span>
           ))}
           {item.commodities.length > 3 ? (
-            <span className="rounded-full bg-bg-surface px-2 py-0.5 text-[10px] text-text-tertiary">
+            <span className="rounded-full bg-bg-surface px-2 py-0.5 text-[12px] text-text-tertiary">
               +{item.commodities.length - 3}
             </span>
           ) : null}
@@ -64,7 +64,7 @@ export function OpportunityCard({ item }: { item: OpportunityListItem }) {
       ) : null}
 
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-subtle">
-        <span className="inline-flex items-center rounded-full bg-bg-surface px-2 py-0.5 text-[10px] text-text-secondary">
+        <span className="inline-flex items-center rounded-full bg-bg-surface px-2 py-0.5 text-[12px] text-text-secondary">
           {item.type}
         </span>
         <ArrowRight size={14} className="text-text-tertiary group-hover:text-accent transition-colors" />

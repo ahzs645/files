@@ -63,7 +63,7 @@ export function RecordPicker({ selection, setSelection, onDetails, actions, more
         <option value="downloaded">Documents downloaded{tally(withFiles)}</option>
         <option value="pending">Not downloaded yet{tally(toFetch)}</option>
       </Select></label>
-      <label className="research-check"><input type="checkbox" checked={starred} onChange={e => setStarred(e.target.checked)} />Starred</label>
+      <label className="research-check"><input type="checkbox" checked={starred} onChange={e => setStarred(e.target.checked)} />Shortlisted</label>
     </div>
     <div className="research-toolbar">
       <Button variant="ghost" disabled={!visible.length} onClick={() => setSelection(new Set([...selection, ...visible.map(r => r.id)].slice(0, MAX_SELECTION)))}>Select page</Button>

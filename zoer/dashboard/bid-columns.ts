@@ -2,7 +2,7 @@ import type { IntrospectionTable } from '@zoer/plugin-ui/database';
 
 /** Catalog grid columns per record kind: [field, label, type]. Pure, so the per-host defaults are testable. */
 const columns = {
-  opportunity: [ ['starred','Star','boolean'],['opportunityId','Opportunity ID','text'],['description','Opportunity','text'],['sourceId','Source','text'],['status','Status','text'],['type','Type','text'],['buyer','Buyer','text'],['issuedBy','Original issuer','text'],['closingDate','Closing date','date'] ],
+  opportunity: [ ['starred','Shortlist','boolean'],['opportunityId','Opportunity ID','text'],['description','Opportunity','text'],['sourceId','Source','text'],['status','Status','text'],['type','Type','text'],['buyer','Buyer','text'],['issuedBy','Original issuer','text'],['closingDate','Closing date','date'] ],
   award: [ ['starred','Star','boolean'],['awardDate','Award date','date'],['opportunityDescription','Opportunity','text'],['sourceId','Source','text'],['buyer','Buyer','text'],['issuingOrganization','Original issuer','text'],['successfulSupplier','Supplier','text'],['contractNumber','Contract number','text'],['contractValue','Contract value','numeric'],['currency','Currency','text'],['opportunityType','Type','text'],['issuingLocation','Location','text'],['supplierAddress','Supplier address','text'],['justification','Justification','text'],['sourceUrl','Source URL','text'],['opportunityId','Opportunity ID','text'],['contactEmail','Contact email','text'],['contractValueText','Original value','text'] ],
 };
 for (const fields of Object.values(columns)) fields.push(['buyerOrganization','Mapped organization','text'],['buyerGroup','Organization group','text'],['buyerType','Buyer type','text'],['buyerMappingStatus','Mapping status','text']);

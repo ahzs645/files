@@ -16,7 +16,7 @@ const presetOptions: { value: ContractAwardAnalysisDatePreset; label: string }[]
 
 function FieldLabel({ children }: { children: string }) {
   return (
-    <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
+    <div className="mb-1 text-[12px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
       {children}
     </div>
   );
@@ -39,7 +39,7 @@ export function AnalysisFilterBar({
     <div className="rounded-2xl border border-border-default bg-bg-surface p-4">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-accent">
+          <div className="inline-flex items-center gap-2 text-[12px] font-medium uppercase tracking-[0.12em] text-accent">
             <Filter size={13} />
             <span>Analysis Filters</span>
           </div>

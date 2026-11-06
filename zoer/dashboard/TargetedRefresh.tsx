@@ -86,6 +86,6 @@ export function TargetedRefreshPanel() {
       {receipt.error ? <p className="bid-targeted-error">{receipt.error}</p> : <p>{receipt.counts}</p>}
       {receipt.notes.map(note => <p key={note}>{note}</p>)}
     </div>}
-    <details><summary>How this works</summary><p>Opens BC Bid's public Opportunities page in the selected Zoer browser, applies the buyer, region and keyword, and checks BC Bid's filter summary on every result page. Notices merge into the same database as a full scrape; details are fetched only for new or changed notices (at most 40 per run). Names must match BC Bid exactly.</p></details>
+    <details><summary data-zoer-disclosure="">How this works</summary><p>Opens BC Bid's public Opportunities page in the selected Zoer browser, applies the buyer, region and keyword, and checks BC Bid's filter summary on every result page. Notices merge into the same database as a full scrape; details are fetched only for new or changed notices (at most 40 per run). Names must match BC Bid exactly.</p></details>
   </section>;
 }

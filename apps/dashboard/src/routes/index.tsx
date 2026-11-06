@@ -192,7 +192,7 @@ function DashboardPage() {
                         className="flex items-center gap-3 rounded-lg border border-border-subtle p-3 hover:bg-bg-hover transition-colors group"
                       >
                         <span
-                          className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}
+                          className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-medium uppercase tracking-wider ${OPPORTUNITY_TONE_STYLES[tone]}`}
                         >
                           {item.status}
                         </span>
