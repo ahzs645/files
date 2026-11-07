@@ -1,5 +1,5 @@
 import { metadataPredicates, type MetadataFilters } from './metadata-filter';
-import { latestCategoryReviewSql } from './category-review-query';
+import { currentCategoryRecordIds } from './category-review-query';
 import { CLOSING_TODAY_TEXT, addDays, deadlineState, parseDeadline, zoneDate } from './deadline';
 import { excludeSql } from './exclude';
 import { HIDDEN_IDS_SQL } from './state-contract';
@@ -142,7 +142,7 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
   if (options.aiLabel?.trim()) {
     // The host does not allow json_each. Keep existing JSON-text membership, but
     // select the current categorization first (alternate JSON escape spellings still differ).
-    filters.push(`1=(${latestCategoryReviewSql('records.id', "json_extract(c.result,'$.labels') LIKE ? ESCAPE '\\'")})`);
+    filters.push(`id IN (${currentCategoryRecordIds("json_extract(c.result,'$.labels') LIKE ? ESCAPE '\\'")})`);
     countParameters.push(`%${JSON.stringify(options.aiLabel.trim()).replace(/[\\%_]/g, '\\$&')}%`);
   }
   if (options.search?.trim()) {

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { itWith2026Rules } from './support/tzdata';
 import { collectBrowserSources, collectProcurementSource, collectionSlice, validBrowserCollectionInput } from '../zoer/src/collection-run';
 import { CONNECTORS } from '../zoer/src/connectors';
 import { browserCheckMessage, detectBrowserCheck } from '../zoer/src/connectors/browser-check';
@@ -60,10 +61,15 @@ describe('listing parsers (synthetic pages, layouts unverified)', () => {
       closingDate: 'October 30, 2026, 2:00 pm', closingAt: '2026-10-30', publishedAt: '2026-09-28', status: 'Unknown', issuedBy: '', region: 'Exampleton, BC',
       detailUrl: 'https://www.civicinfo.bc.ca/bids?bidid=9001', sourceUrl: url, attachments: [], addenda: [], detailFields: [], commodities: [] });
     expect(records[0].processId).toBe(records[0].sourceKey);
-    // BC's generic Pacific Time remains UTC−07 after its last clock change in March 2026.
-    expect(records[1]).toMatchObject({ issuedBy: 'Village of Sample Creek', closingAt: '2026-11-04T15:00:00-07:00', status: 'Open', statusDerivedFrom: 'closingAt' });
+    expect(records[1]).toMatchObject({ issuedBy: 'Village of Sample Creek', status: 'Open', statusDerivedFrom: 'closingAt' });
+    expect(records[1].closingAt).toMatch(/^2026-11-04T15:00:00-0[78]:00$/);
     expect(records[2]).toMatchObject({ status: 'Open', closingAt: '2026-11-12' });
     for (const record of records) expect(JSON.stringify(record).length).toBeLessThan(250_000);
+  });
+  itWith2026Rules('reads BC Pacific Time as UTC−07 after its last clock change in March 2026', () => {
+    const civic = site('civicinfo'), url = 'https://www.civicinfo.bc.ca/bids';
+    const records = parseBlocks(fixture('synthetic-blocks.html'), url).rows.map(row => browserRecord(row, civic, url, NOW));
+    expect(records[1].closingAt).toBe('2026-11-04T15:00:00-07:00');
   });
   it('reads a titled table first in auto layout, and a single-buyer site names itself as the buyer', () => {
     const cranbrook = site('cranbrook'), url = cranbrook.url;

@@ -27,12 +27,17 @@ const ZONE_WORDS: Array<[RegExp, string]> = [
   [/\bnewfoundland(\s+time)?\b/i, 'America/St_Johns'],
   [/\b(utc|gmt|coordinated universal time)\b/i, 'UTC'],
 ];
-// A source that prints PST states UTC−08:00, even when Vancouver's civil time is UTC−07:00.
-const STATED_OFFSETS: Record<string, string> = {
-  PST: '-08:00', PDT: '-07:00', MST: '-07:00', MDT: '-06:00', CST: '-06:00', CDT: '-05:00',
-  EST: '-05:00', EDT: '-04:00', AST: '-04:00', ADT: '-03:00', NST: '-03:30', NDT: '-02:30',
+/**
+ * Standard/daylight labels (PST, Pacific Daylight Time, …): the region they name and the offset the label states.
+ * People often keep printing a label after their region's offset changes (BC has been UTC−07 all year since
+ * March 2026, yet buyers still write "PST"). A label that disagrees with the region's civil offset at that time
+ * is therefore ambiguous: the date is kept and the time is left unverified, never shifted by an hour.
+ */
+const LABEL_REGIONS: Record<string, [zone: string, standardMinutes: number]> = {
+  P: ['America/Vancouver', -480], M: ['America/Edmonton', -420], C: ['America/Winnipeg', -360],
+  E: ['America/Toronto', -300], A: ['America/Halifax', -240], N: ['America/St_Johns', -210],
 };
-const ZONE_INITIALS: Record<string, string> = { pacific: 'P', mountain: 'M', central: 'C', eastern: 'E', atlantic: 'A', newfoundland: 'N' };
+const LABEL_INITIALS: Record<string, string> = { pacific: 'P', mountain: 'M', central: 'C', eastern: 'E', atlantic: 'A', newfoundland: 'N' };
 const IANA = /\b([A-Z][A-Za-z_]+\/[A-Z][A-Za-z_]+(?:\/[A-Z][A-Za-z_]+)?)\b/;
 
 function fixedOffsetMinutes(zone: string): number | null {
@@ -134,14 +139,20 @@ function findTime(text: string): ParsedTime | null | 'invalid' {
   return { hour, minute, second, rest: text.replace(m[0], ' ') };
 }
 
-function findZone(text: string): string | null {
+interface StatedZone { zone: string; labelMinutes?: number }
+
+function findZone(text: string): StatedZone | null {
   const iana = IANA.exec(text);
-  if (iana && isValidTimeZone(iana[1])) return iana[1]!;
-  const abbreviation = /\b(PST|PDT|MST|MDT|CST|CDT|EST|EDT|AST|ADT|NST|NDT)\b/.exec(text)?.[1];
-  if (abbreviation) return STATED_OFFSETS[abbreviation]!;
-  const phrase = /\b(pacific|mountain|central|eastern|atlantic|newfoundland)\s+(standard|daylight)(?:\s+time)?\b/i.exec(text);
-  if (phrase) return STATED_OFFSETS[ZONE_INITIALS[phrase[1]!.toLowerCase()]! + (phrase[2]!.toLowerCase() === 'standard' ? 'ST' : 'DT')]!;
-  for (const [pattern, zone] of ZONE_WORDS) if (pattern.test(text)) return zone;
+  if (iana && isValidTimeZone(iana[1])) return { zone: iana[1]! };
+  const label = /\b([PMCEAN])([SD])T\b/.exec(text) ?? (() => {
+    const phrase = /\b(pacific|mountain|central|eastern|atlantic|newfoundland)\s+(standard|daylight)(?:\s+time)?\b/i.exec(text);
+    return phrase && [phrase[0], LABEL_INITIALS[phrase[1]!.toLowerCase()]!, phrase[2]![0]!.toUpperCase()];
+  })();
+  if (label) {
+    const [zone, standard] = LABEL_REGIONS[label[1]!]!;
+    return { zone, labelMinutes: standard + (label[2] === 'D' ? 60 : 0) };
+  }
+  for (const [pattern, zone] of ZONE_WORDS) if (pattern.test(text)) return { zone };
   return null;
 }
 
@@ -162,12 +173,16 @@ function parseSingle(raw: string, defaultZone: string): DateValue {
   const date = findDate(text);
   if (!date || !validDate(date.year, date.month, date.day)) return unknownValue(raw);
   const stated = findZone(date.rest.replace(/\b(\d{1,2}(:\d{2})*)\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![\w])/gi, ' '));
-  const zone = stated ?? defaultZone;
+  const zone = stated?.zone ?? defaultZone;
   const dateText = `${pad(date.year, 4)}-${pad(date.month)}-${pad(date.day)}`;
   const time = findTime(date.rest);
   if (time === 'invalid') return unknownValue(raw);
   if (!time) return { raw, precision: 'date', iso: null, date: dateText, zone, zoneBasis: stated ? 'stated' : 'default' };
   const ms = zonedTimeToUtc(date.year, date.month, date.day, time.hour, time.minute, time.second, zone);
+  // A label whose offset the region did not use at that time cannot fix the hour (see LABEL_REGIONS).
+  if (stated?.labelMinutes !== undefined && offsetAt(ms, zone) !== stated.labelMinutes * 60_000) {
+    return { raw, precision: 'date', iso: null, date: dateText, zone, zoneBasis: 'stated' };
+  }
   return { raw, precision: 'instant', iso: new Date(ms).toISOString(), date: dateText, zone, zoneBasis: stated ? 'stated' : 'default' };
 }
 

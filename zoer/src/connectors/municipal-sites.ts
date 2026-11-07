@@ -97,7 +97,13 @@ export function wallClockInstant(clock: WallClock, zone: string): string | undef
   const p = partsIn(ms, zone);
   return p.y === y && p.m === m && p.d === d && p.h === clock.hour && p.min === clock.minute ? zonedIso(ms, zone) : undefined;
 }
-const ABBREVIATIONS: Record<string, string> = { PST: '-08:00', PDT: '-07:00', MST: '-07:00', MDT: '-06:00' };
+/**
+ * Printed zone labels: the region and the offset each one states. Buyers keep typing "PST" after BC moved to
+ * UTC−07 all year (March 2026), so a label that disagrees with its region's offset on that date claims only the date.
+ */
+const ABBREVIATIONS: Record<string, [zone: string, offset: string]> = {
+  PST: ['America/Vancouver', '-08:00'], PDT: ['America/Vancouver', '-07:00'], MST: ['America/Edmonton', '-07:00'], MDT: ['America/Edmonton', '-06:00'],
+};
 
 export interface Moment { text: string; at?: string; precision: 'instant' | 'date' | 'none' }
 /**
@@ -121,7 +127,9 @@ export function readMoment(html: string, zone: string, slash?: 'mdy'): Moment {
   if (!clock) return { text, precision: 'none' };
   const abbreviation = /\b(PST|PDT|MST|MDT)\b/.exec(text)?.[1];
   if (abbreviation && clock.hour !== undefined) {
-    return { text, at: `${clock.date}T${pad(clock.hour)}:${pad(clock.minute!)}:00${ABBREVIATIONS[abbreviation]}`, precision: 'instant' };
+    const [region, offset] = ABBREVIATIONS[abbreviation];
+    const at = wallClockInstant(clock, region);
+    return at?.endsWith(offset) ? { text, at, precision: 'instant' } : { text, at: clock.date, precision: 'date' };
   }
   const stated = /\blocal time\b|\bpacific(?: time)?\b|\bPT\b/i.test(text);
   const pacific = /\bpacific\b|\bPT\b/i.test(text) ? 'America/Vancouver' : zone;
