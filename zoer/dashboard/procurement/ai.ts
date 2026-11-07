@@ -32,8 +32,12 @@ const FIELD_LABELS: Record<string, string> = {
 };
 export const fieldLabel = (key: string) => FIELD_LABELS[key] ?? key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
 
-const money = (amount: unknown, currency: unknown) => typeof amount === 'number' && Number.isFinite(amount)
-  ? new Intl.NumberFormat(undefined, { style: 'currency', currency: typeof currency === 'string' && /^[A-Z]{3}$/.test(currency) ? currency : 'CAD', maximumFractionDigits: 0 }).format(amount) : '';
+const money = (amount: unknown, currency: unknown) => {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return '';
+  if (typeof currency === 'string' && /^[A-Z]{3}$/.test(currency))
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(amount)} · currency unknown`;
+};
 const words = (value: string) => value.replace(/_/g, ' ');
 
 /** Readable text for a review field: sentences for known objects, a list for arrays. */

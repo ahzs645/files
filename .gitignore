@@ -5,7 +5,8 @@ coverage/
 .env
 .env.local
 .env.*.local
-convex/_generated/
+# Track Convex's generated bridge so a clean checkout can typecheck offline.
+# The adjacent function sources remain TypeScript-only (convex/tsconfig.json).
 services/scraper/.runtime/
 services/scraper/artifacts/
 playwright-report/

@@ -10,32 +10,84 @@ concurrency:
   cancel-in-progress: true
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Playwright 1.58 cannot install Chromium's dependencies on ubuntu-latest (26.04). Move this with Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: files
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          path: files
+      - name: Read the qualified host source
+        id: host
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const host = JSON.parse(readFileSync('zoer/host-source.json', 'utf8'));
+          if (!/^[a-f0-9]{40}$/.test(host.commit)) throw Error('The Zoer source must be pinned to a commit.');
+          appendFileSync(process.env.GITHUB_OUTPUT, `ref=${host.commit}\nbun=${host.bunVersion}\nnode=${host.nodeVersion}\n`);
+          NODE
+      # The private host is optional here. Without ZOER_SOURCE_TOKEN the plugin's own checks still run and the
+      # host-contract checks are reported as skipped. Releases still require the host (zoer-plugin-release.yml).
+      - name: Check host source access
+        id: access
+        env:
+          HAS_HOST_TOKEN: ${{ secrets.ZOER_SOURCE_TOKEN != '' }}
+        run: |
+          if [ "$HAS_HOST_TOKEN" = true ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Zoer host checks skipped::ZOER_SOURCE_TOKEN is not set, so the host typecheck, host SQL-validator suites, Bun catalog tests and bundled-worker build did not run. Add a token with read access to ahzs645/zoer to run them. Fork PRs never receive it; do not switch to pull_request_target."
+            {
+              echo "### Zoer host checks skipped"
+              echo "\`ZOER_SOURCE_TOKEN\` is not set. Ran: plugin typecheck and the Vitest suites that do not import the host."
+              echo "Skipped: \`zoer:typecheck\`, host-importing Vitest suites, \`zoer:test:catalog\`, \`zoer:test:worker\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # Keep the same sibling layout as local development. TypeScript and the
+      # host-contract tests import ../zoer; a nested .zoer-host checkout differs.
+      - name: Check out the qualified Zoer host
+        if: steps.access.outputs.available == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ahzs645/zoer
+          ref: ${{ steps.host.outputs.ref }}
+          token: ${{ secrets.ZOER_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: zoer
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22"
+          node-version: ${{ steps.host.outputs.node }}
           cache: npm
+          cache-dependency-path: files/package-lock.json
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.access.outputs.available == 'true'
+        with:
+          bun-version: ${{ steps.host.outputs.bun }}
       - name: Install dependencies
         run: npm ci --ignore-scripts
-      # convex/_generated is ignored and the web app imports it. Codegen needs a configured
-      # deployment but only reads local files, so placeholder self-hosted settings suffice. It
-      # exits non-zero after writing the types because compiled convex/*.js files sit beside
-      # their .ts sources, so the step only requires the generated declarations.
-      - name: Generate Convex types
-        env:
-          CONVEX_SELF_HOSTED_URL: http://127.0.0.1:3210
-          CONVEX_SELF_HOSTED_ADMIN_KEY: ci-placeholder
-        run: |
-          npx convex codegen --typecheck disable || true
-          test -s convex/_generated/api.d.ts && test -s convex/_generated/server.d.ts
+      - name: Install host dependencies
+        if: steps.access.outputs.available == 'true'
+        run: (cd ../zoer && bun install --frozen-lockfile --filter zoer-frontend --ignore-scripts)
+      # Convex's complete generated bridge is versioned. A check must not rely on
+      # partial AnyApi stubs written before a deliberately ignored codegen error.
       - name: Typecheck
-        run: |
-          npm run typecheck
-          npm run zoer:typecheck:market
+        run: npm run typecheck
+      - name: Typecheck against the Zoer host
+        if: steps.access.outputs.available == 'true'
+        run: npm run zoer:typecheck
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Test
+        env:
+          ZOER_HOST: ${{ steps.access.outputs.available == 'true' && 'present' || 'absent' }}
         run: npm test
+      - name: Test catalog queries in the Bun host runner
+        if: steps.access.outputs.available == 'true'
+        run: npm run zoer:test:catalog
+      - name: Build and test the bundled worker
+        if: steps.access.outputs.available == 'true'
+        run: npm run zoer:test:worker

@@ -104,6 +104,8 @@ function clampPercent(value: number) {
 }
 
 function chunk<TValue>(values: TValue[], size: number): TValue[][] {
+  // A missing size would otherwise yield one empty batch and silently persist nothing.
+  if (!Number.isInteger(size) || size < 1) throw new RangeError(`Invalid ingest batch size: ${String(size)}`);
   const result: TValue[][] = [];
   for (let index = 0; index < values.length; index += size) {
     result.push(values.slice(index, index + size));

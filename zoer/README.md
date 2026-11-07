@@ -40,16 +40,24 @@ Version 0.20 packages the existing `apps/dashboard` React experience and shared 
 
 ## Build
 
-Use Bun and a Zoer checkout with its workspace dependencies installed at the repository root (`bun install --frozen-lockfile`). Keep the checkouts next to each other, or set `ZOER_UI_ROOT=/absolute/path/to/zoer`. The build imports Zoer's shared database controls from `frontend/src/plugin-ui/database.ts` and `database.css`; the host checkout must include those entry points. Shared dependencies resolve from the host's root `node_modules`, and the public types live in `sdk/packages/api-types`. From this repository:
+The reproducible host revision, Node version and Bun version are recorded in [`host-source.json`](host-source.json). Keep this repository at `files/` and the pinned Zoer checkout at its sibling `zoer/`. Install the host's frontend workspace from the **host repository root** with `bun install --frozen-lockfile --filter zoer-frontend --ignore-scripts`; the plugin does not need the host's backend sidecars or install scripts. The build imports Zoer's shared database controls from `frontend/src/plugin-ui/database.ts` and `database.css`. Shared dependencies resolve from the host's root `node_modules`, and public types live in `sdk/packages/api-types`.
+
+`ZOER_UI_ROOT=/absolute/path/to/zoer` can override the checkout for a build, and some standalone fixtures accept `ZOER_SOURCE_ROOT`. The complete typecheck and host-contract test suite uses the sibling layout, including in both GitHub workflows. From this repository:
 
 ```sh
 npm ci --ignore-scripts
+npm run typecheck
+npm run zoer:typecheck
 npm run zoer:test
+npm run zoer:test:catalog
 npm run zoer:test:worker
-npm run zoer:build
 ```
 
-Output: `dist/zoer-bcbid`. The Vite build embeds the source dashboard JS/CSS in one HTML file. Installing the built package needs no source checkout, local web server, new Convex instance or CDP credential. The source dashboard's `convex/react` transport is replaced only for this build with `zoer/dashboard/backend.tsx`. Source query names, routes, components, styles, parsers, normalization and award-analysis calculations are reused directly.
+`zoer:test` discovers the procurement and Zoer suites under `tests/`. The colocated SQL tests use Bun's SQLite and the real host reader, so `zoer:test:catalog` runs them separately with file isolation. `zoer:test:worker` builds the package and checks its bundled worker against local fixtures; it does not collect live sources. For the full standalone suite, install Chromium with `npm run install:browsers` and run `npm test`.
+
+Output: `dist/zoer-bcbid`. To build without running the worker smoke, use `npm run zoer:build`. The Vite build embeds the source dashboard JS/CSS in one HTML file. Installing the built package needs no source checkout, local web server, new Convex instance or CDP credential. The source dashboard's `convex/react` transport is replaced only for this build with `zoer/dashboard/backend.tsx`. Source query names, routes, components, styles, parsers, normalization and award-analysis calculations are reused directly.
+
+The complete Convex bridge in `convex/_generated/` is versioned, as [Convex recommends](https://docs.convex.dev/understanding/best-practices/other-recommendations#check-generated-code-into-version-control), so clean checkouts can typecheck without deployment credentials. Regenerate it with `npm run convex:codegen` in a configured development environment when Convex modules change, and include those changes in the commit. Do not replace its module-specific API types with preliminary `AnyApi` stubs or ignore code-generation errors. `convex/tsconfig.json` prevents emitting duplicate JavaScript beside the TypeScript function sources.
 
 From a Zoer checkout:
 
@@ -262,7 +270,11 @@ Exclusions live in the analysis URL and recalculate totals, rankings and matchin
 
 ## Releases
 
-`.github/workflows/zoer-plugin-release.yml` publishes the plugin as a GitHub Release when a `zoer-v<version>` tag matching `zoer/manifest.json` is pushed. It tests and builds against Zoer's shared UI source, then signs the package with `zoer/tools/zoer-plugin.mjs release`. The release has two files: `bc-bid-monitor-<version>.zip` and `zoer-plugin.json`. Zoer installs it from Extensions → Stage package → GitHub release (`ahzs645/files`), and its update checker follows new releases. Regenerate `zoer/tools/zoer-plugin.mjs` from a Zoer checkout with `bun run plugin export-cli <path>`. The workflow needs the `ZOER_SOURCE_TOKEN` secret and checks out Zoer's shared UI source at the commit pinned in `ZOER_REF` (move the pin deliberately in a commit; a manual run can pass `zoer_ref`, with `main` only as an explicit opt-in), and the release notes record the Zoer commit used. Releases are signed with `ZOER_PLUGIN_SIGNING_KEY` and `ZOER_PLUGIN_KEY_ID`; without both the release fails, unless it is started manually on the tag with `allow_unsigned` (`gh workflow run zoer-plugin-release.yml --ref zoer-v<version> -f allow_unsigned=true`). Workflow actions are pinned to commit SHAs. `.github/workflows/check.yml` runs install, Convex type generation, `npm run typecheck`, `npm run zoer:typecheck:market` and `npm test` on every push and pull request.
+`.github/workflows/zoer-plugin-release.yml` publishes the plugin as a GitHub Release when a `zoer-v<version>` tag matching `zoer/manifest.json` is pushed. It typechecks, tests and builds against Zoer's shared UI source, then signs the package with `zoer/tools/zoer-plugin.mjs release`. The release has two files: `bc-bid-monitor-<version>.zip` and `zoer-plugin.json`. Zoer installs it from Extensions → Stage package → GitHub release (`ahzs645/files`), and its update checker follows new releases. Regenerate `zoer/tools/zoer-plugin.mjs` from a Zoer checkout with `bun run plugin export-cli <path>`.
+
+The release workflow needs `ZOER_SOURCE_TOKEN` with read access to `ahzs645/zoer`. The Check workflow uses it when present; without it, Check runs the plugin typecheck and the Vitest suites that do not import the host (`ZOER_HOST=absent npm test`) and reports the host checks as skipped in a warning and the run summary. Both workflows use the sibling checkout layout, and read the default host commit and runtime versions from `zoer/host-source.json`. Move the pin deliberately after running the checks above. A manual release can still pass `zoer_ref`, with `main` only as an explicit opt-in; the release records the actual host commit. Fork pull requests cannot access the private host token: a maintainer must review the changes and run checks on a trusted repository branch. Do not switch the workflow to `pull_request_target` to expose the token to fork code.
+
+Releases remain signed with `ZOER_PLUGIN_SIGNING_KEY` and `ZOER_PLUGIN_KEY_ID`; without both the release fails unless it is started manually on the tag with `allow_unsigned` (`gh workflow run zoer-plugin-release.yml --ref zoer-v<version> -f allow_unsigned=true`). Workflow actions are pinned to commit SHAs. `.github/workflows/check.yml` runs standalone and plugin typechecks, the full Vitest suite, the colocated Bun SQL suite, the package build and the bundled-worker smoke on every push and pull request. The release repeats the plugin checks and standalone typecheck before packaging, so it cannot publish merely because a tag exists.
 
 ### Portable backup and restore (0.29)
 

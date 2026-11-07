@@ -234,7 +234,7 @@ export interface DateValue {
   iso: string | null;
   /** Calendar date (YYYY-MM-DD) in `zone`; for a range this is the last date. */
   date: string | null;
-  /** IANA zone (or `UTC`) the value is interpreted in. */
+  /** IANA zone, `UTC`, or explicit UTC offset (`±HH:MM`) the value is interpreted in. */
   zone: string | null;
   /** Whether `zone` was stated by the source or applied as a default. */
   zoneBasis?: 'stated' | 'default' | null;

@@ -1,6 +1,6 @@
 /**
- * Deadline parsing and time-aware open state. Raw text is always kept; precision is explicit; zone
- * math uses `Intl` with an IANA zone (never hard-coded seasonal offsets). A date-only deadline on the
+ * Deadline parsing and time-aware open state. Raw text is always kept; precision is explicit.
+ * Regional zone math uses `Intl`; explicitly stated standard/daylight offsets are preserved. A date-only deadline on the
  * as-of date is "closing today; time unverified", never closed at midnight.
  */
 import type { DateValue, DeadlineState } from './contracts';
@@ -8,7 +8,7 @@ import type { DateValue, DeadlineState } from './contracts';
 export const DEFAULT_DEADLINE_ZONE = 'America/Vancouver';
 
 export interface ParseDeadlineOptions {
-  /** IANA zone applied when the source states none. Default `America/Vancouver` (BC Bid publishes Pacific Time). */
+  /** IANA zone or UTC offset applied when the source states none. Default `America/Vancouver` (BC Bid publishes Pacific Time). */
   defaultZone?: string;
 }
 
@@ -17,17 +17,33 @@ const MONTHS: Record<string, number> = {
   jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
 };
 
-/** Named North American zone phrases → IANA zones (DST handled by Intl, not by the abbreviation). */
+/** Generic North American zone phrases → IANA zones; their changing civil-time rules come from Intl. */
 const ZONE_WORDS: Array<[RegExp, string]> = [
-  [/\bpacific(\s+(standard|daylight))?(\s+time)?\b/i, 'America/Vancouver'], [/\bP[SD]?T\b/, 'America/Vancouver'],
-  [/\bmountain(\s+(standard|daylight))?(\s+time)?\b/i, 'America/Edmonton'], [/\bM[SD]T\b/, 'America/Edmonton'],
-  [/\bcentral(\s+(standard|daylight))?(\s+time)?\b/i, 'America/Winnipeg'], [/\bC[SD]T\b/, 'America/Winnipeg'],
-  [/\beastern(\s+(standard|daylight))?(\s+time)?\b/i, 'America/Toronto'], [/\bE[SD]?T\b/, 'America/Toronto'],
-  [/\batlantic(\s+(standard|daylight))?(\s+time)?\b/i, 'America/Halifax'], [/\bA[SD]T\b/, 'America/Halifax'],
-  [/\bnewfoundland(\s+(standard|daylight))?(\s+time)?\b/i, 'America/St_Johns'], [/\bN[SD]T\b/, 'America/St_Johns'],
+  [/\bpacific(\s+time)?\b/i, 'America/Vancouver'], [/\bPT\b/, 'America/Vancouver'],
+  [/\bmountain(\s+time)?\b/i, 'America/Edmonton'],
+  [/\bcentral(\s+time)?\b/i, 'America/Winnipeg'],
+  [/\beastern(\s+time)?\b/i, 'America/Toronto'], [/\bET\b/, 'America/Toronto'],
+  [/\batlantic(\s+time)?\b/i, 'America/Halifax'],
+  [/\bnewfoundland(\s+time)?\b/i, 'America/St_Johns'],
   [/\b(utc|gmt|coordinated universal time)\b/i, 'UTC'],
 ];
+/**
+ * Standard/daylight labels (PST, Pacific Daylight Time, …): the region they name and the offset the label states.
+ * People often keep printing a label after their region's offset changes (BC has been UTC−07 all year since
+ * March 2026, yet buyers still write "PST"). A label that disagrees with the region's civil offset at that time
+ * is therefore ambiguous: the date is kept and the time is left unverified, never shifted by an hour.
+ */
+const LABEL_REGIONS: Record<string, [zone: string, standardMinutes: number]> = {
+  P: ['America/Vancouver', -480], M: ['America/Edmonton', -420], C: ['America/Winnipeg', -360],
+  E: ['America/Toronto', -300], A: ['America/Halifax', -240], N: ['America/St_Johns', -210],
+};
+const LABEL_INITIALS: Record<string, string> = { pacific: 'P', mountain: 'M', central: 'C', eastern: 'E', atlantic: 'A', newfoundland: 'N' };
 const IANA = /\b([A-Z][A-Za-z_]+\/[A-Z][A-Za-z_]+(?:\/[A-Z][A-Za-z_]+)?)\b/;
+
+function fixedOffsetMinutes(zone: string): number | null {
+  const match = /^([+-])([01]\d|2[0-3]):([0-5]\d)$/.exec(zone);
+  return match ? (match[1] === '-' ? -1 : 1) * (+match[2]! * 60 + +match[3]!) : null;
+}
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 function formatter(zone: string): Intl.DateTimeFormat {
@@ -41,10 +57,16 @@ function formatter(zone: string): Intl.DateTimeFormat {
 
 export function isValidTimeZone(zone: unknown): zone is string {
   if (typeof zone !== 'string' || !zone) return false;
+  if (fixedOffsetMinutes(zone) !== null) return true;
   try { formatter(zone); return true; } catch { return false; }
 }
 
 function zonedParts(ms: number, zone: string): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+  const offset = fixedOffsetMinutes(zone);
+  if (offset !== null) {
+    const shifted = new Date(ms + offset * 60_000);
+    return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate(), hour: shifted.getUTCHours(), minute: shifted.getUTCMinutes(), second: shifted.getUTCSeconds() };
+  }
   const parts: Record<string, number> = {};
   for (const part of formatter(zone).formatToParts(new Date(ms))) if (part.type !== 'literal') parts[part.type] = Number(part.value);
   return { year: parts.year!, month: parts.month!, day: parts.day!, hour: parts.hour === 24 ? 0 : parts.hour!, minute: parts.minute!, second: parts.second! };
@@ -55,7 +77,7 @@ function offsetAt(ms: number, zone: string): number {
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000;
 }
 
-/** UTC epoch milliseconds for a wall-clock time in an IANA zone. */
+/** UTC epoch milliseconds for a wall-clock time in an IANA zone or a stated UTC offset. */
 export function zonedTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, second: number, zone: string): number {
   const guess = Date.UTC(year, month - 1, day, hour, minute, second);
   const first = offsetAt(guess, zone);
@@ -66,7 +88,7 @@ export function zonedTimeToUtc(year: number, month: number, day: number, hour: n
 
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 
-/** Calendar date (YYYY-MM-DD) of an instant in an IANA zone. */
+/** Calendar date (YYYY-MM-DD) of an instant in an IANA zone or a stated UTC offset. */
 export function calendarDateInZone(instant: number | Date | string, zone: string = DEFAULT_DEADLINE_ZONE): string {
   const ms = toEpoch(instant);
   const p = zonedParts(ms, zone);
@@ -117,10 +139,20 @@ function findTime(text: string): ParsedTime | null | 'invalid' {
   return { hour, minute, second, rest: text.replace(m[0], ' ') };
 }
 
-function findZone(text: string): string | null {
+interface StatedZone { zone: string; labelMinutes?: number }
+
+function findZone(text: string): StatedZone | null {
   const iana = IANA.exec(text);
-  if (iana && isValidTimeZone(iana[1])) return iana[1]!;
-  for (const [pattern, zone] of ZONE_WORDS) if (pattern.test(text)) return zone;
+  if (iana && isValidTimeZone(iana[1])) return { zone: iana[1]! };
+  const label = /\b([PMCEAN])([SD])T\b/.exec(text) ?? (() => {
+    const phrase = /\b(pacific|mountain|central|eastern|atlantic|newfoundland)\s+(standard|daylight)(?:\s+time)?\b/i.exec(text);
+    return phrase && [phrase[0], LABEL_INITIALS[phrase[1]!.toLowerCase()]!, phrase[2]![0]!.toUpperCase()];
+  })();
+  if (label) {
+    const [zone, standard] = LABEL_REGIONS[label[1]!]!;
+    return { zone, labelMinutes: standard + (label[2] === 'D' ? 60 : 0) };
+  }
+  for (const [pattern, zone] of ZONE_WORDS) if (pattern.test(text)) return { zone };
   return null;
 }
 
@@ -141,12 +173,16 @@ function parseSingle(raw: string, defaultZone: string): DateValue {
   const date = findDate(text);
   if (!date || !validDate(date.year, date.month, date.day)) return unknownValue(raw);
   const stated = findZone(date.rest.replace(/\b(\d{1,2}(:\d{2})*)\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![\w])/gi, ' '));
-  const zone = stated ?? defaultZone;
+  const zone = stated?.zone ?? defaultZone;
   const dateText = `${pad(date.year, 4)}-${pad(date.month)}-${pad(date.day)}`;
   const time = findTime(date.rest);
   if (time === 'invalid') return unknownValue(raw);
   if (!time) return { raw, precision: 'date', iso: null, date: dateText, zone, zoneBasis: stated ? 'stated' : 'default' };
   const ms = zonedTimeToUtc(date.year, date.month, date.day, time.hour, time.minute, time.second, zone);
+  // A label whose offset the region did not use at that time cannot fix the hour (see LABEL_REGIONS).
+  if (stated?.labelMinutes !== undefined && offsetAt(ms, zone) !== stated.labelMinutes * 60_000) {
+    return { raw, precision: 'date', iso: null, date: dateText, zone, zoneBasis: 'stated' };
+  }
   return { raw, precision: 'instant', iso: new Date(ms).toISOString(), date: dateText, zone, zoneBasis: stated ? 'stated' : 'default' };
 }
 
@@ -157,7 +193,7 @@ function parseSingle(raw: string, defaultZone: string): DateValue {
  */
 export function parseDeadline(raw: string | null | undefined, options: ParseDeadlineOptions = {}): DateValue {
   const defaultZone = options.defaultZone ?? DEFAULT_DEADLINE_ZONE;
-  if (!isValidTimeZone(defaultZone)) throw new RangeError(`Unknown IANA time zone: ${defaultZone}`);
+  if (!isValidTimeZone(defaultZone)) throw new RangeError(`Unknown time zone: ${defaultZone}`);
   const text = typeof raw === 'string' ? raw : '';
   if (!text.trim()) return unknownValue(text);
   const single = parseSingle(text, defaultZone);

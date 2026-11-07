@@ -7,8 +7,8 @@ import { saveCatalogDocument } from './src/catalog';
 
 // Exercise the host's actual byte-bounded SQLite reader, without a server or source requests.
 const hostSource = process.env.ZOER_SOURCE_ROOT
-  ? pathToFileURL(join(process.env.ZOER_SOURCE_ROOT, 'backend/src/plugin-catalog.ts')).href
-  : new URL('../../zoer/backend/src/plugin-catalog.ts', import.meta.url).href;
+  ? pathToFileURL(join(process.env.ZOER_SOURCE_ROOT, 'backend/src/plugins/plugin-catalog.ts')).href
+  : new URL('../../zoer/backend/src/plugins/plugin-catalog.ts', import.meta.url).href;
 const { PluginCatalog } = await import(hostSource);
 const root = mkdtempSync(join(tmpdir(), 'collector-inventory-check-'));
 const db = new PluginCatalog('collector-inventory-check', root);

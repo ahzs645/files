@@ -1,3 +1,5 @@
+import { isLive, runState, type RecentRun, type RunTone } from './source-schedules';
+
 /** A checkpoint records progress; only an explicitly completed scope can establish success. */
 export function bcCheckpointHealth(key: string, checkpoint: any) {
   const error = typeof checkpoint?.error === 'string' ? checkpoint.error : '';
@@ -10,6 +12,7 @@ export function bcCheckpointHealth(key: string, checkpoint: any) {
   const from = ranges.map((range: any) => range.from).filter((value: any) => typeof value === 'string').sort()[0];
   const to = ranges.map((range: any) => range.to).filter((value: any) => typeof value === 'string').sort().at(-1);
   return {
+    completed,
     status: !checkpoint ? 'Not recorded' : error || failures.length ? 'Needs attention · incomplete' : completed ? 'Completed recorded scope' : 'Partial checkpoint',
     scope: checkpoint?.scope || 'Not recorded', range: from && to ? `${from} to ${to}` : '',
     checkpointTime: timestamp(checkpoint?.capturedAt),
@@ -17,6 +20,66 @@ export function bcCheckpointHealth(key: string, checkpoint: any) {
     error: error || failures.map((failure: any) => failure.message).filter(Boolean).join('; '),
     undated: checkpoint?.undated === 'not-verified', runId: checkpoint?.runId,
   };
+}
+
+/** Raw runs retain the action (scope); the legacy dashboard's display model does not. */
+export interface BcBidCollectionRun {
+  actionId: string; status: string; createdAt: string; runId?: string; id?: string;
+  finishedAt?: string | null; completedAt?: string | null; input?: any; error?: string;
+  resumable?: RecentRun['resumable'];
+  paused?: boolean; waitKey?: string; queueReason?: string; statusReason?: string; cancelRequestedAt?: unknown;
+}
+const BC_COLLECTION_SCOPES: Record<string, string> = {
+  'scrape.full': 'Current opportunities (full scrape)',
+  'scrape.details': 'Selected notice details',
+  'scrape.targeted': 'Targeted opportunities',
+  'scrape.sample': 'Sample of opportunities',
+  'scrape.historical': 'Historical opportunities',
+  'listing.capture': 'One listing page',
+  'detail.capture': 'One notice page',
+  'awards.history': 'Historical awards',
+};
+const recordedTime = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+const completedTime = (run: BcBidCollectionRun) => recordedTime(run.finishedAt) ?? recordedTime(run.completedAt);
+const collectionScope = (run: BcBidCollectionRun) => run.actionId === 'awards.history' && run.input?.mode === 'recent' ? 'Recent awards' : BC_COLLECTION_SCOPES[run.actionId];
+
+function bcLiveState(run: BcBidCollectionRun): { tone: RunTone; text: string } {
+  if (run.cancelRequestedAt || run.status === 'stopping') return { tone: 'busy', text: 'Stopping' };
+  // Older hosts expose maintenance pauses on the run, before resumable state was available.
+  if (run.paused || run.status === 'waiting_for_event' || /^maintenance:/.test(run.waitKey ?? '') || /paused for (zoer )?update/i.test(`${run.queueReason ?? ''} ${run.statusReason ?? ''}`)) return { tone: 'idle', text: 'Paused for update' };
+  if (run.status === 'pending' && !run.resumable?.state) return { tone: 'busy', text: 'Queued' };
+  return runState({ ...run, runId: run.runId ?? run.id ?? '', input: run.input ?? {}, finishedAt: completedTime(run) ?? undefined })!;
+}
+
+/**
+ * A successful run says only that its recorded scope completed at that time, never that a source is current.
+ * The full checkpoint is independent: a newer sample, detail, targeted or awards run cannot advance its date.
+ * Run history is bounded, so missing history reads "not recorded", not "never scraped". A start time is never
+ * substituted for a missing completion time.
+ */
+export function bcSourceHealth(runs: readonly BcBidCollectionRun[] | undefined, current: ReturnType<typeof bcCheckpointHealth> | undefined, checkpointIssue = false) {
+  const list = (runs ?? []).filter(run => BC_COLLECTION_SCOPES[run.actionId]).sort((a, b) =>
+    (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0) || (b.runId ?? b.id ?? '').localeCompare(a.runId ?? a.id ?? ''));
+  const active = list.find(run => isLive({ ...run, runId: run.runId ?? run.id ?? '', input: run.input ?? {}, finishedAt: run.finishedAt ?? undefined }));
+  const latest = active ?? list[0];
+  const successes = list.filter(run => run.status === 'succeeded').map(run => ({
+    scope: collectionScope(run), at: completedTime(run), order: Date.parse(completedTime(run) ?? run.createdAt) || 0,
+  }));
+  const currentCompletedAt = current?.completed ? recordedTime(current.successfulAt) : null;
+  if (currentCompletedAt) successes.push({ scope: BC_COLLECTION_SCOPES['scrape.full'], at: currentCompletedAt, order: Date.parse(currentCompletedAt) });
+  const success = successes.sort((a, b) => b.order - a.order)[0];
+  const lastSuccess = success ? { scope: success.scope, at: success.at } : null;
+  const scope = latest ? collectionScope(latest) : current?.completed ? BC_COLLECTION_SCOPES['scrape.full'] : null;
+  const summary = (tone: RunTone, status: string) => ({ tone, status, scope, lastSuccess, currentCompletedAt });
+  if (active) { const state = bcLiveState(active); return summary(state.tone, state.text); }
+  if (latest?.status === 'failed') return summary('warn', 'Last collection failed');
+  if (latest?.status === 'outcome_unknown') return summary('warn', 'Last outcome unknown');
+  if (checkpointIssue) return summary('warn', 'Needs attention');
+  if (latest?.status === 'cancelled') return summary('idle', 'Last collection cancelled');
+  if (!runs) return summary('idle', 'Status unknown');
+  if (latest?.status === 'succeeded') return summary('good', 'Last collection succeeded');
+  if (current?.completed) return summary('good', 'Completed scope recorded');
+  return summary('idle', 'No recent collection');
 }
 
 // ---------------------------------------------------------------------------------------------

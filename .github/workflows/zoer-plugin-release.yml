@@ -13,7 +13,7 @@
 # PLUGIN_NATIVE_UI=signed does not), run it manually on the tag:
 #   gh workflow run zoer-plugin-release.yml --ref zoer-v<version> -f allow_unsigned=true
 #
-# Zoer's shared UI source is checked out at a pinned commit (ZOER_REF below) so a
+# Zoer's shared UI source is checked out at the commit in zoer/host-source.json so a
 # tag always rebuilds the same package. Move the pin deliberately in a commit; a
 # manual run can pass zoer_ref (another commit, or "main" as an explicit opt-in).
 name: Zoer plugin release
@@ -42,12 +42,19 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: files
     env:
-      ZOER_UI_ROOT: ${{ github.workspace }}/.zoer-host
-      # Pinned ahzs645/zoer commit ("Guard legacy agent scrape and workflow lookups").
-      ZOER_REF: ${{ inputs.zoer_ref || '3262f039779f7c5c8c6b4598d5d752154875ae83' }}
+      ZOER_UI_ROOT: ${{ github.workspace }}/zoer
+      ZOER_SOURCE_ROOT: ${{ github.workspace }}/zoer
       ALLOW_UNSIGNED: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_unsigned }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          path: files
+
       - name: Require signing secrets
         env:
           HAS_KEY: ${{ secrets.ZOER_PLUGIN_SIGNING_KEY != '' }}
@@ -61,29 +68,42 @@ jobs:
           echo "::error::ZOER_PLUGIN_SIGNING_KEY and ZOER_PLUGIN_KEY_ID are required. Re-run manually on the tag with allow_unsigned=true to publish unsigned."
           exit 1
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Read the qualified host source
+        id: host
+        env:
+          REQUESTED_REF: ${{ inputs.zoer_ref }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const host = JSON.parse(readFileSync('zoer/host-source.json', 'utf8'));
+          if (!/^[a-f0-9]{40}$/.test(host.commit)) throw Error('The default Zoer source must be pinned to a commit.');
+          const ref = process.env.REQUESTED_REF || host.commit;
+          if (!/^[A-Za-z0-9._/-]+$/.test(ref)) throw Error('Invalid Zoer source ref.');
+          appendFileSync(process.env.GITHUB_OUTPUT, `ref=${ref}\nbun=${host.bunVersion}\nnode=${host.nodeVersion}\n`);
+          appendFileSync(process.env.GITHUB_ENV, `ZOER_REF=${ref}\n`);
+          NODE
 
       - name: Check out Zoer shared UI source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ahzs645/zoer
-          ref: ${{ env.ZOER_REF }}
+          ref: ${{ steps.host.outputs.ref }}
           token: ${{ secrets.ZOER_SOURCE_TOKEN }}
-          path: .zoer-host
-          sparse-checkout: |
-            frontend
-            packages/api-types
+          persist-credentials: false
+          path: zoer
 
       - name: Record the Zoer source commit
         run: |
-          commit=$(git -C .zoer-host rev-parse HEAD)
+          commit=$(git -C ../zoer rev-parse HEAD)
           echo "ZOER_COMMIT=$commit" >> "$GITHUB_ENV"
           if [ "$ZOER_REF" != "$commit" ]; then echo "::warning::Building against ahzs645/zoer $ZOER_REF ($commit), not a pinned commit."; fi
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22"
+          node-version: ${{ steps.host.outputs.node }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ steps.host.outputs.bun }}
 
       - name: Check the tag matches the manifest version
         run: |
@@ -97,13 +117,24 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
-          (cd .zoer-host/frontend && bun install --frozen-lockfile)
+          (cd ../zoer && bun install --frozen-lockfile --filter zoer-frontend --ignore-scripts)
+
+      - name: Typecheck
+        run: |
+          npm run typecheck
+          npm run zoer:typecheck
 
       - name: Test
         run: bun run zoer:test
 
+      - name: Test catalog queries in the Bun host runner
+        run: bun run zoer:test:catalog
+
       - name: Build the package
         run: bun run zoer:build
+
+      - name: Test the bundled worker
+        run: bun zoer/test-database-worker.ts
 
       - name: Package and sign
         env:

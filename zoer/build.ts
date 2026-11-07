@@ -1,4 +1,4 @@
-import { sharedUiSource } from './build-dashboard';
+import { sharedUiSource } from './build-source';
 import { mkdir, copyFile, writeFile } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,11 +6,14 @@ import { execFileSync } from 'node:child_process';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const outdir = resolve(root, '../dist/zoer-bcbid');
+// Each Vite build owns a large module graph. Release it before starting the next
+// build; a failed child still stops packaging with its original diagnostics.
+execFileSync(process.execPath, [join(root, 'build-dashboard.ts')], { stdio: 'inherit' });
 await mkdir(join(outdir, 'worker'), { recursive: true });
 const result = await Bun.build({ entrypoints: [join(root, 'src/worker.ts')], outdir: join(outdir, 'worker'), target: 'bun', minify: true });
 if (!result.success) throw new AggregateError(result.logs, 'BC Bid plugin build failed');
 // Native workspace UI ships inside the package; Zoer loads it at runtime.
-await import('./build-native');
+execFileSync(process.execPath, [join(root, 'build-native.ts')], { stdio: 'inherit' });
 await mkdir(join(outdir, 'native'), { recursive: true });
 for (const name of ['index.js', 'style.css']) await copyFile(resolve(root, '../dist/zoer-native', name), join(outdir, 'native', name));
 await copyFile(join(root, 'manifest.json'), join(outdir, 'manifest.json'));

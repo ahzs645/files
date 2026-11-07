@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { itWith2026Rules } from './support/tzdata';
 import { buyerValue, coverageText, documentCounts, documentSummary, estimatedValue, hasUsableText, verdictText, verdictTone } from '../zoer/dashboard/procurement/ai';
 import { AiResult } from '../zoer/dashboard/procurement/AiResult';
 import { buildProcurementQuery, deadlineLabel } from '../zoer/dashboard/procurement/catalog';
@@ -119,9 +120,12 @@ describe('P0: same-day date-only deadlines', () => {
     expect(shortDate('2026-09-27', evening, false).text).not.toContain(CLOSING_TODAY_TEXT);
     expect(deadlineLabel('2026-09-27', evening)).toBe(`2026-09-27 (date only) · ${CLOSING_TODAY_TEXT}`);
   });
-  it('uses the Intl zone offset, including daylight saving', () => {
+  it('uses Intl civil-time rules for the end of a zone day', () => {
+    expect(new Date(endOfZoneDay('2026-01-01')).toISOString()).toBe('2026-01-02T07:59:59.000Z');
     expect(new Date(endOfZoneDay('2026-07-01')).toISOString()).toBe('2026-07-02T06:59:59.000Z');
-    expect(new Date(endOfZoneDay('2026-12-01')).toISOString()).toBe('2026-12-02T07:59:59.000Z');
+  });
+  itWith2026Rules('keeps BC on UTC−07 after it adopts permanent UTC−07 in March 2026', () => {
+    expect(new Date(endOfZoneDay('2026-12-01')).toISOString()).toBe('2026-12-02T06:59:59.000Z');
   });
   it('stays in bulk-download scope and the closing-soon list (was: dropped once Date.parse passed UTC midnight)', () => {
     const records = [{ id: 'today', data: { status: 'Open', closingDate: '2026-09-27', attachments: [{}] } }, { id: 'yesterday', data: { status: 'Open', closingDate: '2026-09-26', attachments: [{}] } }];

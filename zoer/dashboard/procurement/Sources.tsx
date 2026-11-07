@@ -6,11 +6,11 @@ import { host } from '../bridge';
 import { useWorkspace } from '../backend';
 import { hostHref, navigatePlugin } from '../navigation';
 import { PROCUREMENT_SOURCE_ADAPTERS, COLLECTION_KEY } from './source-adapters';
-import { BATCH_KIND_TEXT, CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
+import { BATCH_KIND_TEXT, CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, bcSourceHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
 import { CONNECTOR_SOURCES, COLLECT_ACTION, PORTAL_COUNT_SQL, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
 import { findSchedule, scheduleState, type ScheduleRow } from './schedule-state';
 import { SCHEDULES_KEY, ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
-import { SCHEDULED_SOURCES, isLive, liveRunFor, runRetryPreset, saveSourceSchedule, sourceSchedule, type RecentRun } from './source-schedules';
+import { SCHEDULED_SOURCES, liveRunFor, runRetryPreset, saveSourceSchedule, sourceSchedule, type RecentRun } from './source-schedules';
 import { CollectionRuns, PRESETS_KEY, RUNS_KEY, ScheduleNotice, usePresets, useRecentRuns } from './CollectionRuns';
 import { LINK_SOURCES } from './link-sources';
 import { CanadaBuysImport } from './CanadaBuysImport';
@@ -20,7 +20,6 @@ import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive 
 import { shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 
-const BC_BID_ACTIONS = ['scrape.full', 'scrape.details', 'scrape.targeted', 'scrape.sample', 'awards.history'];
 const BC_CHECKPOINTS = [['checkpoint:full', 'Current opportunities'], ['checkpoint:awards', 'Historical awards'], ['checkpoint:awards:recent', 'Recent awards']] as const;
 const when = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : typeof value === 'number' ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
 const label = (id: string | null) => id === 'all' ? 'all sources' : id === 'canadabuys' ? 'CanadaBuys' : id ? CONNECTOR_SOURCES.find(source => source.id === id)?.label ?? sourceName(id) : 'an unknown source';
@@ -41,7 +40,7 @@ function Capabilities({ id }: { id: string }) {
   return <details><summary data-zoer-disclosure>Connector details</summary><p className="procurement-coverage">{adapter.coverage}</p><dl className="pc-detail-list">{Object.entries(adapter.capabilities).map(([name, value]) => <div key={name}><dt>{name} · {value.status}</dt><dd>{value.method}</dd></div>)}</dl>{adapter.documentation && <a className="procurement-link" href={adapter.documentation} target="_blank" rel="noreferrer">Source documentation ↗</a>}</details>;
 }
 
-type OverviewRow = { id: string; name: string; region: string; tone: Tone; status: string; saved: string; lastSuccess: string; next: ReactNode; action: ReactNode };
+type OverviewRow = { id: string; name: string; region: string; tone: Tone; status: string; scope?: string | null; saved: string; lastSuccess: string; next: ReactNode; action: ReactNode };
 /** One row per source: phone shows stacked cards, desktop a table (CSS only; same markup). */
 function Overview({ rows, schedule }: { rows: OverviewRow[]; schedule?: ReactNode }) {
   return <section className="rw-panel pc-overview" aria-labelledby="pc-overview-title">
@@ -50,7 +49,7 @@ function Overview({ rows, schedule }: { rows: OverviewRow[]; schedule?: ReactNod
       <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Saved notices</th><th scope="col">Last successful collection</th><th scope="col">Next scheduled run</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.id}>
         <th scope="row"><button type="button" className="pc-link-button" onClick={() => scrollTo(`pc-src-${row.id}`)}>{row.name}</button><small>{row.region}</small></th>
-        <td data-label="Status"><span className="pc-status" data-tone={row.tone}>{row.status}</span></td>
+        <td data-label="Status"><div><span className="pc-status" data-tone={row.tone}>{row.status}</span>{row.scope && <small>{row.scope}</small>}</div></td>
         <td data-label="Saved">{row.saved}</td>
         <td data-label="Last success">{row.lastSuccess}</td>
         <td data-label="Next run">{row.next}</td>
@@ -75,10 +74,13 @@ export function Sources() {
   const entry = (key: string) => entries.find((item: any) => item.key === key)?.value;
   const collection = entry(COLLECTION_KEY);
   const checkpoints = BC_CHECKPOINTS.map(([key, label]) => ({ key, label, ...bcCheckpointHealth(key, entry(key)) }));
-  // BC Bid status from Zoer's run history of its scrape actions (`runs.recent`); older Zoer: the workspace run list.
-  const bcRuns: any[] = runs ? runs.filter(run => BC_BID_ACTIONS.includes(run.actionId)).map(run => ({ status: run.status, live: isLive(run), completedAt: run.finishedAt, startedAt: run.createdAt })) : (model?.runs ?? []).map((run: any) => ({ ...run, live: ['running', 'stopping'].includes(run.status) }));
-  const active = bcRuns.find(run => run.live), lastGood = bcRuns.find(run => run.status === 'succeeded');
   const bcIssue = checkpoints.some(item => item.error);
+  // Keep action scope and raw statuses when falling back to older Zoer's workspace history.
+  const bcHealth = bcSourceHealth(runs ?? model?.captureRuns, health.data ? checkpoints[0] : undefined, bcIssue);
+  const bcLastSuccess = bcHealth.lastSuccess ? `${bcHealth.lastSuccess.at ? when(bcHealth.lastSuccess.at) : 'Time not recorded'} · ${bcHealth.lastSuccess.scope}` : !runs && !model ? 'Unknown' : 'Not recorded';
+  const bcCurrentCollection = !health.data ? 'Unknown' : checkpoints[0].completed
+    ? `Completed · ${bcHealth.currentCompletedAt ? when(bcHealth.currentCompletedAt) : 'time not recorded'}`
+    : checkpoints[0].status === 'Not recorded' ? 'Not recorded' : 'Incomplete';
   const importedAt = (inventory.data ?? []).filter(row => row.sourceId === 'canadabuys').map(row => row.importedAt).filter(Boolean).sort().at(-1);
   // Per-connector state; `undefined` while unread or unreadable (shown as unknown), `null` when never collected.
   const connectors = new Map<string, { state: ConnectorCollection | null | undefined; error?: string }>(CONNECTOR_SOURCES.map(source => {
@@ -111,8 +113,8 @@ export function Sources() {
     return { tone: collection?.error ? 'warn' : canadaBuysPaused ? 'idle' : collection?.lastSuccessAt ? 'good' : 'idle', status: !health.data ? 'Status unknown' : collection?.error ? 'Needs attention' : canadaBuysPaused ?? (collection?.lastSuccessAt ? 'Collected' : 'Not collected') };
   };
   const overview: OverviewRow[] = [
-    { id: 'bc-bid', name: 'BC Bid', region: 'British Columbia · browser scraping', tone: active ? 'busy' : bcIssue ? 'warn' : lastGood ? 'good' : 'idle', status: active ? 'Scraping now' : bcIssue ? 'Needs attention' : lastGood ? 'Up to date' : 'Not scraped yet',
-      saved: saved('bc-bid'), lastSuccess: when(lastGood?.completedAt ?? lastGood?.startedAt), next: schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : bcSchedule ? <ScheduleBadge row={bcSchedule} /> : 'Not scheduled',
+    { id: 'bc-bid', name: 'BC Bid', region: 'British Columbia · browser scraping', tone: bcHealth.tone, status: bcHealth.status, scope: bcHealth.scope,
+      saved: saved('bc-bid'), lastSuccess: bcLastSuccess, next: schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : bcSchedule ? <ScheduleBadge row={bcSchedule} /> : 'Not scheduled',
       action: <Btn size="sm" variant="secondary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn> },
     { id: 'canadabuys', name: 'CanadaBuys', region: 'Canada · official dataset', ...canadaBuysStatus(),
       saved: saved('canadabuys'), lastSuccess: health.data ? when(collection?.lastSuccessAt) : 'Unknown', next: nextRun('canadabuys'),
@@ -135,8 +137,9 @@ export function Sources() {
     <Overview rows={overview} schedule={<div className="pc-overview-schedule"><span>Scheduled collection</span>{schedules.error || presets.error ? <span className="pc-status" data-tone="warn">Unknown</span> : schedules.isPending || presets.isPending ? <span className="pc-status">Loading…</span> : <span className="pc-status" data-tone={scheduledCount ? 'good' : 'idle'}>{scheduledCount} of {SCHEDULED_SOURCES.length} sources on</span>}</div>} />
     <div className="pc-source-grid">
       <Card id="bc-bid" name="BC Bid" region="British Columbia · browser scraping" tone={overview[0].tone} status={overview[0].status}
-        stats={[['Opportunities', saved('bc-bid')], ['Awards', saved('bc-bid', 'award')], ['Last successful scrape', overview[0].lastSuccess]]}
+        stats={[['Opportunities', saved('bc-bid')], ['Awards', saved('bc-bid', 'award')], ['Last successful collection', overview[0].lastSuccess], ['Full current collection', bcCurrentCollection]]}
         actions={<><Btn variant="primary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn><Btn variant="secondary" onClick={() => navigatePlugin('/scraper')}>Scraper</Btn><Btn variant="ghost" onClick={() => navigatePlugin('/scraper/history')}>Run history</Btn></>}>
+        <p className="procurement-coverage">{bcHealth.scope && <>Latest collection scope: {bcHealth.scope}. </>}Collection times describe saved snapshots.</p>
         <details open={bcIssue}><summary data-zoer-disclosure>Collection checkpoints</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · checkpoint {item.checkpointTime === 'Not recorded' ? 'not recorded' : when(item.checkpointTime)}</p>{item.error && <Hint content={item.error}><p role="alert">{shortError(item.error)}</p></Hint>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
         <BcBidSchedules rows={schedules.data} error={schedules.error as Error | null} />
         <Capabilities id="bc-bid" />
