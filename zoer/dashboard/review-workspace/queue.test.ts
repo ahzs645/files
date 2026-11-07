@@ -18,6 +18,7 @@ const data = await import('./home-data');
 
 const db = new Database(path);
 db.exec(`CREATE TABLE records(id TEXT PRIMARY KEY,kind TEXT NOT NULL,title TEXT NOT NULL,data TEXT NOT NULL,hash TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE workspace_state(key TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE documents(id TEXT PRIMARY KEY,record_id TEXT NOT NULL,url TEXT NOT NULL,name TEXT NOT NULL,media_type TEXT,sha256 TEXT,content BLOB,text TEXT,status TEXT NOT NULL,error TEXT,updated_at TEXT NOT NULL,byte_length INTEGER NOT NULL DEFAULT 0,UNIQUE(record_id,url));
 CREATE TABLE batches(id TEXT PRIMARY KEY,kind TEXT NOT NULL,status TEXT NOT NULL,input TEXT NOT NULL,completed INTEGER NOT NULL DEFAULT 0,failed INTEGER NOT NULL DEFAULT 0,total INTEGER NOT NULL,error TEXT,updated_at TEXT NOT NULL);
 CREATE TABLE procurement_stage_runs(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,record_id TEXT NOT NULL,stage TEXT NOT NULL,stage_key TEXT NOT NULL,bundle_id TEXT,template_id TEXT NOT NULL,template_version INTEGER NOT NULL,model TEXT,status TEXT NOT NULL,quality TEXT,is_current INTEGER NOT NULL DEFAULT 0,summary TEXT,output TEXT,coverage TEXT,usage TEXT,issues TEXT NOT NULL DEFAULT '[]',rejected_raw TEXT,error TEXT,started_at TEXT NOT NULL,finished_at TEXT);
@@ -97,6 +98,25 @@ test('coverage stages, policies, deadlines, decisions and source health', async 
   expect(download.succeeded).toBe('2026-09-25T00:00:00Z');
   expect(download.failed.error).toBe('Portal timed out');
   expect(health.find(row => row.kind === 'review')!.partial).toMatchObject({ completed: 4, failed: 1, total: 5 });
+});
+
+test('Home queues and deadlines exclude hidden notices until they are restored', async () => {
+  const edit = new Database(path);
+  try {
+    edit.query('INSERT INTO workspace_state VALUES(?,?,?)').run('procurement:hidden:o1', JSON.stringify({ recordId: 'o1', hidden: true }), T);
+    const queue = await data.readQueue('acquire', 'pv1', '', asOf);
+    expect(queue.total).toBe(2);
+    expect(queue.items.map(item => item.id)).not.toContain('o1');
+    const deadlines = await data.readDeadlines('', asOf);
+    expect(deadlines.total).toBe(2);
+    expect(deadlines.rows.map(row => row.id)).not.toContain('o1');
+    edit.query('DELETE FROM workspace_state WHERE key=?').run('procurement:hidden:o1');
+    expect((await data.readQueue('acquire', 'pv1', '', asOf)).total).toBe(3);
+    expect((await data.readDeadlines('', asOf)).total).toBe(3);
+  } finally {
+    edit.query('DELETE FROM workspace_state WHERE key=?').run('procurement:hidden:o1');
+    edit.close();
+  }
 });
 
 test('Insights matrix, gaps, review coverage, bottlenecks and stale decisions', async () => {

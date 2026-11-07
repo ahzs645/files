@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { newAwardRanges } from './src/award-ranges';
 import { LISTING_URL } from './src/scrape';
 const records=new Map<string,any>(),state=new Map<string,any>();let revision=0,primary=false;
+const opportunities=()=>[...records.values()].filter(row=>row.kind==='opportunity');
+const opportunityIds=()=>opportunities().map(row=>row.id).sort();
 async function run(actionId:string,input:any={}) {
   const child=spawn(process.execPath,[resolve(import.meta.dir,'../dist/zoer-bcbid/worker/worker.js')],{stdio:['pipe','pipe','inherit']});
   const timer=setTimeout(()=>child.kill(),90000);
@@ -54,10 +56,14 @@ async function run(actionId:string,input:any={}) {
   } finally {clearTimeout(timer);child.kill();}
 }
 await run('catalog.migrate');assert.equal(primary,true);
-await run('listing.capture');assert.equal(records.size,2);
+await run('listing.capture');assert.deepEqual(opportunityIds(),['opportunity:226320','opportunity:226321']);
+// The first listing also seeds shared reference metadata; it must never be counted or starred as a notice.
+const referenceRows=structuredClone([...records.values()].filter(row=>row.kind!=='opportunity'));
+assert.deepEqual(new Set(referenceRows.map(row=>row.kind)),new Set(['reference-release','reference-term']));
+assert.ok(referenceRows.every(row=>row.id.startsWith(`${row.kind}:`)));
 const full=await run('scrape.full');assert.equal(full.detailCount,2);assert.equal(state.get('checkpoint:full').complete,true);
 const fullBefore=structuredClone(state.get('checkpoint:full'));
-const selected=[...records.values()].filter(row=>row.kind==='opportunity');
+const selected=opportunities();
 selected[0].data.detailFields=[];
 const missing=await run('scrape.details',{recordIds:selected.map(row=>row.id)});
 assert.deepEqual(missing,{completed:1,skipped:1,total:2});
@@ -66,8 +72,11 @@ assert.deepEqual(state.get('checkpoint:full'),fullBefore);
 const targeted=await run('scrape.targeted',{organization:'Ministry of Health'});assert.equal(targeted.listingCount,2);assert.equal(targeted.filtersCleared,true);
 assert.deepEqual(state.get('checkpoint:full'),fullBefore);assert.equal(state.get('checkpoint:targeted').status,'complete');assert.equal(state.get('checkpoint:targeted').filters.organization,'Ministry of Health');
 const sample=await run('scrape.sample',{detailLimit:1});assert.equal(sample.detailCount,1);
-const opportunity=[...records.values()][0];await run('stars.set',{entity:'opportunity',key:opportunity.data.sourceKey,starred:true});assert.equal(records.get(opportunity.id).data.starred,true);
-await run('opportunities.import',{records:[opportunity.data],fileName:'roundtrip.json'});assert.equal(records.size,2);
+const opportunity=opportunities()[0];await run('stars.set',{entity:'opportunity',key:opportunity.data.sourceKey,starred:true});assert.equal(records.get(opportunity.id).data.starred,true);
+const beforeImport=[...records.keys()].sort();
+await run('opportunities.import',{records:[opportunity.data],fileName:'roundtrip.json'});
+assert.deepEqual(opportunityIds(),['opportunity:226320','opportunity:226321']);
+assert.deepEqual([...records.keys()].sort(),beforeImport,'Round-trip import must not add or remove catalog identities');
 const awards=await run('awards.history',{resume:newAwardRanges('2015-01-01','2015-01-31')});assert.equal(awards.count,2);assert.equal(state.get('checkpoint:awards').complete,true);
 await run('awards.import',{records:[{opportunityDescription:'Imported award',successfulSupplier:'Supplier',starred:true}],fileName:'awards.json'});
 assert.ok([...records.values()].some(row=>row.kind==='award'&&row.data.starred));
@@ -79,5 +88,6 @@ assert.equal(rich.sourceCapturedAt,'2026-09-28T02:00:00Z');
 assert.ok(rich.descriptionText.length>2500);
 assert.ok(rich.descriptionText.includes('do not need to resubmit'));
 assert.ok(rich.detailFields.find((field:any)=>field.label==='Delivery of Submissions').value.includes('Submissions by other methods will not be accepted.'));
+assert.deepEqual(referenceRows.map(row=>records.get(row.id)),referenceRows,'Collection and imports must preserve the original shared references');
 console.log('Bundled detail.capture passed: long summary, rich-text submission instructions, explicit status, capture time and preserved star.');
 console.log('Bundled worker passed: migration, listing, full/targeted/sample scrape, stars, both imports, award history; rotating catalog/browser tickets; zero artifact writes.');

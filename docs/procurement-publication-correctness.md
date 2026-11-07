@@ -45,7 +45,7 @@ npm run zoer:typecheck:market
 npm run zoer:build:native
 ```
 
-Standalone Convex/web checks additionally require this repository's generated `convex/_generated` API and a configured development deployment. Source changes do not configure credentials or mutate a deployment.
+Standalone Convex/web checks use the versioned `convex/_generated` bridge and do not require deployment credentials. Regenerating that bridge after changing Convex modules uses a configured development environment; include the regenerated files in the commit. Source checks do not mutate a deployment. See `zoer/README.md` for the pinned host, complete typecheck, colocated Bun tests and bundled-worker validation commands.
 
 ## Read-only retained-snapshot projection
 
