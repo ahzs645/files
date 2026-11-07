@@ -60,7 +60,8 @@ describe('listing parsers (synthetic pages, layouts unverified)', () => {
       closingDate: 'October 30, 2026, 2:00 pm', closingAt: '2026-10-30', publishedAt: '2026-09-28', status: 'Unknown', issuedBy: '', region: 'Exampleton, BC',
       detailUrl: 'https://www.civicinfo.bc.ca/bids?bidid=9001', sourceUrl: url, attachments: [], addenda: [], detailFields: [], commodities: [] });
     expect(records[0].processId).toBe(records[0].sourceKey);
-    expect(records[1]).toMatchObject({ issuedBy: 'Village of Sample Creek', closingAt: '2026-11-04T15:00:00-08:00', status: 'Open', statusDerivedFrom: 'closingAt' });
+    // BC's generic Pacific Time remains UTC−07 after its last clock change in March 2026.
+    expect(records[1]).toMatchObject({ issuedBy: 'Village of Sample Creek', closingAt: '2026-11-04T15:00:00-07:00', status: 'Open', statusDerivedFrom: 'closingAt' });
     expect(records[2]).toMatchObject({ status: 'Open', closingAt: '2026-11-12' });
     for (const record of records) expect(JSON.stringify(record).length).toBeLessThan(250_000);
   });

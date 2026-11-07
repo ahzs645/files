@@ -8,25 +8,19 @@ import { sql } from './display';
 import { useCapabilities } from '../capabilities';
 import { DEADLINE_PASSED_HINT, deadlinePassed, dueClusters, dueText, type DueItem } from './pursuit-tasks';
 import { ACTIVE_PURSUIT_STAGES, type PursuitStage } from './state-contract';
+import { readTasks, type TaskRow } from './pursuit-task-queries';
 import '../review-workspace/review.css';
 
-export interface TaskRow {
-  id: string; recordId: string; recordTitle: string | null; title: string; kind: string; linkedType: string | null; linkedId: string | null; linkedText: string | null;
-  owner: string | null; dueAt: string | null; status: 'open' | 'done' | 'cancelled'; completionNote: string | null; version: number; createdAt: string; updatedAt: string;
-}
+export type { TaskRow } from './pursuit-task-queries';
 const TASK_KINDS: [string, string][] = [['acquire_evidence', 'Acquire evidence'], ['resolve_gap', 'Resolve a company gap'], ['reconfirm_change', 'Reconfirm a change'], ['decide', 'Make a decision'], ['other', 'Other']];
 const kindLabel = (kind: string) => TASK_KINDS.find(([id]) => id === kind)?.[1] ?? kind;
 const COMPLETION_COPY = 'Completing a task does not satisfy a requirement until supporting evidence is added and reviewed.';
 const friendly = (e: unknown) => { const message = (e as Error)?.message ?? String(e); return /^Conflict:/i.test(message) ? 'Someone else changed this; reload and review it.' : message; };
 export { dueText } from './pursuit-tasks';
 
-async function readTasks(status: 'open' | 'closed'): Promise<TaskRow[]> {
-  const rows = await sql(`SELECT t.id, t.record_id AS recordId, r.title AS recordTitle, t.title, t.kind, t.linked_type AS linkedType, t.linked_id AS linkedId, (SELECT q.text FROM procurement_requirements q WHERE q.id=t.linked_id AND t.linked_type='requirement') AS linkedText, t.owner, t.due_at AS dueAt, t.status, t.completion_note AS completionNote, t.version, t.created_at AS createdAt, t.updated_at AS updatedAt FROM procurement_tasks t LEFT JOIN records r ON r.id=t.record_id WHERE ${status === 'open' ? "t.status='open' ORDER BY coalesce(t.due_at,'9999-12-31'), t.created_at" : "t.status<>'open' ORDER BY t.updated_at DESC"} LIMIT 200`);
-  return rows.map(row => ({ ...row, version: Number(row.version) }));
-}
 /** Open review tasks across notices (shared cache for pursuit cards and the task panel). */
 export function useOpenTasks(enabled: boolean) {
-  return useQuery({ queryKey: [...REVIEW_KEY, 'tasks', 'open'], queryFn: () => readTasks('open'), enabled, refetchInterval: 30_000 });
+  return useQuery({ queryKey: [...REVIEW_KEY, 'tasks', 'open'], queryFn: () => readTasks('open', sql), enabled, refetchInterval: 30_000 });
 }
 
 export type PursuitDue = { recordId: string; title: string; stage: string; deadline: string | null };
@@ -35,7 +29,7 @@ export type PursuitDue = { recordId: string; title: string; stage: string; deadl
 export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; enabled: boolean }) {
   const open = useOpenTasks(enabled), invalidate = useReviewInvalidate();
   const [showClosed, setShowClosed] = useState(false);
-  const closed = useQuery({ queryKey: [...REVIEW_KEY, 'tasks', 'closed'], queryFn: () => readTasks('closed'), enabled: enabled && showClosed });
+  const closed = useQuery({ queryKey: [...REVIEW_KEY, 'tasks', 'closed'], queryFn: () => readTasks('closed', sql), enabled: enabled && showClosed });
   const [editing, setEditing] = useState<TaskRow | null>(null), [adding, setAdding] = useState(false);
   const { writes } = useCapabilities();
   const tasks = open.data ?? [];
@@ -49,6 +43,7 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
   return <section className="rw-panel rw-tasks" aria-labelledby="pursuit-tasks-title">
     <div className="rw-panel-head"><h2 id="pursuit-tasks-title">Tasks</h2><div className="rw-actions"><label className="rw-check"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />Show completed and cancelled</label>{writes && <Btn size="sm" variant="secondary" disabled={!pursuits.length} onClick={() => setAdding(true)}>Add task</Btn>}</div></div>
     <p className="rw-note">{COMPLETION_COPY}</p>
+    {open.error && <p role="alert">{open.data ? 'Could not refresh tasks. Showing the last complete task list.' : 'Could not load tasks. Task counts and task-related overlaps are unavailable.'} {(open.error as Error).message}</p>}
     {(deadlineHints.length > 0 || ownerHints.length > 0) && <div className="rw-warnings" role="note" aria-label="Deadline and capacity overlaps">
       <strong>Overlapping due dates</strong>
       <ul>
@@ -57,9 +52,11 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
       </ul>
       <p className="rw-note">Each notice’s own delivery or response label does not account for these overlaps. Check proposal capacity before committing.</p>
     </div>}
-    {open.error && <p role="alert">{(open.error as Error).message}</p>}
-    {open.isPending ? <p role="status">Loading tasks…</p> : !tasks.length ? <p className="rw-note">{writes ? 'No open tasks. Tasks are created from a notice’s requirements, gaps or changes, or with Add task.' : 'No open tasks.'}</p> : <TaskTable tasks={tasks} passed={passed} onEdit={writes ? setEditing : undefined} />}
-    {showClosed && (closed.isPending ? <p role="status">Loading closed tasks…</p> : closed.data?.length ? <><h3>Completed and cancelled</h3><TaskTable tasks={closed.data} onEdit={writes ? setEditing : undefined} /></> : <p className="rw-note">No completed or cancelled tasks.</p>)}
+    {open.isPending ? <p role="status">Loading tasks…</p> : open.data && (!tasks.length ? <p className="rw-note">{writes ? 'No open tasks. Tasks are created from a notice’s requirements, gaps or changes, or with Add task.' : 'No open tasks.'}</p> : <><p className="rw-note">{tasks.length.toLocaleString()} open task{tasks.length === 1 ? '' : 's'}</p><TaskTable tasks={tasks} passed={passed} onEdit={writes ? setEditing : undefined} /></>)}
+    {showClosed && <><h3>Completed and cancelled</h3>
+      {closed.error && <p role="alert">{closed.data ? 'Could not refresh closed tasks. Showing the last complete task list.' : 'Could not load completed and cancelled tasks.'} {(closed.error as Error).message}</p>}
+      {closed.isPending ? <p role="status">Loading closed tasks…</p> : closed.data && (closed.data.length ? <TaskTable tasks={closed.data} onEdit={writes ? setEditing : undefined} /> : <p className="rw-note">No completed or cancelled tasks.</p>)}
+    </>}
     {writes && editing && <TaskEditor task={editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await invalidate(); }} />}
     {writes && adding && <TaskCreator pursuits={pursuits} onClose={() => setAdding(false)} onSaved={async () => { setAdding(false); await invalidate(); }} />}
   </section>;

@@ -52,12 +52,19 @@ describe('CanadaBuys import preserves existing catalog data', () => {
     const host = mockCatalog([bc, previousCanada]);
     const bcBefore = structuredClone(host.records.get(bc.id));
     const documentsBefore = structuredClone(host.documents);
+    let referencesBefore: any[] | undefined;
     // Reuse the same source file in two distinct runs: no duplicate catalog identity or lost star.
     for (const runId of ['canada-import-one', 'canada-import-two']) {
       const existing = await host.call('catalog.read', { ids: [canadaId] });
       const records = preserveCanadaBuysEnrichment(parsed.records, existing.records);
       await saveCatalogDocument(host.call, { kind: 'listing', fileName: provenance.fileName, records }, runId);
-      expect(host.records.size).toBe(2);
+      expect([...host.records.values()].filter(row => row.kind === 'opportunity').map(row => row.id).sort()).toEqual([bc.id, canadaId].sort());
+      // The first catalog write also seeds the shared taxonomy. These are reference records, not duplicate notices.
+      const references = [...host.records.values()].filter(row => row.kind !== 'opportunity');
+      expect(new Set(references.map(row => row.kind))).toEqual(new Set(['reference-release', 'reference-term']));
+      expect(references.every(row => row.id.startsWith(`${row.kind}:`))).toBe(true);
+      if (referencesBefore) expect(references).toEqual(referencesBefore);
+      else referencesBefore = structuredClone(references);
       expect(host.records.get(bc.id)).toEqual(bcBefore);
       expect(host.records.get(canadaId)).toMatchObject({ id: canadaId, title: 'Updated Canada title', data: {
         sourceId: 'canadabuys', sourceKey: 'canadabuys:tender:123:', processId: 'canadabuys:tender:123:',
@@ -70,7 +77,10 @@ describe('CanadaBuys import preserves existing catalog data', () => {
     }
     const commits = host.calls.filter(call => call.method === 'catalog.commit');
     expect(commits).toHaveLength(2);
-    expect(commits.map(call => call.input.records.map((row: any) => row.id))).toEqual([[canadaId], [canadaId]]);
+    expect(commits.map(call => call.input.records.filter((row: any) => row.kind === 'opportunity').map((row: any) => row.id))).toEqual([[canadaId], [canadaId]]);
+    expect(commits[0].input.records.filter((row: any) => row.kind !== 'opportunity')).toEqual(referencesBefore);
+    // Repeat imports do not recreate or rewrite the taxonomy seeded by the first import.
+    expect(commits[1].input.records.map((row: any) => row.id)).toEqual([canadaId]);
     expect(new Set(host.calls.map(call => call.method))).toEqual(new Set(['catalog.read', 'catalog.workspace', 'catalog.commit']));
     // No document payload or delete/reset operation is hidden inside a catalog commit.
     for (const commit of commits) expect(Object.keys(commit.input).sort()).toEqual(['entries', 'history', 'records', 'revision']);

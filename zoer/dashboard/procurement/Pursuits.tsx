@@ -32,10 +32,13 @@ export function Pursuits() {
   const decisions = useQuery({ queryKey: [...REVIEW_KEY, 'pursuit-decisions', ids], enabled: review && ids.length > 0, queryFn: () => readLatestDecisions(ids) });
   const openTasks = useOpenTasks(review);
   const tasksByRecord = new Map<string, TaskRow[]>();
-  for (const task of openTasks.data ?? []) tasksByRecord.set(task.recordId, [...(tasksByRecord.get(task.recordId) ?? []), task]);
+  for (const task of openTasks.data ?? []) {
+    const tasks = tasksByRecord.get(task.recordId);
+    if (tasks) tasks.push(task); else tasksByRecord.set(task.recordId, [task]);
+  }
   const pursuits = (state.data?.pursuits ?? []).map(item => ({ recordId: item.recordId, title: item.title, stage: item.stage, deadline: details.data?.get(item.recordId)?.kind === 'opportunity' ? details.data.get(item.recordId)!.deadline : null }));
   return <section className="procurement-workspace" aria-label="Pursuits">
-    <PursuitBoard records={candidates.data ?? []} details={details.data} labels={labels} onOpenRecord={id => patchPluginQuery({ notice: id }, 'push')} decisions={review ? decisions.data ?? new Map() : undefined} tasks={review ? tasksByRecord : undefined} />
+    <PursuitBoard records={candidates.data ?? []} details={details.data} labels={labels} onOpenRecord={id => patchPluginQuery({ notice: id }, 'push')} decisions={review ? decisions.data ?? new Map() : undefined} tasks={review && openTasks.data ? tasksByRecord : undefined} />
     <PursuitTasks pursuits={pursuits} enabled={review} />
     {noticeId && <NoticeView id={noticeId} layout="dialog" onClose={() => patchPluginQuery({ notice: '' })} />}
   </section>;

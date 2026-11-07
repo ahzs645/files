@@ -5,13 +5,23 @@ import {
 } from '../../packages/procurement-core/src/index';
 
 describe('parseDeadline', () => {
-  it('parses BC Bid closing times in Pacific time with DST from Intl, not fixed offsets', () => {
+  it('parses BC Bid closing times with the civil-time rules in Intl, including BC’s permanent UTC−07 from March 2026', () => {
     expect(parseDeadline('2026-03-17 2:00:00 PM')).toEqual({ raw: '2026-03-17 2:00:00 PM', precision: 'instant', iso: '2026-03-17T21:00:00.000Z', date: '2026-03-17', zone: 'America/Vancouver', zoneBasis: 'default' });
     expect(parseDeadline('2026-01-15 2:00:00 PM').iso).toBe('2026-01-15T22:00:00.000Z');
     expect(parseDeadline('2026-10-01 2:00:00 PM Pacific Time')).toMatchObject({ precision: 'instant', iso: '2026-10-01T21:00:00.000Z', zone: 'America/Vancouver', zoneBasis: 'stated' });
-    expect(parseDeadline('2026-12-01 2:00 PM PST').iso).toBe('2026-12-01T22:00:00.000Z');
+    expect(parseDeadline('2026-12-01 2:00 PM Pacific Time').iso).toBe('2026-12-01T21:00:00.000Z');
     expect(parseDeadline('2026-10-09 12:00:00 PM').iso).toBe('2026-10-09T19:00:00.000Z');
     expect(parseDeadline('2026-10-09 12:00:00 AM').iso).toBe('2026-10-09T07:00:00.000Z');
+  });
+
+  it('preserves explicitly stated standard/daylight offsets instead of replacing them with regional civil time', () => {
+    expect(parseDeadline('2026-12-01 2:00 PM PST')).toMatchObject({ iso: '2026-12-01T22:00:00.000Z', zone: '-08:00', zoneBasis: 'stated' });
+    expect(parseDeadline('2026-01-15 2:00 PM PDT')).toMatchObject({ iso: '2026-01-15T21:00:00.000Z', zone: '-07:00', zoneBasis: 'stated' });
+    expect(parseDeadline('2026-07-01 2:00 PM Pacific Standard Time')).toMatchObject({ iso: '2026-07-01T22:00:00.000Z', zone: '-08:00', zoneBasis: 'stated' });
+    expect(parseDeadline('2026-07-01 2:00 PM EST').iso).toBe('2026-07-01T19:00:00.000Z');
+    expect(parseDeadline('2026-07-01 2:00 PM Eastern Time').iso).toBe('2026-07-01T18:00:00.000Z');
+    expect(parseDeadline('2026-07-01 2:00 PM Newfoundland Standard Time')).toMatchObject({ iso: '2026-07-01T17:30:00.000Z', zone: '-03:30' });
+    expect(parseDeadline('2026-07-01 2:00 PM NDT')).toMatchObject({ iso: '2026-07-01T16:30:00.000Z', zone: '-02:30' });
   });
 
   it('parses ISO instants with offsets or Z', () => {
@@ -60,6 +70,13 @@ describe('deadlineState', () => {
     expect(deadlineState(toronto, '2026-10-02T04:30:00Z')).toBe('closed');
     expect(deadlineState(dateOnly, '2026-10-02T04:30:00Z')).toBe('closing_today_time_unverified');
     expect(calendarDateInZone('2026-10-02T04:30:00Z', 'America/Vancouver')).toBe('2026-10-01');
+  });
+  it('uses a stated fixed offset for date-only deadlines and keeps its local day at midnight boundaries', () => {
+    const pst = parseDeadline('2026-12-01 PST');
+    expect(pst).toMatchObject({ precision: 'date', zone: '-08:00', zoneBasis: 'stated' });
+    expect(deadlineState(pst, '2026-12-02T07:30:00Z')).toBe('closing_today_time_unverified');
+    expect(deadlineState(pst, '2026-12-02T08:00:00Z')).toBe('closed');
+    expect(deadlineState(parseDeadline('2026-12-01 Pacific Time'), '2026-12-02T07:30:00Z')).toBe('closed');
   });
   it('compares instants exactly', () => {
     const instant = parseDeadline('2026-10-01 2:00:00 PM');

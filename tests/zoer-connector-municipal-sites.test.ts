@@ -39,8 +39,9 @@ describe('municipal-sites listings', () => {
     // RDN prints no status; open/closed comes from the verified closing instant and says so.
     expect(daft).toMatchObject({ status: 'Open', statusDerivedFrom: 'closingAt' });
     expect(records[1]).toMatchObject({ externalId: '26-039', status: 'Closed', closingAt: '2026-10-01T15:00:00-07:00' });
-    // In winter RDN prints "1:00 AM" beside 08:00Z (= 00:00 PST): the two disagree, so only the date is claimed.
-    expect(records.find(r => r.externalId === '26-006')).toMatchObject({ closingDate: 'December 31, 2026 at 1:00 AM', closingAt: '2026-12-31', status: 'Unknown' });
+    // BC stays UTC−07 after March 2026: the printed 1:00 AM and 08:00Z now agree.
+    // https://news.gov.bc.ca/releases/2026AG0013-000209
+    expect(records.find(r => r.externalId === '26-006')).toMatchObject({ closingDate: 'December 31, 2026 at 1:00 AM', closingAt: '2026-12-31T01:00:00-07:00', status: 'Open' });
     expect(JSON.stringify(daft).length).toBeLessThan(250_000);
   });
 
@@ -206,14 +207,19 @@ describe('municipal-sites dates', () => {
     // A datetime that disagrees with the printed time (wrong site zone) is not trusted.
     expect(readMoment('<time datetime="2026-10-27T15:00:00Z">October 27, 2026 at 3:00 PM</time>', zone)).toEqual({ text: 'October 27, 2026 at 3:00 PM', at: '2026-10-27', precision: 'date' });
     expect(readMoment('<time datetime="2026-10-27T22:00:00Z">October 27, 2026 at 3:00 PM</time>', 'America/Edmonton').precision).toBe('date');
+    // Before the 2026 rule change, 08:00Z was midnight in Vancouver and disagreed with 1:00 AM.
+    expect(readMoment('<time datetime="2025-12-31T08:00:00Z">December 31, 2025 at 1:00 AM</time>', zone)).toMatchObject({ at: '2025-12-31', precision: 'date' });
     expect(readMoment('Nov 13, 2026 3:00 PM PST', zone).at).toBe('2026-11-13T15:00:00-08:00');
-    expect(readMoment('November 13, 2026 at 3:00 PM Pacific Time', 'America/Edmonton').at).toBe('2026-11-13T15:00:00-08:00');
-    expect(readMoment('November 13, 2026, 3:00pm local time', 'America/Edmonton').at).toBe('2026-11-13T15:00:00-07:00');
+    expect(readMoment('November 13, 2026 at 3:00 PM Pacific Time', 'America/Edmonton').at).toBe('2026-11-13T15:00:00-07:00');
+    // Alberta also stays on its daylight offset from November 2026; a buyer's local zone is independent of BC.
+    // https://www.alberta.ca/albertas-new-time-system-abt
+    expect(readMoment('November 13, 2026, 3:00pm local time', 'America/Edmonton').at).toBe('2026-11-13T15:00:00-06:00');
     expect(readMoment('November 13, 2026, 3:00pm', zone)).toEqual({ text: 'November 13, 2026, 3:00pm', at: '2026-11-13', precision: 'date' });
     expect(readMoment('To be announced', zone)).toEqual({ text: 'To be announced', precision: 'none' });
-    // 02:30 on the spring-forward day does not exist in Vancouver.
-    expect(wallClockInstant({ date: '2027-03-14', hour: 2, minute: 30 }, zone)).toBeUndefined();
-    expect(wallClockInstant({ date: '2027-03-14', hour: 3, minute: 30 }, zone)).toBe('2027-03-14T03:30:00-07:00');
+    // Vancouver's final spring-forward gap was in 2026; 02:30 exists on the former transition day in 2027.
+    expect(wallClockInstant({ date: '2026-03-08', hour: 2, minute: 30 }, zone)).toBeUndefined();
+    expect(wallClockInstant({ date: '2026-03-08', hour: 3, minute: 30 }, zone)).toBe('2026-03-08T03:30:00-07:00');
+    expect(wallClockInstant({ date: '2027-03-14', hour: 2, minute: 30 }, zone)).toBe('2027-03-14T02:30:00-07:00');
   });
 
   it('finds notice numbers at the start of titles only when they look like numbers', () => {

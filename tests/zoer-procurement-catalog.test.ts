@@ -55,6 +55,7 @@ describe('procurement catalog', () => {
   });
 
   it('sorts by notice date with undated notices last and pages by offset', () => {
+    const asOf = Date.parse('2026-09-22T12:00:00Z');
     const db = catalog([
       { id: 'a', data: { description: 'Old', closingDate: '2020-01-01' } },
       { id: 'b', data: { description: 'Undated' } },
@@ -64,7 +65,9 @@ describe('procurement catalog', () => {
     try {
       expect(db.query({ sort: 'date-desc' }).rows.map(row => row.id)).toEqual(['c', 'd', 'a', 'b']);
       // Upcoming first, then passed dates (oldest first), then undated.
-      expect(db.query({ sort: 'date-asc' }).rows.map(row => row.id)).toEqual(['c', 'a', 'd', 'b']);
+      expect(db.query({ sort: 'date-asc', asOf }).rows.map(row => row.id)).toEqual(['c', 'a', 'd', 'b']);
+      // The same instant becomes passed only after the supplied as-of clock crosses it.
+      expect(db.query({ sort: 'date-asc', asOf: Date.parse('2026-10-02T12:00:00Z') }).rows.map(row => row.id)).toEqual(['a', 'd', 'c', 'b']);
       expect(db.query({ sort: 'date-desc', limit: 2, offset: 2 }).rows.map(row => row.id)).toEqual(['a', 'b']);
       expect(db.query({ sort: 'date-desc', after: 'c' }).rows).toHaveLength(4);
       expect(db.query({ sort: 'date-desc', limit: 2, offset: 2 }).total).toBe(4);
@@ -106,7 +109,8 @@ describe('procurement catalog', () => {
   });
 
   it('closing soon uses instants for zoned values and Vancouver calendar days for date-only and timezone-less values (P0)', () => {
-    const future = new Date(Date.now() + 2 * 86400000).toISOString();
+    const asOf = Date.parse('2026-09-22T12:00:00Z');
+    const future = new Date(asOf + 2 * 86400000).toISOString();
     const db = catalog([
       { id: 'active', data: { status: 'ACTIVE', closingDate: future } },
       { id: 'open', data: { status: 'Open', closingDate: future.replace('Z', '+00:00') } },
@@ -114,16 +118,16 @@ describe('procurement catalog', () => {
       { id: 'date-only', data: { status: 'Open', closingDate: future.slice(0, 10) } },
       { id: 'cancelled', data: { status: 'Cancelled', closingDate: future } },
       { id: 'unknown-status', data: { closingDate: future } },
-      { id: 'past', data: { status: 'Open', closingDate: new Date(Date.now() - 86400000).toISOString() } },
-      { id: 'later', data: { status: 'Open', closingDate: new Date(Date.now() + 9 * 86400000).toISOString() } },
+      { id: 'past', data: { status: 'Open', closingDate: new Date(asOf - 86400000).toISOString() } },
+      { id: 'later', data: { status: 'Open', closingDate: new Date(asOf + 9 * 86400000).toISOString() } },
       { id: 'invalid', data: { status: 'Open', closingDate: 'tomorrowZ' } },
       { id: 'award', kind: 'award', data: { status: 'Open', awardDate: future, closingDate: future } },
     ]);
     try {
       // P0: date-only and timezone-less deadlines within the week are listed (time unverified), not silently dropped.
-      expect(db.query({ deadline: 'week' }).rows.map(row => row.id)).toEqual(['active', 'date-only', 'no-zone', 'open']);
-      expect(db.query({ deadline: 'week', kind: 'award' }).total).toBe(0);
-      expect(db.query({ deadline: 'week', after: 'active' }).total).toBe(4);
+      expect(db.query({ deadline: 'week', asOf }).rows.map(row => row.id)).toEqual(['active', 'date-only', 'no-zone', 'open']);
+      expect(db.query({ deadline: 'week', kind: 'award', asOf }).total).toBe(0);
+      expect(db.query({ deadline: 'week', after: 'active', asOf }).total).toBe(4);
     } finally { db.close(); }
   });
 

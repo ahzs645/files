@@ -21,7 +21,7 @@ export type PursuitBoardProps = {
   records?: PursuitRecord[]; details?: Map<string, PursuitDetails>; labels?: Map<string, string[]>; onOpenRecord?: (id: string) => void;
   /** Latest human decision per notice (review workspace); undefined when the workspace is unavailable. */
   decisions?: Map<string, DecisionRow>;
-  /** Open review tasks per notice (review workspace). */
+  /** Complete open review tasks per notice; undefined until the list is available. */
   tasks?: Map<string, TaskRow[]>;
 };
 type StageConfirm = { item: Pursuit; stage: 'Submitted' | 'Awarded' | 'Closed' };
@@ -77,7 +77,7 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
           {info?.deadline && <p className="pc-board-date" data-tone={when.tone || undefined}>{info.kind === 'award' ? 'Awarded ' : when.tone === 'passed' ? 'Closed ' : 'Closes '}{when.text}</p>}
           {info?.kind !== 'award' && deadlinePassed(item.stage, info?.deadline) && <span className="rw-chips" data-compact><Hint content={DEADLINE_PASSED_HINT}><span className="rw-chip" data-tone="blocker"><b>Deadline passed</b></span></Hint></span>}
           {!!labels?.get(item.recordId)?.length && <LabelChips labels={labels.get(item.recordId)!} limit={2} />}
-          {decisions && <PursuitReview recordId={item.recordId} stage={item.stage} notes={item.notes} decision={decisions.get(item.recordId)} tasks={tasks?.get(item.recordId) ?? []} />}
+          {decisions && <PursuitReview recordId={item.recordId} stage={item.stage} notes={item.notes} decision={decisions.get(item.recordId)} tasks={tasks ? tasks.get(item.recordId) ?? [] : undefined} />}
           {item.notes && <p className="procurement-board-notes">{item.notes}</p>}
           {writes && <div className="pc-board-card-actions"><label><span className="sr-only">Stage</span><Select aria-label={`Pursuit stage: ${item.title}`} presentation="dropdown" searchable={false} value={item.stage} disabled={busy} onChange={event => move(item, event.target.value as PursuitStage)}>{PURSUIT_STAGES.map(value => <option key={value}>{value}</option>)}</Select></label><Btn size="sm" variant="ghost" disabled={busy} aria-label={`${item.notes ? 'Edit notes' : 'Add notes'} for ${item.title}`} tooltip={item.notes ? 'Edit notes' : 'Add notes'} icon={<NotebookPen aria-hidden="true" className="h-3.5 w-3.5" />} onClick={() => { setEditor(item); setNotes(item.notes); }}><span className="sr-only">Notes</span></Btn></div>}
         </article>; })}
@@ -103,8 +103,8 @@ export function PursuitBoard({ records = [], details, labels, onOpenRecord, deci
 }
 
 /** Human decision, reconfirmation flag, closing reason and next task for one card. AI suggestions are never shown as the stage. */
-function PursuitReview({ stage, notes, decision, tasks }: { recordId: string; stage: PursuitStage; notes: string; decision?: DecisionRow; tasks: TaskRow[] }) {
-  const next = nextTask(tasks), reason = stage === 'Closed' ? closedReasonLabel(closedReason(notes)) : null;
+function PursuitReview({ stage, notes, decision, tasks }: { recordId: string; stage: PursuitStage; notes: string; decision?: DecisionRow; tasks?: TaskRow[] }) {
+  const next = nextTask(tasks ?? []), reason = stage === 'Closed' ? closedReasonLabel(closedReason(notes)) : null;
   return <div className="rw-card-review">
     <span className="rw-chips" data-compact>
       {decision ? <Hint content={decision.note}><span className="rw-chip" data-tone="neutral">Decision: <b>{label(decision.decision)}</b></span></Hint> : <span className="rw-chip" data-tone="neutral">No decision recorded</span>}
@@ -112,6 +112,6 @@ function PursuitReview({ stage, notes, decision, tasks }: { recordId: string; st
       {stage === 'Closed' && <span className="rw-chip" data-tone="neutral">{reason ?? 'Closing reason not recorded'}</span>}
     </span>
     {decision?.note && <p className="rw-note rw-clamp">{decision.note}</p>}
-    <p className="rw-note">{next ? <>Next: {next.title} · {next.owner || 'Unassigned'} · {dueText(next.dueAt)}{tasks.length > 1 ? ` · ${tasks.length - 1} more open` : ''}</> : 'No open tasks'}</p>
+    <p className="rw-note">{tasks === undefined ? 'Task status unavailable' : next ? <>Next: {next.title} · {next.owner || 'Unassigned'} · {dueText(next.dueAt)}{tasks.length > 1 ? ` · ${tasks.length - 1} more open` : ''}</> : 'No open tasks'}</p>
   </div>;
 }

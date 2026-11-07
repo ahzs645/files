@@ -31,8 +31,10 @@ function deadlineParts(raw: unknown, asOf: number): Parts {
   if (!source) return { state, detail: '', tone: '', known: false, source };
   if (value.precision === 'unknown' || !value.date) return { state, detail: `The source gives “${source}”, which is not a recognized date.`, tone: '', known: false, source };
   const instant = value.precision === 'instant' && value.iso ? Date.parse(value.iso) : null;
-  // Named zones (stated or the Pacific default) are shown as such; UTC and bare offsets convert to the reader's zone.
-  const named = isValidTimeZone(value.zone) && value.zone !== 'UTC', zone = named ? value.zone! : localZone();
+  // Named zones (stated or the Pacific default) are shown as such; UTC and bare-offset instants convert to
+  // the reader's zone. Date-only values keep their own calendar. Never pass an offset to browser Intl formatting.
+  const named = isValidTimeZone(value.zone) && value.zone !== 'UTC' && !/^[+-]\d{2}:\d{2}$/.test(value.zone);
+  const zone = named || (instant === null && isValidTimeZone(value.zone)) ? value.zone! : localZone();
   const date = instant === null ? value.date : calendarDateInZone(instant, zone), today = calendarDateInZone(asOf, zone);
   const days = dayNumber(date) - dayNumber(today);
   const time = instant === null ? '' : new Date(instant).toLocaleTimeString('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' });

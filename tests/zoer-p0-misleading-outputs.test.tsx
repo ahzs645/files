@@ -119,9 +119,10 @@ describe('P0: same-day date-only deadlines', () => {
     expect(shortDate('2026-09-27', evening, false).text).not.toContain(CLOSING_TODAY_TEXT);
     expect(deadlineLabel('2026-09-27', evening)).toBe(`2026-09-27 (date only) · ${CLOSING_TODAY_TEXT}`);
   });
-  it('uses the Intl zone offset, including daylight saving', () => {
+  it('uses Intl civil-time rules before and after BC adopts permanent UTC−07 in March 2026', () => {
+    expect(new Date(endOfZoneDay('2026-01-01')).toISOString()).toBe('2026-01-02T07:59:59.000Z');
     expect(new Date(endOfZoneDay('2026-07-01')).toISOString()).toBe('2026-07-02T06:59:59.000Z');
-    expect(new Date(endOfZoneDay('2026-12-01')).toISOString()).toBe('2026-12-02T07:59:59.000Z');
+    expect(new Date(endOfZoneDay('2026-12-01')).toISOString()).toBe('2026-12-02T06:59:59.000Z');
   });
   it('stays in bulk-download scope and the closing-soon list (was: dropped once Date.parse passed UTC midnight)', () => {
     const records = [{ id: 'today', data: { status: 'Open', closingDate: '2026-09-27', attachments: [{}] } }, { id: 'yesterday', data: { status: 'Open', closingDate: '2026-09-26', attachments: [{}] } }];
