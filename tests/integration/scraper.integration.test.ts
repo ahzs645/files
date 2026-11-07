@@ -133,6 +133,8 @@ describe("scraper worker", () => {
           userDataDir: path.join(runtimeDir, "profile"),
           artifactDir: path.join(runtimeDir, "artifacts"),
           detailConcurrency: 2,
+          // All three fixture notices in one ingest batch.
+          ingestBatchSize: 25,
           filters: {
             status: "val",
             keyword: undefined,

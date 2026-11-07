@@ -66,7 +66,7 @@ The dashboard and native Vite builds now run in separate child processes. This r
 | Package build, including dashboard and native bundles | Passed |
 | Bundled-worker fixture | Passed: migration, listing/full/targeted/sample collection, missing-detail retry, stars, imports, award history and rich detail capture; rotating tickets and zero artifact writes |
 | YAML parsing and diff whitespace checks | Passed |
-| Local browser scraper integration | Fails locally with `expected [] to have a length of 3`, the same as on `main`; not yet run in CI because every Check run so far stopped at the host-token step |
+| Browser scraper integration | Passed. It had failed on `main` too: its config predated `ingestBatchSize`, so `chunk(records, undefined)` produced one empty batch. The test now sets a size and `chunk` rejects an invalid one |
 | Installed-workspace desktop/mobile visual check | Not performed |
 
 The normal CI workflow still installs Chromium and runs the full suite, including the browser integration test. The local browser exception is not a committed test skip. The dashboard build emits an existing optional `PdfPreview` export warning; the source has a browser-viewer fallback. Live PDF behavior remains part of the installed-workspace check.
