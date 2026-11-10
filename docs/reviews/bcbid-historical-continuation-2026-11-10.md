@@ -61,3 +61,34 @@ The active collector and the partial-publication watcher do not prove final comp
 - Local cleanup removes only fully merged, clean, owned worktrees/branches. Active foreign work, source originals, checkpoints and recovery exports remain preserved.
 
 BC Bid's supplier guide also documents a **Download Documents** bundle, but public historical availability has not been verified. That is a possible future efficiency check, not permission to guess an archive endpoint or treat an unverified ZIP as all expected originals. See the [official supplier instructions](https://www2.gov.bc.ca/gov/content/bc-procurement-resources/bc-bid-resources/bc-bid-for-suppliers/bc-bid-supplier-guide/step-3-for-itq).
+
+## Later verification: parallel catalog publication
+
+At 23:32 UTC, the coordinating Societyer task selected the catalog service through the real Owner interface after three distinct real publications passed comparison. The source caveat remains visible. Convex remains a required parallel destination through at least **November 24, 2026, 23:32:06 UTC**; an independent production policy query returned `serviceOnlyAllowed: false` with that fallback deadline. This task does not delete the fallback or change source selection.
+
+The local publisher now runs two additional stages **after verified Convex readiness and before acknowledging its baseline**: catalog publication and full parity. They use a separately reviewed 17-file runtime under Node 24.22.1, the pinned SQLite 3.54.1 transport, the existing restricted publisher key and strict known-hosts. The previous Convex operator/runtime stays intact. No private key or Convex administrator credential was transferred to the cluster.
+
+Before executing a catalog CLI, the parent durably registers the child PID/process group and exact wave/command. The child waits for an explicit GO signal after registration. Terminal result files retain the outcome. An interrupted catalog step resumes only those catalog stages on the same frozen export and current generation; it does not repeat source export or Convex import. Parity retries retain the original analytical clock and report hash. Active children, changed generation/runtime, missing retained evidence and an existing origin lock stop recovery; locks are never stolen by age.
+
+Twenty-two focused tests cover the source guards, process registration, interrupted-wave recovery, unchanged baseline on mirror failure, retained parity evidence, duplicate-finalization prevention and local capacity floors. They are operator tests, not a new full provider acceptance. The real same-generation catch-up then passed both catalog stages with unchanged publication counters.
+
+A subsequent real collected-data wave exercised the entire watcher path successfully:
+
+| Field | Verified value |
+| --- | --- |
+| Serving generation | `20261110T233730Z-a41c904c3706-reader-v2` |
+| Inventory SHA-256 | `800242216967c30b03e5d0df21a7ba2b14b813072222278c6dbf2d8e7b612153` |
+| Portal records | 4,443 opportunities; 21,877 awards |
+| Delta | 61 record upserts; 61 detail upserts; zero document upserts or archived rows |
+| Original blobs | Zero newly uploaded; all 1,957 existing blobs reused |
+| Baseline acknowledgement | 23:45:42 UTC, after catalog publication and full parity |
+
+All five tables, both lists and ten analytical views matched. Both owned CLI children exited successfully, and their process groups were gone. The real Owner browser updated from 4,383 to 4,443 opportunities without reloading. This proves the shared watcher publication path on a legitimate new-data milestone; the later count/time scheduling trigger itself has not yet fired.
+
+Independent fresh read-backs verified **all 154 currently saved historical references across 50 notices**, comprising **148 unique originals / 66,258,528 unique bytes** (68,293,077 reference bytes). Each unique original was streamed and rehashed from both retained source storage and SharePoint. This remains a subset of the expected archive attachments. The blocked DOCX is still unavailable, and the exhausted download run/failed completion queue were not restarted.
+
+Expected references also remain distinct from saved originals: the 61 upserted opportunity rows retain 372 listed-document references. Detail attachments and the reader's listed-reference fallback retain those source links even though this delta contains no new saved binaries. This is export/source-code evidence, not a separate live browser check of every notice.
+
+The historical collector remains cluster-managed. The publication watcher currently depends on the Mac and its existing private local configuration; its AC keep-awake assertion is tied to the publisher process, not a permanent system setting. Local publication capacity is checked before starting a wave, reserving recovery space without deleting backups. The date scope, legacy refreshes, expected attachment backlog, inaccessible-source report and final fresh archive audit remain unfinished.
+
+See Societyer's [catalog operations and recovery guide](https://github.com/ahzs645/societyer/blob/main/server/procurement-catalog/README.md) for the derived service. Keep the existing parallel publication running through the fallback period.
