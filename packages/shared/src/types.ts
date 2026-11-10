@@ -66,6 +66,9 @@ export interface OpportunityDetailScrape {
 }
 
 export interface OpportunityRecord extends OpportunityListing {
+  tabCoverage?: {mode: string; available: string[]; visited: string[]; failures: {label: string; message: string}[]; complete: boolean};
+  sourceTabs?: {label: string; text: string; truncated: boolean}[];
+  detailNeedsRefresh?: boolean;
   descriptionText: string;
   detailFields: OpportunityField[];
   addenda: OpportunityAddendum[];

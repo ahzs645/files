@@ -1,3 +1,4 @@
+import {SourceCapture} from './SourceCapture';
 import { BuyerName } from '../ui/BuyerName';
 import type { ReactNode } from "react";
 import { ExternalLink, FileText, Tag, Paperclip, BookOpen, Contact, CalendarDays, Users } from "lucide-react";
@@ -117,6 +118,7 @@ export function OpportunityDetailView({ detail, actions }: { detail: Opportunity
       </aside>
     </div>
 
+    <SourceCapture detail={detail} />
     {sourceFields.length > 0 && <details className="bid-detail-section bid-detail-source-fields" data-zoer-disclosure>
       <summary>All source fields <span className="bid-detail-count">{sourceFields.length}</span></summary>
       <p className="bid-detail-muted">The complete labels and values captured from BC Bid, including fields summarized above.</p>

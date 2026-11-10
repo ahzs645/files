@@ -1,3 +1,4 @@
+import {SourceCapture} from '../../../apps/dashboard/src/components/opportunities/SourceCapture';
 import { Hint } from '../host-ui';
 import { plausibleAwardDate } from '../award-dates';
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
@@ -97,11 +98,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
     {detail.isPending && <p role="status">Loading notice…</p>}
     {detail.error && <p role="alert">{detail.error.message}</p>}
     {error && <p role="alert">{error}</p>}
-    {record && source === 'bc-bid' && !award && <details className="pc-notice-section"><summary>Source capture: {data.tabCoverage?.complete ? 'all public tabs visited' : !data.detailFields?.length ? 'listing only' : data.detailNeedsRefresh ? 'refresh needed' : 'earlier capture'}</summary>
-      <p>Details refresh when listing facts change or capture coverage is incomplete. Files are downloaded separately and existing files are reused.</p>
-      {data.tabCoverage ? <><p>Visited: {data.tabCoverage.visited.join(', ') || 'none'}.</p>{data.tabCoverage.failures.map((item:any,i:number)=><p key={i}>{item.label}: {item.message}</p>)}</> : <p>This capture has no per-tab coverage receipt.</p>}
-      {(data.sourceTabs ?? []).map((item:any,i:number)=><details key={i}><summary>{item.label}{item.truncated ? ' (partial)' : ''}</summary><p style={{whiteSpace:'pre-wrap'}}>{item.text}</p></details>)}
-    </details>}
+    {record && source === 'bc-bid' && !award && <SourceCapture detail={data} />}
     {record && tab === 'decision' && <div className="pc-notice-section">
       <NoticeFacts id={id} record={record} reviews={reviews} documents={documents} workspace={available} />
       {available ? <DecisionHeader recordId={id} pursuitStage={pursuit?.stage ?? null} onTab={setTab} /> : !workspace.isPending && <p className="rw-upgrade" role="note">{workspace.data?.reason ?? 'Update Zoer to use the review workspace. Existing search, pursuits, documents and AI review keep working.'} Requirements, changes and decisions appear here once it is available.</p>}

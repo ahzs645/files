@@ -50,6 +50,7 @@ async function run(actionId:string,input:any={}) {
           result={url:value.url??LISTING_URL,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:1,hasNext:false,visiblePages:[1]},html:readFileSync(resolve(import.meta.dir,'../tests/fixtures',file),'utf8')};
         }
       }
+      if(value.readTabs?.includes('*')) result.tabCoverage={mode:'discovered-public-tabs',available:['Overview','Opportunity Details'],visited:['Overview','Opportunity Details'],failures:[],complete:true};
       send({protocolVersion:'1',kind:'host-response',requestId:message.requestId,ok:true,result,nextTicket});
     }
     assert.ok(output,'Worker did not finish');return output;
@@ -68,6 +69,7 @@ selected[0].data.detailFields=[];
 const missing=await run('scrape.details',{recordIds:selected.map(row=>row.id)});
 assert.deepEqual(missing,{completed:1,skipped:1,total:2});
 assert.ok(records.get(selected[0].id).data.detailFields.length);
+assert.equal(records.get(selected[0].id).data.tabCoverage.complete,true);
 assert.deepEqual(state.get('checkpoint:full'),fullBefore);
 const targeted=await run('scrape.targeted',{organization:'Ministry of Health'});assert.equal(targeted.listingCount,2);assert.equal(targeted.filtersCleared,true);
 assert.deepEqual(state.get('checkpoint:full'),fullBefore);assert.equal(state.get('checkpoint:targeted').status,'complete');assert.equal(state.get('checkpoint:targeted').filters.organization,'Ministry of Health');
