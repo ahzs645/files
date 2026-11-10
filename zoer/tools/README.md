@@ -13,6 +13,13 @@ notices are counted separately; this does not prove the source has no external
 or restricted documents. It leaves listing-only rows to the existing collector.
 The existing bulk action owns its bounded transport recovery and cooldown.
 
+The historical collector separately retries the native transport's exact typed
+navigation timeout and network-error diagnostics with a 60-second backoff, under
+the existing host limit on consecutive failures. It preserves the committed
+listing/detail cursor. Unknown errors, changed control, and browser checks still
+stop for review; a failed run must be inspected before creating its replacement
+from the saved checkpoint and updating this queue's pinned run/package identity.
+
 Run with Node 24 or Bun 1.4 using an explicitly reviewed configuration and an
 existing private state file:
 

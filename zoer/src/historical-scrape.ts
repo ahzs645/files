@@ -182,12 +182,15 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
       resumable: 'retry', checkpoint: before,
       error: { code: 'historical_search_not_ready', message: 'The public historical search control did not become ready. Saved progress is preserved.' },
     };
-    // Native navigation timeouts are transport failures, not proof of a browser
-    // challenge. Replay only this exact read failure through the host's bounded
-    // consecutive retry policy; retain ordinary pacing and the committed cursor.
-    if (/^Native browser goto failed \(400\)\. \[timeout; TimeoutError\]$/.test(message)) return {
+    // Known native navigation diagnostics are read failures. Replay only these
+    // exact classifications through the host's bounded consecutive retry policy;
+    // retain pacing/cursor and keep unknown/control failures out of this branch.
+    const navigation = message.match(/^Native browser goto failed \(400\)\. \[(timeout; TimeoutError|network-error; Error)\]$/);
+    if (navigation) return {
       resumable: 'retry', checkpoint: before, retryAfterMs: 60000,
-      error: { code: 'historical_navigation_timeout', message: 'The public historical page timed out. Saved progress is preserved.' },
+      error: navigation[1].startsWith('timeout;')
+        ? { code: 'historical_navigation_timeout', message: 'The public historical page timed out. Saved progress is preserved.' }
+        : { code: 'historical_navigation_network', message: 'The public historical page could not be reached. Saved progress is preserved.' },
     };
     const transient = transientFailure(error);
     if (transient) return { resumable: 'retry', checkpoint: before, error: { code: transient.code, message: transient.message }, ...(transient.retryAfterMs !== undefined ? { retryAfterMs: transient.retryAfterMs } : {}) };

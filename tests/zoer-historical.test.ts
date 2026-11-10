@@ -126,3 +126,20 @@ it('replays an exact native navigation timeout with backoff while browser checks
  expect((await run(db,async()=>{throw Error('Complete the browser check manually');}) as any).resumable).toBe('needs-user');
  await expect(run(db,async()=>{throw Error('Native browser goto failed (400). [unknown; Error]');})).rejects.toThrow('unknown');
 });
+
+it.each(['listing', 'detail'])('preserves the committed %s cursor on a typed native network error', async phase => {
+ const db=database();
+ const pending = phase === 'detail' ? [{sourceKey:'60536',processId:'60536',detailUrl:'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/60536'}] : [];
+ const before={...cp(),...(pending.length ? {pending,page:0,rangeCount:1,rangeExpected:1,listingsCaptured:1,lastSignature:'a'.repeat(64)} : {})};
+ db.entries.set(HISTORICAL_KEY,before);
+ const result:any=await run(db,async()=>{throw Error('Native browser goto failed (400). [network-error; Error]');},before);
+ expect(result).toMatchObject({resumable:'retry',retryAfterMs:60000,error:{code:'historical_navigation_network'}});
+ expect(result.checkpoint).toEqual(before);
+ expect(db.entries.get(HISTORICAL_KEY)).toEqual(before);
+ expect(db.records.size).toBe(0);
+});
+
+it('does not retry an unrelated typed navigation/control error', async () => {
+ const db=database();db.entries.set(HISTORICAL_KEY,cp());
+ await expect(run(db,async()=>{throw Error('Native browser goto failed (400). [permission-denied; Error]');})).rejects.toThrow('permission-denied');
+});
