@@ -88,6 +88,10 @@ describe('public BC Bid historical archive', () => {
     const result: any = await run(db, async () => { throw Error('Native browser waitFor failed (400).'); });
     expect(result.resumable).toBe('retry'); expect(result.error.code).toBe('historical_search_not_ready');
     expect(result.checkpoint).toEqual(cp()); expect(db.records.size).toBe(0);
+    const typed: any = await run(db, async () => { throw Error('Native browser waitFor failed (400). [timeout; TimeoutError]'); });
+    expect(typed.resumable).toBe('retry'); expect(typed.error.code).toBe('historical_search_not_ready');
+    expect(typed.checkpoint).toEqual(cp()); expect(db.records.size).toBe(0);
+    await expect(run(db, async () => { throw Error('Native browser waitFor failed (400). [protocol-error; Error]'); })).rejects.toThrow('protocol-error');
     await expect(run(db, async () => { throw Error('Native browser fill failed (400).'); })).rejects.toThrow('fill failed');
   });
   it('never derives UNSPSC links from historical GSIN, and retires any previous generated link fingerprint', async () => {

@@ -178,7 +178,7 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
     // The native transport redacts locator timeout details. A public search
     // readiness failure can replay from the committed cursor under the host's
     // bounded retry policy; other control/schema failures still stop the run.
-    if (!before.pending.length && /^Native browser waitFor failed \(400\)\.$/.test(message)) return {
+    if (!before.pending.length && /^Native browser waitFor failed \(400\)\.(?: \[timeout; TimeoutError\])?$/.test(message)) return {
       resumable: 'retry', checkpoint: before,
       error: { code: 'historical_search_not_ready', message: 'The public historical search control did not become ready. Saved progress is preserved.' },
     };
