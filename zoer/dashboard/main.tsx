@@ -1,3 +1,4 @@
+import {NoticeAttachments} from './NoticeAttachments';
 import { catalogReturnLocation, connectNavigation, navigatePlugin, useNavigationReady, usePluginQuery } from "./navigation";
 import { MarketAnalysis } from './market/MarketAnalysis';
 import { queryClient } from './query-client';
@@ -52,7 +53,7 @@ function App() {
   if (!navigationReady || !capabilitiesReady) return <p role="status">Opening BC Bid…</p>;
   return <div className="flex h-screen flex-col" style={{ padding: `${insets.top}px ${insets.right}px ${insets.bottom}px ${insets.left}px` }}>
     {notice && <p role="status" className="px-4 py-3 text-sm text-text-secondary">{notice}</p>}
-    <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ analysisView: <MarketAnalysis />, scraperSetup: collection ? <ScraperSetup /> : null, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar: writes ? setStar : undefined, awardsView: <AwardsBrowser />, opportunitiesView: <p role="status">Opening…</p>, historyExtras: collection ? <AwardRunList /> : null, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>
+    <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ opportunityDocuments: detail=><NoticeAttachments detail={detail}/>, analysisView: <MarketAnalysis />, scraperSetup: collection ? <ScraperSetup /> : null, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar: writes ? setStar : undefined, awardsView: <AwardsBrowser />, opportunitiesView: <p role="status">Opening…</p>, historyExtras: collection ? <AwardRunList /> : null, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><App /></QueryClientProvider></StrictMode>);

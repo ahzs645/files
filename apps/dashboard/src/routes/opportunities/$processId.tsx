@@ -17,7 +17,7 @@ export const Route = createFileRoute("/opportunities/$processId")({
 function OpportunityDetailPage() {
   const { processId } = Route.useParams();
   const detail = useQuery(api.opportunities.getByProcessId, { processId });
-  const { backToCatalog } = useContext(BidPreferences);
+  const { backToCatalog, opportunityDocuments } = useContext(BidPreferences);
   const back = backToCatalog ? (event: React.MouseEvent) => { event.preventDefault(); backToCatalog('opportunity'); } : undefined;
 
   return (
@@ -55,6 +55,7 @@ function OpportunityDetailPage() {
       ) : (
         <OpportunityDetailView
           detail={detail}
+          documents={opportunityDocuments?.(detail)}
           actions={<StarButton entity="opportunity" recordKey={detail.sourceKey} label={detail.description} />}
         />
       )}

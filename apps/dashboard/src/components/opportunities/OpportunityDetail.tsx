@@ -19,7 +19,7 @@ function FieldList({ fields, compact = false }: { fields: OpportunityField[]; co
   </dl>;
 }
 
-export function OpportunityDetailView({ detail, actions }: { detail: OpportunityDetailType; actions?: ReactNode }) {
+export function OpportunityDetailView({ detail, actions, documents }: { detail: OpportunityDetailType; actions?: ReactNode; documents?: ReactNode }) {
   const tone = getOpportunityStatusTone(detail.status);
   const findField = (labels: string[]) => detail.detailFields.find(field => labels.includes(normalizedLabel(field.label)))?.value;
   const summaryFields = detail.detailFields.filter(field => /^(summary details|summary|scope|scope of work|description)$/i.test(field.label.trim()));
@@ -79,9 +79,9 @@ export function OpportunityDetailView({ detail, actions }: { detail: Opportunity
 
         <section className="bid-detail-section">
           <h2><Paperclip size={16} /> Documents <span className="bid-detail-count">{detail.attachments.length}</span></h2>
-          {detail.attachments.length > 0 ? <ul className="bid-detail-documents">{detail.attachments.map((attachment, index) => <li key={`${attachment.url}-${index}`}>
+          {documents ?? (detail.attachments.length > 0 ? <ul className="bid-detail-documents">{detail.attachments.map((attachment, index) => <li key={`${attachment.url}-${index}`}>
             <a href={attachment.url} target="_blank" rel="noreferrer"><Paperclip size={16} /><span>{attachment.name}</span><ExternalLink size={14} /></a>
-          </li>)}</ul> : <p className="bid-detail-muted">No public attachments captured.</p>}
+          </li>)}</ul> : <p className="bid-detail-muted">No public attachments captured.</p>)}
         </section>
 
         <section className="bid-detail-section">
