@@ -6,7 +6,7 @@ import { browserSiteRows, browserSummaryText } from '../zoer/dashboard/procureme
 import type { ScheduleRow } from '../zoer/dashboard/procurement/schedule-state';
 import {
   COLLECT_ACTION, ensureSourcePreset, legacyAllSchedule, liveRunFor, migrateAllSchedule, reenableStopped, reenableable, runRetryPreset, runState,
-  saveSourceSchedule, sourceSchedule, type Preset, type RecentRun,
+  saveSourceSchedule, sourceSchedule, stoppedByUpdate, type Preset, type RecentRun,
 } from '../zoer/dashboard/procurement/source-schedules';
 import { BUNDLE_MAX_BYTES, bundleEntries, downloadDocumentBundle, safeSegment } from '../zoer/dashboard/document-bundle';
 
@@ -32,6 +32,11 @@ const UPDATED = 'Plugin or settings changed. Review and save this schedule again
 const LABELS = { canadabuys: 'CanadaBuys', bidsandtenders: 'bids&tenders', 'municipal-sites': 'BC local government websites' };
 
 describe('one schedule per source on presets (S6)', () => {
+  it('offers review for scoped approval changes without reviving manually paused or restored schedules', () => {
+    const review = row({enabled:false,error:'Scheduled action, permissions or settings changed. Review and save this schedule again.'});
+    const rows = [review, row({enabled:false}), row({enabled:false,error:'Restored from backup. Review before enabling.'}), row({enabled:true,error:UPDATED})];
+    expect(stoppedByUpdate(rows)).toEqual([review]);
+  });
   it('creates a source preset once and schedules it by presetId', async () => {
     const zoer = fakeHost();
     const first = await ensureSourcePreset(zoer.host, 'bidsandtenders', 'bids&tenders');

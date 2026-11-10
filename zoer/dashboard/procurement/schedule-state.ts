@@ -36,7 +36,8 @@ const RUN_STATUS: Record<string, string> = { succeeded: 'succeeded', failed: 'fa
 /** Why Zoer turned a schedule off, in words a person can act on. The host's own message is kept alongside. */
 export function stopReason(error: string): string {
   if (/preset changed or removed/i.test(error)) return 'Zoer turned this schedule off because the saved collection it runs was changed or removed. Turn it on again here to use the current one.';
-  if (/plugin or settings changed/i.test(error)) return 'Zoer turned this schedule off because the plugin was updated or the scheduled settings changed. It pauses schedules on any change so a new version never runs unattended before you look. Check the settings and turn it on again.';
+  if (/scheduled action, permissions or settings changed/i.test(error)) return 'The scheduled action, permissions or settings changed. Review the current setup, then turn this schedule on again. Compatible version and interface updates keep schedules enabled.';
+  if (/plugin or settings changed/i.test(error)) return 'This schedule needs review after a plugin or settings change. Older Zoer versions paused schedules after every plugin update; updated hosts preserve schedules through compatible updates. Check the current setup and turn it on again.';
   if (/restored from backup/i.test(error)) return 'This schedule was restored from a backup and left off. Check it and turn it on again when you are ready.';
   if (/failed records/i.test(error)) return 'Zoer turned this schedule off because the last scheduled run finished with failed items. Check the failures, then turn it on again.';
   if (/unavailable or disabled/i.test(error)) return 'Zoer turned this schedule off because the plugin was disabled or unavailable when it was due. Turn it on again once the plugin is enabled.';

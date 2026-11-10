@@ -39,9 +39,9 @@ export const sourcePreset = (presets: Preset[] | undefined, sourceId: string, ac
 /** The 0.33 `{ sourceId: 'all' }` schedule (no preset), if one is saved. */
 export const legacyAllSchedule = (rows: ScheduleRow[] | undefined) =>
   rows?.find(row => row.actionId === COLLECT_ACTION && !row.presetId && row.body?.input?.sourceId === 'all');
-/** Schedules Zoer turned off because the plugin was updated (it disables every schedule on an upgrade). */
+/** Schedules needing renewed approval, including legacy hosts that paused every update. */
 export const stoppedByUpdate = (rows: ScheduleRow[] | undefined) =>
-  (rows ?? []).filter(row => !row.enabled && /plugin or settings changed/i.test(row.error ?? ''));
+  (rows ?? []).filter(row => !row.enabled && /plugin or settings changed|scheduled action, permissions or settings changed/i.test(row.error ?? ''));
 
 export function sourceSchedule(rows: ScheduleRow[] | undefined, presets: Preset[] | undefined, sourceId: string) {
   const actionId = sourceId === BROWSER_SOURCE_ID ? BROWSER_COLLECT_ACTION : COLLECT_ACTION;

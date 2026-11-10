@@ -66,9 +66,8 @@ export function CollectionRuns({ runs, error, loading }: { runs?: RecentRun[]; e
 }
 
 /**
- * After an update Zoer turns every schedule off ("Plugin or settings changed") so a new version never runs unattended
- * before the person looks. This says so at the top of Sources with one button to turn them on again, and offers to
- * replace the 0.33 "all sources" schedule with one schedule per source at the same interval.
+ * Review schedules invalidated by contract/settings changes, or by older hosts' broad upgrade check.
+ * Also offers to replace the 0.33 "all sources" schedule with one schedule per source at the same interval.
  */
 export function ScheduleNotice({ rows, presets, labels }: { rows?: ScheduleRow[]; presets?: Preset[]; labels: Record<string, string> }) {
   const client = useQueryClient(), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
@@ -83,14 +82,14 @@ export function ScheduleNotice({ rows, presets, labels }: { rows?: ScheduleRow[]
   const names = (list: ScheduleRow[]) => list.map(row => row.actionId === 'procurement.alerts' ? 'alert checks' : row.presetId ? presets?.find(preset => preset.id === row.presetId)?.name ?? 'a saved collection' : 'collection').join(', ');
   return <div className="pc-schedule-notice" role="status">
     {legacy && <div>
-      <p><strong>Collection is now scheduled per source.</strong> Your earlier schedule collected every source {intervalText(legacy.intervalHours).toLowerCase()}{!legacy.enabled ? ' and is off since the update' : ''}. Each source now runs on its own, step by step, and continues after a Zoer restart.</p>
+      <p><strong>Collection is now scheduled per source.</strong> Your earlier schedule collected every source {intervalText(legacy.intervalHours).toLowerCase()}{!legacy.enabled ? ' and is currently off' : ''}. Each source now runs on its own, step by step, and continues after a Zoer restart.</p>
       <Btn variant="primary" disabled={busy} onClick={() => void run(async () => { await migrateAllSchedule(host, legacy, labels); return `CanadaBuys, bids&tenders and the local government websites are now each scheduled ${intervalText(legacy.intervalHours).toLowerCase()}.`; })}>{busy ? 'Saving…' : `Schedule each source ${intervalText(legacy.intervalHours).toLowerCase()}`}</Btn>
     </div>}
     {stopped.length > 0 && <div>
-      <p><strong>Zoer turned off {stopped.length === 1 ? 'a schedule' : `${stopped.length} schedules`} when Procurement was updated</strong> ({names(stopped)}). It does this after every update so a new version never runs before you look.</p>
+      <p><strong>{stopped.length === 1 ? 'A schedule needs review' : `${stopped.length} schedules need review`}</strong> ({names(stopped)}). Review the current action, permissions and settings before turning them on again. Updated Zoer hosts keep schedules enabled through compatible version and interface updates.</p>
       <Btn variant="primary" disabled={busy} onClick={() => void run(async () => { const count = await reenableStopped(host, rows ?? []); return `${count} schedule${count === 1 ? '' : 's'} turned on again.`; })}>{busy ? 'Saving…' : stopped.length === 1 ? 'Turn it on again' : 'Turn them on again'}</Btn>
     </div>}
-    {elsewhere.length > 0 && <p>Schedules that use your Zoer browser (BC Bid scrapes, browser sites) were turned off by the update too. Turn them on again in <a className="procurement-link" href={hostHref('#/settings/plugins')}>Zoer’s plugin settings</a>.</p>}
+    {elsewhere.length > 0 && <p>Some browser schedules (BC Bid scrapes, browser sites) also need review. Check their browser and settings, then turn them on again in <a className="procurement-link" href={hostHref('#/settings/plugins')}>Zoer’s plugin settings</a>.</p>}
     {message && <p>{message}</p>}{error && <p role="alert">{error}</p>}
   </div>;
 }
