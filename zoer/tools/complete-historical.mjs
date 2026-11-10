@@ -43,10 +43,20 @@ export function missingAttachments(row, documents) {
 
 export function assertRun(run, expectedAction) {
   if (run.actionId !== expectedAction) throw Error(`Unexpected action for ${run.id}`);
+  if (isMaintenancePause(run)) return false;
   if (run.paused || run.statusReason === 'waiting_for_user' || run.status === 'waiting_for_approval') throw Error(`Run needs operator attention: ${run.id}`);
   if (run.status === 'succeeded') return true;
   if (!ACTIVE.has(run.status) || (run.resumable?.state && !['running', 'pending', 'retrying', 'waiting'].includes(run.resumable.state))) throw Error(`Run stopped (${run.status}): ${run.id}: ${run.error ?? run.resumable?.lastError ?? ''}`);
   return false;
+}
+
+// The workspace API's `paused` flag specifically identifies a host maintenance
+// drain. The host resumes that same action/checkpoint; the operator must not
+// restart it or mistake it for a user pause or a browser verification request.
+export function isMaintenancePause(run) {
+  return run.paused === true && run.status === 'waiting_for_event'
+    && run.statusReason === 'Paused for Zoer update'
+    && (!run.resumable || run.resumable.state === 'paused-for-update');
 }
 
 export function assertFinalCoverage(checkpoint, rows, expectedFiles, verifiedFiles, collectorDone) {
@@ -234,6 +244,12 @@ export class CompletionQueue {
     await this.checkIdentity(); await this.storageGuard();
     const { run: collector } = await this.api(`${ROOT}/workspace/runs/${this.config.historicalRun}`);
     const collectorDone = assertRun(collector, 'scrape.historical');
+    if (isMaintenancePause(collector)) {
+      this.state.phase = 'waiting_for_maintenance';
+      await this.save();
+      this.log('Waiting for Zoer maintenance; saved actions unchanged', { runId: collector.id });
+      return;
+    }
     const cp = await this.checkpoint();
     this.state.collection = { listings: cp.listingsCaptured, details: cp.detailsCompleted, rangesCompleted: cp.rangesCompleted, rangesRemaining: cp.ranges.length, complete: cp.complete, capturedAt: cp.capturedAt };
     this.state.phase = this.state.pending?.action ?? 'selecting';
@@ -270,7 +286,8 @@ export async function main(configPath, statePath) {
   try {
     while (state.phase !== 'ready_for_final_publication') {
       await queue.step(); await queue.save();
-      if (state.phase !== 'ready_for_final_publication') await new Promise(resolve => setTimeout(resolve, state.pending ? 30000 : state.phase === 'waiting_for_source' ? 60000 : 1000));
+      if (state.phase !== 'ready_for_final_publication') await new Promise(resolve => setTimeout(resolve,
+        ['waiting_for_source', 'waiting_for_maintenance'].includes(state.phase) ? 60000 : state.pending ? 30000 : 1000));
     }
   } catch (error) {
     state.phase = 'needs_attention'; state.error = String(error?.stack ?? error);

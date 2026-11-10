@@ -32,6 +32,40 @@ describe('finite historical completion queue', () => {
       expect(() => assertRun({id:'r',actionId:'scrape.details',status:'running',...change},'scrape.details')).toThrow();
     }
   });
+  it('waits only for the host-projected maintenance pause, including non-resumable downloads', () => {
+    const paused = {id:'source',actionId:'scrape.historical',status:'waiting_for_event',paused:true,
+      statusReason:'Paused for Zoer update',resumable:{state:'paused-for-update'}};
+    expect(assertRun(paused,'scrape.historical')).toBe(false);
+    expect(assertRun({...paused,actionId:'documents.download',resumable:undefined},'documents.download')).toBe(false);
+    for (const change of [
+      {status:'waiting_for_user'}, {paused:false}, {statusReason:'Complete the browser check'},
+      {resumable:{state:'needs-user'}}, {resumable:{state:'paused'}}, {resumable:{state:'waiting'}},
+    ]) expect(() => assertRun({...paused,...change},'scrape.historical')).toThrow();
+    expect(() => assertRun({...paused,actionId:'other'},'scrape.historical')).toThrow('Unexpected action');
+  });
+  it('preserves the pending run during maintenance and resumes polling it without resubmission', async () => {
+    const pending={action:'documents.download',runId:'existing-download',phase:'running',ids:['opportunity:1']};
+    const state:any={phase:'documents.download',pending:structuredClone(pending)};
+    const saves:any[]=[];
+    const queue=new CompletionQueue({historicalRun:'source'},state,async v=>saves.push(structuredClone(v)));
+    queue.checkIdentity=async()=>{}; queue.storageGuard=async()=>{};
+    queue.api=async()=>({run:{id:'source',actionId:'scrape.historical',status:'waiting_for_event',paused:true,
+      statusReason:'Paused for Zoer update',resumable:{state:'paused-for-update'}}});
+    queue.checkpoint=async()=>{throw Error('Should not read/select work during maintenance');};
+    queue.pendingStep=async()=>{throw Error('Should not poll pending work during collector maintenance');};
+    queue.submit=async()=>{throw Error('Should never resubmit an existing action');};
+    await queue.step();
+    expect(state.phase).toBe('waiting_for_maintenance');
+    expect(saves.at(-1).pending).toEqual(pending);
+    queue.api=async()=>({run:{id:'source',actionId:'scrape.historical',status:'running',resumable:{state:'running'}}});
+    queue.checkpoint=async()=>({listingsCaptured:1,detailsCompleted:1,rangesCompleted:0,ranges:[],complete:false,capturedAt:'2026-11-10T21:17:23Z'});
+    let polled=0;
+    queue.pendingStep=async()=>{polled++;expect(state.pending).toEqual(pending);return false;};
+    await queue.step();
+    expect(polled).toBe(1);
+    expect(state.phase).toBe('documents.download');
+    expect(state.pending).toEqual(pending);
+  });
   it('does not call an incomplete scope or mismatched count complete', () => {
     const cp={complete:true,pending:[],ranges:[],listingsCaptured:2,detailsCompleted:2};
     expect(() => assertFinalCoverage(cp,2,3,3,true)).not.toThrow();

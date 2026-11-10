@@ -57,6 +57,15 @@ Mount only the originals directory read-only, its dedicated state directory
 read-write, and the reviewed script/config. No API, SharePoint, or Convex secrets
 are needed by this queue. Keep the original catalog and browser volumes intact.
 
+The queue waits through the host's explicit maintenance pause (`paused: true`,
+`waiting_for_event`, `Paused for Zoer update`, and `paused-for-update` for a
+resumable action). It keeps the same pending run and checks again once a minute;
+it never restarts the collector or submits work during that pause. This is
+different from a user pause, approval, browser check, or unknown event wait,
+which still stops for review. A backend maintenance drain observed on November
+10, 2026 resumed its collector automatically after 32 seconds; it must not stop
+the independent completion queue.
+
 It stops for changed plugin/browser identity, user control, challenges, failed
 runs, unknown submission outcomes, incomplete captures, corrupt/missing saved
 files, and truncated queries. It never changes an uncertain action's idempotency
