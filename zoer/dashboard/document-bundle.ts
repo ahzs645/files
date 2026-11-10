@@ -48,7 +48,7 @@ export async function readBundleDocuments(host: Host, recordIds: string[]): Prom
   const rows: any[] = [];
   for (let i = 0; i < recordIds.length; i += 100) {
     const ids = recordIds.slice(i, i + 100);
-    rows.push(...await query(host, `SELECT id, record_id AS recordId, name, media_type, coalesce(byte_length,0) AS bytes FROM documents WHERE status='downloaded' AND record_id IN (${marks(ids.length)}) ORDER BY record_id, name, id`, ids));
+    rows.push(...await query(host, `SELECT id, record_id AS recordId, name, media_type, coalesce(bytes,0) AS bytes FROM documents WHERE status='downloaded' AND record_id IN (${marks(ids.length)}) ORDER BY record_id, name, id`, ids));
   }
   return rows.map(row => ({ id: String(row.id), recordId: String(row.recordId), name: attachmentFileName(String(row.name ?? 'file'),row.media_type), bytes: Number(row.bytes ?? 0) }));
 }
