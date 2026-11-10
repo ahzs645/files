@@ -1,3 +1,4 @@
+import currentTypes from '../data/bc-bid-current-types.json';
 import * as cheerio from 'cheerio';
 import { parseCapture, type PageCapture } from './capture';
 import { isPauseError, paused } from './pause';
@@ -24,11 +25,12 @@ export const TARGET_FIELDS = {
   organization: '#body_x_selBpmIdOrgaLevelOrgaNode_search',
   region: '#body_x_selRfpIdAreaLevelAreaNode_search',
   industryCategory: '#body_x_selPtypeCode_search',
+  opportunityType: '#body_x_selRtgrouCode_search',
 } as const;
 const STOP = /manual|browser check|cancel|unavailable|budget|invalid.ticket/i;
 
-export type FilterKind = 'organization' | 'region' | 'keyword' | 'industryCategory';
-export interface TargetedFilters { organization?: string; region?: string; keyword?: string; industryCategory?: string }
+export type FilterKind = 'organization' | 'region' | 'keyword' | 'industryCategory' | 'opportunityType';
+export interface TargetedFilters { organization?: string; region?: string; keyword?: string; industryCategory?: string; opportunityType?: string }
 export interface TargetedOptions extends TargetedFilters { maxPages: number; details: boolean }
 export interface CaptureOptions {
   url: string; pageNumber?: number; continuePage?: number; applySearch?: boolean; readTabs?: string[];
@@ -50,13 +52,14 @@ export interface TargetedReceipt {
   filtersCleared: boolean | null; startedAt: string; finishedAt: string; error?: string;
 }
 
-const LABELS: Record<FilterKind, string> = { organization: 'buyer', region: 'region', keyword: 'keyword', industryCategory: 'industry category' };
+const LABELS: Record<FilterKind, string> = { organization: 'buyer', region: 'region', keyword: 'keyword', industryCategory: 'industry category', opportunityType: 'opportunity type' };
 // Filter summary labels BC Bid may use. Unknown labels are not guessed into a kind.
 const LABEL_KIND: [FilterKind, RegExp][] = [
   ['organization', /organi[sz]ation|issued by|buyer/i],
   ['region', /\bregion|\barea\b|location/i],
   ['keyword', /keyword|search text/i],
   ['industryCategory', /^Industry Category$/i],
+  ['opportunityType', /^Opportunity Type$/i],
 ];
 const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
 /** Case- and spacing-insensitive comparison; BC Bid names are otherwise matched exactly. */
@@ -65,14 +68,15 @@ export const sameName = (a: string, b: string) => clean(a).toLowerCase() === cle
 export function validateTargetedInput(input: any): TargetedOptions {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Choose a buyer, region or keyword.');
   const out: TargetedOptions = { maxPages: 5, details: true };
-  for (const kind of ['organization', 'region', 'keyword', 'industryCategory'] as const) {
+  for (const kind of ['organization', 'region', 'keyword', 'industryCategory', 'opportunityType'] as const) {
     const value = input[kind];
     if (value === undefined || value === null || value === '') continue;
     if (typeof value !== 'string' || value.length > 200 || /[\u0000-\u001f\u007f]/.test(value) || !clean(value)) throw new Error(`Invalid ${LABELS[kind]}.`);
     out[kind] = clean(value);
   }
-  if (!out.organization && !out.region && !out.keyword && !out.industryCategory) throw new Error('Choose a buyer, region or keyword.');
+  if (!out.organization && !out.region && !out.keyword && !out.industryCategory && !out.opportunityType) throw new Error('Choose a buyer, region or keyword.');
   if (out.industryCategory && !['Construction','Goods','Services'].includes(out.industryCategory)) throw Error('Invalid industry category.');
+  if (out.opportunityType && !currentTypes.types.some(t=>t.title === out.opportunityType)) throw Error('Invalid opportunity type.');
   if (input.maxPages !== undefined) {
     if (!Number.isInteger(input.maxPages) || input.maxPages < 1 || input.maxPages > TARGETED_MAX_PAGES) throw new Error(`Pages must be 1-${TARGETED_MAX_PAGES}.`);
     out.maxPages = input.maxPages;
@@ -83,7 +87,7 @@ export function validateTargetedInput(input: any): TargetedOptions {
   }
   return out;
 }
-const filtersOf = (options: TargetedFilters): TargetedFilters => Object.fromEntries((['organization', 'region', 'keyword', 'industryCategory'] as const).filter(kind => options[kind]).map(kind => [kind, options[kind]]));
+const filtersOf = (options: TargetedFilters): TargetedFilters => Object.fromEntries((['organization', 'region', 'keyword', 'industryCategory', 'opportunityType'] as const).filter(kind => options[kind]).map(kind => [kind, options[kind]]));
 
 /** Active filters from BC Bid's summary (`.tag-label` followed by a list of `.tag-text` values). */
 export function readFilterTags(html: string) {
@@ -110,7 +114,7 @@ export function activeTargetFilters(html: string) {
 export function verifyTargetedFilters(html: string, filters: TargetedFilters) {
   const tags = readFilterTags(html);
   const confirmed: Partial<Record<FilterKind, string>> = {};
-  for (const kind of ['organization', 'region', 'keyword', 'industryCategory'] as const) {
+  for (const kind of ['organization', 'region', 'keyword', 'industryCategory', 'opportunityType'] as const) {
     const values = tags.filter(tag => tag.kind === kind).flatMap(tag => tag.values);
     const wanted = filters[kind];
     if (!wanted) {
@@ -179,7 +183,7 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
     totalReported: null, truncated: false, listingCount: 0, newCount: 0, changedCount: 0, detailsCompleted: 0, detailsSkipped: 0, pending: [], failures: [], confirmed: {} };
   if (options.runId) state.runId = options.runId;
   const searchFields = [{ selector: TARGET_FIELDS.keyword, value: filters.keyword ?? '' }];
-  const pickFields = (['organization', 'region', 'industryCategory'] as const).filter(kind => filters[kind]).map(kind => ({ selector: TARGET_FIELDS[kind], value: filters[kind]! }));
+  const pickFields = (['organization', 'region', 'industryCategory', 'opportunityType'] as const).filter(kind => filters[kind]).map(kind => ({ selector: TARGET_FIELDS[kind], value: filters[kind]! }));
   const capture = async (request: CaptureOptions) => {
     let failure: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -240,7 +244,7 @@ export async function scrapeTargeted(browser: { capture(options: CaptureOptions)
         const page = await capture({ url: row.detailUrl, readTabs: BC_BID_DETAIL_TABS });
         const doc = parseCapture(page, 'detail').document;
         if (doc.record!.processId !== row.processId) throw new Error('BC Bid returned a different opportunity than requested.');
-        artifactId = await store.save({ ...doc, scope: TARGETED_SCOPE, sourceKey: row.sourceKey, detailCaptureVersion: DETAIL_CAPTURE_VERSION });
+        artifactId = await store.save({ ...doc, scope: TARGETED_SCOPE, filters, sourceKey: row.sourceKey, detailCaptureVersion: DETAIL_CAPTURE_VERSION });
         state.detailsCompleted++;
       } catch (error) {
         if (isPauseError(error)) throw error;

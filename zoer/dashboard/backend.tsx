@@ -224,7 +224,7 @@ export async function testScraperBrowser() {
 
 /** Last targeted refresh receipt (`checkpoint:targeted`), or null before the first one. */
 export function targetedReceipt() { return targetedCheckpoint ? structuredClone(targetedCheckpoint) : null; }
-export async function startTargetedRefresh(input: { organization?: string; region?: string; keyword?: string; industryCategory?: string; maxPages: number; details: boolean }) {
+export async function startTargetedRefresh(input: { organization?: string; region?: string; keyword?: string; industryCategory?: string; opportunityType?: string; maxPages: number; details: boolean }) {
   await refresh();
   if (snapshot.error) throw new Error(snapshot.error);
   // One browser: a filtered search would also narrow a running full crawl's pages.

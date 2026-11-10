@@ -374,3 +374,23 @@ The official region register has 38 versioned terms with source codes and parent
 Future listing/detail saves normalize published metadata and retain previously verified memberships. Targeted refreshes allow 1–70 listing pages (default five), retaining the existing 40-detail cap. Listing-only category refreshes read every page without downloading attachment binaries. **Sources → Refresh BC Bid metadata** can capture a verified Construction, Goods or Services search; the source's filter summary must confirm the exact category before it is saved. Unfiltered captures cannot recover a category that the source omits. The existing 2015 sample returns no results when all three industry categories are selected, so those records remain unknown.
 
 `bun scripts/backfillBcBidSourceMetadata.ts` previews normalization of already captured metadata; add `--apply` to merge it into the existing primary catalog with optimistic retries and read-back verification. It preserves attachments, stars and import checkpoints. It does not create storage or infer absent source values.
+
+### BC Bid source filters and capture coverage (November 2026)
+
+The current Opportunity Type picker contains all 23 source groups. The saved
+notice subtype is separate; BPS/acronym variants are assigned to groups only
+when observed in an actual source-filter result. Targeted refresh can apply a
+current group and verifies BC Bid's summary on every page before saving its
+membership. The existing enrichment action backfills exact/verified group facts
+without fetching notice pages. Industry filters use source-labelled categories,
+not AI classifications. Official region, current UNSPSC hierarchy and historical
+opportunity type remain independent filters; historical GSIN is an observed
+inventory, not a complete dictionary.
+
+Automatic detail captures discover enabled public left-hand tabs. Each record
+retains available/visited/failing tabs and sanitized per-tab text, including
+unlabelled Process Rules. Disabled separators are skipped. A tab with further
+grid pages is explicitly partial; visiting a tab does not imply all its paged
+rows or file binaries were downloaded. Unchanged complete captures are reused;
+changed listings, older captures and incomplete coverage remain retryable.
+Version 3 establishes this coverage with a one-time refresh of older details.

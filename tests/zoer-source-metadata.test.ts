@@ -35,3 +35,12 @@ describe('future industry filter captures',()=>{
   expect(sourceMetadata(row,{scope:'bcbid-targeted',filters:{industryCategory:'Services'}})).toMatchObject({industryCategories:['Goods','Services'],industryCategoryCodes:['aGoods','bServices']});
  });
 });
+
+it('publishes all 23 current groups and uses only exact or verified group membership',()=>{
+ const groups=filterReferenceRecords().filter(r=>r.kind==='reference-term' && r.data.scheme==='BCBID-current-type');
+ expect(groups).toHaveLength(23);
+ expect(sourceMetadata({type:'Invitation to Quote'}).opportunityTypeGroupCode).toBe('itq');
+ expect(sourceMetadata({type:'Request for Proposal (BPS)'}).opportunityTypeGroupCode).toBe('rfp');
+ expect(sourceMetadata({type:'Request for Quotation (BPS)'}).opportunityTypeGroupCode).toBeUndefined();
+ expect(sourceMetadata({type:'Request for Quotation (BPS)'},{scope:'bcbid-targeted',filters:{opportunityType:'Invitation to Quote'}}).opportunityTypeGroupCode).toBe('itq');
+});

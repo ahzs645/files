@@ -1,6 +1,9 @@
 import reference from '../data/bc-bid-filter-reference.json';
+import currentTypes from '../data/bc-bid-current-types.json';
 export function filterReferenceRecords() {
-  return [{id: reference.id, kind: 'reference-release', title: 'BC Bid regions and industry categories', data: reference},
+  return [{id:currentTypes.id,kind:'reference-release',title:'BC Bid current opportunity type groups',data:currentTypes},
+    ...currentTypes.types.map(term=>({id:`reference-term:BCBID-current-type:${term.code}`,kind:'reference-term',title:term.title,data:{scheme:'BCBID-current-type',releaseId:currentTypes.id,...term,sourceUrl:currentTypes.sourceUrl,capturedAt:currentTypes.capturedAt}})),
+    {id: reference.id, kind: 'reference-release', title: 'BC Bid regions and industry categories', data: reference},
     ...reference.regions.map(term => ({id:`reference-term:BCBID-region:${term.code}`,kind:'reference-term',title:term.title,data:{schemaVersion:1,scheme:'BCBID-region',releaseId:reference.id,...term,sourceUrl:reference.sourceUrl,capturedAt:reference.capturedAt}})),
     ...reference.industryCategories.map(term => ({id:`reference-term:BCBID-industry:${term.code}`,kind:'reference-term',title:term.title,data:{schemaVersion:1,scheme:'BCBID-industry',releaseId:reference.id,...term,parentId:null,sourceUrl:reference.sourceUrl,capturedAt:reference.capturedAt}}))];
 }
@@ -25,6 +28,14 @@ export function sourceMetadata(row: any, doc?: any) {
   if (doc?.scope === 'bcbid-targeted' && doc.filters?.region) regionLabels.push(doc.filters.region);
   const sourceRegions = regionLabels.flatMap(label => { const candidates = reference.regions.filter(t => t.title === label); return candidates.length === 1 ? candidates : []; });
   const next = {...row};
+  const rawType = fields.find(f=>/^Opportunity Type$/i.test(f.label?.trim() || ''))?.value ?? row.type;
+  const verified = doc?.scope === 'bcbid-targeted' ? currentTypes.types.find(t=>t.title === doc.filters?.opportunityType) : undefined;
+  // Exact source labels are safe. RFP (BPS) was observed under the source RFP
+  // picker on 2026-11-09; other subtype groups stay unknown until verified.
+  const group = verified ?? currentTypes.types.find(t=>t.title === rawType || (t.code === 'rfp' && rawType === 'Request for Proposal (BPS)'));
+  if(group) { next.opportunityTypeGroupCode=group.code; next.opportunityTypeGroup=group.title; next.opportunityTypeGroupProvenance={sourceUrl:doc?.sourceUrl ?? row.detailUrl,method:verified?'verified-source-type-filter':rawType===group.title?'exact-source-type-label':'observed-source-type-filter',capturedAt:doc?.capturedAt ?? currentTypes.capturedAt,sourceSubtype:rawType}; }
+  else if (row.opportunityTypeGroupProvenance?.sourceSubtype !== rawType) { delete next.opportunityTypeGroupCode; delete next.opportunityTypeGroup; delete next.opportunityTypeGroupProvenance; }
+
   if(regionLabels.length) next.sourceRegionLabels=[...new Set(regionLabels)];
   const ambiguous=regionLabels.filter(label=>reference.regions.filter(t=>t.title===label).length!==1);
   if(ambiguous.length) next.sourceRegionUnresolved=ambiguous.map(label=>({label,candidateIds:reference.regions.filter(t=>t.title===label).map(t=>'reference-term:BCBID-region:'+t.code)}));

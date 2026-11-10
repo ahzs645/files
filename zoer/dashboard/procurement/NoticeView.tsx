@@ -97,6 +97,11 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
     {detail.isPending && <p role="status">Loading notice…</p>}
     {detail.error && <p role="alert">{detail.error.message}</p>}
     {error && <p role="alert">{error}</p>}
+    {record && source === 'bc-bid' && !award && <details className="pc-notice-section"><summary>Source capture: {data.tabCoverage?.complete ? 'all public tabs visited' : !data.detailFields?.length ? 'listing only' : data.detailNeedsRefresh ? 'refresh needed' : 'earlier capture'}</summary>
+      <p>Details refresh when listing facts change or capture coverage is incomplete. Files are downloaded separately and existing files are reused.</p>
+      {data.tabCoverage ? <><p>Visited: {data.tabCoverage.visited.join(', ') || 'none'}.</p>{data.tabCoverage.failures.map((item:any,i:number)=><p key={i}>{item.label}: {item.message}</p>)}</> : <p>This capture has no per-tab coverage receipt.</p>}
+      {(data.sourceTabs ?? []).map((item:any,i:number)=><details key={i}><summary>{item.label}{item.truncated ? ' (partial)' : ''}</summary><p style={{whiteSpace:'pre-wrap'}}>{item.text}</p></details>)}
+    </details>}
     {record && tab === 'decision' && <div className="pc-notice-section">
       <NoticeFacts id={id} record={record} reviews={reviews} documents={documents} workspace={available} />
       {available ? <DecisionHeader recordId={id} pursuitStage={pursuit?.stage ?? null} onTab={setTab} /> : !workspace.isPending && <p className="rw-upgrade" role="note">{workspace.data?.reason ?? 'Update Zoer to use the review workspace. Existing search, pursuits, documents and AI review keep working.'} Requirements, changes and decisions appear here once it is available.</p>}
@@ -221,7 +226,8 @@ function Overview({ id, record, reviews, tags, onTab, onSaved }: { id: string; r
     <section className="pc-tags" aria-label="Your tags"><h3>Your tags</h3>
       {writes && editing ? <div className="pc-tag-editor"><input aria-label="Tags, comma-separated" value={draft} onChange={e => setDraft(e.target.value)} placeholder="e.g. shortlist-q4, partner: Dominion" /><Btn size="sm" disabled={saving} onClick={() => void saveTags()}>{saving ? 'Saving…' : 'Save'}</Btn><Btn size="sm" variant="ghost" onClick={() => { setEditing(false); setDraft(tags.join(', ')); }}>Cancel</Btn></div>
         : <div className="pc-tag-list">{tags.map(tag => <span key={tag} className="pc-tag">{tag}</span>)}{writes ? <button type="button" className="pc-link-btn" onClick={() => setEditing(true)}>{tags.length ? 'Edit' : 'Add tags'}</button> : !tags.length && <span className="pc-card-meta">No tags.</span>}</div>}
-      {error && <p role="alert">{error}</p>}</section>
+      {error && <p role="alert">{error}</p>}
+</section>
     {(data.sourceFileName || data.importedAt) && <p className="procurement-coverage">Imported {shortDate(data.importedAt).text}{data.sourceFileName ? ` from ${data.sourceFileName}` : ''}</p>}
   </div>;
 }
@@ -257,7 +263,8 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
   };
   if (!documents.length) return <div className="pc-notice-section"><div className="pc-card pc-card-empty"><header><h3>No documents yet</h3></header>
     {!collection ? <p>No documents were saved for this notice.</p> : source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || browserBusy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
-    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}</div></div>;
+    {error && <p role="alert">{error}</p>}
+{message && <p role="status">{message}</p>}</div></div>;
   const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${hasUsableText(item) ? '' : ' · Saved; no usable text extracted'}` : 'Couldn’t download this file';
   return <div className="pc-docs">
     <div className="pc-doc-bar">
@@ -273,7 +280,8 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
         {collection && source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy || browserBusy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
       </span>
     </div>
-    {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-card-meta">{message}</p>}
+    {error && <p role="alert">{error}</p>}
+{message && <p role="status" className="pc-card-meta">{message}</p>}
     {doc && (doc.status !== 'downloaded'
       ? <div className="pc-doc-failed"><FileWarning aria-hidden="true" className="h-5 w-5" /><div><p><strong>{doc.name}</strong> couldn’t be read.</p><p className="pc-card-meta">{doc.error || 'The download failed.'}</p>{doc.url && safeSourceUrl(doc.url) && <a className="procurement-link" href={safeSourceUrl(doc.url)!} target="_blank" rel="noopener noreferrer">Open the original ↗</a>}</div></div>
       : mode === 'pdf' && isPdf(doc) ? <PdfPreview doc={doc} onFallback={() => setMode('text')} /> : <TextPreview doc={doc} quote={cite && cite.documentId === doc.id ? cite.quote : ''} />)}
@@ -359,6 +367,7 @@ function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews
       {!models.isPending && !ready.length && <p className="pc-card-meta">Set up a model profile, or start a Codex or OpenCode computer, to use AI here.</p>}
       {running && <p role="status" className="pc-running"><span className="pc-spinner" aria-hidden="true" />Running on the server. You can close this notice; the result will be saved here.</p>}
       {error && <p role="alert">{error}</p>}
+
     </section>}
     {!sorted.length && <p className="procurement-coverage">No AI results yet.</p>}
     {sorted.map(review => <AiResult key={review.id} review={review} onCite={onCite} docNames={docNames} />)}

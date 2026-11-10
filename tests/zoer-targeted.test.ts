@@ -18,7 +18,7 @@ function listing(number: number, last: number, tags = HEALTH) {
   return { url: LISTING_URL, title: 'BC Bid', capturedAt: '2026-10-03T20:00:00Z', html, pagination: { currentPage: number, hasNext: number < last, visiblePages: [1, 2] } };
 }
 const cleared = () => ({ ...listing(1, 1, summary([['Status', ['Open']]])) });
-const detail = (url: string) => ({ url, title: 'BC Bid', capturedAt: '2026-10-03T20:01:00Z', html: fixture('detail/with-addenda.html').replace(/226320/g, url.match(/(\d+)$/)![1]!) });
+const detail = (url: string) => ({ url, title: 'BC Bid', capturedAt: '2026-10-03T20:01:00Z', tabCoverage:{mode:'discovered-public-tabs',available:['Overview'],visited:['Overview'],failures:[],complete:true}, html: fixture('detail/with-addenda.html').replace(/226320/g, url.match(/(\d+)$/)![1]!) });
 function harness(pages: (options: CaptureOptions, call: number) => any, saved = new Map<string, any>()) {
   const calls: CaptureOptions[] = [], docs: any[] = [], receipts: any[] = [];
   let listingCalls = 0;
@@ -83,7 +83,7 @@ describe('targeted BC Bid refresh', () => {
     const cost=h.calls.reduce((n,r)=>n+Math.min(r.pageNumber??(r.continuePage?2:1),20)+(r.pageNumber===undefined?0:1)+(r.applySearch?2:0)+(r.pickFields?.length??0),0);
     // One initial detail navigation plus every optional public tab is charged
     // even when a particular notice does not publish all those tabs.
-    expect(cost + 40 * (1 + BC_BID_DETAIL_TABS.length)).toBeLessThanOrEqual(grant);
+    expect(cost + 40 * (1 + 12)).toBeLessThanOrEqual(grant);
   });
   it('distinguishes lower-bound source counts, including markup, from exact totals', () => {
     const page=listing(1,1);
@@ -118,7 +118,7 @@ describe('targeted BC Bid refresh', () => {
       'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/226520',
       'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/226521']);
     expect(h.calls.filter(call => call.url !== LISTING_URL).every(call =>
-      call.readTabs?.includes('Qualified Suppliers') && call.readTabs?.includes('Process Rules') && call.readTabs?.includes('Responses') && call.readTabs?.includes('Pricing'))).toBe(true);
+      call.readTabs?.length === 1 && call.readTabs[0] === '*')).toBe(true);
     expect(h.calls.at(-1)).toEqual({ url: LISTING_URL, pageNumber: 1, applySearch: true, searchFields: [{ selector: TARGET_FIELDS.keyword, value: '' }] });
     expect(output).toMatchObject({ listingCount: 4, newCount: 2, changedCount: 1, detailCount: 3, pageCount: 2, totalPages: 2, truncated: false, filtersCleared: true, confirmed: { organization: 'Ministry of Health' } });
     expect(h.docs.filter(doc => doc.kind === 'listing').map(doc => doc.scope)).toEqual(['bcbid-targeted', 'bcbid-targeted']);

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Btn, Select, TemporalInput } from '@zoer/plugin-ui/controls';
 import reference from '../../data/bc-bid-filter-reference.json';
+import currentTypes from '../../data/bc-bid-current-types.json';
 import historical from '../../data/bc-bid-historical-types.json';
 import { host } from '../bridge';
 import { sql } from './display';
@@ -61,9 +62,11 @@ export function MetadataFilters({params,filter}:{params:URLSearchParams;filter:(
     {options.isPending && <p>Reading saved filter values…</p>}
     <div className="pc-extra-fields">
       {select('officialRegion','BC Bid region',reference.regions.map(t=>[t.code,`${t.title} · ${t.level.replace(/-/g,' ')} · ${t.code}`]),true)}
-      {select('category','Industry category',categories,true)}
+      {select('industryCategory','Industry category',reference.industryCategories.map(t=>[t.title,t.title]))}
+      {select('currentType','Opportunity type',currentTypes.types.map(t=>[t.code,t.title]))}
+      {select('category','Saved category',categories,true)}
       {select('region','Saved location',options.data?.region??[])}
-      {select('opportunityType','Opportunity type',options.data?.opportunityType??[],true)}
+      {select('opportunityType','Notice subtype',options.data?.opportunityType??[],true)}
       {select('historicalType','Historical opportunity type',[...types],true)}
       {select('gsin','Historical GSIN code',options.data?.gsin??[])}
       {select('status','Source status',options.data?.status??[],true)}

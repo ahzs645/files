@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.35.5",
+  "version": "0.36.0",
   "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -308,7 +308,7 @@
           "timeoutMs": 300000,
           "maxMemoryMb": 256,
           "maxOutputBytes": 2097152,
-          "maxBrowserPages": 25
+          "maxBrowserPages": 50
         },
         "idempotent": false,
         "id": "scrape.sample",
@@ -708,7 +708,7 @@
           "timeoutMs": 3600000,
           "maxMemoryMb": 512,
           "maxOutputBytes": 67108864,
-          "maxBrowserPages": 400
+          "maxBrowserPages": 700
         },
         "idempotent": false,
         "inputSchema": {
@@ -768,7 +768,7 @@
           "timeoutMs": 3600000,
           "maxMemoryMb": 512,
           "maxOutputBytes": 67108864,
-          "maxBrowserPages": 480
+          "maxBrowserPages": 720
         },
         "idempotent": false,
         "inputSchema": {
@@ -809,6 +809,34 @@
                 "Construction",
                 "Goods",
                 "Services"
+              ]
+            },
+            "opportunityType": {
+              "type": "string",
+              "enum": [
+                "Contract Award Notice",
+                "Invitation to Bid",
+                "Invitation to Offer",
+                "Invitation to Quote",
+                "Invitation to Tender",
+                "Joint Solutions Request for Proposal",
+                "Limited Tendering",
+                "Negotiated Procurement",
+                "Notice of Intent",
+                "Notice of Sale",
+                "Notice to Vendors",
+                "Other",
+                "Request for Information",
+                "Request for Information and Qualifications",
+                "Request for Proposal",
+                "Request for Qualifications",
+                "Request for Standing Arrangement",
+                "Request for Submissions",
+                "Request for Supplier Qualifications",
+                "Request for Supply Arrangement",
+                "Request for Tenders",
+                "Statement of Work",
+                "Timber Auction"
               ]
             }
           },
@@ -864,8 +892,41 @@
                     "Goods",
                     "Services"
                   ]
+                },
+                "opportunityType": {
+                  "type": "string",
+                  "enum": [
+                    "Contract Award Notice",
+                    "Invitation to Bid",
+                    "Invitation to Offer",
+                    "Invitation to Quote",
+                    "Invitation to Tender",
+                    "Joint Solutions Request for Proposal",
+                    "Limited Tendering",
+                    "Negotiated Procurement",
+                    "Notice of Intent",
+                    "Notice of Sale",
+                    "Notice to Vendors",
+                    "Other",
+                    "Request for Information",
+                    "Request for Information and Qualifications",
+                    "Request for Proposal",
+                    "Request for Qualifications",
+                    "Request for Standing Arrangement",
+                    "Request for Submissions",
+                    "Request for Supplier Qualifications",
+                    "Request for Supply Arrangement",
+                    "Request for Tenders",
+                    "Statement of Work",
+                    "Timber Auction"
+                  ]
                 }
               }
+            },
+            {
+              "required": [
+                "opportunityType"
+              ]
             }
           ]
         },

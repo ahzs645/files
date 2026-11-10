@@ -1,3 +1,4 @@
+import {sourceMetadata} from './source-metadata';
 import { ENRICHMENT_KEY, ENRICHMENT_VERSION, enrichNotice, enrichmentChanged } from '../dashboard/procurement/enrich';
 import { isPauseError } from './pause';
 
@@ -33,8 +34,9 @@ export async function backfillEnrichment(host: Host, input: EnrichmentInput, run
       const records: any[] = [];
       let bytes = 0, last = cursor, seen = 0;
       for (const row of page.records) {
-        if (enrichmentChanged(row.data)) {
-          const next = { id: row.id, kind: row.kind, title: row.title, data: enrichNotice(row.data) };
+        const metadata = sourceMetadata(row.data);
+        if (enrichmentChanged(row.data) || JSON.stringify(metadata) !== JSON.stringify(row.data)) {
+          const next = { id: row.id, kind: row.kind, title: row.title, data: enrichNotice(metadata) };
           const size = new TextEncoder().encode(JSON.stringify(next)).byteLength;
           if (records.length && bytes + size > MAX_COMMIT_BYTES) break;
           records.push(next); bytes += size;

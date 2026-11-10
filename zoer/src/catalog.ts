@@ -68,6 +68,7 @@ export async function migrateCatalog(call: Host) {
 }
 
 export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
+  let referenceRecords: any[] = [];
   const initial = await call('catalog.read', { ids: [] });
   if (!initial.primary) throw new Error('Open BC Bid to complete its database migration before scraping.');
   const now = new Date().toISOString(), time = Date.parse(now);
@@ -164,8 +165,8 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     if (doc.scope === 'all-current-public-opportunities') entries.push({ key: 'checkpoint:full', value: doc });
   } else throw new Error('Unsupported database document.');
   if (doc.kind !== 'star' && records.some(row => row.kind === 'opportunity')) {
-    const known = await call('catalog.read', { ids: ['reference-release:BCBID:filters:20261010'] });
-    if (!known.records.length) records.push(...filterReferenceRecords());
+    const known = await call('catalog.read', { ids: ['reference-release:BCBID:filters:20261010','reference-release:BCBID:current-types:20261109'] });
+    if (known.records.length < 2) { const present=new Set(known.records.map((r:any)=>r.id)); const refs=filterReferenceRecords(); const missing=refs.filter(r=>!present.has(r.id) && !present.has(r.data.releaseId)); if (records.length + missing.length <= 200) records.push(...missing); else referenceRecords=missing; }
   }
   if (doc.historicalCheckpoint) entries.push({ key: 'checkpoint:historical', value: { ...doc.historicalCheckpoint, runId } });
   if (doc.historicalReferences) records.push(...doc.historicalReferences);
@@ -187,6 +188,7 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     if (receipt.conflict) throw new Error('Catalog changed; retry transaction.');
     revision = receipt.revision;
   }
+  if (referenceRecords.length) { const seeded=await call('catalog.commit',{revision,records:referenceRecords}); if(seeded.conflict) throw new Error('Catalog changed; retry transaction.'); revision=seeded.revision; }
   const committed=await call('catalog.commit', { revision, records: classified.records, entries, history });
   if(committed.conflict) throw new Error('Catalog changed; retry transaction.');
   const inventory = awardInventories.get(call);

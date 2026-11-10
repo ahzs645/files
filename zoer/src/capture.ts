@@ -1,6 +1,6 @@
 import { parseListingPage, parseDetailPage, parseBrowserCheckPage } from '../../packages/shared/src/parsers/index';
 
-export interface PageCapture { url: string; title: string; html: string; capturedAt: string; pagination?: { currentPage: number; hasNext: boolean; visiblePages: number[] } }
+export interface PageCapture { url: string; title: string; html: string; capturedAt: string; pagination?: { currentPage: number; hasNext: boolean; visiblePages: number[] }; tabCoverage?: {mode: string; available: string[]; visited: string[]; failures: {label: string; message: string}[]; complete: boolean}; sourceTabs?: {label: string; text: string; truncated: boolean}[] }
 const BASE_URL = 'https://bcbid.gov.bc.ca';
 const text = (value: unknown) => String(value ?? '').slice(0, 1000);
 
@@ -26,7 +26,7 @@ export function parseCapture(page: PageCapture, kind: 'listing' | 'detail') {
     };
   }
   if (!/\/(?:rfp|bpm)\/process_manage_extranet\/\d+(?:\/|$)/.test(url.pathname)) throw new Error('Open a BC Bid public opportunity detail page before capturing details.');
-  const record = { ...parseDetailPage(page.html, BASE_URL, page.url), sourceCapturedAt: page.capturedAt };
+  const record = { ...parseDetailPage(page.html, BASE_URL, page.url), sourceCapturedAt: page.capturedAt, ...(page.tabCoverage ? {tabCoverage: page.tabCoverage, sourceTabs: page.sourceTabs ?? []} : {}) };
   if (!record.processId || (!record.detailFields.length && !record.descriptionText)) throw new Error('Opportunity details are not loaded yet.');
   const fields = [
     ...(record.descriptionText ? [{ label: 'Description', value: record.descriptionText }] : []),

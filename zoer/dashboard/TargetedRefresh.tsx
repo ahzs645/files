@@ -5,6 +5,8 @@ import { savedBcBidBuyers, startTargetedRefresh, targetedReceipt, useWorkspace }
 import { PAUSED_FOR_UPDATE } from './model';
 import { BC_REGIONS, receiptSummary } from './targeted';
 
+import currentTypes from '../data/bc-bid-current-types.json';
+
 const OTHER = '__other__';
 
 /** Picker over known names with a typed fallback: a buyer with no saved notices is exactly the one worth refreshing. */
@@ -33,6 +35,7 @@ export function TargetedRefreshPanel() {
   const [region, setRegion] = useState('');
   const [keyword, setKeyword] = useState('');
   const [industryCategory,setIndustryCategory] = useState('');
+  const [opportunityType,setOpportunityType] = useState('');
   const [pages, setPages] = useState(5);
   const [details, setDetails] = useState(true);
   const [pending, setPending] = useState(false);
@@ -47,11 +50,11 @@ export function TargetedRefreshPanel() {
   const active = model.runs.find(run => ['running', 'stopping'].includes(run.status));
   const run = runId ? model.runs.find(item => item._id === runId) : undefined;
   const receipt = receiptSummary(targetedReceipt());
-  const ready = !!(organization.trim() || region.trim() || keyword.trim() || industryCategory);
+  const ready = !!(organization.trim() || region.trim() || keyword.trim() || industryCategory || opportunityType);
   const browserCheck = /browser check|verification/i.test(`${run?.errorMessage ?? ''} ${receipt?.error ?? ''}`);
   const start = async () => {
     setPending(true); setError(undefined); setRunId(undefined);
-    try { setRunId(await startTargetedRefresh({ organization: organization.trim(), region: region.trim(), keyword: keyword.trim(), industryCategory, maxPages: pages, details })); }
+    try { setRunId(await startTargetedRefresh({ organization: organization.trim(), region: region.trim(), keyword: keyword.trim(), industryCategory, opportunityType, maxPages: pages, details })); }
     catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setPending(false); }
   };
@@ -66,6 +69,7 @@ export function TargetedRefreshPanel() {
         options={(buyers ?? []).map(row => ({ value: row.name, label: `${row.name} (${row.count})` }))} />
       <NamePicker label="Region" empty="Any region" disabled={pending} value={region} onChange={setRegion} options={BC_REGIONS.map(name => ({ value: name, label: name }))} />
       <NamePicker label="Industry category" empty="Any category" disabled={pending} value={industryCategory} onChange={setIndustryCategory} options={['Construction','Goods','Services'].map(value=>({value,label:value}))} />
+      <div className="bid-targeted-field"><label htmlFor="bid-targeted-type">Opportunity type</label><Select id="bid-targeted-type" value={opportunityType} onChange={event=>setOpportunityType(event.target.value)} disabled={pending}><option value="">Any opportunity type</option>{currentTypes.types.map(t=><option key={t.code} value={t.title}>{t.title}</option>)}</Select></div>
       <div className="bid-targeted-field"><label htmlFor="bid-targeted-keyword">Keyword</label>
         <input id="bid-targeted-keyword" type="search" maxLength={200} placeholder="Optional" value={keyword} disabled={pending} onChange={event => setKeyword(event.target.value)} /></div>
       <div className="bid-targeted-field bid-targeted-pages"><label htmlFor="bid-targeted-pages">Pages</label>
