@@ -1,0 +1,478 @@
+{
+  "sourceUrl": "https://bcbid.gov.bc.ca/page.aspx/en/rfp/request_browse_public",
+  "capturedAt": "2026-11-09",
+  "currentOpportunityTypeGroups": [
+    {
+      "code": "can",
+      "title": "Contract Award Notice"
+    },
+    {
+      "code": "itb",
+      "title": "Invitation to Bid"
+    },
+    {
+      "code": "io",
+      "title": "Invitation to Offer"
+    },
+    {
+      "code": "itq",
+      "title": "Invitation to Quote"
+    },
+    {
+      "code": "itt",
+      "title": "Invitation to Tender"
+    },
+    {
+      "code": "jsrfp",
+      "title": "Joint Solutions Request for Proposal"
+    },
+    {
+      "code": "lt",
+      "title": "Limited Tendering"
+    },
+    {
+      "code": "np",
+      "title": "Negotiated Procurement"
+    },
+    {
+      "code": "noi",
+      "title": "Notice of Intent"
+    },
+    {
+      "code": "sale",
+      "title": "Notice of Sale"
+    },
+    {
+      "code": "ntv",
+      "title": "Notice to Vendors"
+    },
+    {
+      "code": "other",
+      "title": "Other"
+    },
+    {
+      "code": "rfi",
+      "title": "Request for Information"
+    },
+    {
+      "code": "rfiq",
+      "title": "Request for Information and Qualifications"
+    },
+    {
+      "code": "rfp",
+      "title": "Request for Proposal"
+    },
+    {
+      "code": "rfq",
+      "title": "Request for Qualifications"
+    },
+    {
+      "code": "rso",
+      "title": "Request for Standing Arrangement"
+    },
+    {
+      "code": "rfs",
+      "title": "Request for Submissions"
+    },
+    {
+      "code": "rfsq",
+      "title": "Request for Supplier Qualifications"
+    },
+    {
+      "code": "rfsa",
+      "title": "Request for Supply Arrangement"
+    },
+    {
+      "code": "Rft",
+      "title": "Request for Tenders"
+    },
+    {
+      "code": "sow",
+      "title": "Statement of Work"
+    },
+    {
+      "code": "ta",
+      "title": "Timber Auction"
+    }
+  ],
+  "historicalOpportunityTypes": [
+    {
+      "code": "AFS",
+      "title": "Application for Sponsorship"
+    },
+    {
+      "code": "Climate",
+      "title": "Applications for Climate Action Contest Sponsorship"
+    },
+    {
+      "code": "DirectAward",
+      "title": "Direct Award"
+    },
+    {
+      "code": "ITB",
+      "title": "Invitation to Bid"
+    },
+    {
+      "code": "ITO",
+      "title": "Invitation to Offer"
+    },
+    {
+      "code": "SUR",
+      "title": "Invitation to Quote"
+    },
+    {
+      "code": "ITT",
+      "title": "Invitation to Tender"
+    },
+    {
+      "code": "JSP",
+      "title": "Joint Solutions Request for Proposal"
+    },
+    {
+      "code": "LT",
+      "title": "Limited Tendering"
+    },
+    {
+      "code": "NRFP",
+      "title": "Negotiated Request for Proposal"
+    },
+    {
+      "code": "NOI",
+      "title": "Notice of Intent"
+    },
+    {
+      "code": "NTV",
+      "title": "Notice to Vendors"
+    },
+    {
+      "code": "Onboarding",
+      "title": "Onboarding"
+    },
+    {
+      "code": "OSNRFP",
+      "title": "Opportunity Statement NRFP"
+    },
+    {
+      "code": "ROI",
+      "title": "Registration of Interest"
+    },
+    {
+      "code": "MSO",
+      "title": "Request for Corporate Supply Arrangement"
+    },
+    {
+      "code": "REI",
+      "title": "Request for Expressions of Interest"
+    },
+    {
+      "code": "RFA",
+      "title": "Request for Framework Agreement"
+    },
+    {
+      "code": "RFI",
+      "title": "Request for Information"
+    },
+    {
+      "code": "RFIQ",
+      "title": "Request for Information and Qualification"
+    },
+    {
+      "code": "RMSA",
+      "title": "Request for Master Standing Agreement"
+    },
+    {
+      "code": "RFP",
+      "title": "Request for Proposal"
+    },
+    {
+      "code": "RFPS",
+      "title": "Request for Proposal (Short)"
+    },
+    {
+      "code": "RQU",
+      "title": "Request for Qualifications"
+    },
+    {
+      "code": "RFQ",
+      "title": "Request for Quotation"
+    },
+    {
+      "code": "RSO",
+      "title": "Request for Standing Offer"
+    },
+    {
+      "code": "RFS",
+      "title": "Request for Submissions"
+    },
+    {
+      "code": "RFSQ",
+      "title": "Request for Supplier Qualifications"
+    },
+    {
+      "code": "RSA",
+      "title": "Request for Supply Arrangement"
+    },
+    {
+      "code": "RFT",
+      "title": "Request for Tenders"
+    },
+    {
+      "code": "SRFP",
+      "title": "Short-form Request for Proposal"
+    },
+    {
+      "code": "SofW",
+      "title": "Statement of Work"
+    },
+    {
+      "code": "SFS",
+      "title": "Surplus for Sale"
+    }
+  ],
+  "industryCategories": [
+    {
+      "code": "Construction",
+      "title": "Construction"
+    },
+    {
+      "code": "aGoods",
+      "title": "Goods"
+    },
+    {
+      "code": "bServices",
+      "title": "Services"
+    }
+  ],
+  "bcRegions": [
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/",
+      "sourceCode": "areareg;CA_STATE_BC",
+      "title": "British Columbia"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R1/",
+      "sourceCode": "areaecon;CA_BC_R1",
+      "title": "Cariboo"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R1/CA_BC_5941/",
+      "sourceCode": "areadept;CA_BC_5941",
+      "title": "Cariboo"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R1/CA_BC_5953/",
+      "sourceCode": "areadept;CA_BC_5953",
+      "title": "Fraser-Fort George"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R2/",
+      "sourceCode": "areaecon;CA_BC_R2",
+      "title": "Kootenay"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R2/CA_BC_5903/",
+      "sourceCode": "areadept;CA_BC_5903",
+      "title": "Central Kootenay"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R2/CA_BC_5901/",
+      "sourceCode": "areadept;CA_BC_5901",
+      "title": "East Kootenay"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R2/CA_BC_5905/",
+      "sourceCode": "areadept;CA_BC_5905",
+      "title": "Kootenay Boundary"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R3/",
+      "sourceCode": "areaecon;CA_BC_R3",
+      "title": "Lower Mainland/Southwest"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R3/CA_BC_5909/",
+      "sourceCode": "areadept;CA_BC_5909",
+      "title": "Fraser Valley"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R3/CA_BC_5915/",
+      "sourceCode": "areadept;CA_BC_5915",
+      "title": "Greater Vancouver"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R3/CA_BC_5931/",
+      "sourceCode": "areadept;CA_BC_5931",
+      "title": "Squamish-Lillooet"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R3/CA_BC_5929/",
+      "sourceCode": "areadept;CA_BC_5929",
+      "title": "Sunshine Coast"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R4/",
+      "sourceCode": "areaecon;CA_BC_R4",
+      "title": "Nechako"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R4/CA_BC_5951/",
+      "sourceCode": "areadept;CA_BC_5951",
+      "title": "Bulkley-Nechako"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R4/CA_BC_5957/",
+      "sourceCode": "areadept;CA_BC_5957",
+      "title": "Stikine"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R5/",
+      "sourceCode": "areaecon;CA_BC_R5",
+      "title": "North Coast"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R5/CA_BC_5949/",
+      "sourceCode": "areadept;CA_BC_5949",
+      "title": "Kitimat-Stikine"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R5/CA_BC_5947/",
+      "sourceCode": "areadept;CA_BC_5947",
+      "title": "North Coast"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R6/",
+      "sourceCode": "areaecon;CA_BC_R6",
+      "title": "Northeast"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R6/CA_BC_5959/",
+      "sourceCode": "areadept;CA_BC_5959",
+      "title": "Northern Rockies"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R6/CA_BC_5955/",
+      "sourceCode": "areadept;CA_BC_5955",
+      "title": "Peace River"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R7/",
+      "sourceCode": "areaecon;CA_BC_R7",
+      "title": "Thompson/Okanagan"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R7/CA_BC_5935/",
+      "sourceCode": "areadept;CA_BC_5935",
+      "title": "Central Okanagan"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R7/CA_BC_5939/",
+      "sourceCode": "areadept;CA_BC_5939",
+      "title": "Columbia-Shuswap"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R7/CA_BC_5937/",
+      "sourceCode": "areadept;CA_BC_5937",
+      "title": "North Okanagan"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R7/CA_BC_5907/",
+      "sourceCode": "areadept;CA_BC_5907",
+      "title": "Okanagan-Similkameen"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R7/CA_BC_5933/",
+      "sourceCode": "areadept;CA_BC_5933",
+      "title": "Thompson-Nicola"
+    },
+    {
+      "disabled": "true",
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/",
+      "sourceCode": "areaecon;CA_BC_R8",
+      "title": "Vancouver Island and Coast"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5923/",
+      "sourceCode": "areadept;CA_BC_5923",
+      "title": "Alberni-Clayoquot"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5917/",
+      "sourceCode": "areadept;CA_BC_5917",
+      "title": "Capital"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5945/",
+      "sourceCode": "areadept;CA_BC_5945",
+      "title": "Central Coast"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5926/",
+      "sourceCode": "areadept;CA_BC_5926",
+      "title": "Comox Valley"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5919/",
+      "sourceCode": "areadept;CA_BC_5919",
+      "title": "Cowichan Valley"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5943/",
+      "sourceCode": "areadept;CA_BC_5943",
+      "title": "Mount Waddington"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5921/",
+      "sourceCode": "areadept;CA_BC_5921",
+      "title": "Nanaimo"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5927/",
+      "sourceCode": "areadept;CA_BC_5927",
+      "title": "qathet"
+    },
+    {
+      "disabled": null,
+      "id": "/h_area_hierarchy/NA/CA/CA_STATE_BC/CA_BC_R8/CA_BC_5924/",
+      "sourceCode": "areadept;CA_BC_5924",
+      "title": "Strathcona"
+    }
+  ],
+  "capturedTimezone": "America/Vancouver",
+  "purpose": "Read-only observation of the live public pickers; not a runtime reference release or a claim that every notice has these classifications."
+}
