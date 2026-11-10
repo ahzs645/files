@@ -113,3 +113,12 @@ describe('public BC Bid historical archive', () => {
     expect(() => validateHistoricalCheckpoint({ ...cp(), complete: true })).toThrow('Invalid');
   });
 });
+
+it('replays an exact native navigation timeout with backoff while browser checks still need the user',async()=>{
+ const db=database();db.entries.set(HISTORICAL_KEY,cp());
+ const result:any=await run(db,async()=>{throw Error('Native browser goto failed (400). [timeout; TimeoutError]');});
+ expect(result).toMatchObject({resumable:'retry',retryAfterMs:60000,error:{code:'historical_navigation_timeout'}});
+ expect(result.checkpoint).toEqual(cp());expect(db.records.size).toBe(0);
+ expect((await run(db,async()=>{throw Error('Complete the browser check manually');}) as any).resumable).toBe('needs-user');
+ await expect(run(db,async()=>{throw Error('Native browser goto failed (400). [unknown; Error]');})).rejects.toThrow('unknown');
+});

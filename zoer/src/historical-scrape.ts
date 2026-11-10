@@ -182,6 +182,13 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
       resumable: 'retry', checkpoint: before,
       error: { code: 'historical_search_not_ready', message: 'The public historical search control did not become ready. Saved progress is preserved.' },
     };
+    // Native navigation timeouts are transport failures, not proof of a browser
+    // challenge. Replay only this exact read failure through the host's bounded
+    // consecutive retry policy; retain ordinary pacing and the committed cursor.
+    if (/^Native browser goto failed \(400\)\. \[timeout; TimeoutError\]$/.test(message)) return {
+      resumable: 'retry', checkpoint: before, retryAfterMs: 60000,
+      error: { code: 'historical_navigation_timeout', message: 'The public historical page timed out. Saved progress is preserved.' },
+    };
     const transient = transientFailure(error);
     if (transient) return { resumable: 'retry', checkpoint: before, error: { code: transient.code, message: transient.message }, ...(transient.retryAfterMs !== undefined ? { retryAfterMs: transient.retryAfterMs } : {}) };
     // Persist status only from the latest committed cursor, never an unsaved mutated page.
