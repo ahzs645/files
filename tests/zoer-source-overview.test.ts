@@ -86,7 +86,8 @@ describe('schedules', () => {
     const stopped = scheduleState(row({ enabled: false, lastStatus: 'failed', error: 'CanadaBuys returned HTTP 503.' }), now);
     expect(stopped).toMatchObject({ tone: 'warn', status: 'Stopped by Zoer', error: 'CanadaBuys returned HTTP 503.', last: 'Last scheduled run failed' });
     expect(stopped.stopped).toMatch(/did not succeed/);
-    expect(stopReason('Plugin or settings changed. Review and save this schedule again.')).toMatch(/plugin was updated/);
+    expect(stopReason('Plugin or settings changed. Review and save this schedule again.')).toMatch(/Older Zoer versions paused schedules/);
+    expect(stopReason('Scheduled action, permissions or settings changed. Review and save this schedule again.')).toMatch(/Compatible version and interface updates keep schedules enabled/);
     expect(stopReason('Scheduled batch has failed records. Review its batch history.')).toMatch(/failed items/);
     expect(stopReason('Restored from backup. Choose destination connections and review before enabling.')).toMatch(/backup/);
   });
