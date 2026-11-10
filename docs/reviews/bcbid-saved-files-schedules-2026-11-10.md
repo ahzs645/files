@@ -2,6 +2,8 @@
 
 Observed November 10, 2026 (America/Vancouver). This is a dated verification receipt; historical collection remains incomplete.
 
+These sections record the earlier release milestones. For the later 0.36.7 collector, attachment recovery and verified partial portal publications, see [historical continuation](bcbid-historical-continuation-2026-11-10.md).
+
 ## Why schedules stopped, and the replacement behavior
 
 Zoer hashed the entire plugin manifest and settings as the schedule's approval identity. A version bump, display-only change or unrelated action could invalidate every schedule. A temporarily disabled plugin during upgrade could also erase the enabled setting.
