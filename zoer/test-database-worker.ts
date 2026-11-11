@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { newAwardRanges } from './src/award-ranges';
+import { awardSearchUpperBound, newAwardRanges } from './src/award-ranges';
 import { LISTING_URL } from './src/scrape';
 const records=new Map<string,any>(),state=new Map<string,any>();let revision=0,primary=false;
 const opportunities=()=>[...records.values()].filter(row=>row.kind==='opportunity');
@@ -38,7 +38,7 @@ async function run(actionId:string,input:any={}) {
         }
         if(actionId==='awards.history') {
           const from=input.window?.from ?? '2015-01-01';
-          const to=input.window?.to ?? '2015-01-31';
+          const to=awardSearchUpperBound(input.window?.to ?? '2015-01-31');
           assert.equal(value.searchFields[0].value,from);assert.equal(value.searchFields[1].value,to);
           result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:!input.window&&pages===1,visiblePages:[1]},html:`<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">${from}</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">${to}</li></ul></div><table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>${from}</td><td>100</td></tr></tbody></table>`};
         } else if(actionId==='scrape.targeted'&&value.url===LISTING_URL) {

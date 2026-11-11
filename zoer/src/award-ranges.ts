@@ -7,6 +7,7 @@ export interface AwardRange extends AwardWindow { complete: boolean }
 export interface AwardRangeCheckpoint {
   version: 2;
   scope: 'dated-public-awards';
+  dateFilter?: 'exclusive-upper-bound';
   ranges: AwardRange[];
   active: number;
   page: number;
@@ -29,6 +30,12 @@ function date(value: string) {
 }
 const iso = (time: number) => new Date(time).toISOString().slice(0, 10);
 
+/** BC Bid interprets a date-only maximum as the start of that day. */
+export function awardSearchUpperBound(to: string): string | undefined {
+  const end = date(to);
+  return to === '9999-12-31' ? undefined : iso(end + DAY);
+}
+
 /** Inclusive date bounds, with no gaps or shared boundary days. */
 export function splitAwardRange(range: AwardRange): [AwardRange, AwardRange] | null {
   const first = date(range.from), last = date(range.to);
@@ -43,17 +50,33 @@ export function newAwardRanges(from = '1900-01-01', to = '9999-12-31', now = new
   const year = now.getUTCFullYear();
   const boundaries = [from, ...Array.from({ length: Math.max(0, year - 2014 + 1) }, (_, i) => `${2015 + i}-01-01`).filter(d => d > from && d <= to)];
   const ranges = boundaries.map((start, i) => ({ from: start, to: i + 1 < boundaries.length ? iso(date(boundaries[i + 1]) - DAY) : to, complete: false })).reverse();
-  return { version: 2, scope: 'dated-public-awards', ranges, active: 0, page: 0, count: 0, pages: 0, complete: false, undated: 'not-verified' };
+  return { version: 2, scope: 'dated-public-awards', dateFilter: 'exclusive-upper-bound', ranges, active: 0, page: 0, count: 0, pages: 0, complete: false, undated: 'not-verified' };
 }
 export function validateAwardRanges(value: AwardRangeCheckpoint): AwardRangeCheckpoint {
   if (!value || value.version !== 2 || value.scope !== 'dated-public-awards' || value.undated !== 'not-verified' || !Array.isArray(value.ranges) || !value.ranges.length || value.ranges.length > 10000 || !Number.isInteger(value.active) || value.active < 0 || value.active > value.ranges.length || typeof value.complete !== 'boolean') throw new Error('Invalid award range checkpoint.');
   for (const n of [value.page, value.count, value.pages]) if (!Number.isSafeInteger(n) || n < 0) throw new Error('Invalid award range checkpoint.');
+  if (value.dateFilter !== undefined && value.dateFilter !== 'exclusive-upper-bound') throw new Error('Invalid award date coverage.');
   for (const r of value.ranges) if (typeof r.complete !== 'boolean' || date(r.from) > date(r.to)) throw new Error('Invalid award range checkpoint.');
   const sorted = [...value.ranges].sort((a, b) => a.from.localeCompare(b.from));
   for (let i = 1; i < sorted.length; i++) if (date(sorted[i - 1].to) + DAY !== date(sorted[i].from)) throw new Error('Award ranges must have no gaps or overlaps.');
   const active = value.ranges.findIndex(r => !r.complete);
   if (value.active !== (active < 0 ? value.ranges.length : active) || value.complete !== (active < 0)) throw new Error('Invalid award range completion.');
   return structuredClone(value);
+}
+
+function reopenLegacyUpperBounds(state: AwardRangeCheckpoint) {
+  if (state.dateFilter) return;
+  state.ranges = state.ranges.flatMap(range => {
+    if (!range.complete) return [range];
+    // Old searches used the last day as the source maximum and may have
+    // missed its awards. The already checked interior remains covered.
+    const upperDay = { from: range.to, to: range.to, complete: false };
+    return range.from === range.to ? [upperDay] : [{ ...range, to: iso(date(range.to) - DAY) }, upperDay];
+  });
+  state.dateFilter = 'exclusive-upper-bound';
+  state.active = state.ranges.findIndex(range => !range.complete);
+  state.complete = false;
+  state.page = 0;
 }
 
 function nextUnfinishedRange(state: AwardRangeCheckpoint, window?: AwardWindow) {
@@ -75,7 +98,7 @@ function narrowUnfinishedRange(state: AwardRangeCheckpoint, index: number, windo
 /**
  * A resumed run replays only its unfinished bounded range. Completed ranges are
  * never inferred from record counts. The host atomically saves rows + checkpoint.
- * Capture adapters must apply and verify BOTH inclusive public date controls.
+ * Capture adapters verify the public filters for the requested inclusive range.
  */
 export async function scrapeAwardRanges(
   capture: (request: AwardRangeCapture) => Promise<PageCapture>,
@@ -86,6 +109,8 @@ export async function scrapeAwardRanges(
   let state = validateAwardRanges(resume), artifactId = '';
   const maxPages = limits.maxPages ?? 3500, rangePages = limits.rangePages ?? 40, maxRanges = limits.maxRanges ?? 10000;
   for (const n of [maxPages, rangePages, maxRanges]) if (!Number.isInteger(n) || n < 1) throw new Error('Invalid award range limit.');
+  reopenLegacyUpperBounds(state);
+  if (state.ranges.length > maxRanges) throw new Error('Saved award ranges exceed the range limit.');
   const window = limits.window;
   if (window && (date(window.from) > date(window.to) ||
     !state.ranges.some(range => range.from <= window.from && range.to >= window.from) ||

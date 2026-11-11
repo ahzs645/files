@@ -7,6 +7,7 @@ import { enrichNotice } from '../dashboard/procurement/enrich';
 import { classifyCatalogRecords } from './taxonomy';
 import { listingDetailRefresh } from './detail-policy';
 import { buildContractAwardImportKey, buildLegacyContractAwardImportKey, buildContractAwardSearchText, contractAwardIdentity, deduplicateContractAwards, normalizeContractAwardImportRecord, parseContractAwardMoney, reconcileContractAwardIdentity } from '../../packages/shared/src/contractAwards';
+import type { ContractAwardImportRecord } from '../../packages/shared/src/types';
 
 type Host = (method: string, input: any) => Promise<any>;
 type AwardInventory = { revision: number; byIdentity: Map<string, Set<string>>; byId: Map<string, string> };
@@ -22,6 +23,30 @@ function indexAward(inventory: AwardInventory, id: string, data: any) {
   inventory.byId.set(id, identity.key);
   if (!inventory.byIdentity.has(identity.key)) inventory.byIdentity.set(identity.key, new Set());
   inventory.byIdentity.get(identity.key)!.add(id);
+}
+type CatalogAwardInput = ContractAwardImportRecord & { sourceUrl?: string | null; starred?: boolean };
+type SavedAward = CatalogAwardInput & {
+  importKey: string;
+  _id?: string;
+  _creationTime?: number;
+  sourceFileName?: string;
+  createdAt?: number;
+  updatedAt?: number;
+};
+function awardFacts(row: ContractAwardImportRecord) {
+  const { sourceId, sourceAwardId: _sourceAwardId, ...facts } = normalizeContractAwardImportRecord(row);
+  return JSON.stringify({ sourceId: (sourceId ?? 'bc-bid').toLowerCase(), ...facts });
+}
+function reconcilePublicAward(row: ContractAwardImportRecord, existing: SavedAward[], allowLegacy: boolean) {
+  const identity = contractAwardIdentity(row);
+  const identified = existing.filter(item => item.sourceAwardId && contractAwardIdentity(item).key === identity.key);
+  // Two migrated awards can share a legacy key while naming different suppliers
+  // in the address field. Adopt an old row only when its saved facts identify it.
+  const matches = identified.length || !allowLegacy ? identified : existing.filter(item =>
+    !item.sourceAwardId && awardFacts(item) === awardFacts(row));
+  if (matches.length > 1) throw new Error('Public award matches multiple saved records; reconcile their identities before importing.');
+  const previous = matches[0];
+  return { importKey: previous?.importKey ?? identity.key, previous, identity };
 }
 const defaults = { descriptionText: '', detailFields: [], attachments: [], addenda: [], commodities: [], searchText: '' };
 export const catalogRow = (kind: 'award' | 'opportunity', row: any) => ({ id: kind + ':' + (kind === 'award' ? row.importKey : row.sourceKey), kind, title: kind === 'award' ? row.opportunityDescription : row.description,
@@ -80,13 +105,24 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     if (!found) throw new Error('The saved bid no longer exists.');
     records = [{ ...found, data: { ...found.data, starred: doc.starred } }];
   } else if (doc.kind === 'awards') {
-    deduplicateContractAwards(doc.records);
-    const ids = new Set<string>(doc.records.flatMap((row: any) => [buildContractAwardImportKey(row), buildLegacyContractAwardImportKey(row)]).map((key: string) => 'award:' + key));
-    const previous = new Map<string, any>();
+    const awardRows = deduplicateContractAwards<CatalogAwardInput>(doc.records);
+    const publicHistory = doc.scope === 'public-award-history';
+    const factsCounts = new Map<string, number>();
+    const ids = new Set<string>();
+    for (const row of awardRows) {
+      ids.add('award:' + buildContractAwardImportKey(row));
+      ids.add('award:' + buildLegacyContractAwardImportKey(row));
+      if (publicHistory && row.sourceAwardId) {
+        ids.add('award:' + buildContractAwardImportKey({ ...row, sourceAwardId: undefined }));
+        const facts = awardFacts(row);
+        factsCounts.set(facts, (factsCounts.get(facts) ?? 0) + 1);
+      }
+    }
+    const previous = new Map<string, SavedAward>();
     // Legacy keys contained mutable facts. Page once over the complete award inventory:
     // exact field lookups miss normalized anchors and can silently omit byte-limited matches.
     // Cache only identity-to-ID references, not complete source records.
-    const wanted = new Set<string>(doc.records.map((row: any) => contractAwardIdentity(row)).filter((identity: any) => identity.status !== 'legacy_unresolved').map((identity: any) => identity.key));
+    const wanted = new Set(awardRows.map(contractAwardIdentity).filter(identity => identity.status !== 'legacy_unresolved').map(identity => identity.key));
     if (wanted.size) {
       let inventory = awardInventories.get(call);
       if (!inventory || inventory.revision !== initial.revision) {
@@ -116,8 +152,11 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
       for (const row of page.records) previous.set(row.id, row.data);
       offset += size;
     }
-    records = doc.records.map((row: any) => {
-      const { importKey, previous: old, identity } = reconcileContractAwardIdentity(row, [...previous.values()]);
+    const savedAwards = [...previous.values()];
+    records = awardRows.map(row => {
+      const { importKey, previous: old, identity } = publicHistory && row.sourceAwardId
+        ? reconcilePublicAward(row, savedAwards, factsCounts.get(awardFacts(row)) === 1)
+        : reconcileContractAwardIdentity(row, savedAwards);
       const contractValueParsed = parseContractAwardMoney(row.contractValueText, { currency: row.currency });
       const sourceRevision = createHash('sha256').update(JSON.stringify(normalizeContractAwardImportRecord(row))).digest('hex');
       const candidate = catalogRow('award', { ...old, ...row, _id: importKey, _creationTime: old?._creationTime ?? time, importKey, identityKey: identity.key, identityStatus: identity.status, identityVersion: identity.version, sourceRevision,

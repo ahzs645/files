@@ -90,6 +90,33 @@ describe('bounded award history', () => {
     })).rejects.toThrow('outside the saved checkpoint');
     expect(docs).toHaveLength(0);
   });
+  it('reopens the last day of old completed ranges once and preserves their interiors', async () => {
+    const old = start('2024-01-01', '2026-01-31');
+    delete old.dateFilter;
+    old.ranges[0].complete = old.ranges[1].complete = true;
+    old.active = 2;
+    const docs: any[] = [];
+    const calls: unknown[] = [];
+    const capture = async (request: { range: { from: string; to: string } }) => {
+      calls.push(request.range);
+      return page(1, 1, 'A', request.range.from);
+    };
+    const window = { from: '2025-01-01', to: '2025-12-31' };
+    const result = await scrapeAwardRanges(capture, store(docs), old, { window });
+    expect(calls).toEqual([{ from: '2025-12-31', to: '2025-12-31' }]);
+    expect(result).toMatchObject({ complete: false, window: { ...window, complete: true } });
+    const saved = validateAwardRanges(docs.at(-1).checkpoint);
+    expect(saved.dateFilter).toBe('exclusive-upper-bound');
+    expect(saved.ranges).toEqual([
+      { from: '2026-01-01', to: '2026-01-30', complete: true },
+      { from: '2026-01-31', to: '2026-01-31', complete: false },
+      { from: '2025-01-01', to: '2025-12-30', complete: true },
+      { from: '2025-12-31', to: '2025-12-31', complete: true },
+      { from: '2024-01-01', to: '2024-12-31', complete: false },
+    ]);
+    await scrapeAwardRanges(capture, store(docs), saved, { window });
+    expect(calls).toHaveLength(1);
+  });
   it('accepts identical adjacent source pages only after same-page confirmation', async () => {
     const calls:any[]=[],docs:any[]=[];
     const result=await scrapeAwardRanges(async r=>{calls.push(r);return page(r.page,2);},store(docs),start());
@@ -137,16 +164,25 @@ describe('bounded award history', () => {
   });
 });
 
-it('sends both inclusive date bounds to the host and never clicks during confirmation', async () => {
+it('sends the day after the requested maximum and never clicks during confirmation', async () => {
   const { awardRangeCapture } = await import('../zoer/src/award-range-capture');
   const calls:any[]=[];
-  const capture=awardRangeCapture(async options=>{calls.push(options);return {...page(),html:page().html+'<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">2026-01-01</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">2026-01-31</li></ul></div>'};},{from:'#verifiedMin',to:'#verifiedMax'});
+  const capture=awardRangeCapture(async options=>{calls.push(options);return {...page(),html:page().html+'<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">2026-01-01</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">2026-02-01</li></ul></div>'};},{from:'#verifiedMin',to:'#verifiedMax'});
   const range={from:'2026-01-01',to:'2026-01-31'};
   await capture({range,page:1,applySearch:true});
   await capture({range,page:2,applySearch:false});
   await capture({range,page:2,applySearch:false,reread:true});
-  expect(calls[0]).toMatchObject({applySearch:true,pageNumber:1,searchFields:[{selector:'#verifiedMin',value:range.from},{selector:'#verifiedMax',value:range.to}]});
+  expect(calls[0]).toMatchObject({applySearch:true,pageNumber:1,searchFields:[{selector:'#verifiedMin',value:range.from},{selector:'#verifiedMax',value:'2026-02-01'}]});
   expect(calls[1].continuePage).toBe(2);expect(calls[2].continuePage).toBeUndefined();expect(calls[2].pageNumber).toBeUndefined();
+});
+
+it('keeps an open-ended history search within the supported date field', async () => {
+  const { awardRangeCapture, AWARD_DATE_FIELDS } = await import('../zoer/src/award-range-capture');
+  const capture = awardRangeCapture(async options => {
+    expect(options.searchFields).toEqual([{ selector: AWARD_DATE_FIELDS.from, value: '2026-01-01' }]);
+    return { ...page(), html: page().html + '<div class="iv-filter-summary"><span class="tag-label">Award Date (min) :</span><ul><li class="tag-text">2026-01-01</li></ul></div>' };
+  }, AWARD_DATE_FIELDS);
+  await capture({ range: { from: '2026-01-01', to: '9999-12-31' }, page: 1, applySearch: true });
 });
 
 it('shows range coverage and undated limits without equating processed rows with unique records', async () => {
@@ -166,5 +202,5 @@ it('recognizes the actual BC Bid empty-range layout without table headers', asyn
 it('rejects a source response that does not confirm both date filters, including an empty result', async () => {
   const { awardRangeCapture, AWARD_DATE_FIELDS }=await import('../zoer/src/award-range-capture');
   const capture=awardRangeCapture(async()=>page(),AWARD_DATE_FIELDS);
-  await expect(capture({range:{from:'2026-01-01',to:'2026-01-31'},page:1,applySearch:true})).rejects.toThrow('confirm both');
+  await expect(capture({range:{from:'2026-01-01',to:'2026-01-31'},page:1,applySearch:true})).rejects.toThrow('confirm the award date filters');
 });

@@ -12,8 +12,14 @@ export function parseAwardPage(page: PageCapture, options: { allowEmpty?: boolea
   if (options.allowEmpty && empty && page.pagination?.currentPage === 1 && !page.pagination.hasNext) return { records: [], fingerprint: createHash('sha256').update('').digest('hex') };
   const headers = grid.find('thead th').map((_, el) => $(el).text().replace(/\s+/g, ' ').trim()).get();
   for (const required of ['Opportunity Description', 'Successful Supplier', 'Award Date', 'Contract Value']) if (!headers.includes(required)) throw new Error(`Award grid is not loaded or changed: missing ${required}.`);
-  const rows = grid.find('tbody tr').toArray().map(el => $(el).children('td').map((_, td) => $(td).text().replace(/\s+/g, ' ').trim()).get()).filter(row => row.length === headers.length);
-  const records = parseContractAwardsJson(JSON.stringify({ headers, rows }));
+  const records = grid.find('tbody tr').toArray().flatMap(el => {
+    const row = $(el).children('td').map((_, td) => $(td).text().replace(/\s+/g, ' ').trim()).get();
+    if (row.length !== headers.length) return [];
+    // BC Bid keeps this record ID across different filters and page positions.
+    const sourceAwardId = /^body_x_grid_grd_tr_([1-9]\d*)$/.exec($(el).attr('id') ?? '')?.[1];
+    return parseContractAwardsJson(JSON.stringify({ headers, rows: [row] }))
+      .map(record => sourceAwardId ? { ...record, sourceAwardId } : record);
+  });
   if (!records.length && !(options.allowEmpty && /\b(?:No records? (?:found|available)|No results found)\b/i.test(grid.find('tbody').text()) && !page.pagination?.hasNext && page.pagination?.currentPage === 1)) throw new Error('The award search returned no readable records. History has not been marked complete.');
   if (!page.pagination || !Number.isInteger(page.pagination.currentPage)) throw new Error('Award pagination is unavailable.');
   return { records, fingerprint: createHash('sha256').update(records.map(buildContractAwardImportKey).join('\n')).digest('hex') };

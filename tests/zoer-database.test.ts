@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { migrateCatalog, saveCatalogDocument } from '../zoer/src/catalog';
 import { exportRecords } from '../zoer/dashboard/export';
-import { buildLegacyContractAwardImportKey } from '../packages/shared/src/contractAwards';
+import { buildContractAwardImportKey, buildLegacyContractAwardImportKey } from '../packages/shared/src/contractAwards';
+import { AWARDS_URL, parseAwardPage } from '../zoer/src/award-history';
 function database(legacy:any[]=[]){
   const records=new Map<string,any>(),state=new Map<string,any>(),history=new Map<string,any>();let revision=0,primary=false;
   const call=async(method:string,input:any):Promise<any>=>{
@@ -24,6 +25,34 @@ function database(legacy:any[]=[]){
 }
 const opportunity={sourceKey:'123',processId:'123',description:'Original',status:'Open',detailFields:[{label:'Scope',value:'Keep'}],attachments:[{url:'https://bcbid.gov.bc.ca/a.pdf'}],addenda:[]};
 describe('unified database transport',()=>{
+  it('keeps two public awards with distinct source IDs and adopts only the matching legacy row', async () => {
+    const db = database();
+    await migrateCatalog(db.call);
+    const headers = ['Opportunity ID', 'Opportunity Description', 'Successful Supplier', 'Supplier Address', 'Award Date', 'Contract Value'];
+    const html = `<table id="body_x_grid_grd"><thead><tr>${headers.map(value => `<th>${value}</th>`).join('')}</tr></thead><tbody>
+      <tr id="body_x_grid_grd_tr_22062"><td>ON-003558</td><td>Same tender</td><td>Migrated Supplier</td><td>First supplier</td><td>2020-11-09</td><td>100</td></tr>
+      <tr id="body_x_grid_grd_tr_22061"><td>ON-003558</td><td>Same tender</td><td>Migrated Supplier</td><td>Second supplier</td><td>2020-11-09</td><td>100</td></tr>
+      </tbody></table>`;
+    const records = parseAwardPage({ url: AWARDS_URL, title: 'Awards', capturedAt: '2026-11-11T03:38:00Z', html,
+      pagination: { currentPage: 1, hasNext: false, visiblePages: [] } }).records;
+    expect(records.map(row => row.sourceAwardId)).toEqual(['22062', '22061']);
+    const [first, second] = records;
+    const importKey = buildLegacyContractAwardImportKey(second);
+    expect(buildLegacyContractAwardImportKey(first)).toBe(importKey);
+    const legacyId = 'award:' + importKey;
+    const firstId = 'award:' + buildContractAwardImportKey(first);
+    const { sourceAwardId: _sourceId, ...legacy } = second;
+    db.records.set(legacyId, { id: legacyId, kind: 'award', title: legacy.opportunityDescription,
+      data: { ...legacy, importKey, starred: true, createdAt: 1 } });
+    await saveCatalogDocument(db.call, { kind: 'awards', scope: 'public-award-history', records }, 'capture');
+    expect(db.records.size).toBe(2);
+    expect(db.records.get(legacyId).data).toMatchObject({ sourceAwardId: '22061', supplierAddress: 'Second supplier', starred: true, createdAt: 1 });
+    expect(db.records.get(firstId).data).toMatchObject({ sourceAwardId: '22062', supplierAddress: 'First supplier', starred: false });
+    await saveCatalogDocument(db.call, { kind: 'awards', scope: 'public-award-history',
+      records: [{ ...second, supplierAddress: 'Second supplier corrected' }] }, 'correction');
+    expect(db.records.size).toBe(2);
+    expect(db.records.get(legacyId).data).toMatchObject({ supplierAddress: 'Second supplier corrected', starred: true });
+  });
   it('reconciles a corrected legacy award without changing its ID, reviews target, or user star',async()=>{
     const db=database();await migrateCatalog(db.call);
     const source={opportunityId:'A-1',opportunityDescription:'Original title',issuingOrganization:'Buyer',successfulSupplier:'Supplier',contractNumber:'C-1',contractValueText:'1,234.50',currency:'CAD',awardDate:'2026-01-01'};
