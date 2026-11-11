@@ -2,7 +2,8 @@ import { parseAwardPage } from './award-history';
 import type { PageCapture } from './capture';
 import { isPauseError, paused } from './pause';
 
-export interface AwardRange { from: string; to: string; complete: boolean }
+export interface AwardWindow { from: string; to: string }
+export interface AwardRange extends AwardWindow { complete: boolean }
 export interface AwardRangeCheckpoint {
   version: 2;
   scope: 'dated-public-awards';
@@ -55,6 +56,22 @@ export function validateAwardRanges(value: AwardRangeCheckpoint): AwardRangeChec
   return structuredClone(value);
 }
 
+function nextUnfinishedRange(state: AwardRangeCheckpoint, window?: AwardWindow) {
+  return state.ranges.findIndex(range => !range.complete &&
+    (!window || (range.from <= window.to && range.to >= window.from)));
+}
+
+function narrowUnfinishedRange(state: AwardRangeCheckpoint, index: number, window: AwardWindow) {
+  const range = state.ranges[index];
+  const from = range.from < window.from ? window.from : range.from;
+  const to = range.to > window.to ? window.to : range.to;
+  const before = range.from < from ? [{ ...range, to: iso(date(from) - DAY) }] : [];
+  const after = range.to > to ? [{ ...range, from: iso(date(to) + DAY) }] : [];
+  if (!before.length && !after.length) return index;
+  state.ranges.splice(index, 1, ...before, { from, to, complete: false }, ...after);
+  return index + before.length;
+}
+
 /**
  * A resumed run replays only its unfinished bounded range. Completed ranges are
  * never inferred from record counts. The host atomically saves rows + checkpoint.
@@ -64,11 +81,22 @@ export async function scrapeAwardRanges(
   capture: (request: AwardRangeCapture) => Promise<PageCapture>,
   save: (document: any) => Promise<string>,
   resume: AwardRangeCheckpoint = newAwardRanges(),
-  limits: { maxPages?: number; rangePages?: number; maxRanges?: number } = {},
+  limits: { maxPages?: number; rangePages?: number; maxRanges?: number; window?: AwardWindow } = {},
 ) {
   let state = validateAwardRanges(resume), artifactId = '';
   const maxPages = limits.maxPages ?? 3500, rangePages = limits.rangePages ?? 40, maxRanges = limits.maxRanges ?? 10000;
   for (const n of [maxPages, rangePages, maxRanges]) if (!Number.isInteger(n) || n < 1) throw new Error('Invalid award range limit.');
+  const window = limits.window;
+  if (window && (date(window.from) > date(window.to) ||
+    !state.ranges.some(range => range.from <= window.from && range.to >= window.from) ||
+    !state.ranges.some(range => range.from <= window.to && range.to >= window.to))) {
+    throw new Error('Award window is outside the saved checkpoint.');
+  }
+  const updateCoverage = () => {
+    const active = nextUnfinishedRange(state);
+    state.complete = active < 0;
+    state.active = state.complete ? state.ranges.length : active;
+  };
   let loaded = 0;
   // Last checkpoint the host committed together with its rows; a pause returns this, never unsaved progress.
   let durable = structuredClone(state);
@@ -78,10 +106,21 @@ export async function scrapeAwardRanges(
     durable = checkpoint;
   };
   try {
-  while (!state.complete) {
-    const range = state.ranges[state.active];
+  let index = nextUnfinishedRange(state, window);
+  while (index >= 0) {
+    if (window) {
+      const size = state.ranges.length;
+      const wasActive = state.active === index;
+      index = narrowUnfinishedRange(state, index, window);
+      if (state.ranges.length > maxRanges) throw new Error('Award window exceeds the saved range limit.');
+      if (wasActive && state.ranges.length !== size) state.page = 0;
+    }
+    const range = state.ranges[index];
+    const isActive = index === state.active;
+    // A single day cannot be split, so it keeps the normal page allowance.
+    const pageLimit = window && range.from !== range.to ? Math.min(rangePages, 6) : rangePages;
     let previous = '', duplicatePages = 0, number = 1;
-    state.page = 0; // Source may have shifted; never jump past unchecked rows.
+    if (isActive) state.page = 0; // Source may have shifted; replay from page one.
     while (true) {
       if (loaded >= maxPages) throw new Error('History reached this run’s page limit. Resume the unfinished date range; completed ranges are retained.');
       const request = { range: { from: range.from, to: range.to }, page: number, applySearch: number === 1 };
@@ -104,27 +143,31 @@ export async function scrapeAwardRanges(
       }
       duplicatePages = parsed.fingerprint === previous ? duplicatePages + 1 : 0;
       previous = parsed.fingerprint;
-      state.page = number; state.pages++; state.count += parsed.records.length;
-      const subdivide = page.pagination!.hasNext && (number >= rangePages || duplicatePages >= 3);
+      if (isActive) state.page = number;
+      state.pages++; state.count += parsed.records.length;
+      const subdivide = page.pagination!.hasNext && (number >= pageLimit || duplicatePages >= 3);
       if (subdivide) {
         const halves = splitAwardRange(range);
         if (!halves || state.ranges.length >= maxRanges) {
           await persist(parsed.records, page);
           throw new Error('A date range could not be completed within its safe page limit. Saved records are retained; inspect this range before continuing.');
         }
-        state.ranges.splice(state.active, 1, ...halves); state.page = 0;
+        state.ranges.splice(index, 1, ...halves);
+        if (isActive) state.page = 0;
+        updateCoverage();
         await persist(parsed.records, page); break;
       }
       if (!page.pagination!.hasNext) {
         range.complete = true;
-        state.active = state.ranges.findIndex(r => !r.complete);
-        state.complete = state.active < 0;
-        if (state.complete) state.active = state.ranges.length;
+        updateCoverage();
+        if (window && isActive) state.page = 0;
       }
       await persist(parsed.records, page);
       if (!page.pagination!.hasNext) break;
       number++;
     }
+    if (window) break;
+    index = nextUnfinishedRange(state);
   }
   } catch (error) {
     // Paused for a Zoer update. Every completed page was saved with its checkpoint; resume
@@ -132,5 +175,6 @@ export async function scrapeAwardRanges(
     if (isPauseError(error)) return paused(durable);
     throw error;
   }
-  return { artifactId, count: state.count, pages: state.pages, complete: true, scope: state.scope, undated: state.undated, ranges: state.ranges.length };
+  return { artifactId, count: state.count, pages: state.pages, complete: state.complete, scope: state.scope, undated: state.undated, ranges: state.ranges.length,
+    ...(window ? { window: { ...window, complete: nextUnfinishedRange(state, window) < 0 } } : {}) };
 }

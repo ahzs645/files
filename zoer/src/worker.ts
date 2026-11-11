@@ -104,6 +104,8 @@ try {
   } else if (request.action.id === 'awards.history') {
     if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');
     const recent = request.input?.mode === 'recent';
+    const window = request.input?.window;
+    if (window && (recent || request.input?.resume)) throw new Error('An award window uses the saved history checkpoint.');
     const checkpointKey = recent ? 'checkpoint:awards:recent' : 'checkpoint:awards';
     const state = await catalogCall('catalog.workspace', { keys: [checkpointKey] });
     const previous = state.entries.find((entry: any) => entry.key === checkpointKey)?.value;
@@ -115,13 +117,13 @@ try {
     const from = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10);
     // Old page-number checkpoints cannot prove coverage of any date range.
     // Retain them for reference, and merge records from the bounded backfill.
-    const resume = supplied?.version === 2 ? supplied : ownProgress || (!recent && previous?.version === 2) ? previous : recent ? newAwardRanges(from, today) : newAwardRanges();
+    const resume = !window && supplied?.version === 2 ? supplied : ownProgress || (!recent && previous?.version === 2) ? previous : recent ? newAwardRanges(from, today) : newAwardRanges();
     let archiveLegacy = !recent && previous && previous.version !== 2 ? previous : undefined;
     const output = await scrapeAwardRanges(awardRangeCapture(options => call('browser.capture-url', { ...options, ticket: browserTicket }), AWARD_DATE_FIELDS), async document => {
       const id = await save({ ...document, checkpointKey, ...(archiveLegacy ? { legacyCheckpoint: archiveLegacy } : {}) });
       archiveLegacy = undefined;
       return id;
-    }, resume);
+    }, resume, { window });
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'awards.import') {
     if (!Array.isArray(request.input?.records) || request.input.records.length > 200) throw new Error('Import at most 200 award rows per batch.');

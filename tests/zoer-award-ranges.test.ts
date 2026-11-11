@@ -39,6 +39,57 @@ describe('bounded award history', () => {
     await scrapeAwardRanges(async r=>{calls.push(r);return page(1,1,'A',r.range.from);},store(docs),docs.at(-1).checkpoint);
     expect(calls.map(c=>c.range)).toEqual([{from:'2026-01-01',to:'2026-01-16'},{from:'2026-01-17',to:'2026-01-31'}]);
   });
+  it('advances one intersecting range per run without changing coverage outside the window', async () => {
+    const state = start('2024-01-01', '2026-01-31');
+    state.ranges[0].complete = true;
+    state.active = 1;
+    state.page = 12;
+    const window = { from: '2024-04-01', to: '2025-12-15' };
+    const docs: any[] = [];
+    const calls: string[] = [];
+    const capture = async (request: { range: { from: string; to: string } }) => {
+      calls.push(request.range.from + '/' + request.range.to);
+      return page(1, 1, 'A', request.range.from);
+    };
+    const first = await scrapeAwardRanges(capture, store(docs), state, { window });
+    const next = validateAwardRanges(docs.at(-1).checkpoint);
+    expect(first).toMatchObject({ complete: false, window: { ...window, complete: false } });
+    expect(next.ranges).toEqual([
+      { from: '2026-01-01', to: '2026-01-31', complete: true },
+      { from: '2025-01-01', to: '2025-12-15', complete: true },
+      { from: '2025-12-16', to: '2025-12-31', complete: false },
+      { from: '2024-01-01', to: '2024-12-31', complete: false },
+    ]);
+    expect(next.page).toBe(0);
+    const second = await scrapeAwardRanges(capture, store(docs), next, { window });
+    const final = validateAwardRanges(docs.at(-1).checkpoint);
+    expect(second).toMatchObject({ complete: false, window: { ...window, complete: true } });
+    expect(final.ranges.slice(-2)).toEqual([
+      { from: '2024-01-01', to: '2024-03-31', complete: false },
+      { from: '2024-04-01', to: '2024-12-31', complete: true },
+    ]);
+    expect(calls).toEqual(['2025-01-01/2025-12-15', '2024-04-01/2024-12-31']);
+    await scrapeAwardRanges(capture, store(docs), final, { window });
+    expect(calls).toHaveLength(2);
+  });
+  it('yields after durably subdividing one long window range', async () => {
+    const window = { from: '2026-01-01', to: '2026-01-31' };
+    const docs: any[] = [];
+    const result = await scrapeAwardRanges(
+      async request => page(request.page, 10, String(request.page), request.range.from),
+      store(docs), start(), { window },
+    );
+    expect(result).toMatchObject({ pages: 6, complete: false, window: { complete: false } });
+    expect(validateAwardRanges(docs.at(-1).checkpoint).ranges).toEqual(splitAwardRange(start().ranges[0]));
+    expect(docs).toHaveLength(6);
+  });
+  it('rejects a window extending beyond the saved checkpoint before capture', async () => {
+    const docs: any[] = [];
+    await expect(scrapeAwardRanges(async () => page(), store(docs), start(), {
+      window: { from: '2025-12-31', to: '2026-01-31' },
+    })).rejects.toThrow('outside the saved checkpoint');
+    expect(docs).toHaveLength(0);
+  });
   it('accepts identical adjacent source pages only after same-page confirmation', async () => {
     const calls:any[]=[],docs:any[]=[];
     const result=await scrapeAwardRanges(async r=>{calls.push(r);return page(r.page,2);},store(docs),start());

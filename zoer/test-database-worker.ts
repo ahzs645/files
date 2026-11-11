@@ -37,8 +37,10 @@ async function run(actionId:string,input:any={}) {
           continue;
         }
         if(actionId==='awards.history') {
-          assert.equal(value.searchFields[0].value,'2015-01-01');assert.equal(value.searchFields[1].value,'2015-01-31');
-          result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:pages===1,visiblePages:[1]},html:`<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">${value.searchFields[0].value}</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">${value.searchFields[1].value}</li></ul></div><table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>2015-01-01</td><td>100</td></tr></tbody></table>`};
+          const from=input.window?.from ?? '2015-01-01';
+          const to=input.window?.to ?? '2015-01-31';
+          assert.equal(value.searchFields[0].value,from);assert.equal(value.searchFields[1].value,to);
+          result={url:value.url,title:'Fixture',capturedAt:new Date().toISOString(),pagination:{currentPage:pages,hasNext:!input.window&&pages===1,visiblePages:[1]},html:`<div class="iv-filter-summary"><h3 class="tag-label">Award Date (min) :</h3><ul><li class="tag-text">${from}</li></ul><h3 class="tag-label">Award Date (max) :</h3><ul><li class="tag-text">${to}</li></ul></div><table id="body_x_grid_grd"><thead><tr><th>Opportunity Description</th><th>Successful Supplier</th><th>Award Date</th><th>Contract Value</th></tr></thead><tbody><tr><td>Award ${pages}</td><td>Fixture</td><td>${from}</td><td>100</td></tr></tbody></table>`};
         } else if(actionId==='scrape.targeted'&&value.url===LISTING_URL) {
           // BC Bid echoes an applied buyer filter in its summary; the closing reset search shows none.
           const tags=value.pickFields?'<div class="iv-filter-summary"><span class="tag-label">Organization :</span><ul><li class="tag-value"><span class="tag-text">Ministry of Health</span></li></ul></div>':'';
@@ -80,6 +82,19 @@ await run('opportunities.import',{records:[opportunity.data],fileName:'roundtrip
 assert.deepEqual(opportunityIds(),['opportunity:226320','opportunity:226321']);
 assert.deepEqual([...records.keys()].sort(),beforeImport,'Round-trip import must not add or remove catalog identities');
 const awards=await run('awards.history',{resume:newAwardRanges('2015-01-01','2015-01-31')});assert.equal(awards.count,2);assert.equal(state.get('checkpoint:awards').complete,true);
+const window={from:'2015-02-01',to:'2015-02-15'};
+const awardHistory=structuredClone(state.get('checkpoint:awards'));
+awardHistory.ranges.push({from:'2015-02-01',to:'2015-02-28',complete:false});
+awardHistory.complete=false;
+state.set('checkpoint:awards',awardHistory);
+const awardWindow=await run('awards.history',{window});
+assert.deepEqual(awardWindow.window,{...window,complete:true});
+assert.equal(awardWindow.complete,false);
+assert.deepEqual(state.get('checkpoint:awards').ranges,[
+  awardHistory.ranges[0],{...window,complete:true},{from:'2015-02-16',to:'2015-02-28',complete:false},
+]);
+assert.equal(state.get('checkpoint:awards').count,3);
+assert.equal(state.get('checkpoint:awards:recent'),undefined);
 await run('awards.import',{records:[{opportunityDescription:'Imported award',successfulSupplier:'Supplier',starred:true}],fileName:'awards.json'});
 assert.ok([...records.values()].some(row=>row.kind==='award'&&row.data.starred));
 await run('opportunities.import',{records:[{sourceKey:'231457',processId:'231457',description:'BC Transit',status:'Open',starred:true}]});

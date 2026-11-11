@@ -116,6 +116,8 @@ Old links still work: `/procurement?view=board|market|sources|saved|deadlines` r
 
 The notice in the dashboard describes the scrape scope. Importing an existing standalone Convex database directly and mounted-folder award import are not implemented. Recurring schedules require the host support described below. The standalone folder control is hidden only in the Zoer build; use JSON file upload. Empty live data stays empty until captured/imported; fixtures are used only in local tests. Legacy source artifacts are retained for recovery; new records are stored directly in the database.
 
+Operators can pass `{"window":{"from":"2015-04-01","to":"2022-12-15"}}` to `awards.history` to advance one unfinished range within that inclusive period. Repeat after each run until the output reports `window.complete`. Each pass uses the saved history checkpoint and retains completed coverage. A multi-day range still open after six pages is subdivided for subsequent passes. The top-level `complete` field tracks the full saved checkpoint.
+
 ## Isolation
 
 The UI runs in an opaque-origin iframe without host storage, cookies, direct API/network access or top navigation. Its small parent bridge requests only this plugin's artifacts, run status, cancellation and declared read/local-write actions. Separate tabs can open from source external links. Host-side action planning and installation/enablement gates still apply.

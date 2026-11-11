@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.36.7",
+  "version": "0.36.8",
   "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -1005,7 +1005,7 @@
         "idempotent": false,
         "id": "awards.history",
         "title": "Download public award history",
-        "description": "Backfill public awards in resumable date ranges, skipping completed ranges and unchanged records. Optionally refresh the last 30 days. Undated records are not verified; attachments are separate.",
+        "description": "Backfill public awards in resumable date ranges, skipping completed ranges and unchanged records. Optionally refresh the last 30 days or advance one unfinished range in a date window. Undated records are not verified; attachments are separate.",
         "requiredCapabilities": [
           "browser-session",
           "artifact-store"
@@ -1023,6 +1023,15 @@
             "resume": {
               "type": "object",
               "additionalProperties": true
+            },
+            "window": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "from": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+                "to": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+              },
+              "required": ["from", "to"]
             },
             "mode": {
               "type": "string",
