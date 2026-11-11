@@ -64,7 +64,7 @@ BC Bid's supplier guide also documents a **Download Documents** bundle, but publ
 
 ## Later verification: parallel catalog publication
 
-At 23:32 UTC, the coordinating Societyer task selected the catalog service through the real Owner interface after three distinct real publications passed comparison. The source caveat remains visible. Convex remains a required parallel destination through at least **November 24, 2026, 23:32:06 UTC**; an independent production policy query returned `serviceOnlyAllowed: false` with that fallback deadline. This task does not delete the fallback or change source selection.
+At 23:32 UTC, the coordinating Societyer task selected the catalog service through the real Owner interface after three distinct real publications passed comparison. The source caveat remains visible. The initial production policy required parallel publishing through **November 24, 2026, 23:32:06 UTC** and returned `serviceOnlyAllowed: false` at that point. The later retirement approval and current publishing mode are recorded below.
 
 The local publisher now runs two additional stages **after verified Convex readiness and before acknowledging its baseline**: catalog publication and full parity. They use a separately reviewed 17-file runtime under Node 24.22.1, the pinned SQLite 3.54.1 transport, the existing restricted publisher key and strict known-hosts. The previous Convex operator/runtime stays intact. No private key or Convex administrator credential was transferred to the cluster.
 
@@ -91,4 +91,14 @@ Expected references also remain distinct from saved originals: the 61 upserted o
 
 The historical collector remains cluster-managed. The publication watcher currently depends on the Mac and its existing private local configuration; its AC keep-awake assertion is tied to the publisher process, not a permanent system setting. Local publication capacity is checked before starting a wave, reserving recovery space without deleting backups. The date scope, legacy refreshes, expected attachment backlog, inaccessible-source report and final fresh archive audit remain unfinished.
 
-See Societyer's [catalog operations and recovery guide](https://github.com/ahzs645/societyer/blob/main/server/procurement-catalog/README.md) for the derived service. Keep the existing parallel publication running through the fallback period.
+## Service-only publishing verified on November 11
+
+Production approved retirement against the backed-up catalog and its exact serving inventory. The coordinating task detached the DDC Convex copy and verified zero remaining rows in its ten mirrored tables. The publisher reverified the retained catalog through the service-only path, reported its source coverage, and resumed with its prior baseline and publication counters intact.
+
+At 02:46 UTC, the existing three-hour trigger started a new source publication. At 02:52 UTC, the catalog service acknowledged generation `20261111T024633Z-87b3ee43692d-reader-v2` with inventory SHA-256 `c303e12e7928cf867da1a152427271d76bee038fcd036f9c4cb0636f51f45894`. The catalog had **4,726 opportunities and 21,877 awards**. The 283 newly published opportunities include 273 with complete tab captures and 10 listing-only records at the frozen checkpoint. The delta added or updated 289 record/detail pairs and left prior records and saved file metadata intact.
+
+An independent serving readback matched all five tables, two lists, and ten analytical views. All 154 previously verified historical references matched their exact file metadata. A fresh SharePoint readback recomputed byte counts and SHA-256 for all 148 unique originals. The production retirement status remained verified after this wave.
+
+Operate the DDC publisher in service-only mode and retain the exact frozen wave and source coverage receipt for recovery. The first automatic wave published through SharePoint, verified the service and reported coverage before acknowledgement. Legacy Convex analytics and row imports were skipped. The full historical archive remains incomplete. BC Bid returned the same background browser-check rejection through its visible Opportunities menu, with no interactive prompt.
+
+See Societyer’s [catalog operations and recovery guide](https://github.com/ahzs645/societyer/blob/main/server/procurement-catalog/README.md).
