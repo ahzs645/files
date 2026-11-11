@@ -22,6 +22,7 @@ export interface AwardRangeCapture {
   applySearch: boolean;
   reread?: boolean;
 }
+export type AwardRangePage = PageCapture & { verifiedAwardUpperBound?: string };
 const DAY = 86400000;
 function date(value: string) {
   const time = Date.parse(value + 'T00:00:00Z');
@@ -101,7 +102,7 @@ function narrowUnfinishedRange(state: AwardRangeCheckpoint, index: number, windo
  * Capture adapters verify the public filters for the requested inclusive range.
  */
 export async function scrapeAwardRanges(
-  capture: (request: AwardRangeCapture) => Promise<PageCapture>,
+  capture: (request: AwardRangeCapture) => Promise<AwardRangePage>,
   save: (document: any) => Promise<string>,
   resume: AwardRangeCheckpoint = newAwardRanges(),
   limits: { maxPages?: number; rangePages?: number; maxRanges?: number; window?: AwardWindow } = {},
@@ -162,32 +163,36 @@ export async function scrapeAwardRanges(
           if (parsed.fingerprint !== previous) break;
         }
       }
-      // A date-filter failure must not silently mark unrelated ranges complete.
-      for (const record of parsed.records) {
+      // Some public rows are returned on the verified upper-bound day. Read
+      // their pages for coverage, but only save awards in this intended range.
+      const upper = awardSearchUpperBound(range.to);
+      const records = parsed.records.filter(record => {
+        if (upper && page.verifiedAwardUpperBound === upper && record.awardDate === upper) return false;
         if (!record.awardDate || record.awardDate < range.from || record.awardDate > range.to) throw new Error('Award date filter did not match the returned records. History remains incomplete.');
-      }
+        return true;
+      });
       duplicatePages = parsed.fingerprint === previous ? duplicatePages + 1 : 0;
       previous = parsed.fingerprint;
       if (isActive) state.page = number;
-      state.pages++; state.count += parsed.records.length;
+      state.pages++; state.count += records.length;
       const subdivide = page.pagination!.hasNext && (number >= pageLimit || duplicatePages >= 3);
       if (subdivide) {
         const halves = splitAwardRange(range);
         if (!halves || state.ranges.length >= maxRanges) {
-          await persist(parsed.records, page);
+          await persist(records, page);
           throw new Error('A date range could not be completed within its safe page limit. Saved records are retained; inspect this range before continuing.');
         }
         state.ranges.splice(index, 1, ...halves);
         if (isActive) state.page = 0;
         updateCoverage();
-        await persist(parsed.records, page); break;
+        await persist(records, page); break;
       }
       if (!page.pagination!.hasNext) {
         range.complete = true;
         updateCoverage();
         if (window && isActive) state.page = 0;
       }
-      await persist(parsed.records, page);
+      await persist(records, page);
       if (!page.pagination!.hasNext) break;
       number++;
     }

@@ -47,7 +47,8 @@ function parsePagerValue($: cheerio.CheerioAPI): { currentPage: number; totalPag
   return { currentPage, totalPages };
 }
 
-export function parseListingPage(html: string, baseUrl: string): ListingPageParseResult {
+export function parseListingPage(html: string, baseUrl: string,
+  parseIssueDate: (value: string) => string | null = parseDateToIso): ListingPageParseResult {
   const $ = cheerio.load(html);
   const opportunities: OpportunityListing[] = [];
 
@@ -98,7 +99,7 @@ export function parseListingPage(html: string, baseUrl: string): ListingPagePars
       detailUrl,
       commodities: dedupeStrings(commodities),
       type: getText(4),
-      issueDate: parseDateToIso(getText(5)),
+      issueDate: parseIssueDate(getText(5)),
       closingDate: parseDateToIso(getText(6)),
       endsIn: getText(7) || null,
       amendments: Number.parseInt(getText(8), 10) || 0,

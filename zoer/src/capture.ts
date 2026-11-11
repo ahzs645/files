@@ -4,7 +4,7 @@ export interface PageCapture { url: string; title: string; html: string; capture
 const BASE_URL = 'https://bcbid.gov.bc.ca';
 const text = (value: unknown) => String(value ?? '').slice(0, 1000);
 
-export function parseCapture(page: PageCapture, kind: 'listing' | 'detail') {
+export function parseCapture(page: PageCapture, kind: 'listing' | 'detail', parseIssueDate?: (value: string) => string | null) {
   const url = new URL(page.url);
   if (url.origin !== BASE_URL || url.username || url.password) throw new Error('Select a BC Bid public page.');
   if (url.pathname.includes('/browser_check') || parseBrowserCheckPage(page.html).isBrowserCheck) {
@@ -13,7 +13,7 @@ export function parseCapture(page: PageCapture, kind: 'listing' | 'detail') {
   if (kind === 'listing') {
     if (!url.pathname.includes('/rfp/request_browse_public')) throw new Error('Open the BC Bid public Opportunities page before capturing listings.');
     if (!/id=["']body_x_grid_grd["']/.test(page.html)) throw new Error('The opportunities grid is not loaded. Wait for the page or complete the browser check.');
-    const parsed = parseListingPage(page.html, BASE_URL);
+    const parsed = parseListingPage(page.html, BASE_URL, parseIssueDate);
     if (parsed.opportunities.length > 200) throw new Error('Select a page size of 200 or fewer before capturing.');
     const records = parsed.opportunities.map(record => ({ ...record, listingUrl: page.url }));
     return {

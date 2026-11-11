@@ -11,15 +11,26 @@ import { BC_BID_DETAIL_TABS, DETAIL_CAPTURE_VERSION } from './detail-policy';
 export const HISTORICAL_KEY = 'checkpoint:historical';
 export const HISTORICAL_SCOPE = 'all-public-2015-2022';
 export const HISTORICAL_DATE_FIELDS = { from: '#body_x_txtRfpBeginDate', to: '#body_x_txtRfpBeginDatemax' };
+const DATE_FILTER = 'exclusive-upper-bound';
 export interface HistoricalRange { from: string; to: string }
 interface Pending { sourceKey: string; processId: string; detailUrl: string }
 export interface HistoricalCheckpoint {
   version: 1; scope: typeof HISTORICAL_SCOPE; startedAt: string; capturedAt: string; runId: string;
+  dateFilter?: typeof DATE_FILTER;
+  dateRepair?: { mode: 'range-ends' | 'earlier-interval'; previousRanges: number; repairRanges: number };
   ranges: HistoricalRange[]; page: number; rangeCount: number; rangeExpected: number | null; lastSignature: string | null;
   pending: Pending[]; listingsCaptured: number; detailsCompleted: number; rangesCompleted: number; complete: boolean; status: string; error?: string; lastCaptureFinishedAt?: string;
 }
 type Host = (method: string, input: any) => Promise<any>;
-const iso = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
+const iso = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value + 'T00:00:00Z')) &&
+  new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
+const shiftDay = (day: string, offset: number) => new Date(Date.parse(day + 'T00:00:00Z') + offset * 86400000).toISOString().slice(0, 10);
+function sourceIssueDate(text: string) {
+  // The column is displayed in Pacific Time. The worker's local timezone can
+  // change the date if this text is parsed as an instant first.
+  const day = /^(\d{4}-\d{2}-\d{2})(?:\s|$)/.exec(text)?.[1];
+  return day && iso(day) ? day : null;
+}
 export function historicalRanges(): HistoricalRange[] {
   return Array.from({ length: 8 }, (_, i) => ({ from: i === 0 ? reference.from : `${2015 + i}-01-01`, to: i === 7 ? reference.to : `${2015 + i}-12-31` }));
 }
@@ -31,6 +42,11 @@ export function splitHistoricalRange(range: HistoricalRange): HistoricalRange[] 
 }
 export function validateHistoricalCheckpoint(value: any): HistoricalCheckpoint {
   if (value?.version !== 1 || value.scope !== HISTORICAL_SCOPE || !Array.isArray(value.ranges) || value.ranges.length > 512 ||
+    (value.dateFilter !== undefined && value.dateFilter !== DATE_FILTER) ||
+    (value.dateRepair !== undefined && (value.dateFilter !== DATE_FILTER ||
+      !['range-ends', 'earlier-interval'].includes(value.dateRepair?.mode) ||
+      !Number.isSafeInteger(value.dateRepair?.previousRanges) || value.dateRepair.previousRanges < 0 ||
+      !Number.isSafeInteger(value.dateRepair?.repairRanges) || value.dateRepair.repairRanges < 0 || value.dateRepair.repairRanges > 512)) ||
     !value.ranges.every((r: any) => typeof r.from === 'string' && typeof r.to === 'string' && iso(r.from) && iso(r.to) && r.from >= reference.from && r.to <= reference.to && r.from <= r.to) ||
     value.ranges.some((r: any, i: number) => i && r.from <= value.ranges[i - 1].to) ||
     !Array.isArray(value.pending) || value.pending.length > 200 || !value.pending.every((r: any) => typeof r.sourceKey === 'string' && r.sourceKey.length < 1000 && /^\d+$/.test(r.processId) && /^https:\/\/bcbid\.gov\.bc\.ca\/page\.aspx\/en\/(rfp|bpm)\/process_manage_extranet\/\d+$/.test(r.detailUrl)) ||
@@ -79,6 +95,75 @@ export function historicalDetailMetadata(page: PageCapture, record: any) {
     gsinRaw: raw, gsinCommodities: gsin, gsinTermIds: references.map(t => t.id) }, references };
 }
 const digest = (records: any[]) => createHash('sha256').update(records.map(r => r.sourceKey).join('|')).digest('hex');
+async function savedRangeEnds(host: Host, prefix: HistoricalRange, expected: number) {
+  const ranges = new Map<string, HistoricalRange>();
+  let after = '';
+  let revision: number | undefined;
+  while (true) {
+    const page = await host('catalog.read', { kind: 'opportunity', after, limit: 100, revision });
+    if (revision !== undefined && page.revision !== revision) throw Error('Historical date coverage changed during repair planning.');
+    revision = page.revision;
+    for (const row of page.records) {
+      const history = row.data?.historical;
+      const range = history?.capturedRange;
+      if (row.data?.commodityScheme !== 'GSIN' || history?.from !== reference.from || history?.to !== reference.to ||
+        !range || !iso(range.from) || !iso(range.to) || range.from < prefix.from || range.to > prefix.to || range.from > range.to) continue;
+      ranges.set(range.from + '/' + range.to, { from: range.from, to: range.to });
+    }
+    if (!page.next) break;
+    if (typeof page.next !== 'string' || page.next <= after) throw Error('Historical date coverage cursor did not advance.');
+    after = page.next;
+  }
+  const ordered = [...ranges.values()].sort((a, b) => a.from.localeCompare(b.from));
+  let firstUnchecked = prefix.from;
+  for (const range of ordered) {
+    if (range.from !== firstUnchecked) return null;
+    firstUnchecked = shiftDay(range.to, 1);
+  }
+  if (ordered.length !== expected || firstUnchecked !== shiftDay(prefix.to, 1)) return null;
+  return ordered.map(range => ({ from: range.to, to: range.to }));
+}
+
+async function repairDateFilter(host: Host, cp: HistoricalCheckpoint) {
+  const before = cp.ranges[0]?.from ?? shiftDay(reference.to, 1);
+  const earlier = before > reference.from ? { from: reference.from, to: shiftDay(before, -1) } : null;
+  let repairs: HistoricalRange[] = [];
+  let mode: 'range-ends' | 'earlier-interval' = 'range-ends';
+  if (earlier) {
+    const ends = await savedRangeEnds(host, earlier, cp.rangesCompleted);
+    if (ends && ends.length + cp.ranges.length <= 512) repairs = ends;
+    else {
+      repairs = [earlier];
+      mode = 'earlier-interval';
+    }
+  }
+  cp.dateFilter = DATE_FILTER;
+  cp.dateRepair = { mode, previousRanges: cp.rangesCompleted, repairRanges: repairs.length };
+  cp.ranges = [...repairs, ...cp.ranges];
+  // Reapply corrected filters from page one of the interrupted range. Its
+  // committed detail queue is retained and drained before any listing replay.
+  cp.page = 1;
+  cp.rangeCount = 0;
+  cp.rangeExpected = null;
+  cp.lastSignature = null;
+  cp.rangesCompleted = 0;
+  cp.complete = !cp.ranges.length && !cp.pending.length;
+  cp.status = cp.complete ? 'complete' : 'running';
+}
+
+async function savedHistoricalRecords(host: Host, ids: string[]): Promise<any[]> {
+  if (!ids.length) return [];
+  try {
+    return (await host('catalog.read', { ids })).records.filter((row: any) =>
+      row.kind === 'opportunity' && row.data?.commodityScheme === 'GSIN' &&
+      row.data?.historical?.from === reference.from && row.data?.historical?.to === reference.to);
+  } catch (error) {
+    if (ids.length === 1 || !/Record lookup too large/.test(String(error))) throw error;
+    const mid = Math.ceil(ids.length / 2);
+    return [...await savedHistoricalRecords(host, ids.slice(0, mid)), ...await savedHistoricalRecords(host, ids.slice(mid))];
+  }
+}
+
 async function commitProgress(host: Host, cp: HistoricalCheckpoint, records: any[] = []) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const head = await host('catalog.read', { ids: [] });
@@ -94,7 +179,7 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
   const saved = (await host('catalog.workspace', { keys: [HISTORICAL_KEY] })).entries.find((e: any) => e.key === HISTORICAL_KEY)?.value;
   const now = () => new Date().toISOString();
   const cp: HistoricalCheckpoint = saved ? validateHistoricalCheckpoint(saved) : resumable.checkpoint ? validateHistoricalCheckpoint(resumable.checkpoint) : {
-    version: 1, scope: HISTORICAL_SCOPE, startedAt: now(), capturedAt: now(), runId, ranges: historicalRanges(), page: 1, rangeCount: 0, rangeExpected: null,
+    version: 1, scope: HISTORICAL_SCOPE, dateFilter: DATE_FILTER, startedAt: now(), capturedAt: now(), runId, ranges: historicalRanges(), page: 1, rangeCount: 0, rangeExpected: null,
     lastSignature: null, pending: [], listingsCaptured: 0, detailsCompleted: 0, rangesCompleted: 0, complete: false, status: 'running',
   };
   cp.runId = runId; cp.status = cp.complete ? 'complete' : 'running'; delete cp.error;
@@ -123,6 +208,11 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
   try {
     if (resumable.cancelling) { cp.status = 'paused'; await flush(); return { resumable: 'done', output: { status: 'cancelled', listingsCaptured: cp.listingsCaptured, detailsCompleted: cp.detailsCompleted } }; }
     if (!saved) await commitProgress(host, cp, historicalReferenceRecords());
+    if (!cp.dateFilter) {
+      await repairDateFilter(host, cp);
+      await flush();
+      return { resumable: 'continue', checkpoint: cp, progress: progress() };
+    }
     if (cp.complete) return { resumable: 'done', output: cp, progress: progress() };
     if (cp.pending.length) {
       for (let i = 0; i < 2 && cp.pending.length; i++) {
@@ -141,12 +231,13 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
       if (cp.page === 0) { finishRange(); await flush(); }
       else {
         const range = cp.ranges[0];
+        const searchRange = { from: range.from, to: shiftDay(range.to, 1) };
         if (cp.page > 20) throw Error('Historical page safety limit reached; coverage remains incomplete.');
         const page = await pacedCapture({ url: LISTING_URL, pageNumber: cp.page, applySearch: true,
-          searchFields: [{ selector: HISTORICAL_DATE_FIELDS.from, value: range.from }, { selector: HISTORICAL_DATE_FIELDS.to, value: range.to }],
+          searchFields: [{ selector: HISTORICAL_DATE_FIELDS.from, value: searchRange.from }, { selector: HISTORICAL_DATE_FIELDS.to, value: searchRange.to }],
           pickFields: [{ selector: '#body_x_selSrfxCode_search', value: 'Closed' }] });
-        verifyHistoricalFilters(page.html, range);
-        const parsed = parseTargetedListing(page), rows = parsed.records;
+        verifyHistoricalFilters(page.html, searchRange);
+        const parsed = parseTargetedListing(page, sourceIssueDate), rows = parsed.records;
         const expected = /More than\s*[\d,]+\s*Record\(s\)/i.test(page.html) ? null : parsed.totalReported;
         if (cp.page === 1 && range.from < range.to && (expected === null || expected > 300)) {
           cp.ranges.splice(0, 1, ...splitHistoricalRange(range)); cp.rangeCount = 0; cp.rangeExpected = null; cp.lastSignature = null; await flush();
@@ -155,18 +246,27 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
           if (!rows.length && (expected !== 0 || cp.page !== 1 || page.pagination?.hasNext)) throw Error('An expected historical page was empty.');
           if (cp.page === 1) cp.rangeExpected = expected;
           if (cp.rangeExpected !== null && expected !== cp.rangeExpected) throw Error('Historical source total changed mid-range; resume after inspecting coverage.');
-          if (rows.some(r => r.status !== 'Closed' || !/^Historic Record/i.test(r.type || '') || !r.issueDate || r.issueDate.slice(0, 10) < range.from || r.issueDate.slice(0, 10) > range.to || !r.processId || !r.detailUrl)) throw Error('A historical row falls outside the confirmed archive scope. Nothing from this page was saved.');
+          if (rows.some(row => !row.issueDate || row.issueDate < range.from || row.issueDate > searchRange.to)) {
+            throw Error('A historical row falls outside the confirmed archive scope. Nothing from this page was saved.');
+          }
+          const selected = rows.filter(row => row.issueDate! <= range.to);
+          if (selected.some(r => r.status !== 'Closed' || !/^Historic Record/i.test(r.type || '') || !r.processId || !r.detailUrl)) {
+            throw Error('A historical row falls outside the confirmed archive scope. Nothing from this page was saved.');
+          }
           const signature = digest(rows);
           if (rows.length && signature === cp.lastSignature) throw Error('Historical listing repeated the previous page.');
           if (page.pagination?.hasNext && cp.page === 20) throw Error('Historical range exceeds safe paging; coverage remains incomplete.');
           const number = cp.page;
-          cp.lastSignature = signature; cp.rangeCount += rows.length; cp.listingsCaptured += rows.length;
-          cp.pending = rows.map(r => ({ sourceKey: r.sourceKey, processId: r.processId!, detailUrl: r.detailUrl! }));
+          const savedRows = new Map((await savedHistoricalRecords(host, selected.map(r => 'opportunity:' + r.sourceKey))).map(row => [row.id, row.data]));
+          const newRows = selected.filter(row => !savedRows.has('opportunity:' + row.sourceKey));
+          cp.lastSignature = signature; cp.rangeCount += rows.length; cp.listingsCaptured += newRows.length;
+          cp.pending = selected.filter(row => !savedRows.get('opportunity:' + row.sourceKey)?.detailFields?.length)
+            .map(row => ({ sourceKey: row.sourceKey, processId: row.processId!, detailUrl: row.detailUrl! }));
           cp.page = page.pagination?.hasNext ? number + 1 : 0; cp.capturedAt = now();
-          if (!rows.length) finishRange();
+          if (!cp.pending.length && cp.page === 0) finishRange();
           validateHistoricalCheckpoint(cp);
           await save({ version: 1, kind: 'listing', scope: 'bcbid-historical', sourceUrl: page.url, capturedAt: page.capturedAt, currentPage: number,
-            records: rows.map(r => ({ ...r, commodityScheme: 'GSIN', historical: { from: reference.from, to: reference.to, capturedRange: range, referenceReleaseId: reference.id } })), historicalCheckpoint: cp });
+            records: newRows.map(r => ({ ...r, commodityScheme: 'GSIN', historical: { from: reference.from, to: reference.to, capturedRange: range, referenceReleaseId: reference.id } })), historicalCheckpoint: cp });
         }
       }
     }
@@ -174,6 +274,11 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
   } catch (error) {
     if (isPauseError(error)) return paused(before);
     const message = error instanceof Error ? error.message : String(error);
+    if (!before.dateFilter && /^(?:Catalog changed; reload the snapshot\.|Historical date coverage changed during repair planning\.)$/.test(message)) {
+      return { resumable: 'retry', checkpoint: before, error: {
+        code: 'historical_date_repair_catalog_changed', message: 'The catalog changed while checking earlier date ranges. Saved progress is preserved.',
+      } };
+    }
     if (/browser check|manual control|manual mode|verification|captcha/i.test(message)) return { resumable: 'needs-user', checkpoint: before, reason: message.slice(0, 500) };
     // The native transport redacts locator timeout details. A public search
     // readiness failure can replay from the committed cursor under the host's

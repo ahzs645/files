@@ -143,11 +143,11 @@ export function reportedListingTotal(html: string) {
 }
 
 /** Listing rows, allowing BC Bid's "0 Record(s)" page that has no grid table at all. */
-export function parseTargetedListing(page: PageCapture) {
+export function parseTargetedListing(page: PageCapture, parseIssueDate?: (value: string) => string | null) {
   const counts = reportedListingTotal(page.html);
   const { totalReported } = counts;
   try {
-    return { records: parseCapture(page, 'listing').document.records!, ...counts };
+    return { records: parseCapture(page, 'listing', parseIssueDate).document.records!, ...counts };
   } catch (error) {
     if (totalReported === 0 && /grid is not loaded/.test(String(error))) return { records: [], ...counts };
     throw error;

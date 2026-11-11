@@ -185,6 +185,21 @@ it('keeps an open-ended history search within the supported date field', async (
   await capture({ range: { from: '2026-01-01', to: '9999-12-31' }, page: 1, applySearch: true });
 });
 
+it('checks the full pager while saving only awards inside the intended date window', async () => {
+  const { awardRangeCapture, AWARD_DATE_FIELDS } = await import('../zoer/src/award-range-capture');
+  const tags = '<div class="iv-filter-summary"><span class="tag-label">Award Date (min) :</span><ul><li class="tag-text">2022-05-18</li></ul><span class="tag-label">Award Date (max) :</span><ul><li class="tag-text">2022-05-19</li></ul></div>';
+  const target = page(1, 2, 'Target', '2022-05-18');
+  const spill = page(2, 2, 'Upper bound', '2022-05-19');
+  const capture = awardRangeCapture(async options => {
+    const result = options.continuePage ? spill : target;
+    return { ...result, html: result.html + tags };
+  }, AWARD_DATE_FIELDS);
+  const docs: any[] = [];
+  const result = await scrapeAwardRanges(capture, store(docs), start('2022-05-18', '2022-05-18'));
+  expect(result).toMatchObject({ complete: true, count: 1, pages: 2 });
+  expect(docs.map(doc => doc.records.map((row: any) => row.opportunityId))).toEqual([['Target'], []]);
+});
+
 it('shows range coverage and undated limits without equating processed rows with unique records', async () => {
   const { awardProgress } = await import('../zoer/dashboard/award-progress');
   expect(awardProgress(start())).toContain('0 of 1 date ranges checked');

@@ -24,7 +24,7 @@ function parsePagerValue($) {
         : Math.max(currentPage, ...pageNumbers, 1);
     return { currentPage, totalPages };
 }
-export function parseListingPage(html, baseUrl) {
+export function parseListingPage(html, baseUrl, parseIssueDate = parseDateToIso) {
     const $ = cheerio.load(html);
     const opportunities = [];
     $("#body_x_grid_grd > tbody > tr").each((_, row) => {
@@ -69,7 +69,7 @@ export function parseListingPage(html, baseUrl) {
             detailUrl,
             commodities: dedupeStrings(commodities),
             type: getText(4),
-            issueDate: parseDateToIso(getText(5)),
+            issueDate: parseIssueDate(getText(5)),
             closingDate: parseDateToIso(getText(6)),
             endsIn: getText(7) || null,
             amendments: Number.parseInt(getText(8), 10) || 0,

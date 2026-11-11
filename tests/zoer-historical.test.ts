@@ -9,11 +9,16 @@ import { LISTING_URL } from '../zoer/src/scrape';
 const fixture = (name: string) => readFileSync(new URL('./fixtures/historical/' + name, import.meta.url), 'utf8');
 const range = { from: '2015-04-01', to: '2015-12-31' };
 const summary = (from = range.from, to = range.to) => `<div class="tag-label">Status :</div><ul><li class="tag-text">Closed</li><li class="tag-text">Open</li></ul><div class="tag-label">Issue Date (min) :</div><ul><li class="tag-text">${from}</li></ul><div class="tag-label">Issue Date (max) :</div><ul><li class="tag-text">${to}</li></ul>`;
-const sourcePage = (html = fixture('listing-2015.html')) => ({ url: LISTING_URL, html, title: 'BC Bid', capturedAt: '2026-10-10T17:50:00Z', pagination: { currentPage: 1, hasNext: false, visiblePages: [1] } });
+const sourcePage = (html = fixture('listing-2015.html')) => ({ url: LISTING_URL, html: html.replace('>2015-12-31<', '>2016-01-01<'), title: 'BC Bid', capturedAt: '2026-10-10T17:50:00Z', pagination: { currentPage: 1, hasNext: false, visiblePages: [1] } });
 function database() {
   const records = new Map<string, any>(), entries = new Map<string, any>(); let revision = 0;
   const host = async (method: string, input: any): Promise<any> => {
-    if (method === 'catalog.read') return { primary: true, revision, records: [...records.values()].filter(r => input.ids ? input.ids.includes(r.id) : input.match && r.kind === input.match.kind && r.data[input.match.field] === input.match.value).map(r => structuredClone(r)) };
+    if (method === 'catalog.read') {
+      const rows = [...records.values()].filter(r => input.ids ? input.ids.includes(r.id) : input.match ?
+        r.kind === input.match.kind && r.data[input.match.field] === input.match.value :
+        r.kind === input.kind && r.id > (input.after ?? '')).sort((a,b) => a.id.localeCompare(b.id)).slice(0, input.limit ?? 200);
+      return { primary: true, revision, records: structuredClone(rows), next: input.kind ? rows.at(-1)?.id : null };
+    }
     if (method === 'catalog.workspace') return { revision, entries: input.keys.filter((k: string) => entries.has(k)).map((k: string) => ({ key: k, value: structuredClone(entries.get(k)) })) };
     if (method === 'catalog.commit') {
       if (input.revision !== revision) return { conflict: true };
@@ -27,7 +32,7 @@ function database() {
   return { records, entries, host, save: (doc: any) => saveCatalogDocument(host, doc, 'r') };
 }
 const resumeRequest = (checkpoint: any = null) => ({ step: 1, checkpoint, attempt: 0, deadlineAt: new Date(Date.now() + 600000).toISOString() });
-const cp = () => ({ version: 1, scope: HISTORICAL_SCOPE, runId: 'r', startedAt: '2026-10-10T00:00:00Z', capturedAt: '2026-10-10T00:00:00Z', ranges: [range], page: 1, rangeCount: 0, rangeExpected: null, lastSignature: null, pending: [], listingsCaptured: 0, detailsCompleted: 0, rangesCompleted: 0, complete: false, status: 'running' });
+const cp = () => ({ version: 1, scope: HISTORICAL_SCOPE, dateFilter: 'exclusive-upper-bound', runId: 'r', startedAt: '2026-10-10T00:00:00Z', capturedAt: '2026-10-10T00:00:00Z', ranges: [range], page: 1, rangeCount: 0, rangeExpected: null, lastSignature: null, pending: [], listingsCaptured: 0, detailsCompleted: 0, rangesCompleted: 0, complete: false, status: 'running' });
 const run = (db: ReturnType<typeof database>, capture: any, checkpoint: any = null) => historicalSlice(db.host, capture, db.save, { scope: HISTORICAL_SCOPE }, 'r', resumeRequest(checkpoint), { delaySeconds: 0 });
 describe('public BC Bid historical archive', () => {
   it('covers exactly the official dates, with split ranges retaining every inclusive day once', () => {
@@ -54,6 +59,57 @@ describe('public BC Bid historical archive', () => {
     const output: any = await run(db, async (o: any) => { options = o; return sourcePage(); });
     expect(output.resumable).toBe('continue'); expect(output.checkpoint.ranges).toEqual(splitHistoricalRange(range)); expect(db.records.size).toBe(0);
     expect(options.pickFields).toEqual([{ selector: '#body_x_selSrfxCode_search', value: 'Closed' }]); expect(options.applySearch).toBe(true);
+    expect(options.searchFields.map((field: any) => field.value)).toEqual(['2015-04-01', '2016-01-01']);
+  });
+  it('retains pending details and reopens only the proved earlier range ends', async () => {
+    const db = database();
+    const current = { from: '2015-04-10', to: '2015-04-14' };
+    const earlier = { from: range.from, to: '2015-04-09' };
+    const pending = [{ sourceKey: '2', processId: '2', detailUrl: 'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/2' }];
+    const old = { ...cp(), dateFilter: undefined, ranges: [current], page: 2,
+      pending, listingsCaptured: 11, detailsCompleted: 10, rangeCount: 2, rangesCompleted: 1 };
+    db.entries.set(HISTORICAL_KEY, old);
+    db.records.set('opportunity:1', { id: 'opportunity:1', kind: 'opportunity', data: {
+      commodityScheme: 'GSIN', historical: { from: range.from, to: '2022-12-15', capturedRange: earlier },
+    } });
+    await run(db, async () => { throw Error('Repair planning should not contact BC Bid'); });
+    expect(db.entries.get(HISTORICAL_KEY)).toMatchObject({
+      dateFilter: 'exclusive-upper-bound', dateRepair: { mode: 'range-ends', previousRanges: 1, repairRanges: 1 },
+      ranges: [{ from: earlier.to, to: earlier.to }, current], page: 1, rangeCount: 0, rangesCompleted: 0,
+      pending, listingsCaptured: 11, detailsCompleted: 10,
+    });
+  });
+  it('replays the earlier interval if the saved range ends cannot prove a complete partition', async () => {
+    const db = database();
+    const current = { from: '2015-04-10', to: '2015-04-14' };
+    db.entries.set(HISTORICAL_KEY, { ...cp(), dateFilter: undefined, ranges: [current], rangesCompleted: 1 });
+    await run(db, async () => { throw Error('Repair planning should not contact BC Bid'); });
+    expect(db.entries.get(HISTORICAL_KEY)).toMatchObject({
+      dateRepair: { mode: 'earlier-interval', previousRanges: 1, repairRanges: 1 },
+      ranges: [{ from: '2015-04-01', to: '2015-04-09' }, current],
+    });
+  });
+  it('accepts the last Pacific issue date, skips upper-bound rows and reuses the saved detail', async () => {
+    const db = database();
+    const html = fixture('listing-2015.html').replace('More than 150 Record(s)', '15 Record(s)')
+      .replace('2015-12-30 1:14:00 PM', '2015-12-31 5:01:00 PM')
+      .replace('2015-12-30 10:43:00 AM', '2016-01-01 12:00:00 AM');
+    const listing = sourcePage(html);
+    const parsed = parseCapture(listing, 'listing').document.records!;
+    const reused = parsed[1];
+    const id = 'opportunity:' + reused.sourceKey;
+    const retained = { id, kind: 'opportunity', data: { ...reused, commodityScheme: 'GSIN',
+      historical: { from: range.from, to: '2022-12-15' }, detailFields: [{ label: 'Source detail', value: 'Keep' }] } };
+    db.records.set(id, retained);
+    db.entries.set(HISTORICAL_KEY, { ...cp(), listingsCaptured: 1, detailsCompleted: 1 });
+    await run(db, async () => listing);
+    const saved = db.entries.get(HISTORICAL_KEY);
+    expect(saved).toMatchObject({ listingsCaptured: 14, detailsCompleted: 1, rangeCount: 15 });
+    expect(saved.pending).toHaveLength(13);
+    expect(saved.pending.some((item: any) => item.sourceKey === reused.sourceKey)).toBe(false);
+    expect(db.records.has('opportunity:' + parsed[2].sourceKey)).toBe(false);
+    expect(db.records.get(id)).toEqual(retained);
+    expect(db.records.get('opportunity:' + saved.pending[0].sourceKey).data.issueDate).toBe('2015-12-31');
   });
   it('saves a page and its pending detail queue atomically, then uses catalog progress when the host replays a stale checkpoint', async () => {
     const db = database(); db.entries.set(HISTORICAL_KEY, cp());

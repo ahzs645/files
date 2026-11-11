@@ -33,6 +33,6 @@ export function awardRangeCapture(
       (upper ? maximum.length !== 1 || maximum[0] !== upper : maximum.length !== 0)) {
       throw new Error('BC Bid did not confirm the award date filters. History remains incomplete.');
     }
-    return page;
+    return { ...page, verifiedAwardUpperBound: upper };
   };
 }
