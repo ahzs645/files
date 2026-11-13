@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { captureMissingDetails } from '../zoer/src/missing-details';
+import { captureMissingDetails, selectMissingDetails } from '../zoer/src/missing-details';
 import { DETAIL_CAPTURE_VERSION } from '../zoer/src/detail-policy';
 const row=(id='123',details:any[]=[])=>({id:'opportunity:'+id,kind:'opportunity',data:{processId:id,detailFields:details,detailCaptureVersion:DETAIL_CAPTURE_VERSION,detailUrl:'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/'+id}});
 const html=readFileSync(new URL('./fixtures/detail/with-addenda.html',import.meta.url),'utf8');
@@ -51,5 +51,49 @@ describe('capture only missing saved details',()=>{
   await expect(captureMissingDetails({recordIds:['opportunity:123']},host,{sleep:async()=>{}})).rejects.toThrow('connect failed');expect(captures).toBe(2);
   captures=0;let paused=false;
   await expect(captureMissingDetails({recordIds:['opportunity:123']},host,{sleep:async()=>{paused=true;},paused:()=>paused})).rejects.toThrow('Paused for Zoer update');expect(captures).toBe(1);
+ });
+});
+
+describe('missing mode chooses open notices itself',()=>{
+ const NOW=Date.parse('2026-11-13T19:00:00Z');
+ const open=(id:string,closingDate:string,extra:any={})=>{const r=row(id);Object.assign(r.data,{status:'Open',closingDate,...extra});return r;};
+ const current={detailFields:[{label:'Scope',value:'Captured'}],attachments:[]};
+ const catalog=[
+  open('101','2026-12-01'),                                   // no details: wanted
+  open('102','2026-11-20T23:00:00Z',{detailFields:[{}]}),     // current details, no attachment list: wanted
+  open('103','2026-11-14',current),                           // current details and a saved (empty) list: not wanted
+  open('104','2026-11-01'),                                   // closed
+  open('105','2026-11-13'),                                   // closing today (time unverified): still open, soonest
+  {...open('106','2026-11-15'),data:{...open('106','2026-11-15').data,status:'Closed'}},
+  {...open('107','2026-11-15'),data:{...open('107','2026-11-15').data,sourceId:'canadabuys'}},
+  {...open('108','2026-11-15'),data:{...open('108','2026-11-15').data,historical:{from:'2015-04-01',to:'2022-12-15'}}},
+  open('109','2026-11-16',{...current,detailNeedsRefresh:true}), // marked stale: wanted
+ ];
+ const pages=(records:any[],size=3)=>async(after:string)=>({records:records.filter(r=>r.id>after).slice(0,size)});
+ it('pages the whole catalog and orders open notices by closing date',async()=>{
+  expect(await selectMissingDetails(pages(catalog),50,NOW)).toEqual(['opportunity:105','opportunity:109','opportunity:102','opportunity:101']);
+  expect(await selectMissingDetails(pages(catalog),2,NOW)).toEqual(['opportunity:105','opportunity:109']);
+  await expect(selectMissingDetails(async()=>({records:[catalog[0]]}),5,NOW)).rejects.toThrow('did not advance');
+ });
+ it('captures the chosen notices and reports how many were selected',async()=>{
+  const calls:string[]=[];
+  const host={read:async(ids:string[])=>({records:catalog.filter(r=>ids.includes(r.id))}),list:pages(catalog),capture:async(url:string)=>{calls.push(url);return fixture(url);},save:async()=>'saved'};
+  const result=await captureMissingDetails({missing:{limit:3}},host,{now:NOW});
+  expect(result).toEqual({completed:3,skipped:0,total:3,selected:3,failed:0});
+  expect(calls).toEqual(['105','109','102'].map(id=>row(id).data.detailUrl));
+  expect(await captureMissingDetails({missing:{limit:3}},{...host,list:async()=>({records:[]})},{now:NOW})).toEqual({completed:0,skipped:0,total:0,selected:0,failed:0});
+ });
+ it('counts a notice that fails and moves on, but stops at a browser check or when every capture fails',async()=>{
+  const list=pages(catalog),read=async(ids:string[])=>({records:catalog.filter(r=>ids.includes(r.id))});
+  const flaky=await captureMissingDetails({missing:{limit:3}},{read,list,save:async()=>'',capture:async(url:string)=>url.endsWith('/105')?{...fixture(url),html:'<html></html>'}:fixture(url)},{now:NOW});
+  expect(flaky).toMatchObject({completed:2,failed:1,selected:3});
+  await expect(captureMissingDetails({missing:{limit:3}},{read,list,save:async()=>'',capture:async()=>({...fixture('https://bcbid.gov.bc.ca/page.aspx/en/bas/browser_check'),html:'<body>Browser check</body>'})},{now:NOW})).rejects.toThrow('browser check');
+  await expect(captureMissingDetails({missing:{limit:2}},{read,list,save:async()=>'',capture:async(url:string)=>({...fixture(url),html:'<html></html>'})},{now:NOW})).rejects.toThrow('not loaded');
+ });
+ it('takes exactly one of recordIds or missing',async()=>{
+  const host={read:async()=>({records:[]}),list:pages([]),capture:async()=>{throw Error('no');},save:async()=>''};
+  for(const input of [{},{recordIds:['opportunity:1'],missing:{limit:1}}])await expect(captureMissingDetails(input,host)).rejects.toThrow('not both');
+  for(const limit of [0,51,1.5,'5'])await expect(captureMissingDetails({missing:{limit}},host)).rejects.toThrow('1 to 50');
+  await expect(captureMissingDetails({missing:{limit:5}},{...host,list:undefined})).rejects.toThrow('Update Zoer');
  });
 });

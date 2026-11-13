@@ -658,6 +658,34 @@
             },
             "totalPages": {
               "type": "integer"
+            },
+            "reconciliation": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "complete",
+                    "short",
+                    "over",
+                    "unknown"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "identityRule": {
+                  "type": "string"
+                },
+                "uniqueIdentitiesCaptured": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "status",
+                "reason"
+              ]
             }
           },
           "required": [
@@ -693,7 +721,7 @@
       {
         "id": "scrape.details",
         "title": "Capture missing BC Bid details",
-        "description": "Capture details for up to 50 saved BC Bid notices that have no details yet. Completed notices are skipped on retry; saved progress and original files are retained.",
+        "description": "Capture details for up to 50 saved BC Bid notices that have no details yet, either chosen notices or, with a missing limit, the open notices closing soonest that have no current details or attachment list. Completed notices are skipped on retry; saved progress and original files are retained.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -723,10 +751,43 @@
                 "type": "string",
                 "pattern": "^opportunity:[0-9]{1,10}$"
               }
+            },
+            "missing": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              },
+              "required": [
+                "limit"
+              ]
             }
           },
-          "required": [
-            "recordIds"
+          "oneOf": [
+            {
+              "properties": {
+                "recordIds": {
+                  "type": "array"
+                }
+              },
+              "required": [
+                "recordIds"
+              ]
+            },
+            {
+              "properties": {
+                "missing": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "missing"
+              ]
+            }
           ]
         },
         "outputSchema": {
@@ -734,6 +795,12 @@
           "additionalProperties": false,
           "properties": {
             "completed": {
+              "type": "integer"
+            },
+            "selected": {
+              "type": "integer"
+            },
+            "failed": {
               "type": "integer"
             },
             "skipped": {
@@ -1200,6 +1267,115 @@
               "title": "Some notices need their details captured again",
               "actionLabel": "Open scraper",
               "route": "/scraper"
+            }
+          ]
+        }
+      },
+      {
+        "id": "documents.download.missing",
+        "title": "Keep documents current",
+        "description": "Download attachments that are not saved yet for open BC Bid notices, soonest closing first, up to 500 notices per run by default. Failed files are retried later with backoff; notices without attachment links are counted, not failed. Saved files are reused.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "documents.download.missing.v1"
+        },
+        "idempotent": false,
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "requiredCapabilities": [
+          "browser-session",
+          "artifact-store"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "open",
+                "current"
+              ]
+            },
+            "resumeRunId": {
+              "type": "string",
+              "maxLength": 100
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "selected": {
+              "type": "integer"
+            },
+            "completed": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "skippedNoLinks": {
+              "type": "integer"
+            },
+            "needsDetails": {
+              "type": "integer"
+            },
+            "waitingForUser": {
+              "type": "integer"
+            },
+            "remaining": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            },
+            "modelCalls": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "selected",
+            "completed",
+            "failed",
+            "skippedNoLinks",
+            "needsDetails",
+            "waitingForUser",
+            "remaining"
+          ]
+        },
+        "stopNotification": {
+          "title": "Keeping documents current stopped before finishing",
+          "actionLabel": "Review and retry",
+          "route": "/documents?tab=history",
+          "cases": [
+            {
+              "match": "browser check|verification|download did not start|waiting for you",
+              "title": "BC Bid needs a browser check",
+              "actionLabel": "Open downloads",
+              "route": "/documents?tab=history"
+            },
+            {
+              "match": "native browser|transport|not startable|under your control|user control",
+              "title": "The download browser is not ready",
+              "actionLabel": "Review downloads",
+              "route": "/documents?tab=history"
+            },
+            {
+              "match": "MiB limit|too large",
+              "title": "An attachment is too large to download",
+              "actionLabel": "Review files",
+              "route": "/documents?tab=files"
             }
           ]
         }
@@ -2446,6 +2622,12 @@
     "browser_session_id": {
       "type": "string",
       "description": "Saved Zoer browser profile used by this workspace. Agent-allowed stopped profiles start on demand. Empty selects the only eligible profile; explicit selections are never replaced.",
+      "required": false,
+      "default": ""
+    },
+    "download_browser_session_id": {
+      "type": "string",
+      "description": "Saved browser for attachment downloads. Must be a native browser (Clearcote, Camoufox, Patchright or Playwright). Empty uses the main browser.",
       "required": false,
       "default": ""
     }

@@ -162,6 +162,7 @@ try {
     if (!browserTicket || !catalogTicket) throw new Error('Select an agent-allowed saved browser and an existing catalog.');
     const output = await captureMissingDetails(request.input, {
       read: ids => catalogCall('catalog.read', { ids }),
+      list: after => catalogCall('catalog.read', { kind: 'opportunity', after, limit: 200 }),
       capture: url => call('browser.capture-url', { ticket: browserTicket, url, readTabs: BC_BID_DETAIL_TABS }),
       save,
     }, { paused: channel.pauseRequested });
