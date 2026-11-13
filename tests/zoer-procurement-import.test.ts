@@ -46,12 +46,16 @@ describe('CanadaBuys offline import', () => {
     expect(parse(csv([ref, 'title-titre-fra'], [['FR1', 'École']])).records[0].description).toBe('École');
     expect(parse(csv([ref, title, 'title-titre-fra'], [['FR1', '', 'École']])).records[0].description).toBe('École');
   });
-  it('separates amendments and collapses only source-identical duplicate rows', () => {
-    const { records, duplicateCount } = parse(csv([ref, title, 'amendmentNumber-numeroModification'], [
-      ['123', 'Roof', ''], ['123', 'Roof', ''], ['123', 'Roof revised', '1'],
+  it('keeps one record per reference: the latest amendment, with earlier ones in its history', () => {
+    const { records, duplicateCount, warnings } = parse(csv([ref, title, 'amendmentNumber-numeroModification', 'amendmentDate-dateModification'], [
+      ['123', 'Roof', '', ''], ['123', 'Roof', '', ''], ['123', 'Roof revised', '1', '2026-09-20'], ['124', 'Doors', '002', ''], ['124', 'Doors', '010', ''],
     ]));
     expect(duplicateCount).toBe(1);
-    expect(records.map(row => row.sourceKey)).toEqual(['canadabuys:tender:123:', 'canadabuys:tender:123:1']);
+    expect(records.map(row => row.sourceKey)).toEqual(['canadabuys:tender:123:1', 'canadabuys:tender:124:010']);
+    expect(records[0]).toMatchObject({ description: 'Roof revised', amendmentNumber: '1', amendments: 1, amendmentDate: '2026-09-20',
+      amendmentHistory: [{ amendmentNumber: '', seenAt: provenance.importedAt }, { amendmentNumber: '1', amendmentDate: '2026-09-20', seenAt: provenance.importedAt }] });
+    expect(records[1].amendmentHistory.map((entry: any) => entry.amendmentNumber)).toEqual(['002', '010']);
+    expect(warnings.join(' ')).toContain('2 earlier amendment row(s)');
     expect(() => parse(csv([ref, title], [['123', 'Roof'], ['123', 'Different']]))).toThrow('Conflicting duplicate');
     expect(() => parse(csv([ref, title, 'extra'], [['123', 'Roof', 'A'], ['123', 'Roof', 'B']]))).toThrow('Conflicting duplicate');
   });

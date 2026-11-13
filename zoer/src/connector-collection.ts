@@ -2,6 +2,7 @@ import { preserveSourceEnrichment } from '../dashboard/procurement/import-canada
 import { nextImportBatch } from '../dashboard/procurement/import-batches';
 import { connectorCollectionKey } from '../dashboard/procurement/source-adapters';
 import { connectorById } from './connectors';
+import { attachmentFields, mergeAttachments, normalizePlaceholderClosing } from './connectors/attachments';
 import { ConnectorError, crawlRefusal, isBudgetError, transientFailure, type TransientFailure } from './connectors/errors';
 import type { ConnectorPortal, NetFetch, PortalResult, SourceConnector } from './connectors/types';
 import { isPauseError } from './pause';
@@ -125,8 +126,23 @@ export async function beginConnectorAttempt(host: Host, input: ConnectorCollecti
     const continuing = input.mode !== 'restart' && previous.attempt?.open === true && sameSet(previous.attempt.portals, ids)
       && Date.parse(attemptedAt) - Date.parse(previous.attempt.startedAt) < RESUME_WINDOW_MS;
     return { entries: entries({ ...previous, version: 1, sourceId: connector.id, status: 'running', ownerRunId: runId, lastAttemptedAt: attemptedAt,
-      leaseUntil: lease(), error: null, portals: previous.portals ?? {}, attempt: continuing ? previous.attempt : { startedAt: attemptedAt, portals: ids, open: true } }) };
+      leaseUntil: lease(), error: null, ...retirePortals(previous, connector, attemptedAt), attempt: continuing ? previous.attempt : { startedAt: attemptedAt, portals: ids, open: true } }) };
   });
+}
+
+/**
+ * Portal entries of sites no longer in the connector (West Vancouver and YVR left the browser sites on 2026-10-04 but
+ * their October `failed` entries stayed in `portals`) move to `retiredPortals` with `retiredAt`, so the Sources and
+ * Status pages stop counting them as failing. Nothing is deleted; a portal added back starts fresh in `portals`.
+ */
+export function retirePortals(previous: any, connector: SourceConnector, at: string): { portals: Record<string, any>; retiredPortals?: Record<string, any> } {
+  const known = new Set(connector.portals.map(portal => portal.id)), portals: Record<string, any> = {}, retired: Record<string, any> = { ...(previous.retiredPortals ?? {}) };
+  let moved = false;
+  for (const [id, entry] of Object.entries(previous.portals ?? {})) {
+    if (known.has(id)) portals[id] = entry;
+    else { retired[id] = { ...(entry as any), retiredAt: at }; moved = true; }
+  }
+  return { portals, ...(moved || previous.retiredPortals ? { retiredPortals: retired } : {}) };
 }
 
 /** A later slice of the same run takes the source again (running, new lease); another run's ownership is a conflict. */
@@ -161,7 +177,11 @@ export async function collectConnectorPortal(host: Host, connector: SourceConnec
   now = () => new Date().toISOString(), options: ConnectorRunOptions = {}, allowRetry = false): Promise<{ state: any; retry?: TransientFailure }> {
   const { lease, entries, update } = sourceWriter(host, connector, runId, now, options), portalAttemptedAt = now();
   const savePortal = async (result: PortalResult) => {
-    const { kept, excluded } = boundRecords(result.records);
+    // Closing dates after 2035 are placeholders, not deadlines (closingDate null, closingDateRaw kept).
+    // A record that states a closing date but no instant drops a saved instant (it may belong to an earlier date: three
+    // extended Metro Vancouver notices kept their old closingAt when "(YST)" was not understood).
+    const { kept, excluded } = boundRecords(result.records.map(record => normalizePlaceholderClosing(
+      typeof record.closingDate === 'string' && record.closingDate && !('closingAt' in record) ? { ...record, closingAt: undefined } : record)));
     const finish = (current: any) => {
       const short = result.totalReported !== undefined && kept.length < result.totalReported;
       const complete = !excluded.length && !short, previous = current.portals?.[portal.id] ?? {};
@@ -189,9 +209,10 @@ export async function collectConnectorPortal(host: Host, connector: SourceConnec
           const old = previous.get(`opportunity:${row.sourceKey}`);
           // Enrichment is kept: extracted description text (when it differs from the old source text), detail
           // fields, downloaded files, addenda, stars, and a place refined by something other than the portal owner.
+          // Document links: the source's current list when it gives one, else the saved list (CONTRACT2 shape 1).
           const enriched = old ? {
             descriptionText: old.descriptionText !== undefined && old.descriptionText !== old.sourceDescriptionText ? old.descriptionText : row.descriptionText,
-            detailFields: old.detailFields ?? row.detailFields, attachments: old.attachments ?? row.attachments, addenda: old.addenda ?? row.addenda,
+            detailFields: old.detailFields ?? row.detailFields, ...attachmentFields(mergeAttachments(row.attachments, old.attachments)), addenda: old.addenda ?? row.addenda,
             ...(old.place && old.place.method !== 'portal' ? { place: old.place } : {}),
           } : {};
           return { id: `opportunity:${row.sourceKey}`, kind: 'opportunity', title: row.description, data: { ...old, ...row, ...enriched, starred: old?.starred ?? false, lastRunId: runId } };

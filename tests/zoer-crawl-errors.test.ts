@@ -15,6 +15,10 @@ describe('Zoer crawl policy and temporary failures (S4 → portal states, S1 ret
   it('retries only what can succeed later: Retry-After, pacing, server errors and dropped connections', () => {
     expect(transientFailure(refuse('crawl_wait', 'later [crawl retryAfterMs=9000]'))).toEqual({ code: 'crawl_wait', message: 'later', retryAfterMs: 9000 });
     expect(transientFailure(refuse('crawl_rate_limited', 'blocked [crawl retryAfterMs=60000]'))).toMatchObject({ code: 'crawl_rate_limited', retryAfterMs: 60000 });
+    // Zoer forwarded the 2026-11-11 DNS failure as a message only; it is temporary like a coded one.
+    expect(transientFailure(new Error('getaddrinfo EAI_AGAIN'))).toEqual({ code: 'network_error', message: 'getaddrinfo EAI_AGAIN' });
+    expect(transientFailure(new Error('getaddrinfo ENOTFOUND canadabuys.canada.ca'))).toMatchObject({ code: 'network_error' });
+    expect(transientFailure(new Error('Network response exceeded its size limit.'))).toBeNull();
     expect(transientFailure(httpFailure('Search', 429, 30000))).toMatchObject({ code: 'source_rate_limited', retryAfterMs: 30000 });
     expect(transientFailure(httpFailure('Search', 503))).toMatchObject({ code: 'source_http_error' });
     expect(transientFailure(httpFailure('Search', 408))).toMatchObject({ code: 'source_http_error' });

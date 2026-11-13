@@ -42,7 +42,9 @@ const plainMessage = (message: string) => message.replace(/\s*\[crawl [^\]]*\]\s
 
 /** Node/undici network failure codes Zoer forwards from a request that never got an answer. */
 const NETWORK_CODES = /^(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|ENETDOWN|EHOSTDOWN|UND_ERR_[A-Z_]+)$/;
-const NETWORK_MESSAGES = /socket hang up|timed out|ended before completion|closed before completion|network is unreachable/i;
+// Host errors often arrive as a message only (`getaddrinfo EAI_AGAIN`, 2026-11-11), so DNS and connection failures are
+// recognised in the text too.
+const NETWORK_MESSAGES = /socket hang up|timed out|ended before completion|closed before completion|network is unreachable|getaddrinfo|\bEAI_AGAIN\b|\bENOTFOUND\b|\bECONNRESET\b|\bECONNREFUSED\b|\bETIMEDOUT\b|\bEHOSTUNREACH\b|\bENETUNREACH\b|fetch failed|connection reset/i;
 
 export interface TransientFailure { code: string; message: string; retryAfterMs?: number }
 /**

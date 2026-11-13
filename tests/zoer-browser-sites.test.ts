@@ -213,6 +213,22 @@ function browser(start: string, pages: Record<string, Partial<CapturedPage> | Er
 const refuse = (code: string, message: string) => Object.assign(new Error(message), { code });
 const CIVIC = 'https://www.civicinfo.bc.ca/bids', CHILLIWACK = site('chilliwack').url;
 
+// cranbrook-2026-11.html: Cranbrook's bids page on 2026-11-13 (<main> only), where the collector had read the services
+// menu's "Make Payment" link as one notice titled "Bid & Tender Opportunities".
+describe('Cranbrook notices separated by horizontal rules', () => {
+  it('reads each linked title with its submission deadline, not the menu or the page heading', () => {
+    const cranbrook = site('cranbrook'), rows = parseBrowserListing(cranbrook, fixture('cranbrook-2026-11.html'), cranbrook.url).rows;
+    expect(rows.map(row => [row.title, row.closing])).toEqual([
+      ['Request For Proposal - Downtown Parking System Update', '4pm, Wednesday, November 25, 2026'],
+      ['Request For Expression Of Interest (EOI) - Lease Space Within Western Financial Place', '4pm, Wednesday, December 2, 2026'],
+    ]);
+    const record = browserRecord(rows[0], cranbrook, cranbrook.url, '2026-11-13T19:00:00.000Z');
+    const pdf = 'https://docs.cranbrook.ca/downloads/finance/tenders/RFP-Downtown-Parking-System-Update-November2026.pdf';
+    expect(record).toMatchObject({ detailUrl: pdf, attachments: [{ name: 'Request For Proposal - Downtown Parking System Update', url: pdf }], attachmentsAccess: 'public', closingAt: '2026-11-25' });
+    expect(JSON.stringify(rows)).not.toMatch(/Make Payment|amaistech/);
+  });
+});
+
 describe('procurement.collect.browser', () => {
   it('validates its input strictly', () => {
     expect(validBrowserCollectionInput({ sourceId: 'browser-sites' })).toBe(true);

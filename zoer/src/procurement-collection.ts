@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto';
-import { parseCanadaBuysCsv, preserveCanadaBuysEnrichment, verifyCanadaBuysImportReceipt } from '../dashboard/procurement/import-canadabuys';
+import { amendmentHistory, canadaBuysCandidateKeys, parseCanadaBuysCsv, preserveCanadaBuysEnrichment, verifyCanadaBuysImportReceipt } from '../dashboard/procurement/import-canadabuys';
+import { attachmentFields, mergeAttachments } from './connectors/attachments';
 import { nextImportBatch } from '../dashboard/procurement/import-batches';
 import { enrichNotice } from '../dashboard/procurement/enrich';
 import { isPauseError } from './pause';
+import { transientFailure } from './connectors/errors';
+
+/** A request that never got an answer (DNS, reset, timeout); HTTP answers (5xx, 429) and crawl refusals are not. */
+const isNetworkFailure = (error: unknown) => { const failure = transientFailure(error); return !!failure && !/^(?:source_|crawl_)/.test(failure.code); };
 import { CANADABUYS_DATASET_URL, CANADABUYS_DOCUMENTATION_URL, COLLECTION_KEY, canadaBuysClosingAt } from '../dashboard/procurement/source-adapters';
 
 export type Host = (method: string, input: any) => Promise<any>;
@@ -18,7 +23,11 @@ export interface CanadaBuysRunOptions {
   leaseUntil?: () => string;
   /** A failure the caller retries later in the run: the state is left running instead of being marked failed. */
   deferFailure?: (error: unknown) => boolean;
+  /** Waits between in-step download retries (tests replace it). */
+  sleep?: (ms: number) => Promise<void>;
 }
+/** Waits before the 2nd and 3rd download attempt when the request never got an answer (DNS, reset, timeout). */
+export const CANADABUYS_FETCH_RETRY_MS = [2_000, 8_000];
 const MAX_BYTES = 20 * 1024 * 1024;
 const LEASE_MS = 10 * 60_000;
 class CollectionError extends Error { constructor(message: string, readonly code: string, readonly detail: { status?: number; retryAfterMs?: number } = {}) { super(message); } }
@@ -40,6 +49,28 @@ export async function catalogTransaction(host: Host, key: string, build: (state:
 }
 const transaction = (host: Host, build: (state: any, revision: number) => Promise<any>) => catalogTransaction(host, COLLECTION_KEY, build);
 
+/**
+ * One record per CanadaBuys reference. The daily file lists only the latest amendment of each reference, and imports
+ * before 2026-11-13 keyed records by reference *and* amendment, so an amended notice was saved again as a new row.
+ * A notice now lands on its reference's earliest saved record (the lowest amendment saved under
+ * `canadabuys:tender:<reference>:<amendment>`), else on its own key; the amendments seen (including those of
+ * superseded rows) are kept in `amendmentHistory`. Superseded rows are read, never changed here.
+ */
+export async function canonicalCanadaBuysRows(host: Host, proposed: any[], revision: number): Promise<Array<{ record: any; saved?: any }>> {
+  const candidates = proposed.map(row => canadaBuysCandidateKeys(row.externalId, typeof row.amendmentNumber === 'string' ? row.amendmentNumber : ''));
+  const ids = [...new Set(candidates.flat().map(key => `opportunity:${key}`))], found = new Map<string, any>();
+  // Four ids per read keeps a response under the host's 1.5 MB lookup cap even for 250 kB records.
+  for (let i = 0; i < ids.length; i += 4) for (const row of (await host('catalog.read', { ids: ids.slice(i, i + 4), revision })).records) found.set(row.id, row);
+  return proposed.map((row, n) => {
+    const exact = found.get(`opportunity:${row.sourceKey}`);
+    const saved = candidates[n].map(key => found.get(`opportunity:${key}`)).filter(item => item?.data?.sourceId === 'canadabuys');
+    const target = saved[0] ?? exact;
+    const key = target ? target.id.slice('opportunity:'.length) : row.sourceKey;
+    const record = { ...row, sourceKey: key, processId: key, opportunityId: key, amendmentHistory: amendmentHistory(row, saved.map(item => item.data)) };
+    return { record, saved: target };
+  });
+}
+
 export async function collectCanadaBuys(host: Host, input: CollectionInput, runId: string, now = () => new Date().toISOString(), options: CanadaBuysRunOptions = {}) {
   if (input.sourceId !== 'canadabuys' || (input.mode && !['resume', 'restart'].includes(input.mode)) ||
     !Number.isInteger(input.maxBatches ?? 1) || (input.maxBatches ?? 1) < 1 || (input.maxBatches ?? 1) > 20) throw new Error('Invalid CanadaBuys collection request.');
@@ -55,7 +86,17 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
   });
   try {
     // No User-Agent: Zoer's crawl policy sets it (robots.txt is off for this open-data file; see the manifest).
-    const response = await host('network.fetch', { url: CANADABUYS_DATASET_URL, method: 'GET', headers: { accept: 'text/csv' } });
+    // A dropped connection or a DNS hiccup (`getaddrinfo EAI_AGAIN`, 2026-11-11) is tried again in this step with a
+    // short backoff; if it persists, the resumable run retries the step later (`deferFailure`).
+    const sleep = options.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
+    let response: any;
+    for (let attempt = 0; ; attempt++) {
+      try { response = await host('network.fetch', { url: CANADABUYS_DATASET_URL, method: 'GET', headers: { accept: 'text/csv' } }); break; }
+      catch (error) {
+        if (isPauseError(error) || attempt >= CANADABUYS_FETCH_RETRY_MS.length || !isNetworkFailure(error)) throw error;
+        await sleep(CANADABUYS_FETCH_RETRY_MS[attempt]);
+      }
+    }
     if (response.status !== 200) {
       throw new CollectionError(`CanadaBuys returned HTTP ${response.status}. Saved records and the previous checkpoint are retained.`, response.status === 403 ? 'source_forbidden' : response.status === 429 ? 'source_rate_limited' : 'source_http_error',
         { status: response.status, ...(Number.isInteger(response.retryAfterMs) ? { retryAfterMs: response.retryAfterMs } : {}) });
@@ -78,7 +119,7 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
     const records = parsed!.records.map(record => ({ ...record,
       sourceRetrievedAt: attemptedAt, sourceLastModified: response.headers?.['last-modified'] ?? null,
       sourceClosingTimezone: 'UTC-05:00', sourceTimezoneDocumentation: CANADABUYS_DOCUMENTATION_URL,
-      ...(canadaBuysClosingAt(record.closingDate) ? { closingAt: canadaBuysClosingAt(record.closingDate) } : {}),
+      ...(typeof record.closingDate === 'string' && canadaBuysClosingAt(record.closingDate) ? { closingAt: canadaBuysClosingAt(record.closingDate) } : {}),
     }));
     if (resuming && state.receipt.offset > 0 && state.receipt.parserVersion !== 2) fail('The source parser changed; restart this source snapshot to avoid skipping records.', 'cursor_invalid');
     const offset = resuming ? state.receipt.offset : 0;
@@ -94,14 +135,15 @@ export async function collectCanadaBuys(host: Host, input: CollectionInput, runI
       state = await transaction(host, async (current, revision) => {
         owned(current);
         if (current.receipt?.sha256 !== sha256 || current.receipt.offset !== start) fail('Collection cursor advanced elsewhere; resume safely.', 'collection_conflict');
-        const proposed = nextImportBatch(records, start), existing: any[] = [];
-        for (let i = 0; i < proposed.length; i += 4) existing.push(...(await host('catalog.read', { ids: proposed.slice(i, i + 4).map(row => `opportunity:${row.sourceKey}`), revision })).records);
-        const batch = nextImportBatch(preserveCanadaBuysEnrichment(proposed, existing), 0);
+        const proposed = nextImportBatch(records, start);
+        const canonical = await canonicalCanadaBuysRows(host, proposed, revision);
+        const existing = canonical.map(row => row.saved).filter(Boolean);
+        const batch = nextImportBatch(preserveCanadaBuysEnrichment(canonical.map(row => row.record), existing), 0);
         const previous = new Map(existing.map(row => [row.id, row.data]));
         const saved = batch.map(row => {
           const old = previous.get(`opportunity:${row.sourceKey}`);
           return { id: `opportunity:${row.sourceKey}`, kind: 'opportunity', title: row.description, data: enrichNotice({ ...old, ...row,
-            ...(old ? { descriptionText: old.descriptionText, detailFields: old.detailFields, attachments: old.attachments, addenda: old.addenda } : {}),
+            ...(old ? { descriptionText: old.descriptionText, detailFields: old.detailFields, ...attachmentFields(mergeAttachments(row.attachments, old.attachments)), addenda: old.addenda } : {}),
             starred: old?.starred ?? false, lastRunId: runId }) };
         });
         // These exact rows and cursor are committed together; a failed batch never advances its receipt.

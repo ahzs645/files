@@ -27,9 +27,12 @@ const PACIFIC = 'America/Vancouver';
 const place = (municipality: string | null, regionalDistrict: string | null) => ({ municipality, regionalDistrict: regionalDistrict && regionalDistrictName(regionalDistrict), method: 'portal' as const });
 
 export const SITE_PORTALS: readonly SitePortal[] = [
-  { id: 'rdn', label: 'Regional District of Nanaimo', host: 'rdn.bc.ca', url: 'https://rdn.bc.ca/current-bid-opportunities',
-    listUrls: ['https://rdn.bc.ca/current-bid-opportunities'], place: place(null, 'Nanaimo'),
-    layout: 'table', timeZone: PACIFIC, keyBy: 'link', details: true },
+  // RDN moved to www.rdn.ca (rdn.bc.ca answers 301 since 2026-10-04; Zoer's fetch follows no redirects). The new
+  // Drupal site lists notices as `list-item` rows with Status, Post Date and Closing Time; paths are now
+  // `/government/current-bid-opportunities/<number-title>` (the old `node-<n>` ids are not on the new site).
+  { id: 'rdn', label: 'Regional District of Nanaimo', host: 'www.rdn.ca', url: 'https://www.rdn.ca/government/current-bid-opportunities',
+    listUrls: ['https://www.rdn.ca/government/current-bid-opportunities'], place: place(null, 'Nanaimo'),
+    layout: 'list', timeZone: PACIFIC, keyBy: 'link', details: true },
   // The default view shows "Open" only; "Open - Amended" is a separate status, so both are listed.
   { id: 'srd', label: 'Strathcona Regional District', host: 'www.srd.ca', url: 'https://www.srd.ca/government/bid-opportunities',
     listUrls: ['https://www.srd.ca/government/bid-opportunities?status=66', 'https://www.srd.ca/government/bid-opportunities?status=67'],
@@ -63,8 +66,9 @@ export const SITE_PORTALS: readonly SitePortal[] = [
     listUrls: ['https://www.saanich.ca/EN/main/business/selling-to-saanich/bid-opportunities.html'], place: place('Saanich', 'Capital'),
     layout: 'table', timeZone: PACIFIC, keyBy: 'link', details: true },
   // GovStack table with separate closing date and time columns; Dawson Creek keeps Mountain Standard Time all year.
-  { id: 'dawsoncreek', label: 'City of Dawson Creek', host: 'www.dawsoncreek.ca', url: 'https://www.dawsoncreek.ca/business-development/tenders/',
-    listUrls: ['https://www.dawsoncreek.ca/business-development/tenders/'], place: place('Dawson Creek', 'Peace River'),
+  // The page moved from /business-development/tenders/ (301 since 2026-10-04) to /bidding-opportunities/, same layout.
+  { id: 'dawsoncreek', label: 'City of Dawson Creek', host: 'www.dawsoncreek.ca', url: 'https://www.dawsoncreek.ca/business-development/bidding-opportunities/',
+    listUrls: ['https://www.dawsoncreek.ca/business-development/bidding-opportunities/'], place: place('Dawson Creek', 'Peace River'),
     layout: 'table', timeZone: 'America/Dawson_Creek', keyBy: 'link', details: true },
   // Surrey also has a bids&tenders portal (empty on 2026-10-03); its own site lists the open tenders, most issued through BC Bid.
   { id: 'surrey', label: 'City of Surrey', host: 'www.surrey.ca', url: 'https://www.surrey.ca/business-economy/tenders-rfqs-rfps',

@@ -105,6 +105,6 @@ describe('bids&tenders collector additions (CONNECTORS.md changes)', () => {
     const row = portalRows(BIDSANDTENDERS_PORTALS, parsed).find(item => item.id === 'richmond')!;
     expect(row).toMatchObject({ status: 'incomplete', statusText: 'Partly collected', problem: true, counts: '40 listed · portal reports 43', lastSuccessAt: '2026-10-03T12:00:00Z', error: 'records_excluded: 3 notices over 250 kB' });
     expect(connectorStatus(parsed, now).text).toBe('Stopped at the time limit; next run continues');
-    expect(portalSummaryText(portalRows(BIDSANDTENDERS_PORTALS, parsed))).toMatch(/^1 of 25 portals collected in the last run · 1 partly · 24 not collected yet$/);
+    expect(portalSummaryText(portalRows(BIDSANDTENDERS_PORTALS, parsed))).toMatch(/^1 of 33 portals collected in the last run · 1 partly · 32 not collected yet$/);
   });
 });

@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { itWith2026Rules } from './support/tzdata';
 import {
-  collectSitePortal, contactsFrom, leadingNumber, municipalSites, nextPage, parseCards, parseListing, parseNoticePage, parseTable, parseWallClock,
+  collectSitePortal, contactsFrom, documentLink, leadingNumber, municipalSites, nextPage, parseCards, parseListing, parseNoticePage, parseTable, parseWallClock,
   readMoment, siteRecord, wallClockInstant,
 } from '../zoer/src/connectors/municipal-sites';
 import { CONNECTORS } from '../zoer/src/connectors/index';
-import { SITE_PORTALS } from '../zoer/dashboard/procurement/site-portals';
+import { SITE_PORTALS, type SitePortal } from '../zoer/dashboard/procurement/site-portals';
 import { LINK_SOURCES } from '../zoer/dashboard/procurement/link-sources';
 import { SOURCES } from '../zoer/dashboard/procurement/catalog';
 import { PROCUREMENT_SOURCE_ADAPTERS } from '../zoer/dashboard/procurement/source-adapters';
@@ -17,14 +17,16 @@ import type { NetFetch } from '../zoer/src/connectors/types';
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/municipal-sites/${name}`, import.meta.url), 'utf8');
 const portal = (id: string) => SITE_PORTALS.find(p => p.id === id)!;
 const NOW = '2026-10-04T01:40:00.000Z';
-const recordsOf = (id: string, file: string) => {
-  const p = portal(id);
+const recordsOf = (id: string | SitePortal, file: string) => {
+  const p = typeof id === 'string' ? portal(id) : id;
   return parseListing(p, fixture(file)).rows.map(row => siteRecord(row, p, NOW));
 };
+/** RDN's site before it moved to www.rdn.ca (rdn-listing.html, rdn-node-28806.html were saved from it on 2026-10-03). */
+const OLD_RDN: SitePortal = { ...SITE_PORTALS.find(p => p.id === 'rdn')!, host: 'rdn.bc.ca', url: 'https://rdn.bc.ca/current-bid-opportunities', listUrls: ['https://rdn.bc.ca/current-bid-opportunities'], layout: 'table' };
 
 describe('municipal-sites listings', () => {
   it('reads RDN closing instants from <time datetime> only after checking them against the printed time', () => {
-    const records = recordsOf('rdn', 'rdn-listing.html');
+    const records = recordsOf(OLD_RDN, 'rdn-listing.html');
     expect(records).toHaveLength(11);
     const daft = records[0];
     expect(daft).toMatchObject({
@@ -46,7 +48,7 @@ describe('municipal-sites listings', () => {
   itWith2026Rules('trusts RDN’s winter times once BC stays on UTC−07', () => {
     // BC stays UTC−07 after March 2026: the printed 1:00 AM and 08:00Z now agree.
     // https://news.gov.bc.ca/releases/2026AG0013-000209
-    expect(recordsOf('rdn', 'rdn-listing.html').find(r => r.externalId === '26-006')).toMatchObject({ closingDate: 'December 31, 2026 at 1:00 AM', closingAt: '2026-12-31T01:00:00-07:00', status: 'Open' });
+    expect(recordsOf(OLD_RDN, 'rdn-listing.html').find(r => r.externalId === '26-006')).toMatchObject({ closingDate: 'December 31, 2026 at 1:00 AM', closingAt: '2026-12-31T01:00:00-07:00', status: 'Open' });
   });
 
   it('keys SRD rows by notice number (its rows carry no links) and keeps its status column', () => {
@@ -146,6 +148,69 @@ describe('municipal-sites portals added from the BC survey', () => {
     const saanich = parseNoticePage(fixture('saanich-detail.html'), 'https://www.saanich.ca/x')!;
     expect(saanich).toMatchObject({ number: 'RFQ 26-212', contacts: [{ email: 'purchase@saanich.ca', source: 'detail-field' }] });
     expect(parseNoticePage(fixture('esquimalt-detail.html'), 'https://www.esquimalt.ca/x')).toMatchObject({ status: 'Open', closing: 'October 28, 2026 - 2:00pm' });
+  });
+});
+
+// Pages saved on 2026-11-13 after RDN and Dawson Creek moved (scripts, styles, SVG, menus and footer emptied).
+describe('municipal-sites after the 2026 site moves', () => {
+  const LATER = '2026-11-13T19:00:00.000Z';
+  it('reads RDN\'s new list of notices with post dates and keeps its 301 behind', () => {
+    expect(portal('rdn')).toMatchObject({ host: 'www.rdn.ca', url: 'https://www.rdn.ca/government/current-bid-opportunities', layout: 'list' });
+    const rows = parseListing(portal('rdn'), fixture('rdn-2026-11-listing.html')).rows;
+    const records = rows.map(row => siteRecord(row, portal('rdn'), LATER));
+    expect(records).toHaveLength(6);
+    expect(records[1]).toMatchObject({
+      sourceKey: 'municipal-sites:rdn:26-043-surfside-well-drilling-itt', externalId: '26-043', description: '26-043 Surfside Well Drilling ITT',
+      status: 'Open', closingDate: 'December 1, 2026 at 3:00 PM', publishedAt: '2026-11-06',
+      detailUrl: 'https://www.rdn.ca/government/current-bid-opportunities/26-043-surfside-well-drilling-itt', sourceUrl: 'https://www.rdn.ca/government/current-bid-opportunities',
+    });
+    expect(records.every(record => record.publishedAt)).toBe(true);
+    expect(records.find(record => record.externalId === '26-005')).toMatchObject({ publishedAt: '2025-01-06', status: 'Open' });
+  });
+  it('saves RDN\'s notice-page documents as public links on its own host', () => {
+    const url = 'https://www.rdn.ca/government/current-bid-opportunities/26-043-surfside-well-drilling-itt';
+    const page = parseNoticePage(fixture('rdn-2026-11-detail.html'), url)!;
+    expect(page).toMatchObject({ status: 'Open', closing: 'December 1, 2026 at 3:00 PM', contacts: [expect.objectContaining({ email: 'rchowdhury@rdn.bc.ca' })] });
+    const row = parseListing(portal('rdn'), fixture('rdn-2026-11-listing.html')).rows[1];
+    const record = siteRecord(row, portal('rdn'), LATER, page);
+    expect(record.attachments).toEqual([{ name: '26-043 Surfside Well Drilling ITT', url: 'https://www.rdn.ca/sites/default/files/2026-11/26-043%20Surfside%20Well%20Drilling%20ITT.pdf' }]);
+    expect(record).toMatchObject({ attachmentsAccess: 'public', documentsCount: 1, noticePageRetrievedAt: LATER });
+  });
+  it('reads Dawson Creek at its new address with the same notice keys, and the posted date on its notice pages', () => {
+    expect(portal('dawsoncreek').url).toBe('https://www.dawsoncreek.ca/business-development/bidding-opportunities/');
+    const rows = parseListing(portal('dawsoncreek'), fixture('dawsoncreek-2026-11-listing.html')).rows;
+    expect(rows).toHaveLength(24);
+    const before = new Set(recordsOf('dawsoncreek', 'dawsoncreek-listing.html').map(record => record.sourceKey));
+    const after = rows.map(row => siteRecord(row, portal('dawsoncreek'), LATER).sourceKey);
+    expect(after.filter(key => before.has(key)).length).toBeGreaterThanOrEqual(22);
+    const page = parseNoticePage(fixture('dawsoncreek-2026-11-detail.html'), 'https://www.dawsoncreek.ca/news/posts/2026-notice-of-intent-canoe-procurement-group/')!;
+    expect(page.postedHtml).toBe('Dec 30, 2025');
+    expect(page.description).toMatch(/^As required by Chapter Five, Article 504\.7/);
+    const noi = siteRecord(rows[0], portal('dawsoncreek'), LATER, page);
+    expect(noi).toMatchObject({ sourceKey: 'municipal-sites:dawsoncreek:2026-notice-of-intent-canoe-procurement-group', publishedAt: '2025-12-30',
+      contacts: [{ email: 'jrickert@dawsoncreek.ca', source: 'description' }] });
+    expect(noi).not.toHaveProperty('attachmentsAccess');
+  });
+});
+
+describe('municipal-sites document links', () => {
+  const page = 'https://www.saanich.ca/EN/main/business/x.html';
+  it('keeps site files and platform links, and drops share buttons and other off-site pages', () => {
+    expect(documentLink('https://www.saanich.ca/assets/rfq.pdf', 'RFQ', page, false)).toEqual({ name: 'RFQ', url: 'https://www.saanich.ca/assets/rfq.pdf' });
+    expect(documentLink('https://www.saanich.ca/media/12', 'Drawings', page, true)).toEqual({ name: 'Drawings', url: 'https://www.saanich.ca/media/12' });
+    expect(documentLink('https://www.saanich.ca/media/12', 'Drawings', page, false)).toBeUndefined();
+    expect(documentLink('https://penticton.bonfirehub.ca/projects/111964/details', 'see for more details', page, true)).toEqual({ name: 'see for more details', url: 'https://penticton.bonfirehub.ca/projects/111964/details', access: 'login' });
+    expect(documentLink('https://www.bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/1', 'BC Bid', page, false)).toBeUndefined();
+    expect(documentLink('https://www.facebook.com/sharer.php?u=https://www.saanich.ca/x.html', 'Share on Facebook', page, true)).toBeUndefined();
+    expect(documentLink('https://www.govdeals.ca/PentictonBC', 'View for more details', page, true)).toBeUndefined();
+    expect(documentLink('https://fernie.civicweb.net/filepro/documents/196929/?preview=205758', 'RFQ', page, true)).toEqual({ name: 'RFQ', url: 'https://fernie.civicweb.net/filepro/documents/196929/?preview=205758' });
+  });
+  it('saves a notice\'s mixed public and login-only documents with the record', () => {
+    const html = `<main><h1>RFP 1</h1><div class="field__label">Documents</div><div class="field__items"><a href="/files/rfp.pdf">RFP</a> <a href="https://x.bonfirehub.ca/opportunities/1">Bonfire</a> <a href="https://twitter.com/intent/tweet?u=1">Tweet</a></div></main>`;
+    const p = portal('fvrd'), parsed = parseNoticePage(html, 'https://www.fvrd.ca/EN/main/government/tenders-rfps/rfp-1.html')!;
+    expect(parsed.documents).toEqual([{ name: 'RFP', url: 'https://www.fvrd.ca/files/rfp.pdf' }, { name: 'Bonfire', url: 'https://x.bonfirehub.ca/opportunities/1', access: 'login' }]);
+    const record = siteRecord({ title: 'RFP 1', href: '/EN/main/government/tenders-rfps/rfp-1.html', cells: {}, html: {} } as any, p, NOW, parsed);
+    expect(record).toMatchObject({ attachments: parsed.documents, attachmentsAccess: 'mixed', documentsCount: 2 });
   });
 });
 
