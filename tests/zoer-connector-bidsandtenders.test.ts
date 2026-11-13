@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   bidsAndTenders, bidsAndTendersDate, bidsAndTendersInstant, collectBidsAndTendersPortal, decodeEntities, htmlToText, listingRecord,
-  noticeNumber, parseListingPage, parseNoticePage, readSearchForm, searchUrl, splitZoned,
+  documentUrl, noticeNumber, parseListingPage, parseNoticeDocuments, parseNoticePage, readSearchForm, searchUrl, splitZoned,
 } from '../zoer/src/connectors/bidsandtenders';
 import { CONNECTORS } from '../zoer/src/connectors';
 import type { NetRequest, NetResponse } from '../zoer/src/connectors/types';
@@ -45,6 +45,18 @@ describe('bids&tenders dates', () => {
     expect(bidsAndTendersInstant(row.DateClosingDisplay, row.TimeZoneLabel)).toBe('2026-10-07T15:00:00-07:00');
     expect(Date.parse(bidsAndTendersInstant(row.DateClosingDisplay, row.TimeZoneLabel)!)).toBe(Date.UTC(2026, 9, 7, 22));
   });
+  // metrovancouver-Open-2026-11-13.json: the live listing after BC's clocks stayed on UTC−07 (label "(YST)").
+  it('reads the "(YST)" label BC portals print since November 2026 as UTC−07', () => {
+    expect(bidsAndTendersInstant('Fri Nov 13, 2026 2:00:00 PM', ' (YST)')).toBe('2026-11-13T14:00:00-07:00');
+    expect(bidsAndTendersInstant('Fri Nov 13, 2026 2:00:00 PM', '(yst) ')).toBe('2026-11-13T14:00:00-07:00');
+    expect(bidsAndTendersInstant('Fri Nov 13, 2026 2:00:00 PM', ' (XYZ)')).toBeUndefined();
+    expect(splitZoned('Thu Nov 12, 2026 2:15:00 PM (YST)')).toEqual({ display: 'Thu Nov 12, 2026 2:15:00 PM', label: ' (YST)' });
+    const live = JSON.parse(fixture('metrovancouver-Open-2026-11-13.json'));
+    const records = live.data.map((row: any) => listingRecord(row, portal('metrovancouver'), at));
+    expect(records).toHaveLength(19);
+    expect(records.every((record: any) => record.closingAt?.endsWith('-07:00'))).toBe(true);
+    expect(records[0]).toMatchObject({ closingDate: 'Fri Nov 13, 2026 2:00:00 PM (YST)', closingAt: '2026-11-13T14:00:00-07:00' });
+  });
   it('handles PST, seconds, noon/midnight and mountain time', () => {
     expect(bidsAndTendersInstant('Fri Jan 29, 2027 2:00:00 PM', ' (PST)')).toBe('2027-01-29T14:00:00-08:00');
     expect(bidsAndTendersInstant('Thu Oct 8, 2026 12:00:00 PM', ' (PDT)')).toBe('2026-10-08T12:00:00-07:00');
@@ -82,6 +94,18 @@ describe('bids&tenders notice numbers and notice pages', () => {
     expect(parseNoticePage(fixture('islandhealthfdc-detail.html'))).toMatchObject({ bidNumber: '2381183 - RFT - GC', type: 'Request for Tender', published: 'Tue Sep 1, 2026 1:40:59 PM (PDT)' });
   });
   it('does not mistake an error page for a notice', () => expect(parseNoticePage('<table><tr><th>Error:</th><td>Not found</td></tr></table>')).toBeUndefined());
+  // metrovancouver-detail.html: the public notice page of 25-767 as served on 2026-11-13.
+  it('lists the documents and addenda named in the notice page grids', () => {
+    expect(parseNoticeDocuments(fixture('metrovancouver-detail.html'))).toEqual([
+      { id: '751ee6bb-a6af-4219-9605-e0db3c423a73', name: '25-767 SRFEOI Document', created: '2025-12-22T16:00:13.780', kind: 'document' },
+      { id: '1b44da0c-5a91-4cdf-976e-5ab59c063641', name: '25-767 Addendum No. 1', created: '2026-02-10T11:10:43.617', kind: 'addendum' },
+    ]);
+    // Pages without the grids (or with an empty one) list nothing; a malformed store is ignored, not guessed at.
+    expect(parseNoticeDocuments(fixture('nanaimo-detail.html'))).toEqual([]);
+    expect(parseNoticeDocuments('proxyId:"Documents",x:new Ext.data.PagingMemoryProxy([{"Id":"not-a-guid","DisplayName":"A"},{"Id":"751EE6BB-A6AF-4219-9605-E0DB3C423A73","DisplayName":"B ] [\\"x\\""}], false)'))
+      .toEqual([{ id: '751ee6bb-a6af-4219-9605-e0db3c423a73', name: 'B ] ["x"', kind: 'document' }]);
+    expect(parseNoticeDocuments('proxyId:"Documents",x:new Ext.data.PagingMemoryProxy([{"Id":')).toEqual([]);
+  });
 });
 
 describe('bids&tenders records', () => {
@@ -103,6 +127,18 @@ describe('bids&tenders records', () => {
       { label: 'Bid scope', value: 'Public' }, { label: 'Published (source value)', value: 'Fri Sep 11, 2026 2:00 PM (PDT)' }, { label: 'Categories', value: 'Fire Services; Supplies; Sprinkler System; Maintenance' }]));
     expect(record.searchText).toContain('Sprinkler System');
     expect(record).not.toHaveProperty('contacts');
+    expect(record).not.toHaveProperty('attachmentsAccess');
+  });
+  it('saves the notice page\'s documents and addenda as login-only links (anonymous downloads redirect to Login)', () => {
+    const row = { ...listing('metrovancouver').data[0], Id: '0db78897-6f32-4316-88fb-d16685a0de71' };
+    const record = listingRecord(row, portal('metrovancouver'), at, parseNoticePage(fixture('metrovancouver-detail.html')));
+    expect(record.attachments).toEqual([
+      { name: '25-767 SRFEOI Document', url: 'https://metrovancouver.bidsandtenders.ca/Module/Tenders/en/Tender/DownloadBidDocument?Id=0db78897-6f32-4316-88fb-d16685a0de71&DocumentId=751ee6bb-a6af-4219-9605-e0db3c423a73&fa=', access: 'login' },
+      { name: '25-767 Addendum No. 1', url: documentUrl(portal('metrovancouver'), '0db78897-6f32-4316-88fb-d16685a0de71', '1b44da0c-5a91-4cdf-976e-5ab59c063641'), access: 'login' },
+    ]);
+    expect(record.attachmentsAccess).toBe('login');
+    const unnamed = listingRecord(row, portal('metrovancouver'), at, { ...parseNoticePage(fixture('metrovancouver-detail.html'))!, documents: [{ id: '1b44da0c-5a91-4cdf-976e-5ab59c063641', name: 'Revised drawings', kind: 'addendum' }] });
+    expect(unnamed.attachments).toEqual([expect.objectContaining({ name: 'Addendum: Revised drawings' })]);
   });
   it('without a notice page keeps listing fields, a date-only published value and no invented type', () => {
     const record = listingRecord(listing('metrovancouver').data.find((row: any) => row.Title.startsWith('26-0227')), portal('metrovancouver'), at);
@@ -193,9 +229,9 @@ describe('bids&tenders portal collection', () => {
 });
 
 describe('connector registry and manifest', () => {
-  it('registers bids&tenders with all 25 BC portals', () => {
+  it('registers bids&tenders with all 33 BC portals', () => {
     expect(CONNECTORS.map(connector => connector.id)).toContain('bidsandtenders');
-    expect(bidsAndTenders.portals).toHaveLength(25);
+    expect(bidsAndTenders.portals).toHaveLength(33);
     for (const connector of CONNECTORS) expect(connector.id).toMatch(/^[a-z][a-z0-9-]{0,63}$/);
   });
   it('allowlists every connector host and budgets enough requests for every portal', () => {

@@ -29,7 +29,7 @@ export const PROCUREMENT_SOURCE_ADAPTERS: ProcurementSourceAdapter[] = [
     coverage: 'Federal open-tender dataset snapshot only. Daily publisher refresh; absence is not proof of closure. Saved old records are retained.', capabilities: {
       listing: { status: 'available', method: 'procurement.collect: official open-tenders CSV, bounded and checksummed; manual CSV fallback' },
       detail: { status: 'partial', method: 'Published bilingual CSV fields; no notice-page scraping' },
-      attachments: { status: 'unavailable', method: 'Original attachment fields retained as data; files are not downloaded by this connector' },
+      attachments: { status: 'unavailable', method: 'Attachment links from the open-data file are saved with each notice (files on canadabuys.canada.ca are public; Shared Services Canada portal links need its sign-in); files are not downloaded by this connector' },
       awards: { status: 'unavailable', method: 'Official award dataset exists but is not connected' },
       auth: { status: 'unavailable', method: 'Public CSV requires no credentials; HTTP 403 is reported without bypass' },
     } },
@@ -37,7 +37,7 @@ export const PROCUREMENT_SOURCE_ADAPTERS: ProcurementSourceAdapter[] = [
     coverage: `Open notices listed by ${BIDSANDTENDERS_PORTALS.length} BC public buyers on bids&tenders, one portal at a time; a failed portal does not stop the others. Closed and awarded notices are not listed; absence is not proof of closure. Saved records are retained.`, capabilities: {
       listing: { status: 'available', method: 'procurement.collect: each portal\'s open-notice search (homepage session, then form search), paged' },
       detail: { status: 'partial', method: 'Public notice page per notice (up to 30 per portal per run): type, classification, categories, question deadline, zoned published date. Buyer contacts and document lists need a vendor login and are not read' },
-      attachments: { status: 'unavailable', method: 'Document and addenda counts from the listing only; files need a vendor login and are not downloaded' },
+      attachments: { status: 'unavailable', method: 'Document and addenda names and links from each notice page, marked as needing a sign-in; files need a free supplier login on the portal and are not downloaded' },
       awards: { status: 'unavailable', method: 'Awarded and closed notices are not collected' },
       auth: { status: 'unavailable', method: 'Public pages only; no vendor login. The search needs a per-run cookie session kept by Zoer (networkSession)' },
     } },

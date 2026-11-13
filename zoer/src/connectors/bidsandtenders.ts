@@ -1,4 +1,5 @@
 import { BIDSANDTENDERS_PORTALS } from '../../dashboard/procurement/portals';
+import { cleanAttachments } from './attachments';
 import { ConnectorError, httpFailure, rethrowRunLimits } from './errors';
 import { decodeEntities, htmlToText } from './html';
 import type { ConnectorPortal, NetFetch, PortalResult, SourceConnector } from './types';
@@ -9,8 +10,13 @@ import type { ConnectorPortal, NetFetch, PortalResult, SourceConnector } from '.
  * 1. GET the bids homepage: sets the anti-forgery cookie (kept host-side by Zoer's networkSession) and holds the
  *    search form's NodeId and `__RequestVerificationToken`.
  * 2. POST the form to `Tender/Search/<NodeId>` for open notices, 100 per page.
- * 3. GET each notice page (public, no session needed) for type, classification, categories, question deadline and
- *    a zoned published date. A notice page that cannot be read leaves that record with listing fields only.
+ * 3. GET each notice page (public, no session needed) for type, classification, categories, question deadline,
+ *    a zoned published date and the names of its documents and addenda. A notice page that cannot be read leaves that
+ *    record with listing fields only.
+ *
+ * Documents: the notice page lists every file (name, upload time) in its Documents and Addenda grids, but the download
+ * (`Tender/DownloadBidDocument`) redirects anyone not signed in to the portal's Login page (checked 2026-11-13 on
+ * islandhealthfdc and metrovancouver), so the links are saved with `access: 'login'` and never downloaded here.
  */
 export { decodeEntities, htmlToText };
 export const SOURCE_ID = 'bidsandtenders';
@@ -54,8 +60,13 @@ export function parseListingPage(text: string): { total: number; data: ListingRo
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-/** Canadian zone labels bids&tenders prints after its times. */
-const ZONE_OFFSETS: Record<string, string> = { PST: '-08:00', PDT: '-07:00', MST: '-07:00', MDT: '-06:00', CST: '-06:00', CDT: '-05:00', EST: '-05:00', EDT: '-04:00', AST: '-04:00', ADT: '-03:00', NST: '-03:30', NDT: '-02:30' };
+/**
+ * Canadian zone labels bids&tenders prints after its times. Since BC stopped changing its clocks (UTC−07 all year from
+ * March 2026) the BC portals print `(YST)`, Windows' "Yukon Standard Time" (UTC−07 all year, the zone Yukon has kept
+ * since 2020); seen on all 25 portals on 2026-11-13. RDN's own site agrees: "November 27, 2026 at 3:00 PM" is
+ * `2026-11-27T22:00:00Z`.
+ */
+const ZONE_OFFSETS: Record<string, string> = { PST: '-08:00', PDT: '-07:00', YST: '-07:00', MST: '-07:00', MDT: '-06:00', CST: '-06:00', CDT: '-05:00', EST: '-05:00', EDT: '-04:00', AST: '-04:00', ADT: '-03:00', NST: '-03:30', NDT: '-02:30' };
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** `Wed Oct 7, 2026 3:00 PM` / `Thu Oct 8, 2026 12:00:00 PM` as wall-clock parts; the weekday must match the date. */
@@ -72,7 +83,7 @@ function wallClock(display: unknown) {
  * they encode the wall-clock time as if it were Eastern time (Nanaimo 4318: 19:00Z for 3:00 PM PDT = 22:00Z).
  */
 export function bidsAndTendersInstant(display: unknown, label: unknown): string | undefined {
-  const zone = /^\s*\(([A-Z]{3})\)\s*$/.exec(String(label ?? ''))?.[1];
+  const zone = /^\s*\(\s*([A-Za-z]{2,5})\s*\)\s*$/.exec(String(label ?? ''))?.[1]?.toUpperCase();
   const parts = wallClock(display), offset = zone && ZONE_OFFSETS[zone];
   return parts && offset ? `${parts.date}T${parts.time}${offset}` : undefined;
 }
@@ -80,7 +91,7 @@ export function bidsAndTendersInstant(display: unknown, label: unknown): string 
 export const bidsAndTendersDate = (display: unknown) => wallClock(display)?.date;
 /** `Fri Sep 11, 2026 2:00 PM (PDT)` → display + label, as printed on notice pages. */
 export function splitZoned(text: string): { display: string; label: string } {
-  const m = /^(.*?)\s*(\([A-Z]{3}\))$/.exec(text.trim());
+  const m = /^(.*?)\s*(\([A-Z]{2,5}\))$/.exec(text.trim());
   return m ? { display: m[1], label: ` ${m[2]}` } : { display: text.trim(), label: '' };
 }
 
@@ -94,7 +105,49 @@ export function noticeNumber(title: string, bidNumber?: string): string | undefi
 
 /** Notice page rows (`<th>Label:</th><td>…</td>`) shown on records; boilerplate and duplicated listing values are skipped. */
 const SKIP_DETAIL = new Set(['Bid Name', 'Bid Status', 'Bid Number', 'Description', 'Bid Document Access', 'Bid Closing Date', 'Published Date']);
-export interface NoticePage { bidNumber?: string; type?: string; classification?: string; published?: string; fields: Array<{ label: string; value: string }> }
+export interface NoticeDocument { id: string; name: string; created?: string; kind: 'document' | 'addendum' }
+export interface NoticePage { bidNumber?: string; type?: string; classification?: string; published?: string; fields: Array<{ label: string; value: string }>; documents: NoticeDocument[] }
+
+/** The JSON array starting at `start` (a `[`), found by matching brackets outside strings; undefined if unbalanced. */
+function jsonArrayAt(text: string, start: number): unknown[] | undefined {
+  let depth = 0, quoted = false;
+  for (let i = start; i < text.length && i < start + 2_000_000; i++) {
+    const char = text[i];
+    if (quoted) { if (char === '\\') i++; else if (char === '"') quoted = false; continue; }
+    if (char === '"') quoted = true;
+    else if (char === '[') depth++;
+    else if (char === ']' && --depth === 0) {
+      try { const value = JSON.parse(text.slice(start, i + 1)); return Array.isArray(value) ? value : undefined; } catch { return undefined; }
+    }
+  }
+  return undefined;
+}
+/**
+ * Files listed in the notice page's Ext.NET grids: the `Documents` and `Addendums` stores carry their rows inline
+ * (`proxyId:"Documents" … PagingMemoryProxy([{"Id":"<guid>","Created":"…","DisplayName":"…","Pages":0}], false)`).
+ * A page without the grids (the notice has none, or the portal hides them) lists nothing.
+ */
+export function parseNoticeDocuments(html: string): NoticeDocument[] {
+  const documents: NoticeDocument[] = [], seen = new Set<string>();
+  for (const [store, kind] of [['Documents', 'document'], ['Addendums', 'addendum']] as const) {
+    const at = html.indexOf(`proxyId:"${store}"`);
+    if (at < 0) continue;
+    const proxy = html.indexOf('PagingMemoryProxy(', at);
+    // The rows belong to this store only if no other store starts before them.
+    if (proxy < 0 || html.slice(at + 1, proxy).includes('proxyId:"')) continue;
+    for (const row of jsonArrayAt(html, proxy + 'PagingMemoryProxy('.length) ?? []) {
+      const id = typeof (row as any)?.Id === 'string' ? (row as any).Id.toLowerCase() : '', name = typeof (row as any)?.DisplayName === 'string' ? decodeEntities((row as any).DisplayName).trim() : '';
+      if (!GUID.test(id) || !name || seen.has(id)) continue;
+      seen.add(id);
+      const created = typeof (row as any).Created === 'string' && /^\d{4}-\d{2}-\d{2}T/.test((row as any).Created) ? (row as any).Created : undefined;
+      documents.push({ id, name: name.slice(0, 300), ...(created ? { created } : {}), kind });
+    }
+  }
+  return documents;
+}
+/** The portal's download link for one file; it needs a signed-in supplier (anonymous requests go to Login). */
+export const documentUrl = (portal: ConnectorPortal, tenderId: string, documentId: string) =>
+  `https://${portal.host}/Module/Tenders/en/Tender/DownloadBidDocument?Id=${tenderId}&DocumentId=${documentId}&fa=`;
 export function parseNoticePage(html: string): NoticePage | undefined {
   const rows = new Map<string, string>();
   for (const [, th, td] of html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>\s*<td\b[^>]*>([\s\S]*?)<\/td>/gi)) {
@@ -108,7 +161,7 @@ export function parseNoticePage(html: string): NoticePage | undefined {
   // A page without its Bid Number row is an error or login page, not a notice.
   if (!rows.has('Bid Number')) return undefined;
   return { bidNumber: rows.get('Bid Number'), type: rows.get('Bid Type'), classification: rows.get('Bid Classification'), published: rows.get('Published Date'),
-    fields: [...rows].filter(([label]) => !SKIP_DETAIL.has(label)).map(([label, value]) => ({ label, value })) };
+    fields: [...rows].filter(([label]) => !SKIP_DETAIL.has(label)).map(([label, value]) => ({ label, value })), documents: parseNoticeDocuments(html) };
 }
 
 const count = (value: unknown) => Number.isInteger(value) && (value as number) >= 0 ? value as number : undefined;
@@ -136,6 +189,9 @@ export function listingRecord(row: ListingRow, portal: ConnectorPortal, retrieve
   ];
   const sourceFields = [...fields.filter(([, value]) => value !== undefined && value !== '').map(([label, value]) => ({ label, value: String(value) })), ...(page?.fields ?? [])];
   const category = page?.classification ?? '';
+  // Addenda are files like the others; a name that does not say so is marked.
+  const attachments = cleanAttachments((page?.documents ?? []).map(doc => ({
+    name: doc.kind === 'addendum' && !/addend/i.test(doc.name) ? `Addendum: ${doc.name}` : doc.name, url: documentUrl(portal, id, doc.id), access: 'login' as const })));
   return {
     sourceId: SOURCE_ID, sourceKey: key, processId: key, opportunityId: key, portalId: portal.id,
     externalId, description: title, descriptionText, sourceDescriptionText: descriptionText,
@@ -148,7 +204,7 @@ export function listingRecord(row: ListingRow, portal: ConnectorPortal, retrieve
     sourceRetrievedAt: retrievedAt, rawSourceData: row,
     searchText: [externalId, title, descriptionText, portal.label, text(row.Status), page?.type, region, category,
       page?.fields.find(field => field.label === 'Categories')?.value].filter(Boolean).join(' '),
-    attachments: [], addenda: [], detailFields: [], commodities: [],
+    attachments, ...(attachments.length ? { attachmentsAccess: 'login' as const } : {}), addenda: [], detailFields: [], commodities: [],
   };
 }
 
@@ -191,7 +247,7 @@ export const bidsAndTenders: SourceConnector = {
   id: SOURCE_ID,
   label: 'bids&tenders (BC)',
   jurisdiction: 'British Columbia',
-  coverage: `Open notices listed by ${BIDSANDTENDERS_PORTALS.length} BC public buyers on bids&tenders, with each notice's public page (type, classification, categories, question deadline). Closed and awarded notices, documents and addenda files, and plan-taker lists are not collected. A notice missing from a later listing is kept; absence is not proof of closure.`,
+  coverage: `Open notices listed by ${BIDSANDTENDERS_PORTALS.length} BC public buyers on bids&tenders, with each notice's public page (type, classification, categories, question deadline, and the names and links of its documents and addenda). The files themselves need a free supplier sign-in on the portal and are not downloaded. Closed and awarded notices and plan-taker lists are not collected. A notice missing from a later listing is kept; absence is not proof of closure.`,
   portals: BIDSANDTENDERS_PORTALS,
   requestsPerPortal: 1 + MAX_PAGES + MAX_DETAILS,
   needsSession: true,

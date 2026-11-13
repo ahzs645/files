@@ -16,8 +16,8 @@ import { catalogTransaction, collectCanadaBuys, type Host } from './procurement-
  * docs/plugin-shared-services.md §4 and §15.1). Each slice is one fresh worker that does one unit of work and returns:
  *
  * - one portal of a connector (bids&tenders, municipal-sites) or one site of the browser sources;
- * - one CanadaBuys pass: download the daily CSV and import batches for at most four minutes (a manual run with
- *   `maxBatches` does exactly that many batches in one slice, as before).
+ * - one CanadaBuys pass: download the daily CSV and import batches for at most four minutes (`maxBatches`, from the
+ *   Sources page's manual Collect, caps the batches of each pass; the run still continues until the file is in).
  *
  * The checkpoint only says where the run is (source, attempt, portal index, `all` results so far; well under 64 KiB);
  * the real cursors stay in the catalog workspace state (`procurement:source:<id>:collection`, CanadaBuys `receipt`),
@@ -166,11 +166,13 @@ async function canadaBuysSlice(run: Run): Promise<SliceEnvelope> {
   const options = { leaseUntil: leaseFor(run), deferFailure: (error: unknown) => canRetry && !!transientFailure(error) };
   let state: any;
   try {
-    // `maxBatches` (manual runs, older schedules): exactly that many batches in this one slice, as before.
-    // Without it (per-source schedules, `all`): pass after pass until the file is in; a new daily file starts over.
-    state = maxBatches !== undefined
-      ? await collectCanadaBuys(host, { sourceId: 'canadabuys', mode: run.input.mode, maxBatches }, runId, now, all(run) ? { ...options, restartOnChange: true, stopAt: sliceStart + CANADABUYS_SLICE_MS, batchLimit: maxBatches } : options)
-      : await collectCanadaBuys(host, { sourceId: 'canadabuys', mode: first ? run.input.mode : 'resume', maxBatches: 20 }, runId, now, { ...options, restartOnChange: true, stopAt, batchLimit: 10_000 });
+    // `all` with `maxBatches`: that many batches in one slice, then the next source (the cursor waits for the next run).
+    // Otherwise pass after pass until the file is in; a new daily file starts over. `maxBatches` (the Sources page's
+    // manual Collect) bounds each pass; it used to end the run `paused` after one pass, and nothing resumed it until a
+    // schedule ran (2026-10-11: 35 of 907 rows, then no import for a month).
+    state = maxBatches !== undefined && all(run)
+      ? await collectCanadaBuys(host, { sourceId: 'canadabuys', mode: run.input.mode, maxBatches }, runId, now, { ...options, restartOnChange: true, stopAt: sliceStart + CANADABUYS_SLICE_MS, batchLimit: maxBatches })
+      : await collectCanadaBuys(host, { sourceId: 'canadabuys', mode: first ? run.input.mode : 'resume', maxBatches: maxBatches ?? 20 }, runId, now, { ...options, restartOnChange: true, stopAt, batchLimit: maxBatches ?? 10_000 });
   } catch (error) {
     if (isPauseError(error)) throw error;
     const transient = canRetry ? transientFailure(error) : null;
@@ -179,7 +181,7 @@ async function canadaBuysSlice(run: Run): Promise<SliceEnvelope> {
     const { code, message } = errorOf(error);
     return advance(run, { sourceId: 'canadabuys', outcome: code === 'collection_busy' ? 'busy' : 'failed', error: { code: code === 'portal_failed' ? 'collection_failed' : code, message } }, null);
   }
-  if (state.status === 'paused' && maxBatches === undefined) {
+  if (state.status === 'paused' && (maxBatches === undefined || !all(run))) {
     cp.cbSlices++;
     const receipt = state.receipt ?? {};
     return { resumable: 'continue', checkpoint: cp, progress: progress('CanadaBuys: importing the daily file', Number.isInteger(receipt.offset) ? receipt.offset : undefined, Number.isInteger(receipt.totalRecords) ? receipt.totalRecords : undefined, 'rows') };

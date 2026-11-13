@@ -61,7 +61,9 @@ export function contentOf(html: string): string {
 
 // RDKB (Zoer capture 2026-10-04): an "Opportunities" heading followed by "None at the Moment".
 const EMPTY = /there are (?:currently )?no (?:open |current |active )?(?:bid|tender|procurement|opportunit|rfp|rfq|solicitation)|no (?:open |current |active )?(?:bid|tender|procurement|opportunit|rfp|rfq|solicitation)[a-z ]*(?:at this time|currently|posted|available|to display)|nothing (?:is )?(?:currently )?(?:open|posted)|(?:opportunities|bids|tenders)\s*:?\s*none at (?:the|this) (?:moment|time)\b/i;
-const BLOCK_START = /(?=<(?:li|article|tr|dl)\b)|(?=<div\b[^>]*\bclass="(?:[^"]*\s)?(?:views-row|card|item|list-item|listing-item|result|search-result|entry|post|opportunity|tender|bid)(?=[\s"]))/i;
+// A horizontal rule also starts a block: Cranbrook separates its notices (a linked title, then "Submission deadline: …")
+// with `<hr />` inside one text field, under a heading and a services menu that are not notices.
+const BLOCK_START = /(?=<(?:li|article|tr|dl|hr)\b)|(?=<div\b[^>]*\bclass="(?:[^"]*\s)?(?:views-row|card|item|list-item|listing-item|result|search-result|entry|post|opportunity|tender|bid)(?=[\s"]))/i;
 const CLOSING = /^(?:(?:bid|tender|proposal|submission|quote|rfp|rfq)s?\s+)?(closing(?:\s+date)?(?:\s*(?:and|&)\s*time)?|closes(?:\s+on)?|closed|deadline|submission deadline|due(?:\s+date)?|expires|expiry(?:\s+date)?|expiration(?:\s+date)?)\s*:?\s*(.*)$/i;
 const POSTED = /^(posted|issued|published|issue date|date posted|posting date|date issued|release date)\s*(?:date|on)?\s*:?\s*(.*)$/i;
 const TYPE = /^(?:request for (?:proposals?|quotations?|quotes?|qualifications?|information|expressions? of interest|tenders?|standing offers?|supplier qualifications?)|invitation to (?:tender|bid|quote)|notice of intent|expression of interest|call for (?:proposals|tenders)|tender|RF[PQIES][A-Z]?|ITT|ITQ|ITB|NOI|EOI)\b/i;
@@ -240,6 +242,7 @@ const CLOSED = /closed|award|cancel|evaluat|review|no award|shortlist/i;
 export function browserRecord(row: BrowserRow, site: BrowserSite, pageUrl: string, retrievedAt: string) {
   const id = browserNoticeId(row, pageUrl)!, key = `${SOURCE_ID}:${site.id}:${id}`;
   const detailUrl = (row.href && resolveUrl(row.href, pageUrl)) || site.url;
+  const fileLink = row.href && /\.(?:pdf|docx?|xlsx?|zip)(?:[?#]|$)/i.test(detailUrl) ? detailUrl : undefined;
   const closing = row.html.closing !== undefined ? readMoment(row.html.closing, site.timeZone) : undefined;
   const posted = row.html.posted !== undefined ? readMoment(row.html.posted, site.timeZone) : undefined;
   const number = row.number ?? leadingNumber(row.title);
@@ -263,7 +266,9 @@ export function browserRecord(row: BrowserRow, site: BrowserSite, pageUrl: strin
     sourceFields: fields.filter(([, value]) => value).map(([label, value]) => ({ label, value: value! })),
     sourceRetrievedAt: retrievedAt, rawSourceData: { cells: row.cells, href: row.href ?? null, page: pageUrl },
     searchText: [number, row.title, descriptionText.slice(0, 4000), issuedBy || site.label, row.location, status, row.type, region].filter(Boolean).join(' '),
-    attachments: [], addenda: [], detailFields: [], commodities: [],
+    // A title that links straight to a file (Cranbrook's PDFs) is the notice's document.
+    ...(fileLink ? { attachments: [{ name: row.title.slice(0, 300), url: fileLink }], attachmentsAccess: 'public' as const } : { attachments: [] }),
+    addenda: [], detailFields: [], commodities: [],
   };
 }
 

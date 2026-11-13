@@ -1,4 +1,5 @@
 /** Offline CanadaBuys tender CSV import. No network, storage creation or source mutation. */
+import { attachmentsAccess, cleanAttachments, fileNameOf, normalizePlaceholderClosing, safeHttpsUrl, type AttachmentLink } from '../../src/connectors/attachments';
 import { cleanRegionText } from './region';
 export interface CanadaBuysProvenance { fileName: string; sha256: string; importedAt: string }
 
@@ -9,7 +10,83 @@ const SOURCE_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-o
 const REF = 'referenceNumber-numeroReference';
 const TITLE_EN = 'title-titre-eng';
 const TITLE_FR = 'title-titre-fra';
+const AMENDMENT = 'amendmentNumber-numeroModification';
 const encoder = new TextEncoder();
+
+/** The CanadaBuys key of one reference and amendment (the shape every saved CanadaBuys row has). */
+export const canadaBuysKey = (reference: string, amendment: string) => `canadabuys:tender:${encodeURIComponent(reference)}:${encodeURIComponent(amendment)}`;
+/** Amendment numbers compare as numbers (`010` after `009`); blank (the original notice) is first, other text last. */
+export function compareAmendments(a: string, b: string): number {
+  const rank = (value: string) => value === '' ? -1 : /^\d+$/.test(value) ? Number(value) : Infinity;
+  const x = rank(a), y = rank(b);
+  return x !== y ? (x < y ? -1 : 1) : a < b ? -1 : a > b ? 1 : 0;
+}
+/** The amendment a saved CanadaBuys record holds: its field, else its source row, else its key's last segment. */
+export function savedAmendment(data: any): string {
+  if (typeof data?.amendmentNumber === 'string') return data.amendmentNumber;
+  const raw = data?.rawSourceData?.[AMENDMENT];
+  if (typeof raw === 'string') return raw.trim();
+  const key = typeof data?.sourceKey === 'string' ? data.sourceKey : '';
+  try { return decodeURIComponent(key.slice(key.lastIndexOf(':') + 1)); } catch { return ''; }
+}
+/**
+ * The ids a notice could already be saved under: every lower amendment of the same reference (`000` … one below this
+ * one, same width) and this one. CanadaBuys publishes only the latest amendment of each reference in its daily file,
+ * and before 2026-11-13 each amendment was saved as its own record, so a reference's earliest saved record is found
+ * among these (with the blank amendment, the original notice). Bounded to 100 ids.
+ */
+export function canadaBuysCandidateKeys(reference: string, amendment: string): string[] {
+  const keys = /^\d{1,4}$/.test(amendment)
+    ? Array.from({ length: Math.min(Number(amendment), 98) }, (_, i) => canadaBuysKey(reference, String(i).padStart(amendment.length, '0'))) : [];
+  return [...new Set([...(amendment ? [canadaBuysKey(reference, '')] : []), ...keys, canadaBuysKey(reference, amendment)])];
+}
+
+/** An amendment as kept in `amendmentHistory`: what the source said about it and when this catalog first saw it. */
+export interface AmendmentEntry { amendmentNumber: string; amendmentDate?: string; closingDate?: string | null; publishedAt?: string; seenAt: string; sourceFileSha256?: string }
+const amendmentEntry = (data: any): AmendmentEntry => {
+  const raw = data?.rawSourceData ?? {};
+  const amendmentDate = typeof raw['amendmentDate-dateModification'] === 'string' ? raw['amendmentDate-dateModification'].trim() : '';
+  const closing = typeof raw['tenderClosingDate-appelOffresDateCloture'] === 'string' ? raw['tenderClosingDate-appelOffresDateCloture'].trim() : data?.closingDateRaw ?? data?.closingDate;
+  return { amendmentNumber: savedAmendment(data), ...(amendmentDate ? { amendmentDate } : {}), ...(closing ? { closingDate: closing } : {}),
+    ...(typeof data?.publishedAt === 'string' ? { publishedAt: data.publishedAt } : {}),
+    seenAt: String(data?.importedAt ?? data?.sourceRetrievedAt ?? ''), ...(typeof data?.sourceFileSha256 === 'string' ? { sourceFileSha256: data.sourceFileSha256 } : {}) };
+};
+const MAX_HISTORY = 50;
+/**
+ * One entry per amendment number, oldest first: entries already saved (or, for a record saved before the history
+ * existed, its own amendment), each superseded saved row of the same reference, then the incoming amendment. An
+ * amendment already listed keeps its first entry.
+ */
+export function amendmentHistory(incoming: any, saved: any[]): AmendmentEntry[] {
+  const entries = new Map<string, AmendmentEntry>();
+  for (const data of saved) {
+    for (const entry of Array.isArray(data?.amendmentHistory) ? data.amendmentHistory : [amendmentEntry(data)]) {
+      if (entry && typeof entry.amendmentNumber === 'string' && !entries.has(entry.amendmentNumber)) entries.set(entry.amendmentNumber, entry);
+    }
+  }
+  for (const entry of Array.isArray(incoming?.amendmentHistory) ? incoming.amendmentHistory : []) if (!entries.has(entry.amendmentNumber)) entries.set(entry.amendmentNumber, entry);
+  const current = amendmentEntry(incoming);
+  if (!entries.has(current.amendmentNumber)) entries.set(current.amendmentNumber, current);
+  return [...entries.values()].sort((a, b) => compareAmendments(a.amendmentNumber, b.amendmentNumber)).slice(-MAX_HISTORY);
+}
+
+/**
+ * The public attachment field (`attachment-piecesJointes-eng`, else `-fra`): comma-separated URLs. Files on
+ * canadabuys.canada.ca download without a sign-in (checked 2026-11-13); Shared Services Canada's procurement portal
+ * (sscp2pspc.ssc-spc.gc.ca, Ivalua) answers its `download_public` links with an HTML page that needs its own session,
+ * so those are login-only.
+ */
+export function canadaBuysAttachments(field: string): AttachmentLink[] {
+  const urls = field.split(/\s*,\s*(?=[a-z][a-z0-9+.-]*:)|\s*[\r\n]+\s*/i).map(part => part.replace(/^\*/, '').trim()).filter(Boolean);
+  return cleanAttachments(urls.map(raw => {
+    const url = safeHttpsUrl(raw);
+    if (!url) return undefined;
+    const host = new URL(url).hostname;
+    if (host === 'canadabuys.canada.ca') return { name: fileNameOf(url), url };
+    const id = /\/download(?:_public)?\/([0-9A-F-]{36})/i.exec(url)?.[1];
+    return { name: id ? `Document ${id.slice(0, 8).toLowerCase()} (${host})` : fileNameOf(url), url, access: 'login' as const };
+  }));
+}
 
 /** Strict RFC-style CSV: quoted commas/newlines and doubled quotes; no lossy repair. */
 function csvRows(text: string): string[][] {
@@ -72,8 +149,8 @@ export function parseCanadaBuysCsv(text: string, provenance: CanadaBuysProvenanc
     const externalId = value(REF), title = value(TITLE_EN, TITLE_FR);
     if (!externalId || !title) throw new Error(`CSV record ${line} needs a nonempty reference and title.`);
     if (title.length > 20_000 || externalId.length > 10_000) throw new Error(`CSV record ${line} has an oversized reference or title.`);
-    const amendment = value('amendmentNumber-numeroModification');
-    const key = `canadabuys:tender:${encodeURIComponent(externalId)}:${encodeURIComponent(amendment)}`;
+    const amendment = value(AMENDMENT);
+    const key = canadaBuysKey(externalId, amendment);
     // Compare every source field, including bilingual and unknown columns: never hide conflicting amendments.
     const fingerprint = JSON.stringify(raw);
     const previous = seen.get(key);
@@ -92,6 +169,8 @@ export function parseCanadaBuysCsv(text: string, provenance: CanadaBuysProvenanc
     }
     const closingDate = value('tenderClosingDate-appelOffresDateCloture');
     if (!closingDate) missingDates++;
+    const published = value('publicationDate-datePublication'), amendmentDate = value('amendmentDate-dateModification');
+    const attachments = canadaBuysAttachments(bilingual('attachment-piecesJointes'));
     const issuedBy = bilingual('contractingEntityName-nomEntitContractante');
     const status = bilingual('tenderStatus-appelOffresStatut') || 'Unknown';
     const type = bilingual('noticeType-avisType');
@@ -109,15 +188,19 @@ export function parseCanadaBuysCsv(text: string, provenance: CanadaBuysProvenanc
     const sourceFields = fields.filter(([, content]) => content).map(([label, content]) => ({ label, value: content }));
     const classificationCodes = [['UNSPSC', value('unspsc')], ['GSIN', value('gsin-nibs')]].flatMap(([scheme, rawCodes]) =>
       rawCodes.split(/\r?\n/).map(code => code.trim().replace(/^\*/, '')).filter(Boolean).map(code => ({ scheme, code })));
-    const record = {
+    // Placeholder closing dates (2074, 2100 on standing offers and supply arrangements) become `closingDateRaw`.
+    const record = normalizePlaceholderClosing({
       sourceId: 'canadabuys', sourceKey: key, processId: key, opportunityId: key,
-      externalId, description: title, descriptionText, issuedBy, status, type,
-      closingDate, detailUrl, sourceUrl: SOURCE_URL,
+      externalId, amendmentNumber: amendment, ...(/^\d+$/.test(amendment) ? { amendments: Number(amendment) } : {}),
+      ...(amendmentDate ? { amendmentDate } : {}), ...(/^\d{4}-\d{2}-\d{2}$/.test(published) ? { publishedAt: published } : {}),
+      description: title, descriptionText, issuedBy, status, type,
+      closingDate: closingDate as string | null, detailUrl, sourceUrl: SOURCE_URL,
       sourceFileName: provenance.fileName, sourceFileSha256: provenance.sha256, importedAt: provenance.importedAt,
       region, category, sourceCategory: category, classificationCodes, detailFields: sourceFields, sourceFields, sourceDescriptionText: descriptionText,
-      attachments: [], addenda: [], commodities: [], rawSourceData: raw,
+      attachments, ...(attachments.length ? { attachmentsAccess: attachmentsAccess(attachments) } : {}),
+      addenda: [], commodities: [], rawSourceData: raw,
       searchText: [externalId, title, value(TITLE_FR), descriptionText, issuedBy, status, type, region, category].filter(Boolean).join(' '),
-    };
+    });
     let recordBytes = encoder.encode(JSON.stringify(record)).byteLength;
     if (recordBytes > MAX_RECORD_BYTES) {
       // Full narrative remains in sourceDescriptionText and rawSourceData. These are redundant
@@ -136,7 +219,21 @@ export function parseCanadaBuysCsv(text: string, provenance: CanadaBuysProvenanc
     }
     records.push(record);
   }
+  // CanadaBuys lists only the latest amendment of each reference; a file that holds several keeps the latest and
+  // records the earlier ones in its history, so one reference is always one record.
+  const latest = new Map<string, any>();
+  let superseded = 0;
+  for (const record of records) {
+    const other = latest.get(record.externalId);
+    if (!other) { latest.set(record.externalId, record); continue; }
+    superseded++;
+    const [older, newer] = compareAmendments(other.amendmentNumber, record.amendmentNumber) <= 0 ? [other, record] : [record, other];
+    newer.amendmentHistory = amendmentHistory(newer, [older]);
+    latest.set(record.externalId, newer);
+  }
+  if (superseded) records.splice(0, records.length, ...records.filter(record => latest.get(record.externalId) === record));
   const warnings: string[] = [];
+  if (superseded) warnings.push(`${superseded} earlier amendment row(s) of references also listed with a later amendment were folded into that notice's amendment history.`);
   if (unsafeUrls) warnings.push(`${unsafeUrls} unsafe or invalid notice URL(s) omitted; original values remain in source data.`);
   if (missingDates) warnings.push(`${missingDates} notice(s) have no closing date. No date or timezone was inferred.`);
   if (duplicateCount) warnings.push(`${duplicateCount} identical duplicate row(s) collapsed.`);

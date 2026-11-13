@@ -149,6 +149,29 @@ describe('connector collection (bids&tenders)', () => {
     expect(db.records.get(NANAIMO_4318).data.descriptionText).toContain('SCBA filling stations');
   });
 
+  it('drops a saved closingAt when the source now states a date it cannot place, and turns placeholder dates into closingDateRaw', async () => {
+    const rows = JSON.parse(LISTINGS.nanaimo).data, extended = rows.find((row: any) => row.Id === '3d527422-9423-47e4-86a2-38c8fe7f94b7');
+    const db = stack();
+    db.records.set(NANAIMO_4318, { id: NANAIMO_4318, kind: 'opportunity', title: 'old', data: { sourceId: 'bidsandtenders', closingDate: 'Wed Oct 7, 2026 3:00 PM (PDT)', closingAt: '2026-10-07T15:00:00-07:00' } });
+    db.search.nanaimo = JSON.stringify({ success: true, total: rows.length, data: rows.map((row: any) => row === extended ? { ...row, DateClosingDisplay: 'Wed Nov 25, 2026 3:00 PM', TimeZoneLabel: ' (XYZ)' } : row) });
+    await collectConnectorSource(db.host, { sourceId: 'bidsandtenders', portals: ['nanaimo'] }, 'run-1', clock());
+    const data = JSON.parse(JSON.stringify(db.records.get(NANAIMO_4318).data));
+    expect(data.closingDate).toBe('Wed Nov 25, 2026 3:00 PM (XYZ)'); expect(data).not.toHaveProperty('closingAt');
+    db.search.nanaimo = JSON.stringify({ success: true, total: rows.length, data: rows.map((row: any) => row === extended ? { ...row, DateClosingDisplay: 'Fri Dec 31, 2100 3:00 PM', TimeZoneLabel: ' (YST)' } : row) });
+    await collectConnectorSource(db.host, { sourceId: 'bidsandtenders', portals: ['nanaimo'] }, 'run-2', clock('2026-10-04T18:00:00Z'));
+    const placeholder = JSON.parse(JSON.stringify(db.records.get(NANAIMO_4318).data));
+    expect(placeholder).toMatchObject({ closingDate: null, closingDateRaw: 'Fri Dec 31, 2100 3:00 PM (YST)', closingDatePlaceholder: true });
+    expect(placeholder).not.toHaveProperty('closingAt');
+  });
+
+  it('moves state entries of portals no longer in the connector to retiredPortals', async () => {
+    const db = stack({ prior: { version: 1, sourceId: 'bidsandtenders', status: 'complete', portals: { nanaimo: { status: 'complete', recordCount: 7 }, oldportal: { status: 'failed', error: { code: 'source_layout' } } } } });
+    const result = await collectConnectorSource(db.host, { sourceId: 'bidsandtenders', portals: ['nanaimo'] }, 'run-1', clock());
+    expect(result.portals).not.toHaveProperty('oldportal');
+    expect(result.retiredPortals).toEqual({ oldportal: { status: 'failed', error: { code: 'source_layout' }, retiredAt: expect.any(String) } });
+    expect(result.portals.nanaimo.status).toBe('complete');
+  });
+
   it('stops a portal on a source identity collision and leaves the other record alone', async () => {
     const db = stack(), other = { id: NANAIMO_4318, kind: 'opportunity', title: 'x', data: { sourceId: 'canadabuys' } };
     db.records.set(NANAIMO_4318, structuredClone(other));
@@ -233,10 +256,10 @@ describe('connector collection (bids&tenders)', () => {
     await expect(collectConnectorSource(async () => ({ primary: false }), { sourceId: 'bidsandtenders' }, 'run-1')).rejects.toThrow('Initialize');
   });
 
-  it('collects all 25 portals by default, each portal within the per-step request budget', async () => {
+  it('collects all 33 portals by default, each portal within the per-step request budget', async () => {
     const db = stack();
     const result = await collectConnectorSource(db.host, { sourceId: 'bidsandtenders' }, 'run-1', clock());
-    expect(Object.keys(result.portals)).toHaveLength(25);
+    expect(Object.keys(result.portals)).toHaveLength(33);
     expect(result.status).toBe('complete');
     const action = (manifest as any).integration.actions.find((item: any) => item.id === 'procurement.collect');
     const perPortal = new Map<string, number>();
@@ -262,7 +285,7 @@ describe("collect all sources (sourceId: 'all', one schedule)", () => {
     const db = stack(); db.canadabuys = cbCsv(3);
     const result = await collectProcurementSource(db.host, { sourceId: 'all' }, 'run-1', clock());
     expect(result).toMatchObject({ sourceId: 'all', status: 'complete', summary: { total: 1 + CONNECTORS.length, complete: 1 + CONNECTORS.length, failedSources: 0 },
-      sources: [{ sourceId: 'canadabuys', outcome: 'complete' }, { sourceId: 'bidsandtenders', outcome: 'complete', portals: { total: 25, complete: 25, failed: 0 } },
+      sources: [{ sourceId: 'canadabuys', outcome: 'complete' }, { sourceId: 'bidsandtenders', outcome: 'complete', portals: { total: 33, complete: 33, failed: 0 } },
         { sourceId: 'municipal-sites', outcome: 'complete', portals: { total: SITE_PORTALS.length, complete: SITE_PORTALS.length } }] });
     expect(result.sources.map(source => source.sourceId)).toEqual(['canadabuys', ...CONNECTORS.map(connector => connector.id)]);
     expect(db.requests[0].url).toBe(CANADABUYS_DATASET_URL);
@@ -280,7 +303,7 @@ describe("collect all sources (sourceId: 'all', one schedule)", () => {
     const db = stack(); db.canadabuys = 503; db.search.burnaby = 500;
     const result = await collectAllSources(db.host, { sourceId: 'all' }, 'run-1', clock());
     expect(result).toMatchObject({ status: 'incomplete', summary: { complete: 1, partial: 1, failedSources: 1 },
-      sources: [{ sourceId: 'canadabuys', outcome: 'failed', error: { code: 'source_http_error' } }, { sourceId: 'bidsandtenders', outcome: 'partial', portals: { failed: 1, complete: 24 } }, { sourceId: 'municipal-sites', outcome: 'complete' }] });
+      sources: [{ sourceId: 'canadabuys', outcome: 'failed', error: { code: 'source_http_error' } }, { sourceId: 'bidsandtenders', outcome: 'partial', portals: { failed: 1, complete: 32 } }, { sourceId: 'municipal-sites', outcome: 'complete' }] });
     expect(db.states.get(COLLECTION_KEY)).toMatchObject({ status: 'failed', error: { code: 'source_http_error' } });
     expect(db.states.get(KEY)).toMatchObject({ status: 'incomplete', portals: { burnaby: { status: 'failed' }, nanaimo: { status: 'complete' } } });
   });
@@ -478,7 +501,7 @@ describe('resumable collection (one portal per slice, S1)', () => {
     expect(live.requests).toHaveLength(0);
   });
 
-  it('CanadaBuys without maxBatches imports the whole daily file pass by pass; with maxBatches it does exactly that in one slice', async () => {
+  it('CanadaBuys imports the whole daily file pass by pass; maxBatches (manual Collect) only caps each pass', async () => {
     const db = stack(); db.canadabuys = cbCsv(250);
     let current = Date.parse(t0);
     const host = async (method: string, input: any) => {
@@ -490,9 +513,12 @@ describe('resumable collection (one portal per slice, S1)', () => {
     expect(run.envelopes[0]).toMatchObject({ progress: { phase: 'CanadaBuys: importing the daily file', done: 200, total: 250, unit: 'rows' } });
     expect(run.output).toMatchObject({ status: 'complete', receipt: { offset: 250 } });
     const bounded = stack(); bounded.canadabuys = cbCsv(250);
+    // A manual Collect used to stop `paused` after its batches (2026-10-11: 35 of 907 rows) and nothing resumed it.
     const manual = await drive(bounded.host, { sourceId: 'canadabuys', mode: 'restart', maxBatches: 1 });
-    expect(kinds(manual.envelopes)).toEqual(['done']);
-    expect(manual.output).toMatchObject({ status: 'paused', receipt: { offset: 100 } });
+    expect(kinds(manual.envelopes)).toEqual(['continue', 'continue', 'done']);
+    expect(manual.envelopes[0]).toMatchObject({ progress: { done: 100, total: 250 } });
+    expect(manual.output).toMatchObject({ status: 'complete', receipt: { offset: 250 } });
+    expect(bounded.requests.filter(request => request.url === CANADABUYS_DATASET_URL)).toHaveLength(3);
   });
 
   it('retries a CanadaBuys server error without marking the source failed, and in `all` records a lasting failure and goes on', async () => {

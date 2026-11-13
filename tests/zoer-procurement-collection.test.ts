@@ -152,6 +152,81 @@ describe('CanadaBuys host-mediated collection', () => {
   });
 });
 
+describe('CanadaBuys amendments, attachments and dates (2026-11-13)', () => {
+  const H = 'referenceNumber-numeroReference,amendmentNumber-numeroModification,amendmentDate-dateModification,publicationDate-datePublication,title-titre-eng,tenderStatus-appelOffresStatut-eng,tenderClosingDate-appelOffresDateCloture,contractingEntityName-nomEntitContractante-eng,attachment-piecesJointes-eng';
+  const row = (ref: string, amendment: string, title: string, closing = '2026-12-01T14:00:00', attachments = '') => `${ref},${amendment},${amendment === '000' ? '' : '2026-11-01'},2026-10-20,${title},Open,${closing},Buyer,"${attachments}"`;
+  const legacy = (ref: string, amendment: string, extra: any = {}) => {
+    const id = `opportunity:canadabuys:tender:${ref}:${amendment}`;
+    return [id, { id, kind: 'opportunity', title: 'Old', data: { sourceId: 'canadabuys', sourceKey: id.slice(12), externalId: ref, importedAt: '2026-10-04T04:12:59.083Z',
+      rawSourceData: { 'amendmentNumber-numeroModification': amendment, 'tenderClosingDate-appelOffresDateCloture': '2026-11-20T14:00:00' }, ...extra } }] as [string, any];
+  };
+  it('updates the reference\'s earliest saved record with a later amendment and keeps the amendment history; superseded rows are untouched', async () => {
+    const db = fixture(H + '\n' + row('PW-1', '004', 'Roof (amended)'));
+    const first = legacy('PW-1', '002', { starred: true }), second = legacy('PW-1', '003');
+    db.records.set(...first); db.records.set(...second);
+    const untouched = structuredClone(second[1]);
+    await collectCanadaBuys(db.host, { sourceId: 'canadabuys' }, 'one', () => timestamp);
+    expect(db.records.has('opportunity:canadabuys:tender:PW-1:004')).toBe(false);
+    expect(db.records.get('opportunity:canadabuys:tender:PW-1:003')).toEqual(untouched);
+    const saved = db.records.get('opportunity:canadabuys:tender:PW-1:002').data;
+    expect(saved).toMatchObject({ sourceKey: 'canadabuys:tender:PW-1:002', processId: 'canadabuys:tender:PW-1:002', description: 'Roof (amended)', starred: true,
+      amendmentNumber: '004', amendments: 4, amendmentDate: '2026-11-01', publishedAt: '2026-10-20', closingAt: '2026-12-01T14:00:00-05:00' });
+    expect(saved.amendmentHistory.map((entry: any) => [entry.amendmentNumber, entry.seenAt])).toEqual([['002', '2026-10-04T04:12:59.083Z'], ['003', '2026-10-04T04:12:59.083Z'], ['004', timestamp]]);
+    // The next daily file with the same amendment changes nothing in the history.
+    db.response.bodyBase64 = Buffer.from(H + '\n' + row('PW-1', '004', 'Roof (amended)') + '\n').toString('base64');
+    await collectCanadaBuys(db.host, { sourceId: 'canadabuys', mode: 'restart' }, 'two', () => '2026-09-23T12:00:00Z');
+    expect(db.records.get('opportunity:canadabuys:tender:PW-1:002').data.amendmentHistory).toHaveLength(3);
+  });
+  it('keys a reference never saved before by its own amendment and finds the original notice saved with a blank amendment', async () => {
+    const db = fixture(H + '\n' + row('NEW-1', '001', 'New') + '\n' + row('OLD-1', '001', 'Old notice'));
+    db.records.set(...legacy('OLD-1', ''));
+    await collectCanadaBuys(db.host, { sourceId: 'canadabuys' }, 'one', () => timestamp);
+    expect(db.records.get('opportunity:canadabuys:tender:NEW-1:001').data.amendmentHistory).toEqual([expect.objectContaining({ amendmentNumber: '001' })]);
+    expect(db.records.get('opportunity:canadabuys:tender:OLD-1:').data).toMatchObject({ description: 'Old notice', amendmentNumber: '001' });
+    expect(db.records.has('opportunity:canadabuys:tender:OLD-1:001')).toBe(false);
+  });
+  it('saves public CanadaBuys files and login-only SSC portal links, keeping saved fields of the same link', async () => {
+    const pdf = 'https://canadabuys.canada.ca/sites/default/files/webform/tender_notice/21898/100023064b---rfsa.pdf';
+    const ssc = 'https://sscp2pspc.ssc-spc.gc.ca/page.aspx/en/fil/download_public/C39CCF5C-4D17-4299-BE2E-DCC77F8A2677';
+    const db = fixture(H + '\n' + row('A-1', '000', 'Files', '2026-12-01T14:00:00', `${pdf},${ssc},javascript:alert(1)`));
+    db.records.set(...legacy('A-1', '000', { attachments: [{ name: 'old name', url: pdf, size: 1444706, documentId: 'doc-1' }] }));
+    await collectCanadaBuys(db.host, { sourceId: 'canadabuys' }, 'one', () => timestamp);
+    const saved = db.records.get('opportunity:canadabuys:tender:A-1:000').data;
+    expect(saved.attachments).toEqual([
+      { name: '100023064b---rfsa.pdf', url: pdf, size: 1444706, documentId: 'doc-1' },
+      { name: 'Document c39ccf5c (sscp2pspc.ssc-spc.gc.ca)', url: ssc, access: 'login' },
+    ]);
+    expect(saved.attachmentsAccess).toBe('mixed');
+  });
+  it('turns placeholder closing dates (after 2035) into closingDateRaw and drops a saved closingAt', async () => {
+    const db = fixture(H + '\n' + row('SA-1', '000', 'Standing offer', '2074-12-31T14:00:00'));
+    db.records.set(...legacy('SA-1', '000', { closingDate: '2074-12-31T14:00:00', closingAt: '2074-12-31T14:00:00-05:00' }));
+    await collectCanadaBuys(db.host, { sourceId: 'canadabuys' }, 'one', () => timestamp);
+    const saved = JSON.parse(JSON.stringify(db.records.get('opportunity:canadabuys:tender:SA-1:000').data));
+    expect(saved).toMatchObject({ closingDate: null, closingDateRaw: '2074-12-31T14:00:00', closingDatePlaceholder: true });
+    expect(saved).not.toHaveProperty('closingAt');
+    // A real date later replaces the placeholder markers.
+    db.response.bodyBase64 = Buffer.from(H + '\n' + row('SA-1', '001', 'Standing offer', '2027-03-31T14:00:00')).toString('base64');
+    await collectCanadaBuys(db.host, { sourceId: 'canadabuys', mode: 'restart' }, 'two', () => timestamp);
+    const later = JSON.parse(JSON.stringify(db.records.get('opportunity:canadabuys:tender:SA-1:000').data));
+    expect(later).toMatchObject({ closingDate: '2027-03-31T14:00:00', closingAt: '2027-03-31T14:00:00-05:00' });
+    expect(later).not.toHaveProperty('closingDateRaw'); expect(later).not.toHaveProperty('closingDatePlaceholder');
+  });
+  it('tries the download again in the same step after a DNS failure, but not after an HTTP answer', async () => {
+    const db = fixture(), waits: number[] = [];
+    let failures = 2;
+    const host = async (method: string, input: any) => {
+      if (method === 'network.fetch' && failures > 0) { failures--; db.requests.push(input); throw new Error('getaddrinfo EAI_AGAIN'); }
+      return db.host(method, input);
+    };
+    expect(await collectCanadaBuys(host, { sourceId: 'canadabuys' }, 'one', () => timestamp, { sleep: async ms => { waits.push(ms); } })).toMatchObject({ status: 'complete' });
+    expect(waits).toEqual([2000, 8000]); expect(db.requests).toHaveLength(3);
+    failures = 5;
+    await expect(collectCanadaBuys(host, { sourceId: 'canadabuys' }, 'two', () => timestamp, { sleep: async () => undefined, deferFailure: () => true })).rejects.toThrow('EAI_AGAIN');
+    expect(db.states.get(COLLECTION_KEY).status).not.toBe('failed');
+  });
+});
+
 describe('source capability contract', () => {
   it('does not advertise CanadaBuys attachment downloading or award collection', () => {
     const source = PROCUREMENT_SOURCE_ADAPTERS.find(source => source.id === 'canadabuys')!;

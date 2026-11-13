@@ -281,3 +281,27 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
   are unchanged.
 - 2026-10-04 (user decision): `bcbid.gov.bc.ca` page loads are spaced 10 s apart (was 2 s). BC Bid attachment
   downloads keep Zoer's separate 30 s spacing.
+- 2026-11-13 (data gaps round 2, `feat/data-connectors`):
+  - **Document links.** Every collector saves `data.attachments: [{ name, url, size?, access? }]` (no `access` = public)
+    and `data.attachmentsAccess` (`public` | `login` | `mixed`), helpers in `connectors/attachments.ts`. bids&tenders:
+    the notice page's Documents and Addenda grids (`DownloadBidDocument?Id=…&DocumentId=…`, anonymous requests 302 to
+    Login → `access: 'login'`). CanadaBuys: `attachment-piecesJointes-eng` (comma-separated URLs; canadabuys.canada.ca
+    public, sscp2pspc.ssc-spc.gc.ca `login`). Municipal sites: notice-page document links (bid-platform links such as
+    Bonfire are `login`; share buttons and other off-site pages are dropped). Browser sites: a title that links to a file.
+    Merging: a non-empty fresh list replaces the saved one (fields saved on the same URL are kept); an empty list keeps it.
+  - **Placeholder closing dates.** A closing date after 2035 (CanadaBuys 2074/2100 supply arrangements) is saved as
+    `closingDate: null`, `closingDateRaw: <source text>`, `closingDatePlaceholder: true`, no `closingAt`.
+  - **Stale instants.** A connector record that states a `closingDate` without `closingAt` drops a saved `closingAt`.
+    bids&tenders prints `(YST)` since November 2026 (BC on UTC−07 all year) → `-07:00`.
+  - **CanadaBuys identity.** One record per reference number: a later amendment updates the reference's earliest saved
+    record (lowest amendment under `canadabuys:tender:<ref>:<amendment>`, else its own key) and is listed in
+    `amendmentHistory: [{ amendmentNumber, amendmentDate?, closingDate?, publishedAt?, seenAt, sourceFileSha256? }]`;
+    `amendmentNumber`, `amendments` (number, like BC Bid's count), `amendmentDate`, `publishedAt` are set. Superseded
+    rows are left for the catalog clean-up (QUALITY). `maxBatches` now caps each CanadaBuys pass; a manual Collect
+    continues until the file is in. DNS/connection errors (also message-only `getaddrinfo EAI_AGAIN`) are temporary:
+    the download is retried twice in the step (2 s, 8 s), then the step is retried by Zoer.
+  - **Portals.** bids&tenders adds portcoquitlam, newwestcity, sd43, tol, fraserhealth, interiorhealth, northernhealth,
+    bctransit. RDN moved to www.rdn.ca (`list` layout, notice keys now the path slug), Dawson Creek to
+    `/business-development/bidding-opportunities/`. Posted dates: list labels "Post Date", notice-page "Posted Date"
+    and GovStack's `gs-news-details-date`. State entries of portals no longer in a connector move to `retiredPortals`.
+

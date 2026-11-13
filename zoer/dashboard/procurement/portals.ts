@@ -2,7 +2,7 @@ import type { ConnectorPortal } from '../../src/connectors/types';
 import { regionalDistrictName } from './place-data';
 
 /**
- * BC buyers publishing on bids&tenders, each checked on 2026-10-03 (BidsHomepage answered 200). Surrey's portal
+ * BC buyers publishing on bids&tenders, each checked on 2026-10-03 (the last eight on 2026-11-13; BidsHomepage answered 200). Surrey's portal
  * answered but listed no open notices that day. Ids are part of saved sourceKeys: add portals, never rename them.
  */
 const portal = (id: string, label: string, municipality: string | null, regionalDistrict: string | null): ConnectorPortal => ({
@@ -36,4 +36,14 @@ export const BIDSANDTENDERS_PORTALS: readonly ConnectorPortal[] = [
   portal('surrey', 'City of Surrey', 'Surrey', 'Metro Vancouver'),
   portal('vernon', 'City of Vernon', 'Vernon', 'North Okanagan'),
   portal('westkelowna', 'City of West Kelowna', 'West Kelowna', 'Central Okanagan'),
+  // Added 2026-11-13 (VERIFY: open notices on each, 20 of 21 also on BC Bid or in the catalog). Health authorities and
+  // BC Transit buy across many places, so their place is unknown rather than a guess.
+  portal('portcoquitlam', 'City of Port Coquitlam', 'Port Coquitlam', 'Metro Vancouver'),
+  portal('newwestcity', 'City of New Westminster', 'New Westminster', 'Metro Vancouver'),
+  portal('sd43', 'School District 43 (Coquitlam)', 'Coquitlam', 'Metro Vancouver'),
+  portal('tol', 'Township of Langley', 'Langley (Township)', 'Metro Vancouver'),
+  portal('fraserhealth', 'Fraser Health', null, null),
+  portal('interiorhealth', 'Interior Health', null, null),
+  portal('northernhealth', 'Northern Health', null, null),
+  portal('bctransit', 'BC Transit', null, null),
 ];

@@ -1,4 +1,5 @@
 import { SITE_PORTALS, type SitePortal } from '../../dashboard/procurement/site-portals';
+import { attachmentsAccess, cleanAttachments, type AttachmentLink } from './attachments';
 import { ConnectorError, httpFailure, rethrowRunLimits } from './errors';
 import { decodeEntities, htmlToText } from './html';
 import type { ConnectorPortal, NetFetch, NoticeContact, PortalResult, SourceConnector } from './types';
@@ -150,7 +151,7 @@ export interface SiteRow {
 type Role = 'title' | 'number' | 'posted' | 'updated' | 'closing' | 'status' | 'type' | 'awarded';
 const ROLES: [Role, RegExp][] = [
   ['title', /title|bid opportunit|^opportunit/i], ['number', /number|reference|competition|file no/i],
-  ['posted', /posted|issue/i], ['updated', /updated|modified/i], ['closing', /closing|closes|closed/i],
+  ['posted', /posted|^post\b|issue/i], ['updated', /updated|modified/i], ['closing', /closing|closes|closed/i],
   ['status', /status/i], ['type', /^type$/i], ['awarded', /award/i],
 ];
 /** Pages that say so are an empty list; anything else without a listing is a layout change, never "no notices". */
@@ -225,8 +226,9 @@ export function parseCards(html: string): { rows: Array<SiteRow & { html: Partia
 }
 
 /**
- * Drupal list views (Quesnel's Up&Up list, Comox's CiviKit): one `views-row` per notice inside the bids view, a heading
- * link as title and labelled fields (`field__label`/`field__item`, or `<strong>Closing Date: </strong>`).
+ * Drupal list views (Quesnel's Up&Up list, Comox's CiviKit, RDN's 2026 site): one `views-row` (RDN: `list-item`
+ * component) per notice inside the bids view, a heading link as title and labelled fields (`field__label`/`field__item`,
+ * or `<strong>Closing Date: </strong>`).
  */
 export function parseList(html: string): { rows: Array<SiteRow & { html: Partial<Record<Role, string>> }>; empty: boolean } {
   const start = html.search(/class="[^"]*\bview-id-[a-z_]*bid[a-z_]*\b/i);
@@ -235,7 +237,8 @@ export function parseList(html: string): { rows: Array<SiteRow & { html: Partial
     throw new ConnectorError('source_layout', 'The bids page no longer has its bid list. The site layout changed; saved records are kept.');
   }
   const view = html.slice(start).split(/<(?:footer|nav)\b|class="region region-breadcrumbs"/i)[0];
-  const rows = view.split(/<div\b[^>]*class="[^"]*\bviews-row\b[^"]*"[^>]*>/i).slice(1).map(part => {
+  const rowStart = /class="[^"]*\bviews-row\b/i.test(view) ? /<div\b[^>]*class="[^"]*\bviews-row\b[^"]*"[^>]*>/i : /<div\b[^>]*class="list-item"[^>]*>/i;
+  const rows = view.split(rowStart).slice(1).map(part => {
     const heading = /<h[2-4]\b[^>]*>([\s\S]*?)<\/h[2-4]>/i.exec(part);
     const link = /<a\b([^>]*)>/i.exec(heading?.[1] ?? '') ?? /<a\b([^>]*class="[^"]*button[^"]*"[^>]*)>/i.exec(part);
     const href = (link && attr(link[1], 'href')) || attr(/<article\b[^>]*>/i.exec(part)?.[0] ?? '', 'about') || undefined;
@@ -249,7 +252,7 @@ export function parseList(html: string): { rows: Array<SiteRow & { html: Partial
       if (!label || !text) continue;
       cells[label] ??= text;
       const role: Role | undefined = /closing|deadline/i.test(label) ? 'closing' : /status/i.test(label) ? 'status' : /^type$/i.test(label) ? 'type'
-        : /number|reference/i.test(label) ? 'number' : /posted|issue/i.test(label) ? 'posted' : undefined;
+        : /number|reference/i.test(label) ? 'number' : /posted|^post\b|issue/i.test(label) ? 'posted' : undefined;
       // Quesnel repeats "Application deadline" for its open-until-filled switch; only a dated value is the deadline.
       if (role && fields[role] === undefined && (role !== 'closing' || /\d{4}/.test(text))) fields[role] = value;
     }
@@ -261,7 +264,7 @@ export function parseList(html: string): { rows: Array<SiteRow & { html: Partial
       summary: summary ? oneLine(summary) || undefined : undefined, cells: { Title: title, ...cells }, html: fields,
     };
   }).filter(row => row.title);
-  if (rows.length || EMPTY.test(htmlToText(view)) || /class="view-empty"/i.test(view) || !/views-row/i.test(view)) return { rows, empty: rows.length === 0 };
+  if (rows.length || EMPTY.test(htmlToText(view)) || /class="view-empty"/i.test(view) || !/views-row|class="list-item"/i.test(view)) return { rows, empty: rows.length === 0 };
   throw new ConnectorError('source_layout', 'The bid list no longer shows titled notices. The site layout changed; saved records are kept.');
 }
 
@@ -282,7 +285,9 @@ export function nextPage(html: string, current: string): string | undefined {
 
 export interface NoticePage {
   description?: string; closing?: string; closingHtml?: string; number?: string; status?: string;
-  contacts: NoticeContact[]; documents: Array<{ name: string; url: string }>; fields: Array<{ label: string; value: string }>;
+  /** The page's own posted/published date, as HTML (read with `readMoment`), when it prints one. */
+  postedHtml?: string;
+  contacts: NoticeContact[]; documents: Array<{ name: string; url: string; access?: 'login' }>; fields: Array<{ label: string; value: string }>;
 }
 const LABELS = [
   // eSolutions labels carry a class; plain bold text ending in a colon is part of a description.
@@ -292,12 +297,29 @@ const LABELS = [
   /<span\b[^>]*class="views-label\b[^"]*"[^>]*>\s*([^<]{2,60}?)\s*<\/span>/gi,
   /<div\b[^>]*class="view-header"[^>]*>\s*([^<]{2,60}?)\s*<\/div>/gi,
 ];
-const KEYS: Record<string, keyof NoticePage | 'skip'> = {
+const KEYS: Record<string, keyof NoticePage | 'skip' | 'posted'> = {
   description: 'description', contactinformation: 'contacts', contact: 'contacts', contacts: 'contacts', documents: 'documents', addendum: 'documents', addenda: 'documents',
   closingdate: 'closing', closingtime: 'closing', applicationdeadline: 'closing', status: 'status', pdf: 'documents', attachments: 'documents', competitionnumber: 'number',
-  tendertitle: 'skip', tenderrfptitle: 'skip', posteddate: 'skip', share: 'skip',
+  tendertitle: 'skip', tenderrfptitle: 'skip', posteddate: 'posted', postdate: 'posted', dateposted: 'posted', publisheddate: 'posted', share: 'skip',
 };
 const FILE = /\.(pdf|docx?|xlsx?|zip|dwg|pptx?)(?:[?#]|$)|\/filepro\/document|\/sites\/default\/files\/|\/assets\//i;
+/**
+ * Bid platforms whose documents need a supplier account (Bonfire, bids&tenders, MERX, Biddingo, Jaggaer, Ariba) or
+ * Zoer's browser (BC Bid): a link there is saved as login-only and never downloaded with a plain request.
+ */
+const LOGIN_HOSTS = /(?:^|\.)(?:bonfirehub\.ca|bonfirehub\.com|bidsandtenders\.ca|merx\.com|biddingo\.com|sciquest\.com|ariba\.com|bcbid\.gov\.bc\.ca)$/i;
+/**
+ * A notice page link as an attachment. Outside a documents section only file-like links count (as before). In a
+ * documents section any link on the site itself counts (Comox links `/media/<id>`), a link to a bid platform is a
+ * login-only document (Penticton's Bonfire links), and other off-site pages (share buttons, auction listings) are not
+ * documents.
+ */
+export function documentLink(url: string, name: string, pageUrl: string, inDocumentsSection: boolean): { name: string; url: string; access?: 'login' } | undefined {
+  const host = new URL(url).hostname, file = FILE.test(url);
+  if (!file && !inDocumentsSection) return undefined;
+  if (LOGIN_HOSTS.test(host)) return { name, url, access: 'login' };
+  return file || host === new URL(pageUrl).hostname ? { name, url } : undefined;
+}
 
 /**
  * Labelled sections of a notice page (eSolutions `<strong>Label:</strong>`, Drupal field and view labels, Surrey's
@@ -310,8 +332,9 @@ export function parseNoticePage(html: string, pageUrl: string): NoticePage | und
   const end = region.search(/<!--\s*ZOOMSTOP\s*-->|<\/main>|<footer\b|id="share-links"/i);
   if (end > 0) region = region.slice(0, end);
   region = region.replace(/<(nav|aside|script|style|svg)\b[\s\S]*?<\/\1\s*>/gi, '')
-    // Drupal body fields and Surrey's text block are the description even without a label.
-    .replace(/<div\b[^>]*class="[^"]*(?:field--name-body|section__content wysiwyg)[^"]*"[^>]*>/gi, '\u0001Description\u0002$&');
+    // Drupal body fields, Surrey's text block and GovStack text components (Dawson Creek) are the description even
+    // without a label.
+    .replace(/<(?:div|section)\b[^>]*class="[^"]*(?:field--name-body|section__content wysiwyg|usn_cmp_text)[^"]*"[^>]*>/gi, '\u0001Description\u0002$&');
   for (const pattern of LABELS) region = region.replace(pattern, (_, label: string) => `\u0001${decodeEntities(label)}\u0002`);
   const pieces = region.split(/\u0001([^\u0002]*)\u0002/);
   const page: NoticePage = { contacts: [], documents: [], fields: [] };
@@ -329,8 +352,11 @@ export function parseNoticePage(html: string, pageUrl: string): NoticePage | und
     }
     else if (key === 'status') page.status = text.split('\n')[0];
     else if (key === 'number') page.number = text.split('\n')[0] !== '--' ? text.split('\n')[0] : undefined;
+    else if (key === 'posted') { if (!page.postedHtml && /\d{4}/.test(text)) page.postedHtml = body.split(/<\/(?:div|p)\s*>|<br\s*\/?>/i).find(part => htmlToText(part)) ?? body; }
     else if (key !== 'skip' && key !== 'closing' && text && text !== '--' && text.length <= 300 && page.fields.length < 10) page.fields.push({ label, value: text.split('\n')[0] });
   }
+  // GovStack news posts (Dawson Creek) print the posting date in the meta line under the title.
+  page.postedHtml ??= /<span\b[^>]*class="gs-news-details-date"[^>]*>([^<]{6,40})<\/span>/i.exec(region)?.[1];
   if (descriptions.length) page.description = descriptions.join('\n\n').slice(0, 20_000);
   if (!page.contacts.length && page.description) page.contacts.push(...contactsFrom(page.description, 'description'));
   const seen = new Set<string>();
@@ -339,11 +365,13 @@ export function parseNoticePage(html: string, pageUrl: string): NoticePage | und
     .flatMap(([html, isDocs]) => [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)].map(m => [m[1], m[2], isDocs] as const));
   for (const [tag, inner, isDocs] of anchors) {
     const url = resolveUrl(attr(tag, 'href'), pageUrl);
-    if (!url || !(isDocs || FILE.test(url)) || seen.has(url)) continue;
+    if (!url || seen.has(url)) continue;
+    const doc = documentLink(url, (oneLine(inner) || attr(tag, 'title') || decodeURIComponent(url.split('/').pop() ?? '')).slice(0, 300), pageUrl, isDocs);
+    if (!doc) continue;
     seen.add(url);
-    page.documents.push({ name: (oneLine(inner) || attr(tag, 'title') || decodeURIComponent(url.split('/').pop() ?? '')).slice(0, 300), url });
+    page.documents.push(doc);
   }
-  return page.closing || page.description || page.status || page.documents.length || page.contacts.length ? page : undefined;
+  return page.closing || page.description || page.status || page.documents.length || page.contacts.length || page.postedHtml ? page : undefined;
 }
 
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
@@ -409,7 +437,8 @@ export function siteRecord(row: SiteRow & { html: Partial<Record<Role, string>> 
   const detailUrl = (row.href && resolveUrl(row.href, portal.url)) || portal.url;
   const closingHtml = row.html.closing ?? (row.closing === undefined ? page?.closingHtml : undefined);
   const closing = closingHtml !== undefined ? readMoment(closingHtml, portal.timeZone, portal.slashDates) : undefined;
-  const posted = row.html.posted !== undefined ? readMoment(row.html.posted, portal.timeZone, portal.slashDates) : undefined;
+  const postedHtml = row.html.posted ?? page?.postedHtml;
+  const posted = postedHtml !== undefined ? readMoment(postedHtml, portal.timeZone, portal.slashDates) : undefined;
   const number = row.number ?? page?.number ?? leadingNumber(row.title);
   const sourceStatus = row.status ?? portal.listStatus;
   // Without a published status, a verified closing instant is the only basis for open/closed.
@@ -417,6 +446,7 @@ export function siteRecord(row: SiteRow & { html: Partial<Record<Role, string>> 
   const status = sourceStatus ?? derived ?? 'Unknown';
   const descriptionText = page?.description ?? row.summary ?? '';
   const region = portal.place.municipality ?? portal.place.regionalDistrict ?? null;
+  const attachments: AttachmentLink[] = cleanAttachments(page?.documents ?? []);
   const fields: [string, string | undefined][] = [
     ['Source', `${portal.label} website`], ['Notice number', number], ['Status', sourceStatus], ['Type', row.type],
     ['Closing date (source value)', closing?.text], ['Posted (source value)', posted?.text], ['Updated (source value)', row.updated && row.updated !== 'N/A' ? row.updated : undefined],
@@ -434,10 +464,11 @@ export function siteRecord(row: SiteRow & { html: Partial<Record<Role, string>> 
     closingDate: closing?.text ?? '', ...(closing?.at ? { closingAt: closing.at } : {}), ...(posted?.at ? { publishedAt: posted.at } : {}),
     detailUrl, sourceUrl: portal.url, region, place: { ...portal.place },
     ...(page?.contacts.length ? { contacts: page.contacts } : {}),
-    sourceFields, ...(page ? { documentsCount: page.documents.length, noticePageRetrievedAt: retrievedAt } : {}),
+    sourceFields, ...(page ? { documentsCount: attachments.length, noticePageRetrievedAt: retrievedAt } : {}),
     sourceRetrievedAt: retrievedAt, rawSourceData: { cells: row.cells, href: row.href ?? null, ...(row.summary ? { summary: row.summary } : {}) },
     searchText: [number, row.title, descriptionText.slice(0, 4000), portal.label, status, row.type, region].filter(Boolean).join(' '),
-    attachments: [], addenda: [], detailFields: [], commodities: [],
+    attachments, ...(attachments.length ? { attachmentsAccess: attachmentsAccess(attachments) } : {}),
+    addenda: [], detailFields: [], commodities: [],
   };
 }
 
@@ -496,7 +527,7 @@ export const municipalSites: SourceConnector = {
   id: SOURCE_ID,
   label: 'BC local government websites',
   jurisdiction: 'British Columbia',
-  coverage: `Bids listed on the own websites of ${SITE_PORTALS.length} BC local governments (${SITE_PORTALS.map(p => p.label).join(', ')}), with each open notice's page (description, contacts, document links). Each site lists what it chooses: some show recently closed notices, some only open ones. Files are not downloaded. A notice missing from a later listing is kept; absence is not proof of closure.`,
+  coverage: `Bids listed on the own websites of ${SITE_PORTALS.length} BC local governments (${SITE_PORTALS.map(p => p.label).join(', ')}), with each open notice's page (description, contacts, document links saved with each notice; links to bid platforms such as Bonfire are marked as needing a sign-in). Each site lists what it chooses: some show recently closed notices, some only open ones. Files are not downloaded by this connector. A notice missing from a later listing is kept; absence is not proof of closure.`,
   portals: SITE_PORTALS,
   requestsPerPortal: 2 * MAX_PAGES + MAX_DETAILS,
   needsSession: false,
