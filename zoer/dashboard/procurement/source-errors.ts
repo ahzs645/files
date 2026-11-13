@@ -1,3 +1,4 @@
+import { knownError } from '../error-text';
 /**
  * Plain sentences for collection error codes (CONNECTORS.md §4 and its Changes; `zoer/src/connectors/errors.ts`,
  * `procurement-collection.ts`, `connector-collection.ts`). The Sources page shows the sentence and keeps the raw
@@ -68,6 +69,8 @@ export function sourceErrorText(error: CollectionError | null | undefined): Erro
   if (!error || (!error.code && !error.message)) return null;
   const code = typeof error.code === 'string' ? error.code : '', message = typeof error.message === 'string' ? error.message : '';
   const detail = [code, message].filter(Boolean).join(': ');
-  const text = TEXT[code]?.(message) ?? (message || `Collection failed (${code}).`);
+  // A generic "unexpected error" code whose message is a known cause (a DNS failure, say) says that cause instead.
+  const known = (code === 'collection_failed' || code === 'portal_failed' || !TEXT[code]) ? knownError(message) : null;
+  const text = known ?? TEXT[code]?.(message) ?? (message || `Collection failed (${code}).`);
   return { text, detail };
 }

@@ -54,7 +54,7 @@ describe('capability-gated navigation', () => {
     expect(ids(READ_ONLY)).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'insights']);
     // Taxonomy is an import page (collection); the AI workbench needs AI; Evidence becomes an Insights view.
     expect(ids({ ...READ_ONLY, ai: true })).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'insights', 'workbench']);
-    expect(ids({ collection: true, writes: false, ai: false })).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'evidence', 'insights', 'sources', 'taxonomy']);
+    expect(ids({ collection: true, writes: false, ai: false })).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'evidence', 'insights', 'status', 'sources', 'taxonomy']);
     expect(sectionViews('documents', READ_ONLY)?.map(([id]) => id)).toEqual(['files']);
     expect(sectionViews('insights', READ_ONLY)?.map(([, label]) => label)).toEqual(['Decision insights', 'Market analysis', 'Award history', 'Evidence']);
     expect(sectionViews('insights', FULL)?.map(([id]) => id)).toEqual(['decisions', 'market', 'awards']);
@@ -81,7 +81,7 @@ describe('capability-gated navigation', () => {
     const all = [...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS], ids = (list: typeof all) => list.map(([id]) => id);
     const { tabs: strip, more } = phoneSections(all, 'home');
     expect(ids(strip)).toEqual(['home', 'opportunities', 'pursuits', 'insights']);
-    expect(ids(more)).toEqual(['documents', 'evidence', 'workbench', 'profiles', 'sources', 'taxonomy']);
+    expect(ids(more)).toEqual(['documents', 'evidence', 'status', 'workbench', 'profiles', 'sources', 'taxonomy']);
   });
   it('keeps the selected section in the phone strip, so its panel always has a tab', () => {
     const all = [...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS];

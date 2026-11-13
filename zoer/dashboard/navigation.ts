@@ -24,11 +24,22 @@ function receiveState(state: unknown) {
 }
 /** Router paths back to plugin locations (the inverse of `internal` for the one path it renames). */
 export const routerLocation = (href: string) => href.replace(/^\/contract-awards\/analysis(?=$|\?)/, '/analysis/overview');
-/** A Zoer page outside the plugin (e.g. `#/settings/plugins`). */
+/** A Zoer page outside the plugin (e.g. `#/browsers`). */
 export const hostHref = (hash: string) => baseUrl + hash;
+/**
+ * Zoer's own plugin Settings window (browsers and schedules), opened over the current plugin page:
+ * `#/plugins/bc-bid-monitor/<location>?hostSettings=browsers|schedules`. Only a Zoer host has it; a host that serves
+ * the workspace under its own path prefix (`hrefBase`) gets null, so callers hide the link.
+ */
+export function hostSettingsHref(section: 'browsers' | 'schedules', at = location): string | null {
+  if (hrefBase) return null;
+  const [path, query] = at.split('?'), params = new URLSearchParams(query);
+  params.set('hostSettings', section);
+  return baseUrl + '#/plugins/bc-bid-monitor' + (path === '/' ? '' : path) + '?' + params;
+}
 const internal = (value: string) => {
   const [path, query] = value.split('?');
-  return (path === '/documents' || path === '/ai-review' || path === '/settings' || path === '/procurement' || path === '/pursuits' || path === '/sources' || path === '/bc-bid-dashboard' || path === '/home' || path === '/insights' || path === '/evidence' || path === '/profiles' || path === '/workbench' ? '/' : path === '/analysis' || path.startsWith('/analysis/') ? '/contract-awards/analysis' : path) + (query ? '?' + query : '');
+  return (path === '/documents' || path === '/ai-review' || path === '/settings' || path === '/procurement' || path === '/pursuits' || path === '/sources' || path === '/bc-bid-dashboard' || path === '/home' || path === '/insights' || path === '/evidence' || path === '/profiles' || path === '/workbench' || path === '/status' ? '/' : path === '/analysis' || path.startsWith('/analysis/') ? '/contract-awards/analysis' : path) + (query ? '?' + query : '');
 };
 // Last catalog list location (with its query) so a record's Back link returns to the same filters.
 const catalogReturn = new Map<'opportunity' | 'award', string>();

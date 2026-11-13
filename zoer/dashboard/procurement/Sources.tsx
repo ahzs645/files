@@ -4,11 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { useWorkspace } from '../backend';
-import { hostHref, navigatePlugin } from '../navigation';
+import { navigatePlugin, pluginHref } from '../navigation';
+import { useNarrowScreen } from '../mobile';
+import { SettingsLink, useDocumentGap } from './Status';
+import { bcLastCollection, lastCollectionText } from './status-data';
 import { PROCUREMENT_SOURCE_ADAPTERS, COLLECTION_KEY } from './source-adapters';
 import { BATCH_KIND_TEXT, CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, bcSourceHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
 import { CONNECTOR_SOURCES, COLLECT_ACTION, PORTAL_COUNT_SQL, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
-import { findSchedule, scheduleState, type ScheduleRow } from './schedule-state';
+import { findSchedule, scheduleState, scheduleSummary, type ScheduleRow } from './schedule-state';
 import { SCHEDULES_KEY, ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
 import { SCHEDULED_SOURCES, liveRunFor, runRetryPreset, saveSourceSchedule, sourceSchedule, type RecentRun } from './source-schedules';
 import { CollectionRuns, PRESETS_KEY, RUNS_KEY, ScheduleNotice, usePresets, useRecentRuns } from './CollectionRuns';
@@ -17,7 +20,7 @@ import { CanadaBuysImport } from './CanadaBuysImport';
 import { BrowserSourcesCard } from './BrowserSourcesCard';
 import { INVENTORY_SQL, sourceName, sql } from './display';
 import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from '../document-run';
-import { shortError } from '../error-text';
+import { plainError, shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 
 const BC_CHECKPOINTS = [['checkpoint:full', 'Current opportunities'], ['checkpoint:awards', 'Historical awards'], ['checkpoint:awards:recent', 'Recent awards']] as const;
@@ -37,7 +40,7 @@ function Card({ id, name, region, status, tone, stats, actions, children, wide }
 function Capabilities({ id }: { id: string }) {
   const adapter = PROCUREMENT_SOURCE_ADAPTERS.find(source => source.id === id);
   if (!adapter) return null;
-  return <details><summary data-zoer-disclosure>Connector details</summary><p className="procurement-coverage">{adapter.coverage}</p><dl className="pc-detail-list">{Object.entries(adapter.capabilities).map(([name, value]) => <div key={name}><dt>{name} · {value.status}</dt><dd>{value.method}</dd></div>)}</dl>{adapter.documentation && <a className="procurement-link" href={adapter.documentation} target="_blank" rel="noreferrer">Source documentation ↗</a>}</details>;
+  return <details><summary data-zoer-disclosure>How this source is collected</summary><p className="procurement-coverage">{adapter.coverage}</p><dl className="pc-detail-list">{Object.entries(adapter.capabilities).map(([name, value]) => <div key={name}><dt>{name} · {value.status}</dt><dd>{value.method}</dd></div>)}</dl>{adapter.documentation && <a className="procurement-link" href={adapter.documentation} target="_blank" rel="noreferrer">Source documentation ↗</a>}</details>;
 }
 
 type OverviewRow = { id: string; name: string; region: string; tone: Tone; status: string; scope?: string | null; saved: string; lastSuccess: string; next: ReactNode; action: ReactNode };
@@ -68,7 +71,7 @@ export function Sources() {
   const schedules = useSchedules(), presets = usePresets(), recent = useRecentRuns();
   const runs: RecentRun[] | undefined = recent.data;
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState(''), [batches, setBatches] = useState('5'), [importOpen, setImportOpen] = useState(false);
-  const [scheduleFor, setScheduleFor] = useState('');
+  const [scheduleFor, setScheduleFor] = useState(''), [failuresOpen, setFailuresOpen] = useState(false);
   const saved = (source: string, kind = 'opportunity') => inventory.error ? 'Unknown' : !inventory.data ? 'Loading…' : (inventory.data ?? []).filter(row => row.sourceId === source && row.kind === kind).reduce((sum, row) => sum + Number(row.count), 0).toLocaleString();
   const entries = health.data?.entries ?? [];
   const entry = (key: string) => entries.find((item: any) => item.key === key)?.value;
@@ -77,7 +80,9 @@ export function Sources() {
   const bcIssue = checkpoints.some(item => item.error);
   // Keep action scope and raw statuses when falling back to older Zoer's workspace history.
   const bcHealth = bcSourceHealth(runs ?? model?.captureRuns, health.data ? checkpoints[0] : undefined, bcIssue);
-  const bcLastSuccess = bcHealth.lastSuccess ? `${bcHealth.lastSuccess.at ? when(bcHealth.lastSuccess.at) : 'Time not recorded'} · ${bcHealth.lastSuccess.scope}` : !runs && !model ? 'Unknown' : 'Not recorded';
+  // The one "last successful collection" answer (also on Status, Home and BC Bid's overview).
+  const bcLast = bcLastCollection(runs, model?.captureRuns, health.data ? entry('checkpoint:full') : undefined);
+  const bcLastSuccess = lastCollectionText({ known: !!(runs || model), at: bcLast?.at ?? null, scope: bcLast?.scope ?? null });
   const bcCurrentCollection = !health.data ? 'Unknown' : checkpoints[0].completed
     ? `Completed · ${bcHealth.currentCompletedAt ? when(bcHealth.currentCompletedAt) : 'time not recorded'}`
     : checkpoints[0].status === 'Not recorded' ? 'Not recorded' : 'Incomplete';
@@ -89,8 +94,10 @@ export function Sources() {
   }));
   const bcSchedule = findSchedule(schedules.data, 'scrape.full');
   const scheduleOf = (sourceId: string) => sourceSchedule(schedules.data, presets.data, sourceId);
-  const nextRun = (sourceId: string): ReactNode => schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : scheduleOf(sourceId) ? <ScheduleBadge row={scheduleOf(sourceId)} /> : 'Not scheduled';
-  const scheduledCount = SCHEDULED_SOURCES.filter(id => scheduleOf(id)?.enabled).length;
+  const nextRun = (sourceId: string): ReactNode => schedules.error || presets.error ? 'Unknown' : schedules.isPending || presets.isPending ? 'Loading…' : scheduleOf(sourceId) ? <ScheduleBadge row={scheduleOf(sourceId)} /> : 'Not scheduled';
+  // Same count as the banner, Home and Status: every schedule Zoer lists for this plugin.
+  const scheduleCount = scheduleSummary(schedules.data);
+  const phone = useNarrowScreen('(max-width: 640px)');
   /** Starts a run and returns at once: collection is a resumable job; its progress shows on the source and under Collection runs. */
   const start = async (key: string, begin: () => Promise<unknown>, done: string) => {
     setBusy(key); setError(''); setMessage('');
@@ -110,19 +117,19 @@ export function Sources() {
     if (busy === 'canadabuys') return { tone: 'busy', status: 'Starting' };
     const state = canadaBuysRun ? connectorStatus(null, Date.now(), canadaBuysRun) : null;
     if (state) return { tone: state.tone, status: state.text };
-    return { tone: collection?.error ? 'warn' : canadaBuysPaused ? 'idle' : collection?.lastSuccessAt ? 'good' : 'idle', status: !health.data ? 'Status unknown' : collection?.error ? 'Needs attention' : canadaBuysPaused ?? (collection?.lastSuccessAt ? 'Collected' : 'Not collected') };
+    return { tone: collection?.error ? 'warn' : canadaBuysPaused ? 'idle' : collection?.lastSuccessAt ? 'good' : 'idle', status: health.isPending ? 'Loading…' : !health.data ? 'Status unknown' : collection?.error ? 'Needs attention' : canadaBuysPaused ?? (collection?.lastSuccessAt ? 'Collected' : 'Not collected') };
   };
   const overview: OverviewRow[] = [
     { id: 'bc-bid', name: 'BC Bid', region: 'British Columbia · browser scraping', tone: bcHealth.tone, status: bcHealth.status, scope: bcHealth.scope,
       saved: saved('bc-bid'), lastSuccess: bcLastSuccess, next: schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : bcSchedule ? <ScheduleBadge row={bcSchedule} /> : 'Not scheduled',
       action: <Btn size="sm" variant="secondary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn> },
     { id: 'canadabuys', name: 'CanadaBuys', region: 'Canada · official dataset', ...canadaBuysStatus(),
-      saved: saved('canadabuys'), lastSuccess: health.data ? when(collection?.lastSuccessAt) : 'Unknown', next: nextRun('canadabuys'),
+      saved: saved('canadabuys'), lastSuccess: health.isPending ? 'Loading…' : lastCollectionText({ known: !!health.data, at: collection?.lastSuccessAt ?? null, scope: null }), next: nextRun('canadabuys'),
       action: <Btn size="sm" variant="secondary" disabled={!!busy || !!canadaBuysRun} onClick={() => void collectCanadaBuys('resume')}>{busy === 'canadabuys' ? 'Starting…' : 'Collect'}</Btn> },
     ...CONNECTOR_SOURCES.map((source): OverviewRow => {
       const { state } = connectors.get(source.id)!, run = live(source.id), status = connectorStatus(state, Date.now(), run), starting = busy.startsWith(source.id);
-      return { id: source.id, name: source.label, region: `${source.region} · ${source.portals.length} portals`, tone: starting ? 'busy' : status.tone, status: starting ? 'Starting' : status.text,
-        saved: saved(source.id), lastSuccess: state === undefined ? 'Unknown' : when(state?.lastSuccessAt), next: nextRun(source.id),
+      return { id: source.id, name: source.label, region: `${source.region} · ${source.portals.length} portals`, tone: starting ? 'busy' : status.tone, status: starting ? 'Starting' : health.isPending && !run ? 'Loading…' : status.text,
+        saved: saved(source.id), lastSuccess: health.isPending ? 'Loading…' : lastCollectionText({ known: state !== undefined, at: state?.lastSuccessAt ?? null, scope: null }), next: nextRun(source.id),
         action: <Btn size="sm" variant="secondary" disabled={!!busy || !!run} onClick={() => void collect(source.id, { sourceId: source.id }, source.label)}>{starting ? 'Starting…' : 'Collect'}</Btn> };
     }),
     // Saved notices from a source this version has no card for still get a row, so nothing saved goes unseen.
@@ -134,13 +141,14 @@ export function Sources() {
     {(error || health.error || inventory.error) && <p role="alert">{error || health.error?.message || inventory.error?.message}</p>}
     {message && <p role="status">{message}</p>}
     <ScheduleNotice rows={schedules.data} presets={presets.data} labels={LABELS} />
-    <Overview rows={overview} schedule={<div className="pc-overview-schedule"><span>Scheduled collection</span>{schedules.error || presets.error ? <span className="pc-status" data-tone="warn">Unknown</span> : schedules.isPending || presets.isPending ? <span className="pc-status">Loading…</span> : <span className="pc-status" data-tone={scheduledCount ? 'good' : 'idle'}>{scheduledCount} of {SCHEDULED_SOURCES.length} sources on</span>}</div>} />
+    <AttentionSummary onFailures={() => { setFailuresOpen(true); requestAnimationFrame(() => scrollTo('source-health-failures')); }} />
+    <Overview rows={overview} schedule={<div className="pc-overview-schedule"><span>Schedules</span>{schedules.error ? <span className="pc-status" data-tone="warn">Unknown</span> : schedules.isPending ? <span className="pc-status">Loading…</span> : <span className="pc-status" data-tone={scheduleCount.total && scheduleCount.on === scheduleCount.total ? 'good' : scheduleCount.on ? 'busy' : 'warn'}>{scheduleCount.text}</span>}</div>} />
     <div className="pc-source-grid">
       <Card id="bc-bid" name="BC Bid" region="British Columbia · browser scraping" tone={overview[0].tone} status={overview[0].status}
         stats={[['Opportunities', saved('bc-bid')], ['Awards', saved('bc-bid', 'award')], ['Last successful collection', overview[0].lastSuccess], ['Full current collection', bcCurrentCollection]]}
         actions={<><Btn variant="primary" onClick={() => navigatePlugin('/bc-bid-dashboard')}>Open BC Bid</Btn><Btn variant="secondary" onClick={() => navigatePlugin('/scraper')}>Scraper</Btn><Btn variant="ghost" onClick={() => navigatePlugin('/scraper/history')}>Run history</Btn></>}>
         <p className="procurement-coverage">{bcHealth.scope && <>Latest collection scope: {bcHealth.scope}. </>}Collection times describe saved snapshots.</p>
-        <details open={bcIssue}><summary data-zoer-disclosure>Collection checkpoints</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · checkpoint {item.checkpointTime === 'Not recorded' ? 'not recorded' : when(item.checkpointTime)}</p>{item.error && <Hint content={item.error}><p role="alert">{shortError(item.error)}</p></Hint>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
+        <details open={bcIssue && !phone}><summary data-zoer-disclosure>Saved progress</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · saved {item.checkpointTime === 'Not recorded' ? 'at an unrecorded time' : when(item.checkpointTime)}</p>{item.error && <Hint content={item.error}><p role="alert" className="pc-wrap">{plainError(item.error)}</p></Hint>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
         <BcBidSchedules rows={schedules.data} error={schedules.error as Error | null} />
         <Capabilities id="bc-bid" />
       </Card>
@@ -154,15 +162,15 @@ export function Sources() {
         <Capabilities id="canadabuys" />
       </Card>
       {CONNECTOR_SOURCES.map(source => <ConnectorCard key={source.id} source={source} state={connectors.get(source.id)!.state} stateError={connectors.get(source.id)!.error ?? (health.error ? (health.error as Error).message : undefined)}
-        saved={saved(source.id)} next={nextRun(source.id)} busy={busy} enabled={!!model} run={live(source.id)}
+        saved={saved(source.id)} next={nextRun(source.id)} busy={busy} enabled={!!model} run={live(source.id)} phone={phone} loading={health.isPending}
         onCollect={(portals, key, what) => void collect(key, { sourceId: source.id, ...(portals ? { portals } : {}) }, what)}
         onRetry={problems => void start(`${source.id}:problems`, () => runRetryPreset(host, source.id, source.label, problems), `Retrying ${problems.length} problem portal${problems.length === 1 ? '' : 's'} of ${source.label}. Progress shows below.`)}
         onSchedule={() => setScheduleFor(source.id)} />)}
-      <BrowserSourcesCard run={live('browser-sites')} />
+      <BrowserSourcesCard run={live('browser-sites')} phone={phone} />
       {LINK_SOURCES.length > 0 && <LinkSources />}
     </div>
     <CollectionRuns runs={runs} error={recent.error as Error | null} loading={recent.isPending} />
-    <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} />
+    <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} failuresOpen={failuresOpen} onFailuresOpen={setFailuresOpen} />
     {scheduleFor && <Modal fit title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
       <ScheduleControl actionId={COLLECT_ACTION} title={`Collect ${label(scheduleFor)}`} row={scheduleOf(scheduleFor) ?? null}
         onSave={async (enabled, hours) => { await saveSourceSchedule(host, scheduleFor, label(scheduleFor), enabled, hours); await client.invalidateQueries({ queryKey: PRESETS_KEY }); await client.invalidateQueries({ queryKey: SCHEDULES_KEY }); }} />
@@ -186,15 +194,15 @@ function BcBidSchedules({ rows, error }: { rows?: ScheduleRow[]; error: Error | 
   return <details><summary data-zoer-disclosure>Scheduled scraping</summary>
     {error ? <p role="alert">Schedules could not be read: {error.message}</p> : !rows ? <p role="status">Loading schedules…</p> : <ul className="pc-checkpoints">{items.map(([id, text]) => {
       const row = findSchedule(rows, id), state = scheduleState(row);
-      return <li key={id}><div><strong>{text}</strong><span className="pc-status" data-tone={state.tone}>{state.status}</span></div>{(state.next || state.last) && <p>{[state.next, state.last].filter(Boolean).join(' · ')}</p>}{state.stopped && <Hint content={state.error ?? undefined}><p role="alert">{state.stopped}</p></Hint>}</li>;
+      return <li key={id}><div><strong>{text}</strong><span className="pc-status" data-tone={state.tone}>{state.status}</span></div>{(state.next || state.last) && <p>{[state.next, state.last].filter(Boolean).join(' · ')}</p>}{state.stopped && <Hint content={state.error ?? undefined}><p role="alert" className="pc-wrap">{state.stopped}</p></Hint>}</li>;
     })}</ul>}
-    <p className="procurement-coverage">BC Bid scrapes use your Zoer browser, so they are scheduled in Zoer’s plugin settings, not here. <a className="procurement-link" href={hostHref('#/settings/plugins')}>Open plugin settings</a></p>
+    <p className="procurement-coverage">BC Bid scrapes use your Zoer browser, so they are scheduled in Zoer’s Settings with that browser, not here. <SettingsLink section="schedules" /></p>
   </details>;
 }
 
 /** A platform with many portals: totals first, then a searchable portal list that can be narrowed to problems. */
-function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, run, onCollect, onRetry, onSchedule }: {
-  source: ConnectorSource; state: ConnectorCollection | null | undefined; stateError?: string; saved: string; next: ReactNode; busy: string; enabled: boolean; run?: RecentRun;
+function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, run, phone, loading, onCollect, onRetry, onSchedule }: {
+  source: ConnectorSource; state: ConnectorCollection | null | undefined; stateError?: string; saved: string; next: ReactNode; busy: string; enabled: boolean; run?: RecentRun; phone: boolean; loading: boolean;
   onCollect: (portals: string[] | null, key: string, what: string) => void; onRetry: (portals: string[]) => void; onSchedule: () => void;
 }) {
   const counts = useQuery({ queryKey: ['catalog', 'procurement-portal-counts', source.id], enabled, queryFn: async () => new Map((await sql(PORTAL_COUNT_SQL, [source.id])).map(row => [String(row.portalId), Number(row.count)])), refetchInterval: 60_000 });
@@ -202,16 +210,7 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
   const rows = portalRows(source.portals, state, counts.data), summary = portalSummary(rows), status = connectorStatus(state, Date.now(), run);
   const shown = filterPortals(rows, query, problemsOnly), limit = all || query || problemsOnly ? shown.length : 8;
   const running = busy.startsWith(source.id) || !!run, problems = rows.filter(row => row.problem).map(row => row.id);
-  return <Card id={source.id} wide name={source.label} region={source.region} tone={busy.startsWith(source.id) ? 'busy' : status.tone} status={busy.startsWith(source.id) ? 'Starting' : status.text}
-    stats={[['Opportunities', saved], ['Portals', state === undefined ? `${rows.length} · status unknown` : portalSummaryText(rows)], ['Last successful collection', state === undefined ? 'Unknown' : when(state?.lastSuccessAt)], ['Next scheduled run', next]]}
-    actions={<>
-      <Btn variant="primary" disabled={!!busy || running} onClick={() => onCollect(null, source.id, source.label)}>{busy === source.id ? 'Starting…' : `Collect all ${rows.length} portals`}</Btn>
-      {problems.length > 0 && problems.length < rows.length && <Btn variant="secondary" disabled={!!busy || running} onClick={() => onRetry(problems)}>{busy === `${source.id}:problems` ? 'Starting…' : `Retry ${problems.length} problem portal${problems.length === 1 ? '' : 's'}`}</Btn>}
-      <Btn variant="secondary" onClick={onSchedule}>Schedule</Btn>
-    </>}>
-    {stateError && <p role="alert">Collection state could not be read: {stateError}</p>}
-    <SourceError error={state?.error} />
-    {counts.error && <p role="alert">Saved counts per portal could not be read: {(counts.error as Error).message}</p>}
+  const portalList = <>
     <div className="pc-portal-tools">
       <label className="pc-portal-search"><span className="sr-only">Search portals</span><input type="search" placeholder={`Search ${rows.length} portals`} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <label className="rw-check"><input type="checkbox" checked={problemsOnly} onChange={e => setProblemsOnly(e.target.checked)} />Problems only ({summary.problems})</label>
@@ -229,7 +228,20 @@ function ConnectorCard({ source, state, stateError, saved, next, busy, enabled, 
       </tr>)}</tbody>
     </table>}
     {shown.length > limit && <Btn size="sm" variant="ghost" onClick={() => setAll(true)}>Show all {shown.length} portals</Btn>}
-    <details><summary data-zoer-disclosure>Connector details</summary><p className="procurement-coverage">{source.coverage}</p></details>
+  </>;
+  return <Card id={source.id} wide name={source.label} region={source.region} tone={busy.startsWith(source.id) ? 'busy' : status.tone} status={busy.startsWith(source.id) ? 'Starting' : loading && !run ? 'Loading…' : status.text}
+    stats={[['Opportunities', saved], ['Portals', loading ? 'Loading…' : state === undefined ? `${rows.length} · status unknown` : portalSummaryText(rows)], ['Last successful collection', loading ? 'Loading…' : lastCollectionText({ known: state !== undefined, at: state?.lastSuccessAt ?? null, scope: null })], ['Next scheduled run', next]]}
+    actions={<>
+      <Btn variant="primary" disabled={!!busy || running} onClick={() => onCollect(null, source.id, source.label)}>{busy === source.id ? 'Starting…' : `Collect all ${rows.length} portals`}</Btn>
+      {problems.length > 0 && problems.length < rows.length && <Btn variant="secondary" disabled={!!busy || running} onClick={() => onRetry(problems)}>{busy === `${source.id}:problems` ? 'Starting…' : `Retry ${problems.length} problem portal${problems.length === 1 ? '' : 's'}`}</Btn>}
+      <Btn variant="secondary" onClick={onSchedule}>Schedule</Btn>
+    </>}>
+    {stateError && <p role="alert">Collection state could not be read: {stateError}</p>}
+    <SourceError error={state?.error} />
+    {counts.error && <p role="alert">Saved counts per portal could not be read: {(counts.error as Error).message}</p>}
+    {/* Phones: the portal list is one tap away, so the page is not a screen per portal. */}
+    {phone ? <details className="pc-portal-disclosure"><summary data-zoer-disclosure="">{`Portals · ${rows.length}${summary.problems ? ` · ${summary.problems} with problems` : ''}`}</summary>{portalList}</details> : portalList}
+    <details><summary data-zoer-disclosure>How this source is collected</summary><p className="procurement-coverage">{source.coverage}</p></details>
   </Card>;
 }
 
@@ -258,15 +270,35 @@ const ATTACHMENT_SQL = `SELECT ${SOURCE_SQL} AS sourceId, count(*) AS total,
 const BATCH_SQL = 'SELECT id, kind, status, completed, failed, total, error, updated_at FROM batches ORDER BY updated_at DESC LIMIT 200';
 const FAILURE_SQL = "SELECT t.record_id, r.title, t.kind, t.status, t.error, t.updated_at, json_extract(t.result,'$.name') AS name, json_extract(t.result,'$.phase') AS phase FROM research_tasks t LEFT JOIN records r ON r.id=t.record_id WHERE t.status IN ('failed','waiting_for_user') ORDER BY t.updated_at DESC LIMIT 200";
 const KIND_TEXT = BATCH_KIND_TEXT;
+/** Failed and waiting research tasks (downloads, reviews); one cached read for the summary and the queue. */
+function useFailures(enabled: boolean) {
+  return useQuery({ queryKey: ['catalog', 'procurement-source-failures'], enabled, queryFn: () => sql(FAILURE_SQL) as Promise<FailureTask[]>, refetchInterval: 15_000 });
+}
+
+/**
+ * What needs attention, before the long per-source lists: the document gap and failure queue in one line each, with
+ * the way to Status (the full checklist) and to the queue further down.
+ */
+function AttentionSummary({ onFailures }: { onFailures: () => void }) {
+  const { model } = useWorkspace(), gap = useDocumentGap(!!model), failures = useFailures(!!model);
+  const queue = groupFailures(failures.data ?? []), waiting = queue.filter(group => group.waiting).length;
+  if (!gap.data && !queue.length) return null;
+  const missing = gap.data ? gap.data.links - gap.data.saved : 0;
+  return <section className="pc-source-attention" aria-label="Needs attention">
+    {gap.data && <p><strong>{gap.data.fullySaved.toLocaleString()} of {gap.data.withLinks.toLocaleString()}</strong> open BC Bid notices have every file saved{missing ? `; ${missing.toLocaleString()} files are missing` : ''}. <PluginStatusLink /></p>}
+    {queue.length > 0 && <p><strong>{queue.length.toLocaleString()}</strong> notice{queue.length === 1 ? '' : 's'} in the failure queue{waiting ? ` (${waiting.toLocaleString()} waiting for a browser check)` : ''}. <button type="button" className="pc-link-button" onClick={onFailures}>Show the failure queue</button></p>}
+  </section>;
+}
+const PluginStatusLink = () => <a className="procurement-link" href={pluginHref('/status')} onClick={event => { if (!event.metaKey && !event.ctrlKey) { event.preventDefault(); navigatePlugin('/status'); } }}>Open Status</a>;
 
 /** Capabilities, coverage, run outcomes and a retryable failure queue. Errors are shown as errors, never as zero. */
-function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any[]; canadaBuysTotal?: unknown; enabled: boolean }) {
+function SourceHealth({ inventory, canadaBuysTotal, enabled, failuresOpen, onFailuresOpen }: { inventory?: any[]; canadaBuysTotal?: unknown; enabled: boolean; failuresOpen: boolean; onFailuresOpen: (open: boolean) => void }) {
   const client = useQueryClient();
   const { model } = useWorkspace();
   const browserBusy = !model || sourceCaptureActive(model.captureRuns) || documentDownloadActive(model.documentRuns);
   const attachments = useQuery({ queryKey: ['catalog', 'procurement-source-attachments'], enabled, queryFn: () => sql(ATTACHMENT_SQL), refetchInterval: 120_000 });
   const batches = useQuery({ queryKey: ['catalog', 'procurement-source-batches'], enabled, queryFn: () => sql(BATCH_SQL) as Promise<BatchRow[]>, refetchInterval: 15_000 });
-  const failures = useQuery({ queryKey: ['catalog', 'procurement-source-failures'], enabled, queryFn: () => sql(FAILURE_SQL) as Promise<FailureTask[]>, refetchInterval: 15_000 });
+  const failures = useFailures(enabled);
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState(''), [allFailures, setAllFailures] = useState(false);
   const saved = (source: string) => (inventory ?? []).filter(row => row.sourceId === source && row.kind === 'opportunity').reduce((sum, row) => sum + Number(row.count), 0);
   // Only a total the source itself reported counts as known; anything else stays "unknown", never zero.
@@ -279,7 +311,7 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any
   const retry = async (recordIds: string[], key: string) => {
     setBusy(key); setError(''); setMessage('');
     try { await assertDocumentBrowserIdle(host); await host('action', { actionId: 'documents.download', input: { recordIds: recordIds.slice(0, 50), force: false } }); setMessage(`Download retry started for ${Math.min(50, recordIds.length)} notice${recordIds.length === 1 ? '' : 's'}. Successful files are not downloaded again.`); await client.invalidateQueries({ queryKey: ['catalog', 'procurement-source-batches'] }); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(''); }
+    catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(''); }
   };
   return <section className="rw-panel rw-source-health" aria-labelledby="source-health-title">
     <h2 id="source-health-title">Source health</h2>
@@ -293,7 +325,7 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any
       </tr>)}</tbody>
     </table></div>
 
-    <h3>Attachment discovery</h3>
+    <h3>Attachment links found</h3>
     {attachments.error ? <p role="alert">Attachment coverage could not be read: {(attachments.error as Error).message}</p> : attachments.isPending ? <p role="status">Checking saved attachment coverage…</p> :
       <div className="rw-table-wrap"><table className="rw-table rw-text">
         <thead><tr><th scope="col">Source</th>{attachmentStates({}).map(state => <th key={state.key} scope="col">{state.text}</th>)}</tr></thead>
@@ -301,26 +333,26 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled }: { inventory?: any
       </table></div>}
     <p className="rw-note">“No links found” reflects the last detail capture only.</p>
 
-    <h3>Processing runs</h3>
+    <h3>Downloads and reviews</h3>
     {batches.error ? <p role="alert">Run history could not be read: {(batches.error as Error).message}</p> : batches.isPending ? <p role="status">Loading run history…</p> : !health.length ? <p className="rw-note">No download or review runs yet.</p> :
       <div className="rw-table-wrap"><table className="rw-table rw-text">
         <thead><tr><th scope="col">Run type</th><th scope="col">Last attempted</th><th scope="col">Outcome</th><th scope="col">Last successful</th></tr></thead>
         <tbody>{health.map(row => <tr key={row.kind}>
           <th scope="row">{KIND_TEXT[row.kind] ?? row.kind}</th>
           <td>{when(row.attempt.updated_at)}</td>
-          <td><span className="rw-cap" data-status={row.attempt.problem ? 'partial' : 'available'}>{row.attempt.statusText}</span> {row.attempt.outcome}{row.attempt.error && <Hint content={row.attempt.error}><small className="rw-error">{shortError(row.attempt.error)}</small></Hint>}{row.problems > 1 && <small className="rw-note">{row.problems} recent runs incomplete</small>}</td>
+          <td><span className="rw-cap" data-status={row.attempt.problem ? 'partial' : 'available'}>{row.attempt.statusText}</span> {row.attempt.outcome}{row.attempt.error && <Hint content={row.attempt.error}><small className="rw-error pc-wrap">{shortError(row.attempt.error)}</small></Hint>}{row.problems > 1 && <small className="rw-note">{row.problems} recent runs incomplete</small>}</td>
           <td>{row.success ? `${when(row.success.updated_at)} · ${Number(row.success.completed).toLocaleString()} of ${Number(row.success.total).toLocaleString()}` : 'No successful run recorded'}</td>
         </tr>)}</tbody>
       </table></div>}
 
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {failures.error ? <p role="alert">Failures could not be read: {(failures.error as Error).message}</p> : failures.isPending ? <p role="status">Loading failures…</p> : !queue.length ? <><h3>Failure queue</h3><p className="rw-note">Nothing failed.</p></> :
-    <details className="rw-failure-queue"><summary data-zoer-disclosure=""><h3>Failure queue · {queue.length.toLocaleString()} notice{queue.length === 1 ? '' : 's'}</h3></summary>
+    <details id="source-health-failures" className="rw-failure-queue" open={failuresOpen} onToggle={event => onFailuresOpen((event.currentTarget as HTMLDetailsElement).open)}><summary data-zoer-disclosure=""><h3>Failure queue · {queue.length.toLocaleString()} notice{queue.length === 1 ? '' : 's'}</h3></summary>
       <div className="rw-actions"><Btn size="sm" variant="secondary" disabled={!!busy || running || browserBusy || !retryable.length} onClick={() => void retry(retryable, 'all')}>{busy === 'all' ? 'Starting…' : `Retry downloads for ${Math.min(50, retryable.length)} notice${retryable.length === 1 ? '' : 's'}`}</Btn>{(running || browserBusy) && <span className="rw-note">Wait for active or paused browser work to finish.</span>}</div>
       {queue.some(group => group.waiting) && <p className="rw-note">Items marked “Needs you” need the BC Bid browser check completed in Zoer before retrying.</p>}
       <ul className="rw-failures">{(allFailures ? queue : queue.slice(0, 5)).map(group => <li key={group.recordId}>
         <div><strong>{group.title}</strong><small className="rw-note">{group.recordId.replace(/^opportunity:/, '')} · {when(group.updatedAt)}</small></div>
-        <ul>{group.tasks.slice(0, 2).map((task, i) => <li key={i} className="rw-clamp"><Hint content={task.error ?? undefined}><span>{task.status === 'waiting_for_user' ? 'Needs you' : 'Failed'} · {task.kind === 'attachment' ? (task.name ?? 'Download') : task.kind}{task.error ? `: ${shortError(task.error)}` : ''}</span></Hint></li>)}{group.tasks.length > 2 && <li>{group.tasks.length - 2} more</li>}</ul>
+        <ul>{group.tasks.slice(0, 2).map((task, i) => <li key={i} className="rw-clamp pc-wrap"><Hint content={task.error ?? undefined}><span>{task.status === 'waiting_for_user' ? 'Needs you' : 'Failed'} · {task.kind === 'attachment' ? (task.name ?? 'Download') : task.kind}{task.error ? `: ${shortError(task.error)}` : ''}</span></Hint></li>)}{group.tasks.length > 2 && <li>{group.tasks.length - 2} more</li>}</ul>
         {group.waiting ? null
           : group.retryable ? <Btn size="sm" variant="ghost" disabled={!!busy || running || browserBusy} onClick={() => void retry([group.recordId], group.recordId)}>{busy === group.recordId ? 'Starting…' : 'Retry'}</Btn>
           : <Btn size="sm" variant="ghost" onClick={() => navigatePlugin('/ai-review')}>Retry from AI review</Btn>}

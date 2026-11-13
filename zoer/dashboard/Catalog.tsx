@@ -1,4 +1,6 @@
+import { Hint } from './host-ui';
 import { awardProgress } from './award-progress';
+import { plainError } from './error-text';
 import { annotateBuyerRecord } from './market/buyers';
 import { useContext, useState } from 'react';
 import { BidPreferences } from '../../apps/dashboard/src/components/preferences/BidPreferences';
@@ -85,7 +87,7 @@ export function AwardHistoryPanel() {
   const lastError = !active && !latest?.cancelRequestedAt && latest?.status !== 'outcome_unknown' ? latest?.error : '';
   return <section className="zoer-history zoer-setup" aria-label="Award history download">
     <div className="zoer-setup-row">
-      <div><h2>Award history</h2><p role="status">{status} {awardProgress(checkpoint)}</p>{isRecent && <p>Historical backfill: {model.awardCheckpoint?.version === 2 ? awardProgress(model.awardCheckpoint) : 'Date coverage has not been checked yet. Previously saved awards are retained.'}</p>}{lastError && <p role="alert">{lastError}</p>}</div>
+      <div><h2>Award history</h2><p role="status">{status} {awardProgress(checkpoint)}</p>{isRecent && <p>Historical backfill: {model.awardCheckpoint?.version === 2 ? awardProgress(model.awardCheckpoint) : 'Date coverage has not been checked yet. Previously saved awards are retained.'}</p>}{lastError && <Hint content={lastError}><p role="alert" className="pc-wrap">{plainError(lastError)}</p></Hint>}</div>
       <div className="zoer-record-tools zoer-setup-actions"><AwardHistoryControls /></div>
     </div>
     <details><summary data-zoer-disclosure="">About this download</summary><p>Checks public awards in date ranges and saves each page. Completed ranges are skipped; oversized ranges are split into smaller periods. Resume rechecks only the unfinished range, and unchanged records are retained. Refresh recent awards checks the last 30 days for new or changed records without replacing historical coverage. Undated awards and attachments are outside this download. Older page-number checkpoints are retained when starting the date backfill.</p></details>

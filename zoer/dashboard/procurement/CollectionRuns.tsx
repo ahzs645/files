@@ -3,12 +3,13 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
-import { hostHref } from '../navigation';
+import { plainError } from '../error-text';
+import { RunLinks, SettingsLink } from './Status';
 import { BROWSER_COLLECT_ACTION } from './browser-sites';
-import { intervalText, type ScheduleRow } from './schedule-state';
+import { intervalText, scheduleLabel, stopReason, type ScheduleRow } from './schedule-state';
 import { SCHEDULES_KEY } from './ScheduleControl';
 import {
-  COLLECT_ACTION, DASHBOARD_SCHEDULED_ACTIONS, isLive, legacyAllSchedule, migrateAllSchedule, reenableStopped, reenableable, runState, stoppedByUpdate,
+  COLLECT_ACTION, isLive, legacyAllSchedule, migrateAllSchedule, reenableStopped, reenableable, runState, stoppedSchedules,
   type Preset, type RecentRun,
 } from './source-schedules';
 import { sourceName } from './display';
@@ -44,16 +45,17 @@ export function CollectionRuns({ runs, error, loading }: { runs?: RecentRun[]; e
   const act = async (run: RecentRun, method: 'run.pause' | 'run.resume' | 'cancel') => {
     setBusy(`${method}:${run.runId}`); setFailure('');
     try { await host(method, { id: run.runId }); await client.invalidateQueries({ queryKey: RUNS_KEY }); }
-    catch (e) { setFailure((e as Error).message); } finally { setBusy(''); }
+    catch (e) { setFailure(plainError((e as Error).message)); } finally { setBusy(''); }
   };
   return <section className="rw-panel pc-runs" aria-labelledby="pc-runs-title">
     <header className="rw-panel-head"><h2 id="pc-runs-title">Collection runs</h2><span className="rw-muted">Each run saves portal by portal; a paused or interrupted run continues where it stopped.</span></header>
+    <RunLinks compact except="/sources" />
     {error ? <p className="rw-muted">Run history is not available from this Zoer version.</p> : loading ? <p role="status">Loading runs…</p> : !shown.length ? <p className="rw-muted">No collection has run yet.</p> :
     <ul className="pc-run-list">{shown.map(run => {
       const state = runState(run)!;
       return <li key={run.runId} data-live={isLive(run) || undefined}>
         <div className="pc-run-main"><strong>{runSource(run)}</strong><small>{when(run.createdAt)}{run.finishedAt ? ` → ${when(run.finishedAt)}` : ''}</small></div>
-        <div className="pc-run-state"><span className="pc-status" data-tone={state.tone}>{state.text}</span>{state.detail && <Hint content={state.detail}><small>{state.detail}</small></Hint>}</div>
+        <div className="pc-run-state"><span className="pc-status" data-tone={state.tone}>{state.text}</span>{state.detail && <Hint content={state.detail}><small className="pc-wrap">{plainError(state.detail)}</small></Hint>}</div>
         {(state.canPause || state.canResume || state.canCancel) && <div className="pc-run-actions">
           {state.canPause && <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void act(run, 'run.pause')}>{busy === `run.pause:${run.runId}` ? 'Pausing…' : 'Pause'}</Btn>}
           {state.canResume && <Btn size="sm" variant="primary" disabled={!!busy} onClick={() => void act(run, 'run.resume')}>{busy === `run.resume:${run.runId}` ? 'Resuming…' : 'Resume'}</Btn>}
@@ -66,30 +68,37 @@ export function CollectionRuns({ runs, error, loading }: { runs?: RecentRun[]; e
 }
 
 /**
- * Review schedules invalidated by contract/settings changes, or by older hosts' broad upgrade check.
- * Also offers to replace the 0.33 "all sources" schedule with one schedule per source at the same interval.
+ * Schedules Zoer stopped, counted the same way as Status, Home and the Sources header (every row Zoer lists). Ones this
+ * page can turn back on get one button; browser schedules and restored ones open Zoer's Settings › Schedules. Also
+ * offers to replace the 0.33 "all sources" schedule with one schedule per source at the same interval.
  */
 export function ScheduleNotice({ rows, presets, labels }: { rows?: ScheduleRow[]; presets?: Preset[]; labels: Record<string, string> }) {
   const client = useQueryClient(), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
-  const legacy = legacyAllSchedule(rows), stopped = reenableable(rows);
-  const elsewhere = stoppedByUpdate(rows).filter(row => !DASHBOARD_SCHEDULED_ACTIONS.includes(row.actionId));
-  if (!legacy && !stopped.length && !elsewhere.length && !message) return null;
+  const legacy = legacyAllSchedule(rows), stopped = stoppedSchedules(rows), here = reenableable(rows);
+  const elsewhere = stopped.filter(row => !here.includes(row) && row !== legacy);
+  if (!legacy && !stopped.length && !message) return null;
   const run = async (task: () => Promise<string>) => {
     setBusy(true); setError(''); setMessage('');
     try { setMessage(await task()); await client.invalidateQueries({ queryKey: SCHEDULES_KEY }); await client.invalidateQueries({ queryKey: PRESETS_KEY }); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(false); }
   };
-  const names = (list: ScheduleRow[]) => list.map(row => row.actionId === 'procurement.alerts' ? 'alert checks' : row.presetId ? presets?.find(preset => preset.id === row.presetId)?.name ?? 'a saved collection' : 'collection').join(', ');
+  const name = (row: ScheduleRow) => scheduleLabel(row, presets, id => labels[id] ?? sourceName(id));
   return <div className="pc-schedule-notice" role="status">
     {legacy && <div>
       <p><strong>Collection is now scheduled per source.</strong> Your earlier schedule collected every source {intervalText(legacy.intervalHours).toLowerCase()}{!legacy.enabled ? ' and is currently off' : ''}. Each source now runs on its own, step by step, and continues after a Zoer restart.</p>
       <Btn variant="primary" disabled={busy} onClick={() => void run(async () => { await migrateAllSchedule(host, legacy, labels); return `CanadaBuys, bids&tenders and the local government websites are now each scheduled ${intervalText(legacy.intervalHours).toLowerCase()}.`; })}>{busy ? 'Saving…' : `Schedule each source ${intervalText(legacy.intervalHours).toLowerCase()}`}</Btn>
     </div>}
-    {stopped.length > 0 && <div>
-      <p><strong>{stopped.length === 1 ? 'A schedule needs review' : `${stopped.length} schedules need review`}</strong> ({names(stopped)}). Review the current action, permissions and settings before turning them on again. Updated Zoer hosts keep schedules enabled through compatible version and interface updates.</p>
-      <Btn variant="primary" disabled={busy} onClick={() => void run(async () => { const count = await reenableStopped(host, rows ?? []); return `${count} schedule${count === 1 ? '' : 's'} turned on again.`; })}>{busy ? 'Saving…' : stopped.length === 1 ? 'Turn it on again' : 'Turn them on again'}</Btn>
+    {stopped.length > 0 && <div className="pc-schedule-stopped-list">
+      <p><strong>{stopped.length === 1 ? '1 schedule is paused and needs your review' : `${stopped.length} schedules are paused and need your review`}</strong> ({stopped.length} of {(rows ?? []).length}). They do not run until they are on again.</p>
+      <details><summary data-zoer-disclosure="">{`Why each one stopped (${stopped.map(name).join(', ')})`}</summary>
+        <ul className="pc-schedule-reasons">{stopped.map((row, i) => <li key={`${row.actionId}:${row.presetId ?? i}`}><strong>{name(row)}</strong> <Hint content={row.error}><span className="pc-wrap">{stopReason(row.error ?? '')}</span></Hint></li>)}</ul>
+      </details>
+      <div className="procurement-actions">
+        {here.length > 0 && <Btn variant="primary" disabled={busy} onClick={() => void run(async () => { const count = await reenableStopped(host, rows ?? []); return `${count} schedule${count === 1 ? '' : 's'} turned on again.`; })}>{busy ? 'Saving…' : here.length === 1 ? `Turn ${name(here[0])} on again` : `Turn ${here.length} on again`}</Btn>}
+        {elsewhere.length > 0 && <SettingsLink section="schedules">{`Turn on ${elsewhere.length === 1 ? name(elsewhere[0]) : `the other ${elsewhere.length}`} in Settings › Schedules`}</SettingsLink>}
+      </div>
+      {elsewhere.length > 0 && <p className="rw-muted">BC Bid scrapes and browser sites need their browser, so they are turned on in Zoer’s Settings.</p>}
     </div>}
-    {elsewhere.length > 0 && <p>Some browser schedules (BC Bid scrapes, browser sites) also need review. Check their browser and settings, then turn them on again in <a className="procurement-link" href={hostHref('#/settings/plugins')}>Zoer’s plugin settings</a>.</p>}
     {message && <p>{message}</p>}{error && <p role="alert">{error}</p>}
   </div>;
 }

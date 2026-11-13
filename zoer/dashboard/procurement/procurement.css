@@ -369,3 +369,14 @@ p.pc-source-crumb{margin-bottom:.75rem}
 /* Hint's Tooltip wrapper stays out of flex and grid layouts. */
 .pc-hint{display:contents}
 @media(pointer:coarse),(max-width:640px){.bid-layout-toggle button,.procurement-workspace .pc-chip{min-height:44px}}
+/* Error and reason text wraps instead of being cut off ("…"), on every width. */
+.pc-wrap{white-space:normal;overflow-wrap:anywhere}
+.doc-clamp.pc-wrap,.rw-clamp.pc-wrap{display:block;-webkit-line-clamp:unset;overflow:visible}
+@media(max-width:640px){
+  .pc-rtable .pc-portal-error{max-width:none;white-space:normal;overflow-wrap:anywhere}
+}
+.pc-source-attention{display:flex;flex-direction:column;gap:.25rem;padding:.625rem .75rem;border:1px solid var(--border-default);border-radius:.625rem;background:var(--surface-secondary);font-size:13px;line-height:1.5}
+.pc-portal-disclosure>summary{font-size:13px;font-weight:600}
+.pc-schedule-reasons{display:flex;flex-direction:column;gap:.25rem;margin:.375rem 0;font-size:13px;line-height:1.45}
+.pc-schedule-notice>div.pc-schedule-stopped-list{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:.5rem}
+.pc-schedule-stopped-list details>summary{font-size:12.5px;color:var(--text-secondary)}

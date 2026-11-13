@@ -5,16 +5,19 @@ import { Btn } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { useWorkspace } from '../backend';
 import { hostHref } from '../navigation';
+import { plainError } from '../error-text';
+import { SettingsLink } from './Status';
+import { lastCollectionText } from './status-data';
 import { BROWSER_COLLECT_ACTION, BROWSER_SITES, BROWSER_SOURCE_ID } from './browser-sites';
 import { BROWSER_SITE_COUNT_SQL, browserSiteRows, browserSummaryText, localVisitWindow, type BrowserSiteRow } from './browser-source-overview';
 import { LINK_SOURCES, ROBOTS_REASON } from './link-sources';
-import { findSchedule, scheduleState } from './schedule-state';
+import { browserText, findSchedule, scheduleState } from './schedule-state';
 import { useSchedules } from './ScheduleControl';
 import { connectorCollectionKey } from './source-adapters';
 import { connectorStatus, readConnectorCollection } from './source-overview';
 import type { RecentRun } from './source-schedules';
 import { RUNS_KEY } from './CollectionRuns';
-import { sql } from './display';
+import { sourceName, sql } from './display';
 import './browser-sources.css';
 
 const KEY = connectorCollectionKey(BROWSER_SOURCE_ID);
@@ -26,7 +29,7 @@ const robotsOnly = () => LINK_SOURCES.filter(source => source.reason === ROBOTS_
  * A site that shows a check waits for the person; the card says what to do. Schedules need a browser chosen in Zoer's
  * plugin settings, so they are shown here and changed there. `run`: the live collection run of these sites, if any.
  */
-export function BrowserSourcesCard({ run }: { run?: RecentRun }) {
+export function BrowserSourcesCard({ run, phone = false }: { run?: RecentRun; phone?: boolean }) {
   const { model } = useWorkspace(), client = useQueryClient(), schedules = useSchedules();
   const health = useQuery({ queryKey: ['catalog', 'procurement-browser-sites', KEY], queryFn: () => host('catalog.workspace', { keys: [KEY] }), refetchInterval: 5000 });
   const counts = useQuery({ queryKey: ['catalog', 'procurement-browser-site-counts'], enabled: !!model, queryFn: async () => new Map((await sql(BROWSER_SITE_COUNT_SQL)).map(row => [String(row.portalId), Number(row.count)])), refetchInterval: 60_000 });
@@ -44,19 +47,25 @@ export function BrowserSourcesCard({ run }: { run?: RecentRun }) {
       // A resumable job, one site per step: it is started here and its progress shows on this card and under Collection runs.
       await host('action', { actionId: BROWSER_COLLECT_ACTION, input: { sourceId: BROWSER_SOURCE_ID, ...(sites ? { sites } : {}) } });
       setMessage('Collection started. Each site’s status updates below; a site waiting for you needs a check completed in the Zoer browser.');
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { setError(plainError((e as Error).message)); }
     finally { setBusy(''); await client.invalidateQueries({ queryKey: RUNS_KEY }); await client.invalidateQueries({ queryKey: ['catalog'] }); }
   };
   const tone = busy ? 'busy' : run ? status.tone : waiting.length ? 'warn' : status.tone;
   const statusText = busy ? 'Starting' : run ? status.text : waiting.length ? 'Waiting for you' : status.text;
-  return <article id="pc-src-browser-sites" className="pc-source-card pc-browser-sites" data-wide aria-label="Collect in your browser">
-    <header><div><h2>Collect in your browser</h2><p>British Columbia · {BROWSER_SITES.length} sites that block automated requests</p></div><span className="pc-status" data-tone={tone}>{statusText}</span></header>
+  const browser = schedule?.browser !== undefined ? browserText(schedule.browser) : null;
+  const siteTable = <table className="pc-rtable pc-portals pc-browser-table">
+      <thead><tr><th scope="col">Site</th><th scope="col">Status</th><th scope="col">Last collected</th><th scope="col">Listed</th><th scope="col">Saved</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
+      <tbody>{rows.map(row => <SiteRow key={row.site.id} row={row} busy={busy} running={running} onCollect={() => void collect([row.site.id], row.site.id)} countsError={!!counts.error} />)}</tbody>
+    </table>;
+  return <article id="pc-src-browser-sites" className="pc-source-card pc-browser-sites" data-wide aria-label={sourceName(BROWSER_SOURCE_ID)}>
+    <header><div><h2>{sourceName(BROWSER_SOURCE_ID)}</h2><p>British Columbia · {BROWSER_SITES.length} sites that block automated requests, collected in your Zoer browser</p></div><span className="pc-status" data-tone={tone}>{statusText}</span></header>
     <p className="pc-browser-lead">These sites block automated requests, so Procurement collects them in your Zoer browser, and a site may ask you to complete a check there first.</p>
     <dl className="pc-source-stats">
       <div><dt>Opportunities</dt><dd>{saved}</dd></div>
       <div><dt>Sites</dt><dd>{stateError ? `${rows.length} · status unknown` : browserSummaryText(rows)}</dd></div>
-      <div><dt>Last successful collection</dt><dd>{state === undefined ? 'Unknown' : when(state?.lastSuccessAt)}</dd></div>
+      <div><dt>Last successful collection</dt><dd>{health.isPending ? 'Loading…' : lastCollectionText({ known: state !== undefined, at: state?.lastSuccessAt ?? null, scope: null })}</dd></div>
       <div><dt>Schedule</dt><dd>{schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : scheduled.status}</dd></div>
+      {browser && <div><dt>Browser</dt><dd>{browser}</dd></div>}
     </dl>
     <div className="procurement-actions">
       <Btn variant="primary" disabled={running || !model} onClick={() => void collect(null, 'all')}>{busy === 'all' ? 'Starting…' : `Collect all ${BROWSER_SITES.length} sites`}</Btn>
@@ -71,14 +80,11 @@ export function BrowserSourcesCard({ run }: { run?: RecentRun }) {
       <strong>{waiting.length === 1 ? `${waiting[0].site.label} is waiting for you` : `${waiting.length} sites are waiting for you`}</strong>
       <ol><li>Open the Zoer browser (link above, or Settings › Open saved browser at the top of Procurement).</li><li>Go to the site and complete the check you see there. Procurement never answers checks for you.</li><li>Return control to Procurement, then press Collect on that site.</li></ol>
     </div>}
-    <table className="pc-rtable pc-portals pc-browser-table">
-      <thead><tr><th scope="col">Site</th><th scope="col">Status</th><th scope="col">Last collected</th><th scope="col">Listed</th><th scope="col">Saved</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
-      <tbody>{rows.map(row => <SiteRow key={row.site.id} row={row} busy={busy} running={running} onCollect={() => void collect([row.site.id], row.site.id)} countsError={!!counts.error} />)}</tbody>
-    </table>
+    {phone ? <details className="pc-portal-disclosure"><summary data-zoer-disclosure="">{`Sites · ${rows.length}${waiting.length ? ` · ${waiting.length} waiting for you` : ''}`}</summary>{siteTable}</details> : siteTable}
     <details><summary data-zoer-disclosure>Scheduled collection</summary>
       {schedules.error ? <p role="alert">Schedules could not be read: {(schedules.error as Error).message}</p> : <p><span className="pc-status" data-tone={scheduled.tone}>{scheduled.status}</span>{[scheduled.next, scheduled.last].filter(Boolean).length > 0 && <> {[scheduled.next, scheduled.last].filter(Boolean).join(' · ')}</>}</p>}
-      {scheduled.stopped && <Hint content={scheduled.error ?? undefined}><p role="alert">{scheduled.stopped}</p></Hint>}
-      <p className="procurement-coverage">These sites load in your Zoer browser, so their schedule is set in Zoer’s plugin settings with the browser it should use, not here. A scheduled run that meets a check leaves that site waiting for you and still collects the others. <a className="procurement-link" href={hostHref('#/settings/plugins')}>Open plugin settings</a></p>
+      {scheduled.stopped && <Hint content={scheduled.error ?? undefined}><p role="alert" className="pc-wrap">{scheduled.stopped}</p></Hint>}
+      <p className="procurement-coverage">These sites load in your Zoer browser, so their schedule is set in Zoer’s Settings with the browser it should use, not here. A scheduled run that meets a check leaves that site waiting for you and still collects the others. <SettingsLink section="schedules" /></p>
     </details>
     <details><summary data-zoer-disclosure>Not collected: robots.txt forbids it ({robotsOnly().length})</summary>
       <p className="procurement-coverage">These sites’ robots.txt asks automated visitors to stay away, so Procurement does not collect them, even in your browser. Open them yourself.</p>

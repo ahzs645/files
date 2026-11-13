@@ -76,8 +76,13 @@ export async function migrateAllSchedule(host: Host, legacy: ScheduleRow, labels
 
 /** Actions the dashboard can schedule itself; browser actions are scheduled in Zoer's settings with their browser. */
 export const DASHBOARD_SCHEDULED_ACTIONS = [COLLECT_ACTION, 'procurement.alerts'];
-/** Stopped-by-update schedules the page can turn back on (not the legacy `all` row, not browser actions). */
-export const reenableable = (rows: ScheduleRow[] | undefined) => stoppedByUpdate(rows).filter(row => row !== legacyAllSchedule(rows) && DASHBOARD_SCHEDULED_ACTIONS.includes(row.actionId));
+/**
+ * Schedules Zoer stopped (any error, including a network failure) that this page can turn back on: not the legacy
+ * `all` row, not browser actions (they need their browser, chosen in Zoer's settings) and not rows restored from a
+ * backup (Zoer asks for their destinations first).
+ */
+export const stoppedSchedules = (rows: ScheduleRow[] | undefined) => (rows ?? []).filter(row => !row.enabled && !!row.error);
+export const reenableable = (rows: ScheduleRow[] | undefined) => stoppedSchedules(rows).filter(row => !/restored from backup/i.test(row.error ?? '') && row !== legacyAllSchedule(rows) && DASHBOARD_SCHEDULED_ACTIONS.includes(row.actionId));
 /**
  * Turn back on, with their own intervals, the schedules Zoer stopped because the plugin was updated. The legacy `all`
  * row is not among them (the page offers per-source schedules instead); rows without a preset keep their own input.

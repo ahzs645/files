@@ -32,6 +32,7 @@ import { LEGACY_TABS, NOTICE_TABS, coverageGaps, headerMoney, noticeKey, readCha
 import './notice.css';
 import { NoticeTaxonomy } from './Taxonomy';
 import { NoticeHistorical } from './Historical';
+import { NoticeFiles } from './NoticeFiles';
 
 /** Route values: `decision|requirements|evidence|changes|activity|ai`; old `overview`/`documents` still open their tab. */
 export type NoticeTab = NoticeTabId | 'overview' | 'documents';
@@ -110,6 +111,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
     {record && tab === 'requirements' && <RequirementMatrix recordId={id} />}
     {record && tab === 'evidence' && <div className="pc-notice-section">
       {available && <EvidenceInventory id={id} documents={documents} attachments={data.attachments} onShowDocument={documentId => setCite({ documentId, quote: '' })} />}
+      <NoticeFiles id={id} source={source} attachments={data.attachments} documents={documents} onRefresh={refresh} />
       <Documents id={id} source={source} documents={documents} cite={cite} onRefresh={refresh} />
     </div>}
     {record && tab === 'changes' && <ChangesPanel recordId={id} onTab={setTab} />}

@@ -2,12 +2,19 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
-import { SCHEDULE_PRESETS, findSchedule, intervalText, parseInterval, scheduleState, type ScheduleRow } from './schedule-state';
+import { plainError } from '../error-text';
+import { SCHEDULE_PRESETS, findSchedule, intervalText, parseInterval, scheduleState, type ScheduleBrowsers, type ScheduleRow } from './schedule-state';
 
 export const SCHEDULES_KEY = ['catalog', 'procurement-schedules'] as const;
+type ScheduleRead = { schedules: ScheduleRow[]; browsers?: ScheduleBrowsers };
+const readSchedules = async (): Promise<ScheduleRead> => { const result = await host('schedules.read'); return { schedules: result?.schedules ?? [], ...(result?.browsers ? { browsers: result.browsers } : {}) }; };
 /** Every schedule of this plugin; one shared read for all controls on a page. */
 export function useSchedules() {
-  return useQuery({ queryKey: SCHEDULES_KEY, queryFn: async () => ((await host('schedules.read'))?.schedules ?? []) as ScheduleRow[], refetchInterval: 10_000 });
+  return useQuery({ queryKey: SCHEDULES_KEY, queryFn: readSchedules, select: data => data.schedules, refetchInterval: 10_000 });
+}
+/** The plugin's collection and download browsers as newer Zoer reports them with its schedules; undefined on older Zoer. */
+export function useScheduleBrowsers() {
+  return useQuery({ queryKey: SCHEDULES_KEY, queryFn: readSchedules, select: data => data.browsers, refetchInterval: 10_000 });
 }
 
 /** One-line schedule status (badge + next run), for overview rows and cards. */
@@ -56,6 +63,7 @@ export function ScheduleControl({ actionId, input = {}, title, defaultHours = 24
     {schedules.error && <p role="alert">Schedules could not be read: {(schedules.error as Error).message}</p>}
     {(state.next || state.last) && <p className="pc-schedule-meta">{[state.next, state.last].filter(Boolean).join(' · ')}</p>}
     {other && <p className="pc-schedule-note">Zoer keeps one schedule per action. It is set to {describe ? describe(other) : 'a different input'} · {scheduleState(other).status}. Turning this on replaces that schedule.</p>}
+    {state.retrying && <p className="pc-schedule-note">{state.retrying}{state.error ? ` ${plainError(state.error)}` : ''}</p>}
     {state.stopped && <div className="pc-schedule-stopped" role="alert"><p>{state.stopped}</p><details><summary data-zoer-disclosure="">Zoer’s message</summary><p>{state.error}</p></details></div>}
     <fieldset className="pc-presets" disabled={busy}>
       <legend>Repeat</legend>

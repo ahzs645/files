@@ -2,6 +2,7 @@ import { usePluginLocation, navigatePlugin, pluginHref } from "./navigation";
 import { Procurement } from './procurement/Procurement';
 import { Pursuits } from './procurement/Pursuits';
 import { Sources } from './procurement/Sources';
+import { RunLinks, Status } from './procurement/Status';
 import { Taxonomy } from './procurement/Taxonomy';
 import './procurement/procurement.css';
 import { Documents } from './Documents';
@@ -15,7 +16,7 @@ import { PipelineWorkbench } from './review-workspace/PipelineWorkbench';
 import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, gatedRedirectOf, pageOf, phoneSections, redirectOf, sectionOf, sectionViews, viewHref, viewOf, visibleSections, type Page, type Section } from './review-workspace/nav';
 import { useCapabilities } from './capabilities';
 import './review-workspace/review.css';
-import { useEffect, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 import { PageTabPanel, PageTabs } from '@zoer/plugin-ui/analysis';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { useWorkspace } from './backend';
@@ -59,7 +60,7 @@ function LoadStatus() {
   return <div role="alert" className="pc-load-status"><span>Couldn’t refresh: {message.replace(/\.$/, '')}. Showing saved data.</span><Btn size="sm" onClick={() => void queryClient.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></div>;
 }
 const PAGE_VIEWS: Partial<Record<Page, () => ReactNode>> = {
-  home: () => <Home />, insights: () => <Insights />, procurement: () => <Procurement />, pursuits: () => <Pursuits />, documents: () => <Documents />, taxonomy: () => <Taxonomy />,
+  home: () => <Home />, status: () => <Status />, insights: () => <Insights />, procurement: () => <Procurement />, pursuits: () => <Pursuits />, documents: () => <Documents />, taxonomy: () => <Taxonomy />,
   evidence: () => <EvidenceGrid />, 'ai-review': () => <AiReview />, workbench: () => <PipelineWorkbench />, profiles: () => <ProfilesPage />, sources: () => <Sources />, settings: () => <SettingsPage />,
 };
 export function AppShell({ children }: { children: ReactNode }) {
@@ -84,6 +85,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const bcBidPage = bcBid.find(([to]) => bcBidActive(to, path))?.[0] ?? '/bc-bid-dashboard';
   const render = PAGE_VIEWS[pageOf(location)];
   const page = redirect ? <p role="status" className="rw-muted">Opening…</p> : render ? render() : children;
+  // The content area is one scroll container reused by every section: moving to another section or page starts at the
+  // top instead of keeping the previous page's scroll position (filters and tabs within a page keep theirs).
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => { panel.current?.scrollTo?.({ top: 0 }); }, [section, path]);
   return <div className="flex h-full min-h-0 flex-col">
     <PageTabs id="pc-sections" label="Procurement sections" value={section} tabs={tabs.map(([id, label]) => ({ id, label }))} moreTabs={more.map(([id, label]) => ({ id, label }))}
       onChange={id => navigatePlugin(sectionHref(id))} href={id => pluginHref(sectionHref(id))} />
@@ -92,7 +97,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     {inBcBid && <SubTabs id="pc-views" label="BC Bid pages" value={bcBidPage} tabs={bcBid.map(([to, label]) => [to, label, to])} />}
     {!redirect && !inBcBid && !noticePage && <SectionViews section={section} location={location} />}
     {/* Analysis owns a full-height rail, so its wrapper fills the scroll area with flex rather than a percentage that would collapse while a view loads. */}
-    <div id="pc-views-panel" role="region" aria-label="Procurement content" className={`zoer-content min-h-0 flex-1 overflow-y-auto${analysis || catalog ? ' flex flex-col' : ''}`}><div className={analysis ? 'flex flex-1 flex-col' : catalog ? 'zoer-catalog mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col p-3 sm:p-4' : 'mx-auto max-w-[1400px] p-3 sm:p-4'}>{inBcBid && <p className="pc-source-crumb"><a href={pluginHref('/sources')} onClick={follow('/sources')}>Sources</a><span aria-hidden="true">/</span><strong>BC Bid</strong></p>}<LoadStatus />{page}</div></div>
+    <div ref={panel} id="pc-views-panel" role="region" aria-label="Procurement content" className={`zoer-content min-h-0 flex-1 overflow-y-auto${analysis || catalog ? ' flex flex-col' : ''}`}><div className={analysis ? 'flex flex-1 flex-col' : catalog ? 'zoer-catalog mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col p-3 sm:p-4' : 'mx-auto max-w-[1400px] p-3 sm:p-4'}>{inBcBid && <p className="pc-source-crumb"><a href={pluginHref('/sources')} onClick={follow('/sources')}>Sources</a><span aria-hidden="true">/</span><strong>BC Bid</strong></p>}<LoadStatus />{path === '/scraper/history' && <RunLinks compact except="/scraper/history" />}{page}</div></div>
     </PageTabPanel>
   </div>;
 }

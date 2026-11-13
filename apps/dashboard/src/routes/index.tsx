@@ -45,6 +45,8 @@ function DashboardPage() {
     );
   }
 
+  // The plugin supplies the one "last successful collection" answer Sources and Status show; the standalone app does not.
+  const lastCollection = plugin && summary && "lastCollection" in summary ? (summary as { lastCollection: { at: string | null; scope: string | null } | null }).lastCollection : undefined;
   const hasActiveRun =
     activeRun?.status === "running" || activeRun?.status === "stopping";
 
@@ -96,7 +98,7 @@ function DashboardPage() {
                 <span className="order-last w-full text-sm text-text-primary sm:order-none sm:w-auto sm:flex-1">{activeRun.progress.message}</span>
               ) : (
                 <span className="order-last w-full text-sm text-text-secondary sm:order-none sm:w-auto sm:flex-1">
-                  Scraper idle · {summary.latestSuccessfulRun ? `last successful run ${formatTimestamp(summary.latestSuccessfulRun.completedAt ?? null)}` : plugin ? `no scrape runs yet · ${summary.total.toLocaleString()} opportunities saved` : `last successful run ${formatTimestamp(null)}`}
+                  Scraper idle · {lastCollection !== undefined ? (lastCollection ? `last successful collection ${formatTimestamp(lastCollection.at ? Date.parse(lastCollection.at) : null)}${lastCollection.scope ? ` · ${lastCollection.scope}` : ""}` : `no successful collection recorded · ${summary.total.toLocaleString()} opportunities saved`) : summary.latestSuccessfulRun ? `last successful run ${formatTimestamp(summary.latestSuccessfulRun.completedAt ?? null)}` : plugin ? `no scrape runs yet · ${summary.total.toLocaleString()} opportunities saved` : `last successful run ${formatTimestamp(null)}`}
                 </span>
               )}
               <Link to="/scraper" className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-strong transition-colors">

@@ -1,0 +1,41 @@
+/* Status page (setup checklist, schedules, document gap) and Home's status card. */
+.pc-status-page{display:flex;flex-direction:column;gap:1rem}
+.pc-status-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:.5rem}
+.pc-status-head h1{font-size:18px;font-weight:650;color:var(--text-primary)}
+.pc-status-head .pc-status{white-space:normal}
+.pc-checklist{display:flex;flex-direction:column;margin-top:.5rem}
+.pc-checklist>li{display:flex;gap:.75rem;padding:.75rem 0;border-top:1px solid var(--border-muted)}
+.pc-checklist>li:first-child{border-top:0}
+.pc-step-mark{flex:none;display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border-radius:999px;border:1px solid var(--border-default);font-size:12px;font-weight:700;color:var(--text-secondary)}
+.pc-checklist>li[data-tone=good] .pc-step-mark{color:var(--status-success);border-color:color-mix(in srgb,var(--status-success) 40%,transparent)}
+.pc-checklist>li[data-tone=warn] .pc-step-mark{color:var(--status-warning);border-color:color-mix(in srgb,var(--status-warning) 45%,transparent)}
+.pc-step-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:.375rem;font-size:13px;line-height:1.5}
+.pc-step-title{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.25rem .5rem}
+.pc-step-title .pc-status{white-space:normal}
+.pc-step-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem}
+.pc-step-actions:empty{display:none}
+.pc-status-schedules{display:flex;flex-direction:column;margin-top:.5rem}
+.pc-status-schedules>li{display:flex;flex-direction:column;gap:.25rem;padding:.625rem 0;border-top:1px solid var(--border-muted);font-size:13px;line-height:1.5}
+.pc-status-schedules>li:first-child{border-top:0}
+.pc-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem}
+.pc-status-list{display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem;font-size:13px}
+.pc-status-list>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.125rem .75rem}
+.pc-status-list dt{font-weight:600;color:var(--text-primary)}
+.pc-status-list dd{color:var(--text-secondary);overflow-wrap:anywhere}
+.pc-run-link-list>li{display:flex;flex-direction:column}
+.pc-gap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.5rem;margin:.5rem 0}
+.pc-gap-grid>div{padding:.5rem .625rem;border:1px solid var(--border-default);border-radius:.5rem}
+.pc-gap-grid dt{font-size:12px;color:var(--text-secondary)}
+.pc-gap-grid dd{font-size:16px;font-weight:650;color:var(--text-primary)}
+.pc-gap-grid>div[data-tone=warn] dd{color:var(--status-warning)}
+.pc-gap-grid>div[data-tone=good] dd{color:var(--status-success)}
+.pc-gap-reasons,.pc-gap-notices{display:flex;flex-direction:column;gap:.375rem;margin:.375rem 0 .75rem;font-size:13px;line-height:1.45}
+.pc-gap-reasons>li{display:flex;gap:.625rem}
+.pc-gap-reasons strong{flex:none;min-width:2.5rem;text-align:right;font-variant-numeric:tabular-nums}
+.pc-gap-notices>li{display:flex;flex-direction:column}
+.pc-status-card header{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem}
+.pc-status-card .pc-status{white-space:normal}
+.pc-run-links{font-size:12.5px;margin:.25rem 0 .5rem}
+@media(max-width:640px){
+  .pc-gap-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
