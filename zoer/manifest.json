@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -1314,7 +1314,8 @@
               "type": "string",
               "enum": [
                 "open",
-                "current"
+                "current",
+                "all"
               ]
             },
             "resumeRunId": {
@@ -1353,6 +1354,18 @@
             },
             "modelCalls": {
               "type": "integer"
+            },
+            "skippedLoginRequired": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "skippedTooLarge": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "skippedOutsideAllowlist": {
+              "type": "integer",
+              "minimum": 0
             }
           },
           "required": [
