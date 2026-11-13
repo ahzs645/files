@@ -4,6 +4,8 @@ import { host } from './bridge';
 import { queryModel, type Model } from './model';
 import { zoneDate } from './procurement/deadline';
 import { opportunityLifecycle } from './procurement/lifecycle';
+import { canonicalNoticeSql } from './procurement/canonical';
+import { collapseAwardDuplicates } from './procurement/award-duplicates';
 import { OPEN_FIRST_ORDER, closingSql, deadlineTimeSql } from './procurement/catalog';
 import { implausibleAwardOrder } from './award-dates';
 const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
@@ -80,7 +82,7 @@ async function buyerSources(kind: 'award' | 'opportunity', revision: number, sou
 // Keep one revision in memory. Overview, drilldowns and search share both the
 // pending snapshot and a bounded set of calculated results; failures are evicted.
 let analysis: { revision: number; promise: Promise<any[]>; results: Map<string, Promise<any>> } | undefined;
-const analysisFields = ['importKey','opportunityId','opportunityDescription','opportunityType','issuingOrganization','issuingLocation','contractNumber','contactEmail','contractValue','contractValueText','currency','successfulSupplier','supplierAddress','awardDate','justification','starred','createdAt','updatedAt','sourceFileName','sourceUrl'];
+const analysisFields = ['duplicateOf','sourceId','importKey','opportunityId','opportunityDescription','opportunityType','issuingOrganization','issuingLocation','contractNumber','contactEmail','contractValue','contractValueText','currency','successfulSupplier','supplierAddress','awardDate','justification','starred','createdAt','updatedAt','sourceFileName','sourceUrl'];
 async function readAnalysis(revision: number) {
   await host('catalog.read', { ids: [], revision });
   const total = Number((await sql("SELECT count(*) AS total FROM records WHERE kind='award'"))[0].total);
@@ -95,7 +97,7 @@ async function readAnalysis(revision: number) {
       const offset = nextOffset;
       nextOffset += pageSize;
       try {
-        const page = await sql(`SELECT ${analysisFields.map(key => `${field(key)} AS "${key}"`).join(', ')} FROM records WHERE kind='award' ORDER BY id LIMIT ? OFFSET ?`, [pageSize, offset]);
+        const page = await sql(`SELECT id AS "recordId", ${analysisFields.map(key => `${field(key)} AS "${key}"`).join(', ')} FROM records WHERE kind='award' ORDER BY id LIMIT ? OFFSET ?`, [pageSize, offset]);
         if (page.length !== Math.min(pageSize, total - offset)) throw new Error('Catalog changed; reload the snapshot.');
         for (const row of page) row.starred = row.starred === 1 || row.starred === true;
         pages[offset / pageSize] = page;
@@ -104,7 +106,8 @@ async function readAnalysis(revision: number) {
   }));
   // Never publish mixed revisions, even if a scrape/import changes an earlier page.
   await host('catalog.read', { ids: [], revision });
-  return pages.flat();
+  // One row per award (award-duplicates.ts): a repeated listing never doubles a total, marked or not yet marked.
+  return collapseAwardDuplicates(pages.flat(), row => String(row.recordId));
 }
 function analysisKey(name: string, args: any) {
   return JSON.stringify([BUYER_MAPPING_VERSION, name, new Date().toISOString().slice(0, 10), args], (_key, value) =>
@@ -151,7 +154,8 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
       await host('catalog.read', { ids: [], revision });
       let after = '', total = 0, open = 0, closingSoon = 0;
       while (true) {
-        const rows = await sql(`SELECT id,${field('status')} status,${field('closingAt')} closingAt,${field('closingDate')} closingDate FROM records WHERE kind='opportunity' AND id>? ORDER BY id LIMIT 200`, [after]);
+        // One row per notice (canonical.ts), judged by the effective lifecycle (lifecycle.ts).
+        const rows = await sql(`SELECT id,${field('status')} status,${field('closingAt')} closingAt,${field('closingDate')} closingDate FROM records WHERE kind='opportunity' AND ${canonicalNoticeSql('', { crossSource: 'exclude' })} AND id>? ORDER BY id LIMIT 200`, [after]);
         for (const row of rows) { const lifecycle = opportunityLifecycle(row, asOf); total++; open += Number(lifecycle.open); closingSoon += Number(lifecycle.closingSoon); }
         if (rows.length < 200) break;
         const next = rows.at(-1)?.id;
@@ -178,7 +182,7 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   }
   if (name === 'contractAwards.summary') {
     const [counts, latest] = await Promise.all([
-      sql(`SELECT count(*) AS total, count(DISTINCT CASE WHEN ${field('issuingOrganization')} <> '' THEN ${field('issuingOrganization')} END) AS organizations, count(DISTINCT CASE WHEN ${field('successfulSupplier')} <> '' THEN ${field('successfulSupplier')} END) AS suppliers FROM records WHERE kind='award'`),
+      sql(`SELECT count(*) AS total, count(DISTINCT CASE WHEN ${field('issuingOrganization')} <> '' THEN ${field('issuingOrganization')} END) AS organizations, count(DISTINCT CASE WHEN ${field('successfulSupplier')} <> '' THEN ${field('successfulSupplier')} END) AS suppliers FROM records WHERE kind='award' AND ${canonicalNoticeSql()}`),
       sql(`SELECT ${field('updatedAt')} AS latestImportAt, ${field('sourceFileName')} AS latestImportFile FROM records WHERE kind='award' ORDER BY ${field('updatedAt')} DESC LIMIT 1`),
     ]);
     const sources = await buyerSources('award', revision, ['bc-bid']);
@@ -212,7 +216,7 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     if (args.scope !== undefined) {
       if (typeof args.scope?.sql !== 'string' || !Array.isArray(args.scope.parameters)) throw new Error('Invalid table scope.');
       where.push(args.scope.sql); params.push(...args.scope.parameters);
-    }
+    } else if (args.duplicates !== 'include') where.push(canonicalNoticeSql('', { crossSource: scope ? 'include' : 'exclude' })); // one row per notice/award (canonical.ts)
     if (args.closingBefore) { where.push(`coalesce(${field('closingDate')}, '') <= ?`); params.push(args.closingBefore); }
     if (args.search?.trim()) {
       const keys = kind === 'award' ? ['searchText','opportunityDescription','contractNumber','successfulSupplier','issuingOrganization'] : ['searchText','description','opportunityId','issuedBy','externalId','sourceKey','status','region'];

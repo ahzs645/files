@@ -163,3 +163,24 @@ export function pageDuplicates(rows: readonly NoticeSummary[], candidates: reado
   for (const row of rows) { const matches = findDuplicates(row, byTitle.get(row.title.toLowerCase()) ?? []); if (matches.length) result.set(row.id, matches); }
   return result;
 }
+
+// Canonical notices (one row per notice in lists, counts and totals) live in canonical.ts, re-exported here.
+export * from './canonical';
+
+/** Sources whose notices may repeat a BC Bid notice (local-government sites, bids&tenders, browser-loaded sites). */
+export const CROSS_SOURCE_COPIES = ['municipal-sites', 'browser-sites', 'bidsandtenders'] as const;
+/**
+ * The BC Bid notice a local copy repeats, for `catalog.normalize`: the best candidate scoring at the threshold whose
+ * closing day is within a day (same notice, not a repost or a later phase: `sameTitleBuyer`-only matches are left for
+ * people to judge), or the same notice link.
+ */
+export function crossSourceMatch(notice: NoticeSummary, bcBid: readonly NoticeSummary[]): DuplicateMatch | null {
+  const matches = findDuplicates(notice, bcBid).filter(match => match.score.sameUrl || (!match.score.sameTitleBuyer && match.score.dayGap !== null && match.score.dayGap <= 1));
+  return matches[0] ?? null;
+}
+/** BC Bid notices indexed by closing day, so each copy is scored against the ±1-day candidates only. */
+export function indexByClosingDay(notices: readonly NoticeSummary[]): (notice: NoticeSummary) => NoticeSummary[] {
+  const byDay = new Map<string, NoticeSummary[]>();
+  for (const notice of notices) { const day = closingDay(notice.deadline); if (day) byDay.set(day, [...(byDay.get(day) ?? []), notice]); }
+  return notice => { const day = closingDay(notice.deadline); return day ? [addDays(day, -1), day, addDays(day, 1)].flatMap(d => byDay.get(d) ?? []) : []; };
+}

@@ -1,6 +1,11 @@
 import { metadataPredicates, type MetadataFilters } from './metadata-filter';
 import { currentCategoryRecordIds } from './category-review-query';
-import { CLOSING_TODAY_TEXT, addDays, deadlineState, parseDeadline, zoneDate } from './deadline';
+import { CLOSING_TODAY_TEXT, NO_FIXED_DATE_FROM, NO_FIXED_DATE_TEXT, addDays, deadlineState, parseDeadline, zoneDate } from './deadline';
+import { acceptingSql, closingValueSql, effectiveStatusSql, type EffectiveStatus } from './lifecycle';
+
+/** Effective states the Status filter offers besides Open (lifecycle.ts). */
+export const LIFECYCLE_FILTERS: readonly Exclude<EffectiveStatus, 'open'>[] = ['closed', 'awarded', 'cancelled', 'unknown'];
+import { CANONICAL_MARKER, canonicalNoticeSql } from './canonical';
 import { excludeSql } from './exclude';
 import { HIDDEN_IDS_SQL } from './state-contract';
 import { cleanRegionText } from './region';
@@ -39,6 +44,7 @@ export function safeSourceUrl(raw: unknown): string | null {
 export function deadlineLabel(raw: unknown, now: number | Date = Date.now()): string {
   if (typeof raw !== 'string' || !raw.trim()) return 'Not provided';
   const value = raw.trim(), parsed = parseDeadline(value), state = deadlineState(value, now);
+  if (parsed && parsed.date >= NO_FIXED_DATE_FROM) return `${value} · ${NO_FIXED_DATE_TEXT} (placeholder date)`;
   const judgement = state === 'closed' ? ' · Deadline passed' : state === 'closing_today_time_unverified' ? ` · ${CLOSING_TODAY_TEXT}` : '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return parsed ? `${value} (date only)${judgement}` : `${value} (invalid date)`;
   if (!parsed) return `${value} (unrecognized date)`;
@@ -71,6 +77,10 @@ export type ProcurementQueryOptions = MetadataFilters & {
   hidden?: 'exclude' | 'include' | 'only';
   /** Frozen "now" for deadline filters and ordering; defaults to the current time. */
   asOf?: number;
+  /** `include` lists every saved row, duplicates and merged CanadaBuys amendments too (default: one row per notice). */
+  duplicates?: 'include';
+  /** Opportunities in one effective lifecycle state (lifecycle.ts); `open` lists use the review scope's `open=1`. */
+  lifecycle?: Exclude<EffectiveStatus, 'open'>;
   after?: string;
   limit?: number;
   /**
@@ -97,9 +107,13 @@ export const zonedSql = (value: string) => `${value} GLOB '????-??-??[Tt ]??:??*
  * and timezone-less values count as passed only after their calendar day, never at UTC midnight.
  */
 export const passedOrder = (value: string) => `CASE WHEN coalesce(${value}, '')='' THEN 2 WHEN ${zonedSql(value)} THEN CASE WHEN julianday(${value}) < julianday(?) THEN 1 ELSE 0 END WHEN ${value} < ? THEN 1 ELSE 0 END`;
-const deadline = `CASE WHEN kind='opportunity' THEN coalesce(${field('closingAt')},${field('closingDate')}) ELSE ${field('awardDate')} END`;
-/** A notice's deadline value: `closingAt` when present, else the source's `closingDate` text. */
-export const closingSql = `CASE WHEN coalesce(${field('closingAt')}, '')<>'' THEN ${field('closingAt')} ELSE ${field('closingDate')} END`;
+/** A notice's deadline value (lifecycle.ts `closingValue`): `closingAt`, else `closingNormalized.value`, else the source's `closingDate` text. */
+export const closingSql = closingValueSql();
+/**
+ * A row's date for lists and ordering: the notice's closing value, its placeholder's raw text (collectors store
+ * `closingDate: null` + `closingDateRaw` for "no fixed date"), else an award's date (awards have no closing fields).
+ */
+const deadline = `coalesce(${field('closingAt')},${field('closingDate')},${field('closingDateRaw')},${field('awardDate')})`;
 /**
  * SQL approximation of `deadlineSortTime` as a julian day: offset values are instants; date-only and timezone-less values
  * count to the end of their calendar day in Vancouver (start of day + 32 h: exact in PST, an hour lenient in PDT). Blank,
@@ -119,6 +133,10 @@ export function checkStatementSize(...statements: string[]) {
 export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
   const filters = ["kind IN ('opportunity', 'award')"];
   const countParameters: (string | number)[] = [];
+  // One row per notice (duplicates.ts): CanadaBuys amendments show their current version, merged rows and repeated
+  // awards are not listed; a local copy of a BC Bid notice is listed only within its own source.
+  // A review scope (`where`) built on openSql already holds these predicates; they are not repeated (statement limit).
+  if (options.duplicates !== 'include' && !options.where?.sql.includes(CANONICAL_MARKER)) filters.push(canonicalNoticeSql('', { crossSource: options.source && options.source !== 'all' ? 'include' : 'exclude', source: options.source }));
   if (options.kind && options.kind !== 'all') {
     filters.push('kind=?'); countParameters.push(options.kind);
   }
@@ -157,13 +175,18 @@ export function buildProcurementQuery(options: ProcurementQueryOptions = {}) {
   else if (options.hidden === 'only') filters.push(`id IN (${HIDDEN_IDS_SQL})`);
   const asOf = options.asOf ?? Date.now(), asOfIso = new Date(asOf).toISOString(), today = zoneDate(asOf);
   if (options.deadline === 'week') {
-    const closing = `coalesce(${field('closingAt')},${field('closingDate')})`;
-    filters.push("kind='opportunity'", `lower(coalesce(${field('status')}, '')) IN ('open', 'active')`);
+    // Source-open (lifecycle.ts); the window below already excludes passed, placeholder and unknown closing dates.
+    const closing = closingSql;
+    filters.push(`kind='opportunity' AND ${acceptingSql()}`);
     // SQL approximation of deadlineState (deadline.ts): values with an explicit offset compare as instants
     // (SQLite would read offset-less input as UTC). Date-only and timezone-less values compare by calendar
     // date against today in America/Vancouver, so a same-day date-only notice stays listed (time unverified).
     filters.push(`CASE WHEN ${zonedSql(closing)} THEN CASE WHEN julianday(${closing})>=julianday(?) AND julianday(${closing})<=julianday(?)+7 THEN 1 ELSE 0 END WHEN ${closing} GLOB '????-??-??*' THEN CASE WHEN ${closing}>=? AND ${closing}<? THEN 1 ELSE 0 END ELSE 0 END=1`);
     countParameters.push(asOfIso, asOfIso, today, addDays(today, 8));
+  }
+  if (options.lifecycle && LIFECYCLE_FILTERS.includes(options.lifecycle)) {
+    const status = effectiveStatusSql(asOf);
+    filters.push(`kind='opportunity' AND ${status.sql}=?`); countParameters.push(...status.parameters, options.lifecycle);
   }
   if (options.where?.sql && options.where.sql !== '1=1') { filters.push(options.where.sql); countParameters.push(...options.where.parameters); }
   const where = filters.join(' AND ');

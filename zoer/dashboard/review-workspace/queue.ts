@@ -1,4 +1,6 @@
 import { addDays, zoneDate } from '../procurement/deadline';
+import { closingValueSql, listedOpenSql } from '../procurement/lifecycle';
+import { canonicalNoticeSql } from '../procurement/canonical';
 
 /**
  * Review scopes shared by Home, Insights and the Opportunities review table. Every Home count and every Insights
@@ -118,7 +120,7 @@ export function recordColumns(alias = '') {
     source: `coalesce(CASE WHEN ${field('sourceId')}='' THEN NULL ELSE ${field('sourceId')} END,'bc-bid')`,
     title: `coalesce(${field('description')},${field('opportunityDescription')},${field('title')},${c('title')},'')`,
     buyer: `coalesce(${field('issuedBy')},${field('issuingOrganization')},'')`,
-    closing: `coalesce(${field('closingAt')},${field('closingDate')})`,
+    closing: closingValueSql(alias),
   };
 }
 
@@ -135,10 +137,13 @@ export function notClosedSql(value: string, asOf: number = Date.now()): Fragment
   };
 }
 
-/** Open opportunities: status open/active/blank and a deadline that has not passed (or is unknown). */
-export function openSql(asOf: number = Date.now(), alias = ''): Fragment {
-  const r = recordColumns(alias);
-  return and({ sql: `${r.kind}='opportunity' AND lower(coalesce(${r.field('status')},'open')) IN ('open','active','')`, parameters: [] }, notClosedSql(r.closing, asOf));
+/**
+ * Open opportunities, one row per notice: the effective lifecycle's `listedOpen` (lifecycle.ts: a source-open notice
+ * whose closing date has not passed, is a no-fixed-date placeholder, or is unknown) and the canonical-notice rule
+ * (duplicates.ts: current CanadaBuys amendment only, no merged rows, no local copies of BC Bid notices).
+ */
+export function openSql(asOf: number = Date.now(), alias = '', crossSource: 'exclude' | 'include' = 'exclude'): Fragment {
+  return and(listedOpenSql(asOf, alias), { sql: canonicalNoticeSql(alias, { crossSource }), parameters: [] });
 }
 
 export const sourceSql = (source: string | undefined, alias = ''): Fragment | null => source ? { sql: `${recordColumns(alias).source}=?`, parameters: [source] } : null;
@@ -228,7 +233,8 @@ export function reviewPredicate(scope: ReviewScope, options: { profileVersionId:
   const requirement = scope.reqCategory || scope.match ? requirementMatchSql(scope, profile, alias) : null;
   // Review filters only apply to opportunities (awards are never assessed); open/queue scopes already include this.
   const opportunities = hasReviewFilter(scope) && !scope.open && !scope.queue ? { sql: `${recordColumns(alias).kind}='opportunity'`, parameters: [] } : null;
-  const result = and(scope.open || scope.queue ? openSql(asOf, alias) : opportunities, sourceSql(scope.source, alias), queue, fit, requirement);
+  // The table query (buildProcurementQuery) adds the canonical-notice rule itself, once.
+  const result = and(scope.open || scope.queue ? listedOpenSql(asOf, alias) : opportunities, sourceSql(scope.source, alias), queue, fit, requirement);
   return queue?.unavailable ? { ...result, unavailable: queue.unavailable } : result;
 }
 

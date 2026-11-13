@@ -1,3 +1,5 @@
+import { canonicalNoticeSql } from './canonical';
+
 export type ProcurementMarketKind = 'all' | 'opportunity' | 'award';
 export type ProcurementMarketView = 'currencies' | 'sources' | 'buyers' | 'suppliers' | 'classifications';
 export type ProcurementMarketScope = {
@@ -35,7 +37,9 @@ const currency = `CASE WHEN length(${field('currency')})=3 AND ${field('currency
 const value = `CASE WHEN kind='award' AND json_extract(data, '$.contractValue', '$.contractValue') GLOB '[[][-0-9]*' AND ${field('contractValue')} BETWEEN -1.7976931348623157e308 AND 1.7976931348623157e308 THEN ${field('contractValue')} END`;
 
 function where(scope: ProcurementMarketScope) {
-  const filters = ["kind IN ('opportunity','award')"], parameters: (string | number)[] = [];
+  // Each notice and award once (duplicates.ts): repeated awards, merged rows and old CanadaBuys amendments never add to
+  // totals; a local copy of a BC Bid notice counts only when its own source is inspected.
+  const filters = ["kind IN ('opportunity','award')", canonicalNoticeSql('', { crossSource: scope.source && scope.source !== 'all' ? 'include' : 'exclude' })], parameters: (string | number)[] = [];
   if (scope.kind && scope.kind !== 'all') { filters.push('kind=?'); parameters.push(scope.kind); }
   if (scope.source && scope.source !== 'all') { filters.push(`${source}=?`); parameters.push(scope.source); }
   for (const [key, expression] of [['buyer', buyer], ['supplier', supplier], ['classification', classification]] as const) {

@@ -91,7 +91,9 @@ describe('one source-status/deadline lifecycle', () => {
   it('preserves same-day uncertainty and distinguishes unknown status and deadline', () => {
     expect(opportunityLifecycle({ status: 'Open', closingDate: '2026-10-22' }, now)).toMatchObject({ state: 'closing_today_time_unverified', open: true, closingSoon: true });
     expect(opportunityLifecycle({ status: 'Open', closingDate: 'bad' }, now)).toMatchObject({ open: true, closingSoon: false });
-    expect(opportunityLifecycle({ status: '', closingDate: '2026-10-23' }, now)).toMatchObject({ open: false, reason: 'unverified_status' });
+    expect(opportunityLifecycle({ status: '', closingDate: '2026-10-23' }, now)).toMatchObject({ open: false, status: 'unknown', reason: 'unverified_status' });
+    expect(opportunityLifecycle({ status: '', closingDate: '2026-10-21' }, now)).toMatchObject({ open: false, status: 'closed', reason: 'deadline_passed' });
+    expect(opportunityLifecycle({ status: 'N/A', closingDate: '2026-10-23' }, now)).toMatchObject({ open: false, status: 'unknown', reason: 'unverified_status' });
   });
 });
 
@@ -135,7 +137,7 @@ describe('complete deterministic review projections on real SQLite', () => {
   it('uses exactly the same eligibility for source coverage and unreviewed selection', async () => {
     const { db, save, review, query } = catalog();
     try {
-      save('today', 'Open', '2026-10-22'); save('soon', 'Active', '2026-10-23'); save('cancelled', 'Cancelled', '2026-10-23'); save('past', 'Open', '2026-10-21'); save('unknown', '', '2026-10-23');
+      save('today', 'Open', '2026-10-22'); save('soon', 'Active', '2026-10-23'); save('cancelled', 'Cancelled', '2026-10-23'); save('past', 'Open', '2026-10-21'); save('unknown', 'N/A', '2026-10-23'); save('blank', '', '2026-10-23');
       review('success', 'today');
       expect(await readCoverage(query, now)).toEqual([{ source: 'bc-bid', open: 2, reviewed: 1, reviewFailed: 0 }]);
       expect(await readUnreviewed(query, 'bc-bid', 50, now)).toEqual(['soon']);

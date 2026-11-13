@@ -2295,6 +2295,75 @@
         }
       },
       {
+        "id": "catalog.normalize",
+        "title": "Clean up duplicate and placeholder records",
+        "description": "One record per notice and award, without deleting any: older CanadaBuys amendment rows are folded into the reference's earliest saved record (latest values, amendmentHistory, star) and marked mergedInto; repeated award rows and local-site copies of BC Bid notices get duplicateOf; placeholder closing dates (2036 on) take the collectors' shape (closingDate null, closingDateRaw, closingDatePlaceholder) and source text dates fill a missing closingAt, each recorded in closingNormalized. dryRun (the default) only reports the counts. Idempotent; marks that no longer apply are removed.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 1800000,
+          "maxMemoryMb": 1024,
+          "maxOutputBytes": 67108864
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dryRun": {
+              "type": "boolean"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "dryRun",
+            "updated"
+          ],
+          "properties": {
+            "dryRun": {
+              "type": "boolean"
+            },
+            "updated": {
+              "type": "integer"
+            },
+            "scanned": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "canadaBuysAmendments": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "awardDuplicates": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "crossSource": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "closingDates": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "changes": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      {
         "id": "documents.extract",
         "idempotent": false,
         "title": "Extract saved document text",

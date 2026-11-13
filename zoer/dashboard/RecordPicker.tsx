@@ -7,7 +7,7 @@ import { useQuery, useWorkspace } from './backend';
 import { usePluginQuery } from './navigation';
 import { MoreMenu } from './host-ui';
 import { SOURCES, sourceId } from './procurement/catalog';
-import { INVENTORY_SQL, sourceName, sql } from './procurement/display';
+import { INVENTORY_SQL, inventoryTotal, sourceName, sql } from './procurement/display';
 import { sourceReference } from './bid-summaries';
 
 export const MAX_SELECTION = 50;
@@ -39,7 +39,7 @@ export function RecordPicker({ selection, setSelection, onDetails, actions, more
   const counts = new Map<string, number>();
   for (const row of inventory.data ?? []) if (row.kind === kind) counts.set(row.sourceId, (counts.get(row.sourceId) ?? 0) + Number(row.count));
   const sources = [...SOURCES.map(item => item.id), ...[...counts.keys()].filter(id => !SOURCES.some(item => item.id === id))];
-  const total = [...counts.values()].reduce((sum, value) => sum + value, 0);
+  const total = inventoryTotal(inventory.data, kind);
   const visible: { id: string; title: string; data: any }[] = (result?.items ?? []).map((data: any) => ({ id: data.catalogId, title: data.description ?? data.opportunityDescription, data }));
   const toggle = (id: string, checked: boolean) => { const next = new Set(selection); checked ? next.add(id) : next.delete(id); setSelection(next); };
   const activeFilters = [source, docs, starred].filter(Boolean).length;
