@@ -1,5 +1,6 @@
 import reference from '../data/bc-bid-filter-reference.json';
 import currentTypes from '../data/bc-bid-current-types.json';
+import { keyedAttachments } from './attachments';
 export function filterReferenceRecords() {
   return [{id:currentTypes.id,kind:'reference-release',title:'BC Bid current opportunity type groups',data:currentTypes},
     ...currentTypes.types.map(term=>({id:`reference-term:BCBID-current-type:${term.code}`,kind:'reference-term',title:term.title,data:{scheme:'BCBID-current-type',releaseId:currentTypes.id,...term,sourceUrl:currentTypes.sourceUrl,capturedAt:currentTypes.capturedAt}})),
@@ -28,6 +29,9 @@ export function sourceMetadata(row: any, doc?: any) {
   if (doc?.scope === 'bcbid-targeted' && doc.filters?.region) regionLabels.push(doc.filters.region);
   const sourceRegions = regionLabels.flatMap(label => { const candidates = reference.regions.filter(t => t.title === label); return candidates.length === 1 ? candidates : []; });
   const next = {...row};
+  // Each public file link carries its stable source key (`bcbid:file:<guid>`); its URL spelling can change.
+  if (Array.isArray(row.attachments)) next.attachments = keyedAttachments(row.attachments);
+  if (Array.isArray(row.delistedAttachments)) next.delistedAttachments = keyedAttachments(row.delistedAttachments);
   const rawType = fields.find(f=>/^Opportunity Type$/i.test(f.label?.trim() || ''))?.value ?? row.type;
   const verified = doc?.scope === 'bcbid-targeted' ? currentTypes.types.find(t=>t.title === doc.filters?.opportunityType) : undefined;
   // Exact source labels are safe. RFP (BPS) was observed under the source RFP

@@ -1,6 +1,7 @@
 import { parseAwardPage } from './award-history';
 import type { PageCapture } from './capture';
 import { isPauseError, paused } from './pause';
+import { reportedListingTotal } from './targeted-scrape';
 
 export interface AwardWindow { from: string; to: string }
 export interface AwardRange extends AwardWindow { complete: boolean }
@@ -96,6 +97,40 @@ function narrowUnfinishedRange(state: AwardRangeCheckpoint, index: number, windo
   return index + before.length;
 }
 
+/** Days of recent award dates a history run rechecks: awards are often published after their award date. */
+export const RECENT_AWARD_DAYS = 30;
+const OPEN_END = '9999-12-31';
+
+/**
+ * The checkpoint a new (not resumed) history run starts from: saved coverage, with the last
+ * `days` of award dates and every later date reopened and checked first. Ranges completed
+ * while their dates were still in the future cannot prove those dates' later awards, and
+ * without this a finished backfill makes every scheduled run a no-op. Older coverage is kept.
+ */
+export function reopenRecentAwards(saved: AwardRangeCheckpoint, today: string, days = RECENT_AWARD_DAYS): AwardRangeCheckpoint {
+  const state = validateAwardRanges(saved);
+  if (!Number.isInteger(days) || days < 1 || days > 366) throw new Error('Invalid recent award window.');
+  const end = date(today);
+  // Only the open-ended history plan; a bounded checkpoint (recent mode) is left unchanged.
+  if (!state.ranges.some(range => range.to === OPEN_END) || today >= OPEN_END) return state;
+  const cutoff = iso(end - days * DAY);
+  const kept = state.ranges.flatMap(range => range.from >= cutoff ? [] : range.to < cutoff ? [range] : [{ ...range, to: iso(date(cutoff) - DAY) }]);
+  const tail = [{ from: cutoff, to: today, complete: false }, { from: iso(end + DAY), to: OPEN_END, complete: false }];
+  state.ranges = [...tail, ...kept];
+  state.active = state.ranges.findIndex(range => !range.complete);
+  state.complete = false;
+  state.page = 0;
+  return validateAwardRanges(state);
+}
+
+/** Pages a search needs by BC Bid's reported total ("N Record(s)" or "More than N"); null when not shown. */
+function reportedPages(page: PageCapture, rowsOnPage: number) {
+  if (rowsOnPage < 1) return null;
+  const counts = reportedListingTotal(page.html);
+  const total = counts.totalReported ?? counts.reportedLowerBound;
+  return typeof total === 'number' && Number.isSafeInteger(total) && total > 0 ? Math.ceil(total / rowsOnPage) : null;
+}
+
 /**
  * A resumed run replays only its unfinished bounded range. Completed ranges are
  * never inferred from record counts. The host atomically saves rows + checkpoint.
@@ -175,7 +210,10 @@ export async function scrapeAwardRanges(
       previous = parsed.fingerprint;
       if (isActive) state.page = number;
       state.pages++; state.count += records.length;
-      const subdivide = page.pagination!.hasNext && (number >= pageLimit || duplicatePages >= 3);
+      // A range BC Bid reports as larger than its page allowance is split after its first
+      // page instead of after reading (and then discarding the coverage of) every allowed page.
+      const oversized = number === 1 && range.from !== range.to && (reportedPages(page, parsed.records.length) ?? 0) > pageLimit;
+      const subdivide = page.pagination!.hasNext && (number >= pageLimit || duplicatePages >= 3 || oversized);
       if (subdivide) {
         const halves = splitAwardRange(range);
         if (!halves || state.ranges.length >= maxRanges) {

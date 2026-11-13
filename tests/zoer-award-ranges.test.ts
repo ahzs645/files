@@ -219,3 +219,47 @@ it('rejects a source response that does not confirm both date filters, including
   const capture=awardRangeCapture(async()=>page(),AWARD_DATE_FIELDS);
   await expect(capture({range:{from:'2026-01-01',to:'2026-01-31'},page:1,applySearch:true})).rejects.toThrow('confirm the award date filters');
 });
+
+describe('history runs recheck recent award dates', () => {
+  it('reopens the last 30 days and later dates first, keeping older coverage', async () => {
+    const { reopenRecentAwards } = await import('../zoer/src/award-ranges');
+    const state = newAwardRanges(undefined, undefined, new Date('2026-09-14'));
+    for (const range of state.ranges) range.complete = true;
+    state.active = state.ranges.length; state.complete = true;
+    const next = reopenRecentAwards(state, '2026-11-13');
+    expect(validateAwardRanges(next)).toEqual(next);
+    expect(next.ranges.slice(0, 3)).toEqual([
+      { from: '2026-10-14', to: '2026-11-13', complete: false },
+      { from: '2026-11-14', to: '9999-12-31', complete: false },
+      { from: '2026-01-01', to: '2026-10-13', complete: true },
+    ]);
+    expect(next).toMatchObject({ active: 0, complete: false, page: 0 });
+    expect(next.ranges.filter(r => !r.complete)).toHaveLength(2);
+    expect(state.complete).toBe(true);
+    // A bounded (recent-mode) checkpoint is unchanged.
+    expect(reopenRecentAwards(start(), '2026-11-13')).toEqual(start());
+  });
+  it('keeps unfinished backfill ranges after the recent recheck', async () => {
+    const { reopenRecentAwards } = await import('../zoer/src/award-ranges');
+    const state = newAwardRanges(undefined, undefined, new Date('2026-09-14'));
+    state.ranges[0].complete = state.ranges[1].complete = true; state.active = 2; // 2027+ and 2026 done
+    const next = reopenRecentAwards(state, '2026-11-13');
+    expect(next.ranges[2]).toEqual({ from: '2026-01-01', to: '2026-10-13', complete: true });
+    expect(next.ranges.slice(0, 2).map(r => r.from)).toEqual(['2026-10-14', '2026-11-14']);
+    expect(next.ranges.find(r => r.from === '1900-01-01')).toEqual({ from: '1900-01-01', to: '2014-12-31', complete: false });
+    const calls: string[] = [];
+    await scrapeAwardRanges(async r => { calls.push(r.range.from); return page(1, 1, 'A', r.range.from); }, store([]), next, { maxPages: 3 }).catch(() => {});
+    expect(calls).toEqual(['2026-10-14', '2026-11-14', '2025-01-01']);
+  });
+  it('splits a range BC Bid reports as too large after its first page', async () => {
+    const docs: any[] = [], calls: string[] = [];
+    const big = (r: any) => { const p = page(r.page, 100, String(r.page), r.range.from); return { ...p, html: p.html + '<div class="pager"><span aria-label="1,500 Record(s)">1,500 Record(s)</span></div>' }; };
+    await expect(scrapeAwardRanges(async r => { calls.push(r.range.from + '/' + r.page); return big(r); }, store(docs), start(), { rangePages: 40, maxPages: 2 })).rejects.toThrow('page limit');
+    expect(calls).toEqual(['2026-01-01/1', '2026-01-01/1']);
+    expect(docs[0].checkpoint.ranges).toEqual(splitAwardRange({ from: '2026-01-01', to: '2026-01-31', complete: false }));
+    expect(docs[0].records).toHaveLength(1);
+    // Within its allowance, or without a reported total, a range is read page by page as before.
+    const small = (r: any) => { const p = page(r.page, 2, String(r.page), r.range.from); return { ...p, html: p.html + '<span>2 Record(s)</span>' }; };
+    expect(await scrapeAwardRanges(async r => small(r), store([]), start())).toMatchObject({ complete: true, pages: 2 });
+  });
+});

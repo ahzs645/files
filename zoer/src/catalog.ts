@@ -6,6 +6,7 @@ import { buildModel, type SavedDocument } from '../dashboard/model';
 import { enrichNotice } from '../dashboard/procurement/enrich';
 import { classifyCatalogRecords } from './taxonomy';
 import { listingDetailRefresh } from './detail-policy';
+import { delistedAttachments } from './attachments';
 import { buildContractAwardImportKey, buildLegacyContractAwardImportKey, buildContractAwardSearchText, contractAwardIdentity, deduplicateContractAwards, normalizeContractAwardImportRecord, parseContractAwardMoney, reconcileContractAwardIdentity } from '../../packages/shared/src/contractAwards';
 import type { ContractAwardImportRecord } from '../../packages/shared/src/types';
 
@@ -179,7 +180,9 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
     if (found.length !== 1) throw new Error('Detail does not match exactly one saved opportunity.');
     const status = doc.record.detailFields?.find((field: any) => /^status$/i.test(field.label.trim()))?.value?.trim();
     // Place and contacts are re-derived from the merged row: the detail page adds the fields they come from.
-    const row = enrichNotice(sourceMetadata({ ...found[0].data, ...doc.record,
+    // A re-capture replaces the attachment list with the source's current one; links it no longer shows are kept.
+    const delisted = delistedAttachments(found[0].data, doc.record.attachments, typeof doc.capturedAt === 'string' ? doc.capturedAt : now);
+    const row = enrichNotice(sourceMetadata({ ...found[0].data, ...doc.record, ...(delisted ? { delistedAttachments: delisted } : {}),
       ...listingDetailRefresh(found[0].data, doc.record, true, doc.detailCaptureVersion),
       ...(status ? { status } : {}), starred: found[0].data.starred, lastRunId: runId }, doc));
     records = [catalogRow('opportunity', row)];
@@ -198,7 +201,8 @@ export async function saveCatalogDocument(call: Host, doc: any, runId: string) {
       // Persist before the detail queue runs. A cap, skipped detail or failure
       // must remain retryable even after this merge updates the listing values.
       const refresh = listingDetailRefresh(old, row, doc.kind === 'scrape' && Boolean(row.detailFields?.length), doc.detailCaptureVersion);
-      return catalogRow('opportunity', enrichNotice(sourceMetadata({ ...defaults, ...old, ...row, ...detail, ...refresh,
+      const delisted = old && row.detailFields?.length ? delistedAttachments(old, row.attachments, typeof doc.capturedAt === 'string' ? doc.capturedAt : now) : undefined;
+      return catalogRow('opportunity', enrichNotice(sourceMetadata({ ...defaults, ...old, ...row, ...detail, ...refresh, ...(delisted ? { delistedAttachments: delisted } : {}),
         starred: old?.starred ?? row.starred === true, lastRunId: runId }, doc)));
     });
     if (doc.scope === 'all-current-public-opportunities') entries.push({ key: 'checkpoint:full', value: doc });

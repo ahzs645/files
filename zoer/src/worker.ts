@@ -1,5 +1,5 @@
 import { migrateCatalog, saveCatalogDocument } from './catalog';
-import { scrapeAwardRanges, newAwardRanges } from './award-ranges';
+import { scrapeAwardRanges, newAwardRanges, reopenRecentAwards } from './award-ranges';
 import { awardRangeCapture, AWARD_DATE_FIELDS } from './award-range-capture';
 import { scrapeFull, fullScrapeResume } from './full-scrape';
 import { createHostChannel, isPauseError, paused } from './pause';
@@ -117,7 +117,11 @@ try {
     const from = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10);
     // Old page-number checkpoints cannot prove coverage of any date range.
     // Retain them for reference, and merge records from the bounded backfill.
-    const resume = !window && supplied?.version === 2 ? supplied : ownProgress || (!recent && previous?.version === 2) ? previous : recent ? newAwardRanges(from, today) : newAwardRanges();
+    // A new history run (not a window, an operator resume or this run's own interrupted progress) first
+    // rechecks the last 30 days of award dates, then continues the saved backfill.
+    const resume = !window && supplied?.version === 2 ? supplied : ownProgress ? previous
+      : !recent && previous?.version === 2 ? (window ? previous : reopenRecentAwards(previous, today))
+      : recent ? newAwardRanges(from, today) : newAwardRanges();
     let archiveLegacy = !recent && previous && previous.version !== 2 ? previous : undefined;
     const output = await scrapeAwardRanges(awardRangeCapture(options => call('browser.capture-url', { ...options, ticket: browserTicket }), AWARD_DATE_FIELDS), async document => {
       const id = await save({ ...document, checkpointKey, ...(archiveLegacy ? { legacyCheckpoint: archiveLegacy } : {}) });

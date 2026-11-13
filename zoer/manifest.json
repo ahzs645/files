@@ -593,7 +593,7 @@
               120000,
               300000
             ],
-            "maxConsecutive": 6
+            "maxConsecutive": 24
           },
           "lock": {
             "input": "scope",
@@ -721,7 +721,7 @@
       {
         "id": "scrape.details",
         "title": "Capture missing BC Bid details",
-        "description": "Capture details for up to 50 saved BC Bid notices that have no details yet, either chosen notices or, with a missing limit, the open notices closing soonest that have no current details or attachment list. Completed notices are skipped on retry; saved progress and original files are retained.",
+        "description": "Capture details for up to 50 saved BC Bid notices that have no details yet, either chosen notices or, with a missing limit, the open notices closing soonest that have no current details or attachment list; with stale, then closed current notices still on an older capture, most recently closed first. Completed notices are skipped on retry; stars, history, saved originals and previously listed attachment links are retained.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": {
@@ -760,6 +760,9 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 50
+                },
+                "stale": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -1072,7 +1075,7 @@
         "idempotent": false,
         "id": "awards.history",
         "title": "Download public award history",
-        "description": "Backfill public awards in resumable date ranges, skipping completed ranges and unchanged records. Optionally refresh the last 30 days or advance one unfinished range in a date window. Undated records are not verified; attachments are separate.",
+        "description": "Backfill public awards in resumable date ranges, skipping completed ranges and unchanged records. Each new run first rechecks the last 30 days of award dates. Optionally refresh only the last 30 days or advance one unfinished range in a date window. Undated records are not verified; attachments are separate.",
         "requiredCapabilities": [
           "browser-session",
           "artifact-store"

@@ -97,3 +97,38 @@ describe('missing mode chooses open notices itself',()=>{
   await expect(captureMissingDetails({missing:{limit:5}},{...host,list:undefined})).rejects.toThrow('Update Zoer');
  });
 });
+
+describe('stale mode refreshes closed current notices after open ones',()=>{
+ const NOW=Date.parse('2026-11-13T19:00:00Z');
+ const notice=(id:string,status:string,closingDate:string,extra:any={})=>{const r=row(id,[{label:'Scope',value:'Old'}]);delete (r.data as any).detailCaptureVersion;Object.assign(r.data,{status,closingDate,attachments:[],...extra});return r;};
+ const catalog=[
+  notice('201','Closed','2026-10-01'),                                   // older capture, closed in October
+  notice('202','Closed','2026-11-10'),                                   // older capture, closed recently
+  notice('203','Open','2026-11-01'),                                     // Open label, past its deadline
+  notice('204','Open','2026-12-01'),                                     // open, older capture: first
+  notice('205','Closed','2026-11-11',{detailCaptureVersion:DETAIL_CAPTURE_VERSION,tabCoverage:{complete:true}}), // current capture
+  notice('206','Closed','2026-11-12',{historical:{from:'2015-04-01',to:'2022-12-15'}}), // historical queue owns it
+  {...notice('207','Closed','2026-11-12'),data:{...notice('207','Closed','2026-11-12').data,sourceId:'canadabuys'}},
+ ];
+ const pages=(records:any[],size=2)=>async(after:string)=>({records:records.filter(r=>r.id>after).slice(0,size)});
+ it('selects open first, then most recently closed, and only when asked',async()=>{
+  expect(await selectMissingDetails(pages(catalog),50,NOW)).toEqual(['opportunity:204']);
+  expect(await selectMissingDetails(pages(catalog),50,NOW,{stale:true})).toEqual(['opportunity:204','opportunity:202','opportunity:203','opportunity:201']);
+  expect(await selectMissingDetails(pages(catalog),2,NOW,{stale:true})).toEqual(['opportunity:204','opportunity:202']);
+ });
+ it('keeps the input strict and backward compatible',async()=>{
+  const host={read:async(ids:string[])=>({records:catalog.filter(r=>ids.includes(r.id))}),list:pages(catalog),capture:async(url:string)=>fixture(url),save:async()=>'saved'};
+  expect(await captureMissingDetails({missing:{limit:5,stale:true}},host,{now:NOW})).toMatchObject({selected:4,completed:4});
+  expect(await captureMissingDetails({missing:{limit:5,stale:false}},host,{now:NOW})).toMatchObject({selected:1});
+  for(const missing of [{limit:5,stale:'yes'},{limit:5,stale:1},{limit:5,closed:true}])await expect(captureMissingDetails({missing},host,{now:NOW})).rejects.toThrow(/stale|1 to 50/);
+ });
+ it('treats one notice without a readable tab menu as that notice failing, but stops after several in a row',async()=>{
+  const read=async(ids:string[])=>({records:catalog.filter(r=>ids.includes(r.id))}),list=pages(catalog);
+  const noTabs=()=>{throw Error('Public detail tab inventory is unavailable or exceeds its bound.');};
+  expect(await captureMissingDetails({missing:{limit:5,stale:true}},{read,list,save:async()=>'',capture:async(url:string)=>url.endsWith('/202')?noTabs():fixture(url)},{now:NOW})).toMatchObject({completed:3,failed:1});
+  let captures=0;
+  await expect(captureMissingDetails({missing:{limit:5,stale:true}},{read,list,save:async()=>'',capture:async()=>{captures++;return noTabs();}},{now:NOW})).rejects.toThrow('tab inventory');
+  expect(captures).toBe(3);
+  await expect(captureMissingDetails({missing:{limit:5,stale:true}},{read,list,save:async()=>'',capture:async()=>{throw Error('Saved browser unavailable');}},{now:NOW})).rejects.toThrow('unavailable');
+ });
+});

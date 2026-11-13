@@ -199,3 +199,20 @@ it('does not retry an unrelated typed navigation/control error', async () => {
  const db=database();db.entries.set(HISTORICAL_KEY,cp());
  await expect(run(db,async()=>{throw Error('Native browser goto failed (400). [permission-denied; Error]');})).rejects.toThrow('permission-denied');
 });
+
+it('moves a repeatedly unreachable notice behind the rest of its committed detail queue', async () => {
+ const db=database();
+ const item=(id:string)=>({sourceKey:id,processId:id,detailUrl:'https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/'+id});
+ const before={...cp(),pending:[item('60536'),item('60537'),item('60538')],page:0,rangeCount:3,rangeExpected:3,listingsCaptured:3,lastSignature:'a'.repeat(64)};
+ db.entries.set(HISTORICAL_KEY,before);
+ const fail=async()=>{throw Error('Native browser goto failed (400). [network-error; Error]');};
+ const slice=(attempt:number)=>historicalSlice(db.host,fail,db.save,{scope:HISTORICAL_SCOPE},'r',{...resumeRequest(before),attempt},{delaySeconds:0}) as Promise<any>;
+ // Early attempts keep the queue order; transient failures retry the same notice.
+ expect((await slice(1)).checkpoint.pending.map((p:any)=>p.sourceKey)).toEqual(['60536','60537','60538']);
+ expect(db.entries.get(HISTORICAL_KEY).pending[0].sourceKey).toBe('60536');
+ const deferred=await slice(2);
+ expect(deferred).toMatchObject({resumable:'retry',error:{code:'historical_navigation_network'}});
+ expect(deferred.checkpoint.pending.map((p:any)=>p.sourceKey)).toEqual(['60537','60538','60536']);
+ expect(db.entries.get(HISTORICAL_KEY)).toMatchObject({pending:deferred.checkpoint.pending,detailsCompleted:0,page:0,status:'running'});
+ expect(db.records.size).toBe(0);
+});

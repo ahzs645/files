@@ -173,6 +173,27 @@ async function commitProgress(host: Host, cp: HistoricalCheckpoint, records: any
   }
   throw Error('Historical checkpoint changed concurrently; retry safely.');
 }
+/** Consecutive failed attempts on one notice page before the rest of its detail queue is tried first. */
+export const DEFER_DETAIL_AFTER = 2;
+/**
+ * One notice page that keeps failing to load must not hold up the rest of its listing page's detail
+ * queue: after `DEFER_DETAIL_AFTER` failed attempts it moves to the end of the committed queue (nothing
+ * is dropped; the range still finishes only when every detail is saved). A real outage fails every
+ * notice and still ends the run under the host's consecutive-failure limit.
+ */
+async function deferUnreachableDetail(host: Host, before: HistoricalCheckpoint, attempt: number) {
+  if (!before.pending.length || !Number.isInteger(attempt) || attempt < DEFER_DETAIL_AFTER) return before;
+  // Start from the committed cursor: an earlier detail of this slice may already be saved with it.
+  const latest = (await host('catalog.workspace', { keys: [HISTORICAL_KEY] })).entries.find((e: any) => e.key === HISTORICAL_KEY)?.value;
+  if (!latest) return before;
+  const deferred = validateHistoricalCheckpoint(latest);
+  if (deferred.pending.length < 2) return deferred;
+  deferred.runId = before.runId; deferred.status = 'running'; delete deferred.error;
+  deferred.pending.push(deferred.pending.shift()!);
+  deferred.capturedAt = new Date().toISOString();
+  await commitProgress(host, validateHistoricalCheckpoint(deferred));
+  return deferred;
+}
 /** Each slice saves one listing page or at most two details. Catalog progress wins over replayed host checkpoints. */
 export async function historicalSlice(host: Host, capture: (options: CaptureOptions) => Promise<PageCapture>, save: (doc: any) => Promise<string>, input: any, runId: string, resumable: ResumableRequest, options: { delaySeconds?: number; paused?: () => boolean } = {}) {
   if (input?.scope !== HISTORICAL_SCOPE || Object.keys(input).some(k => k !== 'scope')) throw Error('Choose the complete public historical scope.');
@@ -292,7 +313,7 @@ export async function historicalSlice(host: Host, capture: (options: CaptureOpti
     // retain pacing/cursor and keep unknown/control failures out of this branch.
     const navigation = message.match(/^Native browser goto failed \(400\)\. \[(timeout; TimeoutError|network-error; Error)\]$/);
     if (navigation) return {
-      resumable: 'retry', checkpoint: before, retryAfterMs: 60000,
+      resumable: 'retry', checkpoint: await deferUnreachableDetail(host, before, resumable.attempt), retryAfterMs: 60000,
       error: navigation[1].startsWith('timeout;')
         ? { code: 'historical_navigation_timeout', message: 'The public historical page timed out. Saved progress is preserved.' }
         : { code: 'historical_navigation_network', message: 'The public historical page could not be reached. Saved progress is preserved.' },
