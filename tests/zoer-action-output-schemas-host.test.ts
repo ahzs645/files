@@ -26,13 +26,14 @@ describe('manifest schemas under the Zoer host validator', async () => {
   });
   it('accepts Keep documents current inputs and its counted output', () => {
     const declared = action('documents.download.missing');
-    for (const input of [{}, { limit: 500, scope: 'open' }, { scope: 'current', resumeRunId: 'run-1' }])
+    for (const input of [{}, { limit: 500, scope: 'open' }, { scope: 'current', resumeRunId: 'run-1' }, { scope: 'all' }])
       expect(() => enforceIntegrationSchema(declared.inputSchema, input, 'input')).not.toThrow();
-    for (const input of [{ limit: 0 }, { limit: 3001 }, { scope: 'all' }, { recordIds: [] }])
+    for (const input of [{ limit: 0 }, { limit: 3001 }, { scope: 'everything' }, { recordIds: [] }])
       expect(() => enforceIntegrationSchema(declared.inputSchema, input, 'input')).toThrow();
     const counts = { selected: 3, completed: 2, failed: 1, skippedNoLinks: 0, needsDetails: 4, waitingForUser: 0, remaining: 7 };
     expect(() => enforceIntegrationSchema(declared.outputSchema, counts, 'output')).not.toThrow();
     expect(() => enforceIntegrationSchema(declared.outputSchema, { ...counts, total: 10, modelCalls: 0 }, 'output')).not.toThrow();
+    expect(() => enforceIntegrationSchema(declared.outputSchema, { ...counts, skippedLoginRequired: 2, skippedTooLarge: 1, skippedOutsideAllowlist: 0 }, 'output')).not.toThrow();
     expect(() => enforceIntegrationSchema(declared.outputSchema, { ...counts, extra: 1 }, 'output')).toThrow();
   });
 });
