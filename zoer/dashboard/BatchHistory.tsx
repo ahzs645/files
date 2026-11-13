@@ -4,10 +4,11 @@ import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
 import { researchRetry } from './research-retry';
 import { assertDocumentBrowserIdle } from './document-run';
-import { shortError } from './error-text';
+import { plainError, shortError } from './error-text';
+import { RunLinks } from './procurement/Status';
 import { StatusBadge, type Tone, Hint } from './host-ui';
 
-const STATUS_TEXT: Record<string, string> = { waiting_for_user: 'Needs you', succeeded: 'Done', failed: 'Failed', running: 'Running', cancelled: 'Stopped', stopped: 'Stopped', queued: 'Queued', paused: 'Paused for update' };
+const STATUS_TEXT: Record<string, string> = { waiting_for_user: 'Waiting for you', succeeded: 'Done', failed: 'Failed', running: 'Running', cancelled: 'Stopped', stopped: 'Stopped', queued: 'Queued', paused: 'Paused for update' };
 const statusText = (status: string) => STATUS_TEXT[status] ?? (status.charAt(0).toUpperCase() + status.slice(1)).replace(/_/g, ' ');
 const STATUS_TONE: Record<string, Tone> = { waiting_for_user: 'warning', succeeded: 'success', failed: 'error', running: 'info', queued: 'neutral', cancelled: 'neutral', stopped: 'neutral', paused: 'info' };
 const PAGE = 8;
@@ -43,15 +44,16 @@ export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], o
   const [busy, setBusy] = useState(false), [open, setOpen] = useState<Set<string>>(new Set()), [all, setAll] = useState(false);
   const toggle = (id: string) => { const next = new Set(open); next.has(id) ? next.delete(id) : next.add(id); setOpen(next); };
   const rows = batches.filter(batch => batch.kind === kind), shown = all ? rows : rows.slice(0, PAGE);
-  const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await onChanged(); } catch (e) { onError((e as Error).message); } finally { setBusy(false); } };
+  const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await onChanged(); } catch (e) { onError(plainError((e as Error).message)); } finally { setBusy(false); } };
   return <section className="zoer-history" aria-label={title}>
     <h2>{title}</h2>
+    {kind === 'download' && <RunLinks compact except="/documents?tab=history" />}
     {!rows.length && <p>Nothing yet.</p>}
     {shown.map(batch => { const input = JSON.parse(batch.input || '{}'), needsBrowser = kind === 'download' && !input.extractOnly; const steps = tasks.filter(task => task.run_id === batch.id).slice(0, 3); return <div key={batch.id} className="research-batch-item"><article className="research-batch">
       <div>
         <StatusBadge tone={STATUS_TONE[batch.status] ?? 'neutral'}>{statusText(batch.status)}</StatusBadge>{batch.updated_at && <time dateTime={batch.updated_at}>{new Date(batch.updated_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>}
         <p>{batch.completed}/{batch.total} done{Number(batch.failed) ? ` · ${batch.failed} failed` : ''}</p>
-        {batch.error && <Hint content={batch.error}><p role="alert" className="doc-clamp">{shortError(batch.error)}</p></Hint>}
+        {batch.error && <Hint content={batch.error}><p role="alert" className="doc-clamp pc-wrap">{plainError(batch.error)}</p></Hint>}
         {steps.length > 0 && <details className="doc-steps"><summary data-zoer-disclosure="">Latest steps</summary>{steps.map((task, index) => <p className="research-task" key={index}><strong>{task.phase || task.kind}</strong> · {task.name || task.record_id} · {batch.status === 'paused' && task.status === 'running' ? 'Paused for update' : batch.status !== 'running' && task.status === 'running' ? 'Interrupted' : statusText(task.status)}{task.error ? ` · ${shortError(task.error)}` : ''}</p>)}</details>}
       </div>
       {batch.status === 'running'

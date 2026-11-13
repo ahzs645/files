@@ -84,7 +84,7 @@ describe('schedules', () => {
     expect(scheduleState(row({ lastStatus: 'pending' }), now)).toMatchObject({ tone: 'busy', next: 'Running now', last: 'Last scheduled run is running' });
     expect(scheduleState(row({ enabled: false, intervalHours: 12 }), now)).toMatchObject({ tone: 'idle', status: 'Paused · was every 12 hours', stopped: null });
     const stopped = scheduleState(row({ enabled: false, lastStatus: 'failed', error: 'CanadaBuys returned HTTP 503.' }), now);
-    expect(stopped).toMatchObject({ tone: 'warn', status: 'Stopped by Zoer', error: 'CanadaBuys returned HTTP 503.', last: 'Last scheduled run failed' });
+    expect(stopped).toMatchObject({ tone: 'warn', status: 'Paused: needs your review', error: 'CanadaBuys returned HTTP 503.', last: 'Last scheduled run failed' });
     expect(stopped.stopped).toMatch(/did not succeed/);
     expect(stopReason('Plugin or settings changed. Review and save this schedule again.')).toMatch(/Older Zoer versions paused schedules/);
     expect(stopReason('Scheduled action, permissions or settings changed. Review and save this schedule again.')).toMatch(/Compatible version and interface updates keep schedules enabled/);

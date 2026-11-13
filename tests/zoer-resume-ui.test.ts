@@ -16,8 +16,9 @@ describe('interrupted scrape presentation', () => {
   });
   it('keeps an actual browser-check failure actionable', () => {
     const model=buildModel({runs:[{...run,status:'failed',error:'Complete the browser check'}],artifacts:[]},[document]);
-    expect(model.runs[0]).toMatchObject({errorCode:'scrape_failed',errorMessage:'Complete the browser check'});
-    expect(model.runs[0].progress.message).toBe('Complete the browser check');
+    // Shown in plain words (error-text.ts), once: the run's headline and its error are the same sentence.
+    expect(model.runs[0]).toMatchObject({errorCode:'scrape_failed',errorMessage:expect.stringMatching(/^BC Bid asked for a browser check/)});
+    expect(model.runs[0].progress.message).toBe(model.runs[0].errorMessage);
   });
   it('retains award checkpoint when a newer retry never saved a page', () => {
     const model=buildModel({runs:[{...run,actionId:'awards.history'}],artifacts:[]},[{record:{id:'award-checkpoint',runId:'prior-run',createdAt:'2026-09-09T00:59:00Z'},document:{version:1,kind:'awards',scope:'public-award-history',checkpoint:{page:90,count:1350,complete:false},records:[]}}]);

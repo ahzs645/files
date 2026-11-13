@@ -9,8 +9,10 @@ export function bcCheckpointHealth(key: string, checkpoint: any) {
     : checkpoint.scope === 'dated-public-awards' && Array.isArray(checkpoint.ranges) && checkpoint.ranges.length > 0 && checkpoint.ranges.every((range: any) => range.complete === true));
   const timestamp = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : 'Not recorded';
   const ranges = Array.isArray(checkpoint?.ranges) ? checkpoint.ranges : [];
-  const from = ranges.map((range: any) => range.from).filter((value: any) => typeof value === 'string').sort()[0];
-  const to = ranges.map((range: any) => range.to).filter((value: any) => typeof value === 'string').sort().at(-1);
+  // "9999-12-31" marks an open-ended range; it is never shown as a date.
+  const dated = (value: any) => typeof value === 'string' && !/^9999-12-31/.test(value);
+  const from = ranges.map((range: any) => range.from).filter(dated).sort()[0];
+  const to = ranges.map((range: any) => range.to).filter(dated).sort().at(-1);
   return {
     completed,
     status: !checkpoint ? 'Not recorded' : error || failures.length ? 'Needs attention · incomplete' : completed ? 'Completed recorded scope' : 'Partial checkpoint',

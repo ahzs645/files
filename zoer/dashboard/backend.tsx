@@ -10,6 +10,7 @@ import { capabilities } from './capabilities';
 import { queryCatalog, readAll, resetCatalogCache } from './queries';
 import { SAVED_BC_BID_BUYERS_QUERY } from './buyer-query';
 import { readWorkspaceMetadata } from './workspace-bootstrap';
+import { bcLastCollection } from './procurement/status-data';
 export { readAll } from './queries';
 let snapshot: { model?: Model; error?: string; notice?: string } = {};
 const listeners = new Set<() => void>();
@@ -157,7 +158,8 @@ export function useQuery(name: string, args: any) {
   if (!model || args === 'skip') return undefined;
   if (!remote) return queryModel(model, name, queryArgs);
   const value = query.data;
-  return name === 'dashboard.summary' && value ? { ...value, latestRun: model.runs[0] ?? null, latestSuccessfulRun: model.runs.find(run => run.status === 'succeeded') ?? null } : value;
+  // `lastCollection`: the same "last successful collection" Sources, Status and Home show (one helper).
+  return name === 'dashboard.summary' && value ? { ...value, latestRun: model.runs[0] ?? null, latestSuccessfulRun: model.runs.find(run => run.status === 'succeeded') ?? null, lastCollection: bcLastCollection(undefined, model.captureRuns) } : value;
 
 }
 async function invoke(name: string, args: any) {

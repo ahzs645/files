@@ -2,7 +2,7 @@
  * Review-workspace navigation (CONTRACT §5.3). Pure route → section/view/page mapping so it stays testable
  * without rendering the shell. Every pre-existing route keeps working; it now opens inside its matching section.
  */
-export type Section = 'home' | 'opportunities' | 'pursuits' | 'documents' | 'evidence' | 'insights' | 'workbench' | 'profiles' | 'sources' | 'taxonomy';
+export type Section = 'home' | 'opportunities' | 'pursuits' | 'documents' | 'evidence' | 'insights' | 'status' | 'workbench' | 'profiles' | 'sources' | 'taxonomy';
 /** [section, label, default route] */
 export type SectionTab = [Section, string, string];
 
@@ -10,9 +10,9 @@ export const PRIMARY_SECTIONS: SectionTab[] = [
   ['home', 'Home', '/home'], ['opportunities', 'Opportunities', '/procurement'], ['pursuits', 'Pursuits', '/pursuits'],
   ['documents', 'Documents', '/documents'], ['evidence', 'Evidence', '/evidence'], ['insights', 'Insights', '/insights'],
 ];
-/** Visually secondary: configuration rather than daily review work. */
+/** Visually secondary: configuration rather than daily review work. Status (setup checklist, is collection running) comes first. */
 export const CONFIGURE_SECTIONS: SectionTab[] = [
-  ['workbench', 'AI workbench', '/ai-review'], ['profiles', 'Profiles', '/profiles'], ['sources', 'Sources', '/sources'], ['taxonomy', 'Taxonomy', '/taxonomy'],
+  ['status', 'Status', '/status'], ['workbench', 'AI workbench', '/ai-review'], ['profiles', 'Profiles', '/profiles'], ['sources', 'Sources', '/sources'], ['taxonomy', 'Taxonomy', '/taxonomy'],
 ];
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + '/');
@@ -31,6 +31,7 @@ export function sectionOf(location: string, caps?: NavCapabilities): Section {
   if (path === '/ai-review' || path === '/workbench') return 'workbench';
   if (path === '/profiles') return 'profiles';
   if (path === '/taxonomy') return 'taxonomy';
+  if (path === '/status') return 'status';
   // /sources, BC Bid's own pages (/bc-bid-dashboard, /scraper, /scraper/history, /settings) and anything unknown.
   return 'sources';
 }
@@ -80,7 +81,7 @@ type Need = keyof NavCapabilities;
  * Sections that only exist when the host can collect (Sources, BC Bid's scraper pages, the taxonomy import page),
  * write (profile editor) or call AI models (the AI workbench).
  */
-const SECTION_NEEDS: Partial<Record<Section, Need>> = { sources: 'collection', taxonomy: 'collection', profiles: 'writes', workbench: 'ai' };
+const SECTION_NEEDS: Partial<Record<Section, Need>> = { status: 'collection', sources: 'collection', taxonomy: 'collection', profiles: 'writes', workbench: 'ai' };
 /** Views that start host work: downloads and their batch history are collection; running reviews and stage tests write. */
 const VIEW_NEEDS: Partial<Record<Section, Record<string, Need>>> = { documents: { download: 'collection', history: 'collection' }, workbench: { reviews: 'writes', stages: 'writes' } };
 const has = (caps: NavCapabilities, need: Need | undefined) => !need || caps[need];
@@ -164,9 +165,9 @@ export function viewHref(section: Section, view: string, location: string): stri
 }
 
 /** Which page component the shell renders; `router` defers to the legacy route tree (grid, awards, analysis, BC Bid pages). */
-export type Page = 'home' | 'insights' | 'procurement' | 'pursuits' | 'documents' | 'evidence' | 'ai-review' | 'workbench' | 'profiles' | 'sources' | 'settings' | 'router' | 'taxonomy';
+export type Page = 'home' | 'status' | 'insights' | 'procurement' | 'pursuits' | 'documents' | 'evidence' | 'ai-review' | 'workbench' | 'profiles' | 'sources' | 'settings' | 'router' | 'taxonomy';
 const PAGES: Record<string, Page> = {
-  '/home': 'home', '/insights': 'insights', '/procurement': 'procurement', '/pursuits': 'pursuits', '/documents': 'documents', '/evidence': 'evidence',
+  '/home': 'home', '/status': 'status', '/insights': 'insights', '/procurement': 'procurement', '/pursuits': 'pursuits', '/documents': 'documents', '/evidence': 'evidence',
   '/ai-review': 'ai-review', '/workbench': 'workbench', '/profiles': 'profiles', '/sources': 'sources', '/settings': 'settings', '/taxonomy': 'taxonomy',
 };
 export const pageOf = (location: string): Page => PAGES[pathOf(location)] ?? 'router';

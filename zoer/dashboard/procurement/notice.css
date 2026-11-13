@@ -123,3 +123,8 @@ button.pc-label[aria-pressed=true]{outline:2px solid currentColor;outline-offset
 .pc-notice-subhead{font-size:12px!important;font-weight:650;color:var(--text-muted);margin-top:.25rem}
 /* Phones: the five notice sections share the row instead of pushing "Activity" off the edge. */
 @media(max-width:639px){.pc-notice-tabs{gap:0;justify-content:space-between}.pc-notice-tabs button{flex:1 0 auto;min-height:44px;padding:0 .5rem;font-size:13px}}
+.pc-notice-files{display:flex;flex-direction:column;gap:.5rem}
+.pc-notice-file-list{display:flex;flex-direction:column;gap:.5rem;font-size:13px;line-height:1.45}
+.pc-notice-file-list>li{display:flex;flex-direction:column;gap:.125rem;min-width:0}
+.pc-notice-file-list small{color:var(--text-secondary)}
+.pc-notice-file-list .pc-status{margin-right:.25rem}

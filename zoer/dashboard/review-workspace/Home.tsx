@@ -18,6 +18,8 @@ import { Today } from './Today';
 import { SOON_DAYS } from './today-data';
 import { friendlyDeadline } from './deadline-text';
 import { readAttentionSummary, readCoverage, readDeadlines, readPolicies, readQueue, readRecentDecisions, readReviewCoverage, readSourceHealth } from './home-data';
+import { StatusCard } from '../procurement/Status';
+import { useNarrowScreen } from '../mobile';
 import './review.css';
 
 /** One short line per queue for the compact attention row (QUEUE_TEXT's own description is the long form, kept for its title attribute). */
@@ -203,9 +205,10 @@ export function Home() {
   const location = usePluginLocation(), source = new URLSearchParams(location.split('?')[1]).get('source') ?? '';
   const workspace = useReviewWorkspace(), available = workspace.data?.available === true;
   const { profileVersionId, active } = useActiveProfile();
-  const [asOf, setAsOf] = useState(() => Date.now()), client = useQueryClient(), { surface } = useCapabilities();
+  const [asOf, setAsOf] = useState(() => Date.now()), client = useQueryClient(), { surface, collection } = useCapabilities();
   const inventory = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'inventory'], queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60_000 });
   const policies = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'policies', profileVersionId], enabled: available, queryFn: () => readPolicies(profileVersionId) });
+  const phone = useNarrowScreen('(max-width: 640px)');
   const sources = [...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))];
   const refresh = () => { setAsOf(Date.now()); void client.invalidateQueries({ queryKey: [...REVIEW_KEY, 'home'] }); };
   const policy = !available ? (workspace.isPending ? 'Checking…' : 'Requires the review workspace') : policies.isPending ? 'Loading…' : policies.isError ? 'Could not load' : policies.data?.length ? `Assessment policy: ${policies.data.map(row => `${row.policy} (${plural(Number(row.count), 'assessment')})`).join(', ')}` : 'No current assessments for this profile';
@@ -219,6 +222,7 @@ export function Home() {
       </div>
     </header>
     {!workspace.isPending && !available && <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved notices, documents, deadlines and pursuits are still shown below.</p>}
+    {collection && phone && <StatusCard />}
     <Today source={source} asOf={asOf} />
     <AttentionTiles source={source} profile={profileVersionId} active={active !== null} asOf={asOf} available={available} />
     {/* Two independent columns, so a long panel on one side never leaves a gap on the other. */}
@@ -228,6 +232,7 @@ export function Home() {
         <Deadlines source={source} asOf={asOf} />
       </div>
       <div className="rw-home-side">
+        {collection && !phone && <StatusCard />}
         <Coverage source={source} profile={profileVersionId} available={available} />
         {available && <RecentDecisions source={source} />}
         <PursuitSummary />

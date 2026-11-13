@@ -4,7 +4,7 @@ import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, pageOf, redirectOf, sectionOf, vi
 describe('review workspace navigation', () => {
   it('has six primary sections and a separate Configure group', () => {
     expect(PRIMARY_SECTIONS.map(([id]) => id)).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'evidence', 'insights']);
-    expect(CONFIGURE_SECTIONS.map(([id]) => id)).toEqual(['workbench', 'profiles', 'sources', 'taxonomy']);
+    expect(CONFIGURE_SECTIONS.map(([id]) => id)).toEqual(['status', 'workbench', 'profiles', 'sources', 'taxonomy']);
     // Every size uses one full name for a section.
     expect([...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS].every(tab => tab.length === 3)).toBe(true);
   });
@@ -15,7 +15,7 @@ describe('review workspace navigation', () => {
       ['/pursuits', 'pursuits'], ['/evidence', 'evidence'], ['/documents', 'documents'],
       ['/insights', 'insights'], ['/analysis/overview', 'insights'], ['/analysis', 'insights'], ['/contract-awards', 'insights'], ['/contract-awards/analysis/suppliers/x', 'insights'], ['/contract-awards/runs', 'insights'],
       ['/ai-review', 'workbench'], ['/workbench', 'workbench'], ['/profiles', 'profiles'],
-      ['/sources', 'sources'], ['/bc-bid-dashboard', 'sources'], ['/scraper', 'sources'], ['/scraper/history', 'sources'], ['/settings', 'sources'],
+      ['/status', 'status'], ['/sources', 'sources'], ['/bc-bid-dashboard', 'sources'], ['/scraper', 'sources'], ['/scraper/history', 'sources'], ['/settings', 'sources'],
     ];
     for (const [route, section] of cases) expect([route, sectionOf(route)]).toEqual([route, section]);
     // Prefix look-alikes are not captured by another section.

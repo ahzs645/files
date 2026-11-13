@@ -4,6 +4,8 @@ import { resumableCheckpoint, resumeFullScrape, testScraperBrowser, useWorkspace
 import { AwardHistoryPanel } from './Catalog';
 import { usePluginQuery } from './navigation';
 import { TargetedRefreshPanel } from './TargetedRefresh';
+import { plainError } from './error-text';
+import { SettingsLink } from './procurement/Status';
 
 /** Compact pre-flight for the Scraper tab: resume a saved checkpoint, or test browser access before a full scrape. */
 export function ScraperSetup() {
@@ -23,7 +25,7 @@ export function ScraperSetup() {
   const browserCheck = /browser check|verification/i.test(stopped?.errorMessage ?? '');
   const act = async (fn: () => Promise<unknown>, set: (value: boolean) => void) => {
     set(true); setError(undefined);
-    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { set(false); }
+    try { await fn(); } catch (e) { setError(plainError(e instanceof Error ? e.message : String(e))); } finally { set(false); }
   };
   return <>
     {continuing && <section className="zoer-history zoer-setup zoer-continue" role="region" aria-label="Continue stopped scrape">
@@ -33,7 +35,7 @@ export function ScraperSetup() {
             : active ? 'The scrape is running again; progress appears in Recent runs.'
             : resume ? `${resume.pending.length.toLocaleString()} ${resume.pending.length === 1 ? 'opportunity still needs its' : 'opportunities still need their'} details. Saved records are kept.`
             : 'The last scrape has no saved progress to continue. Start a new scrape below.'}</p>
-          {!active && resume && stopped?.errorMessage && <p className="zoer-continue-reason">Stopped: {stopped.errorMessage}</p>}
+          {!active && resume && stopped?.errorMessage && <p className="zoer-continue-reason pc-wrap">Stopped: {plainError(stopped.errorMessage)}</p>}
           {!active && resume && browserCheck && <p><strong>First:</strong> open the BC Bid browser in Zoer, complete the check, then hand control back.</p>}
         </div>
         {!active && resume && <Button loading={resuming} onClick={() => void act(async () => { await resumeFullScrape(); setContinuing(''); }, setResuming)}>{resuming ? 'Continuing…' : 'Continue scrape'}</Button>}
@@ -49,13 +51,13 @@ export function ScraperSetup() {
     </section>}
     <section className="zoer-history zoer-setup" aria-labelledby="scraper-setup-title">
       <div className="zoer-setup-row">
-        <div><h2 id="scraper-setup-title">Browser check</h2><p>Choose a saved browser profile in Settings and allow agents. Zoer starts it when needed. Test one listing and one detail before a full scrape.</p></div>
+        <div><h2 id="scraper-setup-title">Browser check</h2><p>Choose the saved browser BC Bid uses in Zoer’s Settings and allow agents. Zoer starts it when needed. Test one listing and one detail before a full scrape. <SettingsLink section="browsers" /></p></div>
         <Button variant="ghost" disabled={active} loading={pending} onClick={() => void act(async () => { setRunId(undefined); setRunId(await testScraperBrowser()); }, setPending)}>Test browser</Button>
       </div>
       {runId && <p role={result?.status === 'failed' ? 'alert' : 'status'}>{result?.status === 'succeeded'
         ? `Test passed: ${result.counts.listingCount} listings and ${result.counts.detailCount} detail saved.`
         : result?.errorCode === 'scrape_interrupted' ? 'Test interrupted before completion was confirmed. Test again once the browser is ready.'
-        : result?.status === 'failed' ? result.errorMessage || 'Test failed. Check Run history for details.'
+        : result?.status === 'failed' ? plainError(result.errorMessage) || 'Test failed. Check BC Bid › Runs for details.'
         : result?.status === 'cancelled' ? 'Test stopped. Saved records are retained.'
         : 'Test running. Progress appears in Recent runs.'}</p>}
       {error && !continuing && <p role="alert">{error}</p>}
