@@ -1,6 +1,7 @@
 import { sql } from '../procurement/display';
 import { HIDDEN_IDS_SQL } from '../procurement/state-contract';
 import { addDays, zoneDate } from '../procurement/deadline';
+import { canonicalNoticeSql } from '../procurement/canonical';
 import { QUEUES, acquireParts, and, assessmentScope, deadlineWindowSql, fitBucketSql, fitSql, openSql, queueSql, recordColumns, sourceSql, type Fragment, type QueueId } from './queue';
 
 /**
@@ -15,7 +16,7 @@ const openWork = (asOf: number): Fragment => and(openSql(asOf), { sql: `${r.id} 
 /** Opportunity notices from one source (or all), open or closed. */
 export const opportunityScope = (source: string): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source));
 /** Insights scope: opportunities from the chosen source, open ones only unless `open` is false. */
-export const insightScope = (source: string, open: boolean, asOf: number): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, open ? openSql(asOf) : null, sourceSql(source));
+export const insightScope = (source: string, open: boolean, asOf: number): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, open ? openSql(asOf, '', source ? 'include' : 'exclude') : { sql: canonicalNoticeSql('', { crossSource: source ? 'include' : 'exclude' }), parameters: [] }, sourceSql(source));
 const inScope = (scope: Fragment, column = 'record_id'): Fragment => ({ sql: `${column} IN (SELECT id FROM records WHERE ${scope.sql})`, parameters: scope.parameters });
 
 export type QueueResult = { total: number; items: any[] };

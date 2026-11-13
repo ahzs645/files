@@ -19,6 +19,7 @@ import { LINK_SOURCES } from './link-sources';
 import { CanadaBuysImport } from './CanadaBuysImport';
 import { BrowserSourcesCard } from './BrowserSourcesCard';
 import { INVENTORY_SQL, sourceName, sql } from './display';
+import { canonicalNoticeSql } from './canonical';
 import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from '../document-run';
 import { plainError, shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
@@ -259,14 +260,14 @@ function LinkSources() {
 }
 
 const SOURCE_SQL = "CASE WHEN json_extract(r.data,'$.sourceId') IS NULL OR json_extract(r.data,'$.sourceId')='' THEN 'bc-bid' ELSE json_extract(r.data,'$.sourceId') END";
-// Discovery is judged from what the saved notice holds: attachment links, or captured detail fields without links.
+// One row per notice (canonical.ts). Discovery is judged from what the saved notice holds: attachment links, or captured detail fields without links.
 const ATTACHMENT_SQL = `SELECT ${SOURCE_SQL} AS sourceId, count(*) AS total,
   sum(json_extract(r.data,'$.attachments[0]') IS NULL AND json_extract(r.data,'$.detailFields[0]') IS NULL) AS notChecked,
   sum(json_extract(r.data,'$.attachments[0]') IS NULL AND json_extract(r.data,'$.detailFields[0]') IS NOT NULL) AS checkedNoLinks,
   sum(json_extract(r.data,'$.attachments[0]') IS NOT NULL) AS withLinks,
   sum((SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded')>0) AS withFiles,
   sum((SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded' AND coalesce(length(d.text),0)=0)>0) AS noText
-  FROM records r WHERE r.kind='opportunity' GROUP BY sourceId`;
+  FROM records r WHERE r.kind='opportunity' AND ${canonicalNoticeSql('r', { crossSource: 'include' })} GROUP BY sourceId`;
 const BATCH_SQL = 'SELECT id, kind, status, completed, failed, total, error, updated_at FROM batches ORDER BY updated_at DESC LIMIT 200';
 const FAILURE_SQL = "SELECT t.record_id, r.title, t.kind, t.status, t.error, t.updated_at, json_extract(t.result,'$.name') AS name, json_extract(t.result,'$.phase') AS phase FROM research_tasks t LEFT JOIN records r ON r.id=t.record_id WHERE t.status IN ('failed','waiting_for_user') ORDER BY t.updated_at DESC LIMIT 200";
 const KIND_TEXT = BATCH_KIND_TEXT;

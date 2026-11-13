@@ -12,6 +12,7 @@ import { collectionSlice, runCollection } from './collection-run';
 import { updateProcurementState } from './procurement-state';
 import { updateProcurementClassifications } from './procurement-classifications';
 import { backfillEnrichment } from './procurement-enrichment';
+import { normalizeCatalog } from './catalog-normalize';
 import { createRequestPacing, requestDelaySeconds } from './request-pacing';
 import { captureMissingDetails } from './missing-details';
 import { historicalSlice } from './historical-scrape';
@@ -90,6 +91,9 @@ try {
   } else if (request.action.id === 'procurement.enrich') {
     if (!catalogTicket) throw new Error('Tagging places requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await backfillEnrichment(catalogCall, request.input ?? {}, runId) });
+  } else if (request.action.id === 'catalog.normalize') {
+    if (!catalogTicket) throw new Error('Cleaning up saved notices requires an existing catalog grant.');
+    write({ protocolVersion: '1', runId, ok: true, output: await normalizeCatalog(catalogCall, request.input ?? {}, runId) });
   } else if (request.action.id === 'procurement.state') {
     if (!catalogTicket) throw new Error('Procurement state requires an existing catalog grant.');
     write({ protocolVersion: '1', runId, ok: true, output: await updateProcurementState(catalogCall, request.input ?? {}, runId) });

@@ -10,6 +10,12 @@
 export type DeadlineState = 'open' | 'closing_today_time_unverified' | 'closed' | 'unknown';
 export const DEADLINE_ZONE = 'America/Vancouver';
 export const CLOSING_TODAY_TEXT = 'closing date today; time unverified';
+/**
+ * Closing dates on or after this day are placeholders for "no fixed closing date" (standing offers, supply
+ * arrangements and qualification lists posted with 2074-12-31 or 2100-12-31): open-ended, never "closing soon".
+ */
+export const NO_FIXED_DATE_FROM = '2036-01-01';
+export const NO_FIXED_DATE_TEXT = 'No fixed closing date';
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const STAMP = /^(\d{4}-\d{2}-\d{2})[Tt ]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?([Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/;
@@ -98,6 +104,7 @@ export function shortDate(raw: unknown, now = Date.now(), deadline = true): { te
   if (typeof raw !== 'string' || !raw.trim()) return { text: 'No date', tone: '' };
   const value = raw.trim(), parsed = parseDeadline(value);
   if (!parsed) return { text: /^\d{4}-\d{2}-\d{2}/.test(value) && validDate(value.slice(0, 10)) ? dayText(value.slice(0, 10)) : value, tone: '' };
+  if (deadline && parsed.date >= NO_FIXED_DATE_FROM) return { text: NO_FIXED_DATE_TEXT, tone: '' };
   const state = deadline ? deadlineState(value, now) : 'unknown';
   if (parsed.precision === 'date') {
     const text = dayText(parsed.date);

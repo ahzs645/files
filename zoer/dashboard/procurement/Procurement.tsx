@@ -21,7 +21,7 @@ import { useActiveProfile } from '../review-workspace/profile-context';
 import { label } from '../review-workspace/queries';
 import { READINESS_BUCKETS, READINESS_TEXT, RELEVANCE_BUCKETS, RELEVANCE_TEXT } from '../review-workspace/queue';
 import { captureSnapshot, manualSnapshot, setSelection, toggleSelected, useSelection, type SelectionSnapshot } from '../review-workspace/selection';
-import { SOURCES, buildProcurementQuery, checkStatementSize, listKind } from './catalog';
+import { LIFECYCLE_FILTERS, SOURCES, buildProcurementQuery, checkStatementSize, listKind } from './catalog';
 import { SavedSearches } from './SavedSearches';
 import { AlertSettings } from './AlertSettings';
 import { EvidencePanel } from './EvidencePanel';
@@ -30,7 +30,7 @@ import { DuplicateFlag, PlaceFilter, usePageDuplicates } from './NoticeEnrichmen
 import { LabelChips } from './AiResult';
 import { LABEL_GROUPS, labelGroup } from './ai';
 import { useLabelFacets, useRecordLabels } from './labels';
-import { INVENTORY_SQL, sourceName, sql } from './display';
+import { INVENTORY_SQL, inventoryTotal as allSourcesTotal, sourceName, sql } from './display';
 import { ResultRow } from './ResultRow';
 import { ExcludeWordsField, HiddenNotice, HideButton, ProfileFilterLine, useHideNotices, useProfileFilterHits } from './Triage';
 import { parseExcludeTerms } from './exclude';
@@ -44,9 +44,10 @@ function usePhone() { return useMedia(PHONE); }
 /** Source status values for the toolbar's Status filter (the same `status` parameter as Source metadata · Source status). */
 const STATUS_SQL = "SELECT json_extract(data,'$.status') AS value, count(*) AS count FROM records WHERE kind='opportunity' AND coalesce(json_extract(data,'$.status'),'')!='' GROUP BY value ORDER BY count DESC, value LIMIT 12";
 const OPEN_WORDS = ['open', 'active'];
+const LIFECYCLE_TEXT: Record<(typeof LIFECYCLE_FILTERS)[number], string> = { closed: 'Closed (incl. deadline passed)', awarded: 'Awarded', cancelled: 'Cancelled', unknown: 'Status or closing date unknown' };
 // Views that used to be tabs on this page now live in their own sections.
 const MOVED_VIEWS: Record<string, string> = { board: '/pursuits', market: '/analysis/sources', sources: '/sources' };
-const BASE_PARAMS = ['search', 'source', 'kind', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'exclude', 'hidden', 'place', ...METADATA_FILTER_KEYS, ...TABLE_FILTER_PARAMS];
+const BASE_PARAMS = ['search', 'source', 'kind', 'lifecycle', 'deadline', 'shortlist', 'region', 'category', 'buyer', 'supplier', 'classification', 'aiLabel', 'exclude', 'hidden', 'place', ...METADATA_FILTER_KEYS, ...TABLE_FILTER_PARAMS];
 /** Notices hidden as not relevant: excluded unless the link asks to include them or show only them. */
 const HIDDEN_TEXT = { include: 'Including hidden notices', only: 'Hidden notices only' } as const;
 const PAGE = 25;
@@ -114,7 +115,8 @@ export function Procurement() {
   const [tableAsOf] = useState(asOf);
   const waitForWorkspace = workspace.isPending && needsWorkspace(scope, filters);
   const review = opportunityPredicate(scope, filters, { profileVersionId: active, asOf, workspace: available });
-  const base = { ...metadataFilters, source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, region, category, buyer, supplier, classification, aiLabel, exclude, hidden, place, asOf } as const;
+  const lifecycleParam = params.get('lifecycle') ?? '', lifecycle = (LIFECYCLE_FILTERS as readonly string[]).includes(lifecycleParam) ? lifecycleParam as (typeof LIFECYCLE_FILTERS)[number] : undefined;
+  const base = { ...metadataFilters, source, kind: kind === 'award' || kind === 'opportunity' ? kind : 'all', search, starred, deadline, lifecycle, region, category, buyer, supplier, classification, aiLabel, exclude, hidden, place, asOf } as const;
   let queryError='';
   let query: ReturnType<typeof buildProcurementQuery>;
   try { query = buildProcurementQuery({ ...base, sort: sort === 'fit' ? 'updated' : sort, order: sort === 'fit' ? fitOrderSql(profile) : undefined, where: review, offset: page * PAGE, limit: PAGE + 1 }); }
@@ -137,7 +139,8 @@ export function Procurement() {
   // Source counts follow the notice type, so "All sources" here matches the record pickers for the same type.
   for (const row of inventory.data ?? []) if (kind === 'all' || row.kind === kind) counts.set(row.sourceId, (counts.get(row.sourceId) ?? 0) + Number(row.count));
   const sources = [...SOURCES.map(item => item.id), ...[...counts.keys()].filter(id => !SOURCES.some(item => item.id === id))];
-  const inventoryTotal = [...counts.values()].reduce((sum, value) => sum + value, 0);
+  // A local copy of a BC Bid notice counts in its own source but once in the all-source total.
+  const inventoryTotal = allSourcesTotal(inventory.data, kind);
 
   const toggleStar = async (row: any) => {
     setSaving(row.id); setError('');
@@ -149,7 +152,7 @@ export function Procurement() {
   const chips = reviewChips(params, profileLabel);
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
   // Status (source status or the Open scope) sits in the toolbar, notice type in the sheet; "More filters" counts the sheet.
-  const statusActive = !!metadataFilters.status || params.get('open') === '1';
+  const statusActive = !!metadataFilters.status || params.get('open') === '1' || !!lifecycle;
   const extraCount = [...Object.entries(metadataFilters).filter(([key]) => key !== 'status').map(([, value]) => value), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude', kind !== 'opportunity' && deadline !== 'week'].filter(Boolean).length + reviewCount - (params.get('open') === '1' ? 1 : 0);
   const activeCount = extraCount + [source, statusActive, deadline === 'week', starred].filter(Boolean).length;
   const clearAll = () => { setTyped(''); filter(Object.fromEntries([...BASE_PARAMS, ...REVIEW_PARAMS].map(key => [key, '']))); };
@@ -169,11 +172,12 @@ export function Procurement() {
   const sourceSelect = <Select aria-label="Source" value={source} onChange={event => filter({ source: event.target.value })}><option value="">All sources{inventory.data ? ` · ${inventoryTotal.toLocaleString()}` : ''}</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}{counts.has(id) ? ` · ${counts.get(id)!.toLocaleString()}` : ''}</option>)}</Select>;
   const typeSelect = <Select aria-label="Notice type" value={kind} onChange={event => filter({ kind: event.target.value, ...(event.target.value !== 'opportunity' ? { deadline: '' } : {}) })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select>;
   const statuses = useCachedQuery({ queryKey: ['catalog', 'procurement-statuses'], enabled: !!model, queryFn: () => sql(STATUS_SQL), staleTime: 60_000 });
-  // "Open" is the review scope (status open/active/blank and the deadline not passed); other values are the source's own status text.
-  const statusParam = params.get('status') ?? '', statusValue = params.get('open') === '1' ? 'open' : statusParam ? 's:' + statusParam : '';
+  // "Open" is the review scope and Closed/Awarded/Cancelled/Unknown the effective lifecycle (lifecycle.ts: a notice the
+  // source still calls "Open" after its closing date is Closed); "Source says …" values are the source's own text.
+  const statusParam = params.get('status') ?? '', statusValue = params.get('open') === '1' ? 'open' : lifecycle ? 'e:' + lifecycle : statusParam ? 's:' + statusParam : '';
   const statusOptions = (statuses.data ?? []).map(row => String(row.value)).filter(value => !OPEN_WORDS.includes(value.toLowerCase()));
   if (statusParam && !statusOptions.includes(statusParam)) statusOptions.unshift(statusParam);
-  const statusSelect = <Select aria-label="Status" value={statusValue} onChange={event => { const value = event.target.value; filter({ open: value === 'open' ? '1' : '', status: value.startsWith('s:') ? value.slice(2) : '' }); }}><option value="">Any status</option><option value="open">Open</option>{statusOptions.map(value => <option key={value} value={'s:' + value}>{value}</option>)}</Select>;
+  const statusSelect = <Select aria-label="Status" value={statusValue} onChange={event => { const value = event.target.value; filter({ open: value === 'open' ? '1' : '', lifecycle: value.startsWith('e:') ? value.slice(2) : '', status: value.startsWith('s:') ? value.slice(2) : '' }); }}><option value="">Any status</option><option value="open">Open</option>{LIFECYCLE_FILTERS.map(value => <option key={value} value={'e:' + value}>{LIFECYCLE_TEXT[value]}</option>)}{statusOptions.map(value => <option key={value} value={'s:' + value}>Source says “{value}”</option>)}</Select>;
   const closingChip = <button type="button" className="pc-chip" aria-pressed={deadline === 'week'} onClick={() => filter(deadline === 'week' ? { deadline: '' } : { deadline: 'week', kind: 'opportunity' })}>Closing in 7 days</button>;
   const shortlistChip = <button type="button" className="pc-chip" aria-pressed={starred} onClick={() => filter({ shortlist: starred ? '' : '1' })}><Star aria-hidden="true" className="h-3.5 w-3.5" />Shortlisted</button>;
   const extraFields = <MetadataFilters params={params} filter={filter} />;
