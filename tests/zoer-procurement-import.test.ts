@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCanadaBuysCsv, preserveCanadaBuysEnrichment, verifyCanadaBuysImportReceipt } from '../zoer/dashboard/procurement/import-canadabuys';
+import { canadaBuysText, parseCanadaBuysCsv, preserveCanadaBuysEnrichment, verifyCanadaBuysImportReceipt } from '../zoer/dashboard/procurement/import-canadabuys';
 
 const ref = 'referenceNumber-numeroReference', title = 'title-titre-eng';
 const provenance = { fileName: 'canada.csv', sha256: 'a'.repeat(64), importedAt: '2026-09-22T12:00:00Z' };
@@ -19,6 +19,24 @@ describe('CanadaBuys offline import', () => {
       detailUrl: 'https://example.ca/tender?id=12', rawSourceData: { 'title-titre-fra': 'Réparation du toit' } });
     expect(records[0].processId).toBe(records[0].sourceKey);
     expect(records[0].opportunityId).toBe(records[0].sourceKey);
+  });
+  it('decodes the HTML entities CanadaBuys leaves in its text and starts the MERX footer on its own paragraph', () => {
+    const description = 'The Tungsten Total Agility (TTA) (formerly Kofax, &ldquo;KTA&rdquo;) managed services, as further detailed in section&nbsp;2 of tender document. '
+      + 'Continuous evolution of the existing Platform.Bidding and Documents are available on http://www.merx.com.  Fees may apply.';
+    const { records } = parse(csv([ref, title, 'tenderDescription-descriptionAppelOffres-eng', 'contractingEntityName-nomEntitContractante-eng'], [
+      ['MX-1', 'Caf&eacute; &amp; Kitchen', description, 'Soci&eacute;t&eacute; &laquo;A&raquo;'],
+    ]));
+    expect(records[0]).toMatchObject({ description: 'Café & Kitchen', issuedBy: 'Société «A»',
+      descriptionText: 'The Tungsten Total Agility (TTA) (formerly Kofax, “KTA”) managed services, as further detailed in section 2 of tender document. '
+        + 'Continuous evolution of the existing Platform.\n\nBidding and Documents are available on http://www.merx.com.  Fees may apply.' });
+    expect(records[0].sourceDescriptionText).toBe(records[0].descriptionText);
+    expect(records[0].searchText).toContain('Café & Kitchen');
+    expect(records[0].rawSourceData['tenderDescription-descriptionAppelOffres-eng']).toBe(description);
+    // A link glued to the footer keeps its digits; a footer already on its own line, or after a decoded no-break space, is left alone.
+    expect(canadaBuysText('https://discovery.ariba.com/rfx/20608792Bidding and Documents are available on x')).toBe('https://discovery.ariba.com/rfx/20608792\n\nBidding and Documents are available on x');
+    expect(canadaBuysText('Brett.Cooper@dcc-cdc.gc.ca.\r\n&nbsp;Bidding and Documents are available on x')).toBe('Brett.Cooper@dcc-cdc.gc.ca.\r\n Bidding and Documents are available on x');
+    expect(canadaBuysText('Line one.\r\nRFEOI.Bidding and Documents are available on x')).toBe('Line one.\r\nRFEOI.\r\n\r\nBidding and Documents are available on x');
+    for (const text of [description, records[0].descriptionText]) expect(canadaBuysText(canadaBuysText(text))).toBe(canadaBuysText(text));
   });
   it('compacts duplicated narrative copies losslessly for legitimate long bilingual descriptions', () => {
     const en = 'English long notice '.repeat(3500), fr = 'Description française '.repeat(2500);

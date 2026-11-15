@@ -1,5 +1,6 @@
 /** Offline CanadaBuys tender CSV import. No network, storage creation or source mutation. */
 import { attachmentsAccess, cleanAttachments, fileNameOf, normalizePlaceholderClosing, safeHttpsUrl, type AttachmentLink } from '../../src/connectors/attachments';
+import { entityText } from '../../src/connectors/html';
 import { cleanRegionText } from './region';
 export interface CanadaBuysProvenance { fileName: string; sha256: string; importedAt: string }
 
@@ -12,6 +13,18 @@ const TITLE_EN = 'title-titre-eng';
 const TITLE_FR = 'title-titre-fra';
 const AMENDMENT = 'amendmentNumber-numeroModification';
 const encoder = new TextEncoder();
+// MERX notices end with this sentence, which CanadaBuys appends with no space or line break (`…Platform.Bidding and
+// Documents…`, `…/rfx/20608792Bidding…`). It starts its own paragraph so the last word or link stays intact.
+const MERX_FOOTER = /(?<=\S)[ \t]*(?=Bidding and Documents are available on )/g;
+/**
+ * A CanadaBuys text cell as readers should see it. The CSV keeps its rich-text editor's HTML entities (`&ldquo;KTA&rdquo;`,
+ * `section&nbsp;2`) without the tags; they are decoded here so every copy (description, search text, contacts) is
+ * plain text. `rawSourceData` keeps the cell exactly as published.
+ */
+export function canadaBuysText(cell: string): string {
+  const text = entityText(cell);
+  return text.replace(MERX_FOOTER, text.includes('\r\n') ? '\r\n\r\n' : '\n\n');
+}
 
 /** The CanadaBuys key of one reference and amendment (the shape every saved CanadaBuys row has). */
 export const canadaBuysKey = (reference: string, amendment: string) => `canadabuys:tender:${encodeURIComponent(reference)}:${encodeURIComponent(amendment)}`;
@@ -144,7 +157,7 @@ export function parseCanadaBuysCsv(text: string, provenance: CanadaBuysProvenanc
     if (cells.length !== headers.length) throw new Error(`CSV record ${line} has ${cells.length} fields; expected ${headers.length}.`);
     const raw: Record<string, string> = Object.create(null);
     headers.forEach((header, i) => { raw[header] = cells[i]; });
-    const value = (...keys: string[]) => keys.map(key => raw[key]?.trim()).find(Boolean) ?? '';
+    const value = (...keys: string[]) => keys.map(key => raw[key] ? canadaBuysText(raw[key]) : '').find(Boolean) ?? '';
     const bilingual = (key: string) => value(`${key}-eng`, `${key}-fra`);
     const externalId = value(REF), title = value(TITLE_EN, TITLE_FR);
     if (!externalId || !title) throw new Error(`CSV record ${line} needs a nonempty reference and title.`);

@@ -5,6 +5,7 @@ import {
   documentUrl, noticeNumber, parseListingPage, parseNoticeDocuments, parseNoticePage, readSearchForm, searchUrl, splitZoned,
 } from '../zoer/src/connectors/bidsandtenders';
 import { CONNECTORS } from '../zoer/src/connectors';
+import { entityText } from '../zoer/src/connectors/html';
 import type { NetRequest, NetResponse } from '../zoer/src/connectors/types';
 import { BIDSANDTENDERS_PORTALS } from '../zoer/dashboard/procurement/portals';
 import manifest from '../zoer/manifest.json';
@@ -35,6 +36,20 @@ describe('bids&tenders page parsing', () => {
   it('decodes entities and keeps paragraph breaks when turning descriptions into text', () => {
     expect(decodeEntities('A&amp;B&nbsp;&#8217;&#x2013;&rsquo;&unknownentity;')).toBe('A&B ’–’&unknownentity;');
     expect(htmlToText('<p style="x">One&nbsp;two.</p><p>Three<br>four</p><ul><li>a</li><li>b</li></ul><script>bad()</script>')).toBe('One two.\nThree\nfour\n• a\n• b');
+  });
+  it('decodes every HTML 4 entity name, Windows-1252 numeric references and nothing that is not an entity', () => {
+    expect(decodeEntities('m&sup2; &oelig;uvre &ordm; &thetasym; &Eacute;&eacute; &#146;s &#x93;q&#x94; &#39;')).toBe('m² œuvre º ϑ Éé ’s “q” \'');
+    expect(decodeEntities('&valueOf; &toString; &nbsp &#0; &#xD800; &amp;ldquo;')).toBe('&valueOf; &toString; &nbsp &#0; &#xD800; &ldquo;');
+  });
+  it('breaks lines at block starts as well as ends, and keeps table cells apart', () => {
+    expect(htmlToText('Intro<p>Para one<div>Inner</div>tail<hr>after')).toBe('Intro\nPara one\nInner\ntail\nafter');
+    expect(htmlToText('<table><tr><th>Name</th><td>Value</td></tr></table>')).toBe('Name Value');
+    expect(htmlToText('&lt;script&gt;alert(1)&lt;/script&gt;')).toBe('<script>alert(1)</script>');
+  });
+  it('turns entity-carrying plain text into text without touching what looks like markup', () => {
+    const raw = '(formerly Kofax, &ldquo;KTA&rdquo;) in section&nbsp;2 &amp;rsquo; &lt; 5 m and > 2 m\r\nNext';
+    expect(entityText(raw)).toBe('(formerly Kofax, “KTA”) in section 2 ’ < 5 m and > 2 m\r\nNext');
+    expect(entityText(entityText(raw))).toBe(entityText(raw));
   });
 });
 
