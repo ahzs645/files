@@ -9,34 +9,38 @@ import { shortError } from './error-text';
 import { assertDocumentBrowserIdle } from './document-run';
 import { useCapabilities } from './capabilities';
 import { usePluginQuery } from './navigation';
+import { DOCUMENT_STATS_SQL, FILE_FILTERS, fileFilterSql, fileState, fileWarning } from './document-processing';
 
 const query = (statement: string, parameters: (string | number)[] = []) => host('catalog.query', {statement,parameters});
 const bytes = (n: number) => n >= 1073741824 ? `${(n/1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n/1048576).toFixed(1)} MB` : `${Math.ceil(n/1024)} KB`;
 
 /** Saved files and their AI-readable text, counted separately: empty text can mean a scan, drawing or unsupported file. */
-export function DocumentStats({refreshKey = '', onShowFailed}: {refreshKey?: string; onShowFailed?: () => void}) {
-  const stats=useQuery({queryKey:['procurement','document-stats'],queryFn:()=>query("SELECT count(*) files,sum(status='downloaded') downloaded,sum(status='failed') failed,sum(length(text)>0) readable,sum(status='downloaded' AND coalesce(length(text),0)=0) unreadable,sum(bytes) bytes FROM documents"),refetchInterval:10000});
+export function DocumentStats({refreshKey = '', onShowFailed, onShowPending}: {refreshKey?: string; onShowFailed?: () => void; onShowPending?: () => void}) {
+  const stats=useQuery({queryKey:['procurement','document-stats'],queryFn:()=>query(DOCUMENT_STATS_SQL),refetchInterval:10000});
   const count=stats.data?.rows?.[0];
   if(stats.error)return <p role="alert">{(stats.error as Error).message}</p>;
   if(!count)return <p role="status" className="research-note">Counting saved files…</p>;
   const tiles:[string,string,string?][]=[
     ['Files saved',Number(count.downloaded??0).toLocaleString()],
     ['Readable by AI',Number(count.readable??0).toLocaleString()],
+    // Saved by a download, not read yet: Documents → Processing extracts the text.
+    ...(Number(count.pending??0)>0?[['Text pending',Number(count.pending).toLocaleString(),'Saved; text not extracted yet'] as [string,string,string]]:[]),
     ['No text',Number(count.unreadable??0).toLocaleString(),'Scans, drawings or unsupported files'],
     ['Failed',Number(count.failed??0).toLocaleString()],
     ['Storage',bytes(Number(count.bytes??0))],
   ];
-  return <dl className="research-metrics doc-stats" aria-label="Document coverage">{tiles.map(([label,value,hint])=><div key={label} data-tone={label==='Failed'&&value!=='0'?'bad':undefined}><dt>{label}</dt><dd>{label==='Failed'&&value!=='0'&&onShowFailed?<button type="button" className="doc-stat-link" aria-label={`Show ${value} failed files`} onClick={onShowFailed}>{value}</button>:value}</dd>{hint&&<small className="doc-stat-hint">{hint}</small>}</div>)}</dl>;
+  return <dl className="research-metrics doc-stats" aria-label="Document coverage">{tiles.map(([label,value,hint])=><div key={label} data-tone={label==='Failed'&&value!=='0'?'bad':undefined}><dt>{label}</dt><dd>{label==='Failed'&&value!=='0'&&onShowFailed?<button type="button" className="doc-stat-link" aria-label={`Show ${value} failed files`} onClick={onShowFailed}>{value}</button>:label==='Text pending'&&onShowPending?<button type="button" className="doc-stat-link" aria-label={`Open processing for ${value} files waiting for text`} onClick={onShowPending}>{value}</button>:value}</dd>{hint&&<small className="doc-stat-hint">{hint}</small>}</div>)}</dl>;
 }
 
-const STATUS:[string,string][]=[['all','All files'],['failed','Failed'],['unreadable','No text'],['warnings','With warnings']];
 
 /** Searchable list of saved files with a per-bid retry or text extraction. */
-export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy = false, fileTransferControls = false, showSize = true}: {showSize?:boolean;fileTransferControls?:boolean;onDetails(id:string):void;refreshKey?:string;running:boolean;browserBusy?:boolean}) {
+export function DocumentFiles({onDetails, refreshKey = '', downloadRunning, processingRunning, browserBusy = false, fileTransferControls = false, showSize = true}: {showSize?:boolean;fileTransferControls?:boolean;onDetails(id:string):void;refreshKey?:string;
+  /** A download batch is running: file retries wait. */ downloadRunning:boolean;
+  /** A text extraction is running: Re-extract waits. Neither blocks the other. */ processingRunning:boolean;browserBusy?:boolean}) {
   const [filter,setFilter]=usePluginQuery('fileStatus','all'),[search,setSearch]=useState(''),[page,setPage]=useState(0);
   const [busy,setBusy]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState('');
   const {collection}=useCapabilities();
-  const where=filter==='failed'?"d.status='failed'":filter==='unreadable'?"d.status='downloaded' AND coalesce(length(d.text),0)=0":filter==='warnings'?"d.error IS NOT NULL AND d.status='downloaded'":"1=1";
+  const where=fileFilterSql(filter);
   const parameters=[`%${search}%`,`%${search}%`,`%${search}%`];
   const clause=`d.name LIKE ? AND ${where} OR r.title LIKE ? AND ${where} OR d.record_id LIKE ? AND ${where}`;
   const expectedSize = fileTransferControls
@@ -48,19 +52,19 @@ export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy 
   return <section className="zoer-history" aria-label="Saved files">
     <div className="research-toolbar">
       <label className="research-label research-grow"><span className="sr-only">Search files</span><input maxLength={250} aria-label="Search files" placeholder="Search by file name, bid number or title" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} /></label>
-      <label className="research-label"><span className="sr-only">Show</span><Select aria-label="File coverage" value={filter} onChange={e=>{setFilter(e.target.value==='all'?'':e.target.value);setPage(0);}}>{STATUS.map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select></label>
+      <label className="research-label"><span className="sr-only">Show</span><Select aria-label="File coverage" value={filter} onChange={e=>{setFilter(e.target.value==='all'?'':e.target.value);setPage(0);}}>{FILE_FILTERS.map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select></label>
     </div>
     {(error||files.error)&&<p role="alert">{error||(files.error as Error).message}</p>}{message&&<p role="status">{message}</p>}
     {files.isPending?<p role="status">Loading saved files…</p>:!rows.length?<p>No files match.</p>:<div className="research-file-list doc-file-list">{rows.map((row:any)=>{
-      const state=row.status==='failed'?['bad','Failed']:row.chars?['good','Readable']:['warn','No text'];
+      const state=fileState(row),warning=fileWarning(row);
       return <article key={row.id}>
         <div className="research-file-info">
           <strong>{row.name}</strong>
           <span className="research-note">{row.title}{(id=>id.includes(':')?'':` · ${id}`)(String(row.record_id).replace(/^(opportunity|award):/,''))}{showSize && ` · ${fileSize(row.status==='downloaded' ? row.bytes : row.expectedBytes)}`}</span>
-          {row.error&&<Hint content={row.error}><span className="research-file-warning doc-clamp">{shortError(row.error)}</span></Hint>}
+          {warning&&<Hint content={warning}><span className="research-file-warning doc-clamp">{shortError(warning)}</span></Hint>}
         </div>
         <Hint content={row.chars?`${Number(row.chars).toLocaleString()} characters of text`:undefined}><span className="doc-chip" data-tone={state[0]}>{state[1]}</span></Hint>
-        <div className="research-toolbar doc-file-actions"><Button variant="ghost" onClick={()=>onDetails(row.record_id)}>Open</Button>{collection&&<Button variant="ghost" disabled={!!busy||running||(browserBusy&&row.status!=='downloaded')} onClick={()=>void act(row,row.status==='downloaded')}>{busy===row.id?'Starting…':row.status==='downloaded'?'Re-extract':fileTransferControls?'Retry':'Retry notice'}</Button>}</div>
+        <div className="research-toolbar doc-file-actions"><Button variant="ghost" onClick={()=>onDetails(row.record_id)}>Open</Button>{collection&&<Button variant="ghost" disabled={!!busy||(row.status==='downloaded'?processingRunning:downloadRunning||browserBusy)} onClick={()=>void act(row,row.status==='downloaded')}>{busy===row.id?'Starting…':row.status==='downloaded'?'Re-extract':fileTransferControls?'Retry':'Retry notice'}</Button>}</div>
       </article>;})}</div>}
     <div className="research-toolbar research-pager"><Button variant="ghost" disabled={!page||files.isFetching} onClick={()=>setPage(page-1)}>Previous</Button><span>Page {page+1}</span><Button variant="ghost" disabled={!files.data||files.data.rows.length<=50||files.isFetching} onClick={()=>setPage(page+1)}>Next</Button></div>
     <details><summary data-zoer-disclosure="">Supported file types</summary><p className="research-note">PDF (OCR on up to 40 scanned pages), Word (DOCX, DOC, RTF), Excel (XLSX, XLS), PowerPoint (PPTX, PPT), images by OCR, Google Earth maps (KML, KMZ), text and ZIP, including one nested ZIP level. Text is capped at 1,500,000 characters. Encrypted ZIPs, CAD drawings and GIS data are kept as originals for manual review.</p></details>

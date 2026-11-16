@@ -69,7 +69,7 @@ export type SectionView = [string, string, string];
 export const SECTION_VIEWS: Partial<Record<Section, SectionView[]>> = {
   opportunities: [['table', 'Browse', '/procurement'], ['matrix', 'Fit matrix', '/procurement?view=matrix'], ['compare', 'Compare', '/procurement?view=compare']],
   insights: [['decisions', 'Decision insights', '/insights'], ['market', 'Market analysis', '/analysis/overview'], ['awards', 'Award history', '/contract-awards']],
-  documents: [['download', 'Download', '/documents'], ['files', 'Files', '/documents?tab=files'], ['history', 'History', '/documents?tab=history']],
+  documents: [['download', 'Download', '/documents'], ['processing', 'Processing', '/documents?tab=processing'], ['files', 'Files', '/documents?tab=files'], ['history', 'History', '/documents?tab=history']],
   // Run reviews and Analysis used to be a second button row inside AI review; they are views of the section now.
   workbench: [['reviews', 'Run reviews', '/ai-review'], ['analysis', 'Analysis', '/ai-review?view=analysis'], ['stages', 'Pipeline stages', '/workbench']],
 };
@@ -82,8 +82,8 @@ type Need = keyof NavCapabilities;
  * write (profile editor) or call AI models (the AI workbench).
  */
 const SECTION_NEEDS: Partial<Record<Section, Need>> = { status: 'collection', sources: 'collection', taxonomy: 'collection', profiles: 'writes', workbench: 'ai' };
-/** Views that start host work: downloads and their batch history are collection; running reviews and stage tests write. */
-const VIEW_NEEDS: Partial<Record<Section, Record<string, Need>>> = { documents: { download: 'collection', history: 'collection' }, workbench: { reviews: 'writes', stages: 'writes' } };
+/** Views that start host work: downloads, text extraction and their batch history are collection; running reviews and stage tests write. */
+const VIEW_NEEDS: Partial<Record<Section, Record<string, Need>>> = { documents: { download: 'collection', processing: 'collection', history: 'collection' }, workbench: { reviews: 'writes', stages: 'writes' } };
 const has = (caps: NavCapabilities, need: Need | undefined) => !need || caps[need];
 /** A section's views this host can show (undefined when the section has no views). */
 /** Evidence as the last Insights view in review mode; `/evidence` keeps resolving there. */
@@ -131,7 +131,7 @@ export function viewOf(location: string, caps?: NavCapabilities): string {
     case 'opportunities': { const view = params.get('view'); return view === 'matrix' || view === 'compare' ? view : 'table'; }
     case 'insights': return path === '/insights' ? 'decisions' : path === '/evidence' ? 'evidence' : under(path, '/analysis') || under(path, '/contract-awards/analysis') ? 'market' : 'awards';
     case 'workbench': return path === '/workbench' ? 'stages' : params.get('view') === 'analysis' ? 'analysis' : 'reviews';
-    case 'documents': { const tab = params.get('tab'); return tab === 'files' || tab === 'history' ? tab : 'download'; }
+    case 'documents': { const tab = params.get('tab'); return tab === 'processing' || tab === 'files' || tab === 'history' ? tab : 'download'; }
     default: return '';
   }
 }

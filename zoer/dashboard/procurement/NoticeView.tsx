@@ -21,7 +21,8 @@ import { NoticeHideButton } from './Triage';
 import { useCapabilities } from '../capabilities';
 import { AiResult, LabelChips } from './AiResult';
 import { NoticeContacts, PossibleDuplicates, noticeSummary, placeHow, placeText } from './NoticeEnrichment';
-import { CATEGORY_PROMPT, CATEGORY_PROMPT_NAME, ago, buyerValue, coverageText, documentCounts, documentSummary, listedDocumentsText, hasUsableText, latestEvidence, latestReview, verdictText, verdictTone } from './ai';
+import { NoText } from './NoText';
+import { CATEGORY_PROMPT, CATEGORY_PROMPT_NAME, ago, buyerValue, coverageText, documentCounts, documentSummary, listedDocumentsText, hasUsableText, askScopeText, textState, textStateDetail, latestEvidence, latestReview, verdictText, verdictTone } from './ai';
 import { useReviewWorkspace } from '../review-workspace/actions';
 import { label } from '../review-workspace/queries';
 import { DecisionHeader } from '../review-workspace/DecisionHeader';
@@ -264,7 +265,7 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
     {!collection ? <p>No documents were saved for this notice.</p> : source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || browserBusy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
     {error && <p role="alert">{error}</p>}
 {message && <p role="status">{message}</p>}</div></div>;
-  const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${hasUsableText(item) ? '' : ' · Saved; no usable text extracted'}` : 'Couldn’t download this file';
+  const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${textStateDetail(item)}` : 'Couldn’t download this file';
   return <div className="pc-docs">
     <div className="pc-doc-bar">
       {documents.length > 1
@@ -319,7 +320,7 @@ function TextPreview({ doc, quote }: { doc: any; quote: string }) {
   useEffect(() => { const el = mark.current, container = box.current; if (el && container) container.scrollTop = el.offsetTop - container.clientHeight / 3; }, [parts]);
   if (text.isPending) return <p role="status" className="pc-preview-loading">Loading text…</p>;
   if (text.error) return <p role="alert">{text.error.message}</p>;
-  if (!text.data) return <p className="pc-card pc-card-empty">Saved; no usable text extracted. AI reviews can’t read this file. Scanned PDFs need OCR; use PDF or Download to read it.</p>;
+  if (!text.data) return <NoText doc={doc} />;
   return <div className="pc-text pc-doc-view" ref={box}>{quote && parts.length === 1 && <p role="status" className="pc-card-meta">The quoted passage wasn’t found verbatim in this version.</p>}<pre>{parts[0]}{parts.length > 1 && <mark ref={mark}>{parts[1]}</mark>}{parts[2]}</pre></div>;
 }
 
@@ -335,7 +336,7 @@ function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews
   const lifecycle = useRef<AbortController | null>(null);
   useEffect(() => { const controller = new AbortController(); lifecycle.current = controller; return () => controller.abort(); }, []);
   const docNames = Object.fromEntries(documents.map(doc => [doc.id, doc.name]));
-  const readable = documents.filter(hasUsableText).length, textless = documents.filter(doc => doc.status === 'downloaded' && !hasUsableText(doc)).length;
+  const askScope = { readable: documents.filter(hasUsableText).length, textless: documents.filter(doc => textState(doc) === 'none').length, pending: documents.filter(doc => textState(doc) === 'pending').length };
   const run = async (action: string) => {
     if (running || !modelId) return;
     setRunning(action); setError('');
@@ -357,7 +358,7 @@ function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews
   return <div className="pc-notice-section">
     {canRun && <section className="pc-card pc-ask" aria-label="Ask AI about this notice">
       <header><h3>Ask about this notice</h3><label className="pc-ask-model"><span className="sr-only">Model</span><Select aria-label="Model" presentation="dropdown" searchable={false} value={modelId} disabled={!!running || !ready.length} onChange={e => setModelId(e.target.value)}>{!ready.length && <option value="">No ready model</option>}{ready.map((model: any) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</Select></label></header>
-      <p className="pc-card-meta">{readable ? `Uses the notice and ${readable} document${readable === 1 ? '' : 's'} with usable text.` : textless ? 'Based on the saved notice only; no saved document has usable text.' : 'Based on the saved notice only; no documents are downloaded yet.'}{textless && readable ? ` ${textless} saved file${textless === 1 ? ' has' : 's have'} no usable text and ${textless === 1 ? 'is' : 'are'} not read.` : ''}</p>
+      <p className="pc-card-meta">{askScopeText(askScope)}</p>
       <div className="pc-ask-actions">{ACTIONS.map(([action, label]) => <Btn key={action} size="sm" variant={action === 'summary' ? 'primary' : 'secondary'} disabled={!!running || !modelId} onClick={() => void run(action)}>{running === action ? 'Running…' : label}</Btn>)}</div>
       <form className="pc-ask-question" onSubmit={event => { event.preventDefault(); if (question.trim()) void run('question'); }}>
         <input aria-label="Question about this notice" maxLength={1000} value={question} disabled={!!running} onChange={e => setQuestion(e.target.value)} placeholder="Ask a question, e.g. “Is a professional engineer’s seal required?”" />

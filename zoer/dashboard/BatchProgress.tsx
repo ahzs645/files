@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { fileSize } from './file-size';
+import { isExtractionBatch } from './document-processing';
 
 export function BatchProgress({batches, tasks = [], onSkip, showSize = true}: {
   batches:any[]; tasks?:any[]; showSize?:boolean; onSkip?:(taskId:string, transferId:string)=>Promise<void>;
@@ -17,7 +18,7 @@ export function BatchProgress({batches, tasks = [], onSkip, showSize = true}: {
   };
   const skipping = task && (task.status === 'skipping' || pending === task.transferId);
   return <section className="zoer-history research-progress" aria-label="Current processing">
-    <strong>{active.kind==='review'?'AI review in progress':'Document processing in progress'} · {active.completed}/{active.total} records complete</strong>
+    <strong>{active.kind==='review'?'AI review in progress':isExtractionBatch(active)?'Text extraction in progress':'Document processing in progress'} · {active.completed}/{active.total} records complete</strong>
     {task && <p role="status">{task.phase || task.kind} · {task.name || task.record_id}{showSize && task.phase === 'Downloading' && ` · ${fileSize(task.expectedBytes)}`}{showSize && task.receivedBytes > 0 && ` · ${fileSize(task.receivedBytes)} received`}</p>}
     {task?.transferId && onSkip && <Button variant="ghost" disabled={skipping} onClick={() => void skip()}>{skipping ? 'Skipping…' : 'Skip file'}</Button>}
     {error && <p role="alert">{error}</p>}

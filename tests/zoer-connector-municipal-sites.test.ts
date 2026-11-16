@@ -154,7 +154,8 @@ describe('municipal-sites portals added from the BC survey', () => {
 // Pages saved on 2026-11-13 after RDN and Dawson Creek moved (scripts, styles, SVG, menus and footer emptied).
 describe('municipal-sites after the 2026 site moves', () => {
   const LATER = '2026-11-13T19:00:00.000Z';
-  it('reads RDN\'s new list of notices with post dates and keeps its 301 behind', () => {
+  // 26-005 closes 2026-12-31 00:00 Pacific; its verified instant (and so "Open") needs the 2026 British Columbia rules.
+  itWith2026Rules('reads RDN\'s new list of notices with post dates and keeps its 301 behind', () => {
     expect(portal('rdn')).toMatchObject({ host: 'www.rdn.ca', url: 'https://www.rdn.ca/government/current-bid-opportunities', layout: 'list' });
     const rows = parseListing(portal('rdn'), fixture('rdn-2026-11-listing.html')).rows;
     const records = rows.map(row => siteRecord(row, portal('rdn'), LATER));

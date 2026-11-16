@@ -1,3 +1,4 @@
+import { pendingSql } from '../document-processing';
 import { METADATA_FILTER_KEYS } from '../procurement/metadata-filter';
 import { MONEY_KIND_LABELS, SUGGESTED_ACTIONS, partitionMoney, type Money, type MoneyKind } from '@bcbid/procurement-core';
 import { sql } from '../procurement/display';
@@ -150,6 +151,8 @@ export function filterObject(params: URLSearchParams): Record<string, string> {
 export interface EvidenceFacts {
   /** Attachment discovery ran (attachments captured, even empty) or a document row exists. */
   discoveryChecked: boolean; hasLinks: boolean; downloaded: number; usable: number;
+  /** Downloaded files whose text has not been extracted yet (Documents → Processing). */
+  pending?: number;
   triaged: boolean; extracted: boolean;
   /** Documents processed by the current extraction (coverage.processed); null when not recorded. */
   processed: number | null; quality: string | null; route: string | null;
@@ -158,13 +161,13 @@ export interface EvidenceScope { label: string; detail: string; tone: 'supported
 
 /** INTERFACE-SPEC §3 wording for what evidence a notice's review is based on. Unknowns are named, never zero. */
 export function evidenceScopeOf(e: EvidenceFacts): EvidenceScope {
-  const docs = (n: number) => `${n.toLocaleString()} document${n === 1 ? '' : 's'}`;
+  const docs = (n: number) => `${n.toLocaleString()} document${n === 1 ? '' : 's'}`, pending = e.pending ?? 0;
   const label = e.extracted ? e.processed === null ? 'Extracted · document count not recorded' : e.processed > 0 ? `Extracted from notice + ${docs(e.processed)}` : 'Extracted from the saved notice only'
     : e.triaged ? 'Based on the saved notice only' : 'Not processed';
   const detail = !e.discoveryChecked ? 'Attachment discovery not checked'
     : e.downloaded === 0 ? e.hasLinks ? 'Attachment links not downloaded' : 'No public attachment links found in this check'
-    : e.usable === 0 ? 'Saved; no usable text extracted'
-    : `${e.usable.toLocaleString()} of ${e.downloaded.toLocaleString()} downloaded file${e.downloaded === 1 ? '' : 's'} with usable text`;
+    : e.usable === 0 ? pending ? 'Saved; text pending' : 'Saved; no usable text extracted'
+    : `${e.usable.toLocaleString()} of ${e.downloaded.toLocaleString()} downloaded file${e.downloaded === 1 ? '' : 's'} with usable text${pending ? ` · ${pending.toLocaleString()} text pending` : ''}`;
   return { label: e.quality === 'needs_review' ? `${label} · needs review` : label, detail, tone: e.extracted && e.usable > 0 ? 'supported' : e.extracted || e.triaged ? 'needs_information' : 'neutral' };
 }
 
@@ -173,7 +176,7 @@ const EMPTY: EvidenceFacts = { discoveryChecked: false, hasLinks: false, downloa
 
 export const EVIDENCE_COUNTS_SQL = (count: number) => {
   const r = recordColumns('r');
-  return `SELECT r.id, CASE WHEN ${r.field('attachments')} IS NULL AND r.id NOT IN (SELECT record_id FROM documents) THEN 0 ELSE 1 END AS discoveryChecked, CASE WHEN ${r.field('attachments[0]')} IS NULL THEN 0 ELSE 1 END AS hasLinks, (SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded') AS downloaded, (SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded' AND length(d.text)>0) AS usable FROM records r WHERE r.id IN (${placeholders(count)})`;
+  return `SELECT r.id, CASE WHEN ${r.field('attachments')} IS NULL AND r.id NOT IN (SELECT record_id FROM documents) THEN 0 ELSE 1 END AS discoveryChecked, CASE WHEN ${r.field('attachments[0]')} IS NULL THEN 0 ELSE 1 END AS hasLinks, (SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded') AS downloaded, (SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded' AND length(d.text)>0) AS usable, (SELECT count(*) FROM documents d WHERE d.record_id=r.id AND ${pendingSql('d')}) AS pending FROM records r WHERE r.id IN (${placeholders(count)})`;
 };
 export const STAGE_SQL = (count: number) => `SELECT s.record_id AS id, s.stage, s.quality, json_extract(s.output,'$.route') AS route, coalesce(json_extract(s.coverage,'$.processed'), json_extract(b.coverage,'$.processed')) AS processed FROM procurement_stage_runs s LEFT JOIN procurement_bundles b ON b.id=s.bundle_id WHERE s.is_current=1 AND s.stage IN ('triage','extract') AND s.record_id IN (${placeholders(count)})`;
 
@@ -185,7 +188,7 @@ export async function readRowReview(ids: string[], profileVersionId: string | nu
     const chunk = ids.slice(i, i + 150);
     for (const row of await sql(EVIDENCE_COUNTS_SQL(chunk.length), chunk)) {
       const e = out.get(row.id)!.evidence;
-      Object.assign(e, { discoveryChecked: Number(row.discoveryChecked) === 1, hasLinks: Number(row.hasLinks) === 1, downloaded: Number(row.downloaded ?? 0), usable: Number(row.usable ?? 0) });
+      Object.assign(e, { discoveryChecked: Number(row.discoveryChecked) === 1, hasLinks: Number(row.hasLinks) === 1, downloaded: Number(row.downloaded ?? 0), usable: Number(row.usable ?? 0), pending: Number(row.pending ?? 0) });
     }
     if (workspace) for (const row of await sql(STAGE_SQL(chunk.length), chunk)) {
       const e = out.get(row.id)!.evidence;

@@ -87,7 +87,7 @@ describe('P0: document readability', () => {
     expect(hasUsableText(docs[3])).toBe(false);
     expect(hasUsableText({ status: 'downloaded' })).toBe(false);
     const counts = documentCounts(docs, ['u1', 'u2', 'u3', 'u4', 'u5', 'u6'].map(url => ({ url })));
-    expect(counts).toEqual({ discovered: 6, downloaded: 4, usable: 3, savedWithoutText: 1, failed: 1 });
+    expect(counts).toEqual({ discovered: 6, downloaded: 4, usable: 3, pending: 0, savedWithoutText: 1, failed: 1 });
     expect(documentSummary(counts)).toBe('4 of 6 discovered files downloaded; 3 contain usable text');
   });
   it('keeps unknown discovery unknown', () => {

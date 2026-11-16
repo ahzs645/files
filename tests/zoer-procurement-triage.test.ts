@@ -161,7 +161,8 @@ describe('Home leaves hidden notices out of open work', () => {
     host.mockImplementation(async (method: string, input: any) => { if (method !== 'catalog.query') throw Error(method); validateCatalogSelect(input.statement, input.parameters); seen.push(input.statement); return { rows: [] }; });
     await readQueue('decide', 'pv1', 'bc-bid', Date.now());
     await readDeadlines('', Date.now());
-    expect(seen).toHaveLength(2);
+    // The queue reads its count and its examples separately (bounded Home reads), then the deadlines.
+    expect(seen).toHaveLength(3);
     for (const statement of seen) expect(statement).toContain("NOT IN (SELECT json_extract(data,'$.recordId') FROM workspace_state WHERE key LIKE 'procurement:hidden:%'");
   });
 });

@@ -221,7 +221,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .doc-chip[data-tone=good],.doc-chip[data-status=succeeded]{color:var(--color-green)}
 .doc-chip[data-tone=warn],.doc-chip[data-status=waiting_for_user]{color:var(--color-orange)}
 .doc-chip[data-tone=bad],.doc-chip[data-status=failed]{color:var(--color-red)}
-.doc-chip[data-status=running]{color:var(--color-accent)}
+.doc-chip[data-tone=info],.doc-chip[data-status=running]{color:var(--color-accent)}
 .doc-file-list article{padding:8px 0}.doc-file-list .research-file-info{flex:1;gap:2px}.doc-file-list .research-file-info strong{font-size:13px;font-weight:500}
 .doc-file-actions{flex-wrap:nowrap}
 .doc-steps>summary{margin-top:4px;font-size:12px;color:var(--color-text-tertiary);cursor:pointer}

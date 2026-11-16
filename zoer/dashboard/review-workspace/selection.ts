@@ -1,3 +1,4 @@
+import { PREFLIGHT_PENDING_SQL } from '../document-processing';
 import { useSyncExternalStore } from 'react';
 import { deadlineState, parseDeadline } from '@bcbid/procurement-core';
 import { exportManifest, toCsv, type ExportManifest } from '../export';
@@ -59,8 +60,8 @@ export type PipelineStage = 'triage' | 'extract';
 /** Model calls for one readable document: one per started 12,000 code points. */
 export const callsForText = (codePoints: number) => codePoints > 0 ? Math.ceil(codePoints / CHUNK_CODE_POINTS) : 0;
 
-export interface PreflightRecord { id: string; readableDocs: number; calls: number; current: boolean }
-export interface Preflight { records: number; withText: number; noticeOnly: number; readableDocs: number; estimatedCalls: number; reused: number; runs: number }
+export interface PreflightRecord { id: string; readableDocs: number; calls: number; current: boolean; /** Saved files whose text is not extracted yet. */ pendingDocs?: number }
+export interface Preflight { records: number; withText: number; noticeOnly: number; readableDocs: number; estimatedCalls: number; reused: number; runs: number; /** Files extracted when the run starts; not in `estimatedCalls`. */ pendingDocs: number }
 /**
  * Pure estimate. Triage: one call per notice (notice only). Extract: per notice, one call per 12,000 code points of
  * each readable document plus one for the notice. Records with a current result are reused unless `force`, so they
@@ -70,7 +71,14 @@ export function summarizePreflight(stage: PipelineStage, records: PreflightRecor
   const withText = records.filter(record => record.readableDocs > 0).length;
   const reused = force ? 0 : records.filter(record => record.current).length;
   const estimatedCalls = records.reduce((sum, record) => sum + (!force && record.current ? 0 : stage === 'triage' ? 1 : record.calls + 1), 0);
-  return { records: records.length, withText: stage === 'triage' ? 0 : withText, noticeOnly: stage === 'triage' ? records.length : records.length - withText, readableDocs: records.reduce((sum, r) => sum + r.readableDocs, 0), estimatedCalls, reused, runs: chunkRuns(records).length };
+  return { records: records.length, withText: stage === 'triage' ? 0 : withText, noticeOnly: stage === 'triage' ? records.length : records.length - withText, readableDocs: records.reduce((sum, r) => sum + r.readableDocs, 0), estimatedCalls, reused, runs: chunkRuns(records).length, pendingDocs: stage === 'triage' ? 0 : records.reduce((sum, r) => sum + (r.pendingDocs ?? 0), 0) };
+}
+/** The preflight's Evidence scope line. Pending files are named apart: the run extracts them first, so they are not "no usable text". */
+export function preflightScopeText(stage: PipelineStage, summary: Preflight): string {
+  const n = (value: number) => value.toLocaleString();
+  if (stage === 'triage') return `All ${n(summary.records)} use the saved notice only.`;
+  const pending = summary.pendingDocs > 0 ? ` · ${n(summary.pendingDocs)} file${summary.pendingDocs === 1 ? '' : 's'} text pending, extracted when the run starts` : '';
+  return `${n(summary.withText)} notice${summary.withText === 1 ? '' : 's'} with usable-text documents (${n(summary.readableDocs)} documents) · ${n(summary.noticeOnly)} notice-only (no usable document text)${pending}`;
 }
 
 /** Readable documents (downloaded with text) per record, with the same per-document call arithmetic in SQL. */
@@ -81,7 +89,8 @@ export async function readPreflight(ids: string[], stage: PipelineStage, read: t
   const records = new Map<string, PreflightRecord>(ids.map(id => [id, { id, readableDocs: 0, calls: 0, current: false }]));
   for (let i = 0; i < ids.length; i += 150) {
     const chunk = ids.slice(i, i + 150);
-    const [docs, current] = await Promise.all([read(PREFLIGHT_DOCS_SQL(chunk.length), chunk), read(PREFLIGHT_CURRENT_SQL(chunk.length), [stage, ...chunk])]);
+    const [docs, current, pending] = await Promise.all([read(PREFLIGHT_DOCS_SQL(chunk.length), chunk), read(PREFLIGHT_CURRENT_SQL(chunk.length), [stage, ...chunk]), read(PREFLIGHT_PENDING_SQL(chunk.length), chunk)]);
+    for (const row of pending) records.get(row.id)!.pendingDocs = Number(row.pending ?? 0);
     for (const row of docs) Object.assign(records.get(row.id)!, { readableDocs: Number(row.docs ?? 0), calls: Number(row.calls ?? 0) });
     for (const row of current) records.get(row.id)!.current = true;
   }

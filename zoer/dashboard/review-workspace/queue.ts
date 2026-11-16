@@ -1,4 +1,5 @@
 import { addDays, zoneDate } from '../procurement/deadline';
+import { NO_TEXT_SQL } from '../document-processing';
 import { closingValueSql, listedOpenSql } from '../procurement/lifecycle';
 import { canonicalNoticeSql } from '../procurement/canonical';
 
@@ -161,7 +162,7 @@ export function acquireParts(alias = '') {
   return {
     unchecked: `${r.field('attachments')} IS NULL AND ${r.id} NOT IN (SELECT record_id FROM documents)`,
     notDownloaded: `${r.field('attachments[0]')} IS NOT NULL AND NOT EXISTS (${matching} AND d.status='downloaded')`,
-    noText: `EXISTS (${matching} AND d.status='downloaded' AND coalesce(length(d.text),0)=0)`,
+    noText: `EXISTS (${matching} AND ${NO_TEXT_SQL})`,
   };
 }
 export const ACQUIRE_REASON_TEXT = { unchecked: 'Attachment discovery not checked', notDownloaded: 'Attachment links not downloaded', noText: 'Saved; no usable text extracted' } as const;

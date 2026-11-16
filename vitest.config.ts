@@ -19,6 +19,9 @@ export default defineConfig({
   resolve: { alias: {
     "@bcbid/procurement-core": new URL("./packages/procurement-core/src/index.ts", import.meta.url).pathname,
     "@zoer/plugin-ui/controls": new URL("./tests/fixtures/plugin-ui-controls.tsx", import.meta.url).pathname,
+    // The real package lives in the Zoer host checkout; component tests use a single-run stand-in.
+    "@tanstack/react-query": new URL("./tests/fixtures/react-query.tsx", import.meta.url).pathname,
+    "@zoer/plugin-ui/database": new URL("./tests/fixtures/plugin-ui-database.tsx", import.meta.url).pathname,
     // Exercise real registered handlers without requiring a configured deployment's generated bridge.
     "./_generated/server": new URL("./tests/fixtures/convex-generated.ts", import.meta.url).pathname,
     "./_generated/api": new URL("./tests/fixtures/convex-generated.ts", import.meta.url).pathname,

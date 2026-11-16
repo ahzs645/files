@@ -1,4 +1,5 @@
 import { sql } from '../procurement/display';
+import { noTextSql } from '../document-processing';
 import { HIDDEN_IDS_SQL } from '../procurement/state-contract';
 import { addDays, zoneDate } from '../procurement/deadline';
 import { canonicalNoticeSql } from '../procurement/canonical';
@@ -66,7 +67,7 @@ export async function readQueue(queue:QueueId,profile:string|null,source:string,
 export async function readCoverage(source: string) {
   const scope = opportunityScope(source), p = acquireParts();
   const [row] = await sql(`SELECT count(*) AS saved, sum(${p.unchecked}) AS unchecked, sum(${r.field('attachments[0]')} IS NOT NULL) AS linked, sum(id IN (SELECT record_id FROM documents WHERE status='downloaded')) AS withFiles, sum(id IN (SELECT record_id FROM documents WHERE status='downloaded' AND length(text)>0)) AS withText FROM records WHERE ${scope.sql}`, scope.parameters);
-  const [files] = await sql(`SELECT count(*) AS files, sum(length(text)>0) AS usable, sum(coalesce(length(text),0)=0) AS noText FROM documents WHERE status='downloaded' AND record_id IN (SELECT id FROM records WHERE ${scope.sql})`, scope.parameters);
+  const [files] = await sql(`SELECT count(*) AS files, sum(length(text)>0) AS usable, sum(${noTextSql()}) AS noText FROM documents WHERE status='downloaded' AND record_id IN (SELECT id FROM records WHERE ${scope.sql})`, scope.parameters);
   const all = { ...row, ...files };
   return Object.fromEntries(Object.entries(all).map(([key, value]) => [key, num(value)])) as Record<'saved' | 'unchecked' | 'linked' | 'withFiles' | 'withText' | 'files' | 'usable' | 'noText', number>;
 }

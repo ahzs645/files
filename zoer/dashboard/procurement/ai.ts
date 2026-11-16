@@ -1,3 +1,4 @@
+import { isTextPending } from '../document-processing';
 import { defaultReviewPrompt } from '../review-prompt';
 import { MONEY_ROLE_LABELS, checkFields, fieldValue, isBudgetRole, moneyRole, parsePrompt } from '../review-fields';
 
@@ -104,12 +105,31 @@ export const verdictText = (value: unknown) => {
 
 /** A saved document with extracted text. A downloaded file with empty text is saved, not readable. */
 export const hasUsableText = (doc: any) => doc?.status === 'downloaded' && Number(doc.text_length ?? doc.textLength ?? 0) > 0;
-export type DocumentCounts = { discovered: number | null; downloaded: number; usable: number; savedWithoutText: number; failed: number };
+/** `readable` has text, `pending` is saved and waiting for text extraction, `none` was read and has no usable text. */
+export type TextState = 'readable' | 'pending' | 'none' | 'failed';
+export const textState = (doc: any): TextState => doc?.status !== 'downloaded' ? 'failed' : hasUsableText(doc) ? 'readable' : isTextPending(doc) ? 'pending' : 'none';
+/** The text-state part of a saved file's one-line detail in the notice's document picker. */
+export const textStateDetail = (doc: any) => ({ readable: '', pending: ' · Text pending', none: ' · Saved; no usable text extracted', failed: '' })[textState(doc)];
+/** What the text preview says for a saved file without text. */
+export const noTextMessage = (doc: any) => textState(doc) === 'pending'
+  ? 'Text pending. Documents → Processing extracts this file’s text; an AI review of this notice extracts it first.'
+  : 'Saved; no usable text extracted. AI reviews can’t read this file. Scanned PDFs need OCR; use PDF or Download to read it.';
+/** Which saved files an AI question or review of this notice reads. */
+export function askScopeText({ readable, textless, pending }: { readable: number; textless: number; pending: number }): string {
+  const plural = (n: number, one: string, many: string) => n === 1 ? one : many;
+  const base = readable ? `Uses the notice and ${readable} document${readable === 1 ? '' : 's'} with usable text.`
+    : pending ? 'Uses the saved notice and the files waiting for text.'
+    : textless ? 'Based on the saved notice only; no saved document has usable text.' : 'Based on the saved notice only; no documents are downloaded yet.';
+  const waiting = pending ? ` ${pending} saved ${plural(pending, 'file', 'files')} waiting for text ${plural(pending, 'is', 'are')} extracted first.` : '';
+  const unread = textless && (readable || pending) ? ` ${textless} saved ${plural(textless, 'file has', 'files have')} no usable text and ${plural(textless, 'is', 'are')} not read.` : '';
+  return base + waiting + unread;
+}
+export type DocumentCounts = { discovered: number | null; downloaded: number; usable: number; /** Saved, text not extracted yet. */ pending: number; savedWithoutText: number; failed: number };
 /** Separate denominators; `discovered` is null when the notice's attachment links were never checked. */
 export function documentCounts(documents: any[], attachments: unknown): DocumentCounts {
-  const downloaded = documents.filter(doc => doc.status === 'downloaded'), usable = downloaded.filter(hasUsableText).length;
+  const downloaded = documents.filter(doc => doc.status === 'downloaded'), usable = downloaded.filter(hasUsableText).length, pending = downloaded.filter(isTextPending).length;
   const links = Array.isArray(attachments) ? new Set([...attachments.map((a: any) => a?.url ?? a?.name ?? JSON.stringify(a)), ...documents.map(doc => doc.url ?? doc.id)]).size : null;
-  return { discovered: links, downloaded: downloaded.length, usable, savedWithoutText: downloaded.length - usable, failed: documents.filter(doc => doc.status === 'failed').length };
+  return { discovered: links, downloaded: downloaded.length, usable, pending, savedWithoutText: downloaded.length - usable - pending, failed: documents.filter(doc => doc.status === 'failed').length };
 }
 const files = (n: number) => `${n} file${n === 1 ? '' : 's'}`;
 /** "4 of 6 discovered files downloaded" */
@@ -117,7 +137,7 @@ const ofDiscovered = (downloaded: number, discovered: number) => `${downloaded} 
 export function documentSummary(c: DocumentCounts): string {
   if (!c.downloaded && !c.failed) return c.discovered === null ? 'Attachment discovery not checked' : c.discovered === 0 ? 'No public attachment links found in this check' : `${files(c.discovered)} discovered; none downloaded`;
   const head = c.discovered === null ? `${files(c.downloaded)} downloaded (discovered total unknown)` : ofDiscovered(c.downloaded, Math.max(c.discovered, c.downloaded));
-  return `${head}; ${c.usable} contain${c.usable === 1 ? 's' : ''} usable text`;
+  return `${head}; ${c.usable} contain${c.usable === 1 ? 's' : ''} usable text${c.pending ? `; ${c.pending} text pending` : ''}`;
 }
 
 /**

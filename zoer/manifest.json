@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.40.1",
+  "version": "0.41.0",
   "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -1204,6 +1204,10 @@
               "minLength": 1,
               "maxLength": 100
             },
+            "deferExtraction": {
+              "type": "boolean",
+              "default": true
+            },
             "force": {
               "type": "boolean"
             },
@@ -1248,6 +1252,10 @@
                 "type": "string",
                 "maxLength": 100000
               }
+            },
+            "deferExtraction": {
+              "type": "boolean",
+              "default": true
             },
             "force": {
               "type": "boolean"
@@ -1310,6 +1318,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "deferExtraction": {
+              "type": "boolean",
+              "default": true
+            },
             "limit": {
               "type": "integer",
               "minimum": 1,
@@ -2403,6 +2415,69 @@
           },
           "required": [
             "recordIds"
+          ]
+        }
+      },
+      {
+        "id": "documents.extract.pending",
+        "idempotent": false,
+        "title": "Extract text of saved documents",
+        "description": "Extract text (including OCR) for saved files that are waiting for it. Downloads save originals without reading them; this runs separately, during a download or later, and needs no browser.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "host-action",
+          "handler": "documents.extract.pending.v1"
+        },
+        "requiredCapabilities": [
+          "artifact-store"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 21600000,
+          "maxOutputBytes": 1048576
+        },
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "selected": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "files": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "completed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "remaining": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "selected",
+            "files",
+            "completed",
+            "failed",
+            "remaining"
           ]
         }
       },

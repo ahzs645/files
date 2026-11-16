@@ -22,6 +22,7 @@ import { INVENTORY_SQL, sourceName, sql } from './display';
 import { canonicalNoticeSql } from './canonical';
 import { useDocumentBrowsers } from '../use-document-browsers';
 import { assertDocumentBrowserIdle } from '../document-run';
+import { NO_TEXT_SQL } from '../document-processing';
 import { plainError, shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 
@@ -267,7 +268,7 @@ const ATTACHMENT_SQL = `SELECT ${SOURCE_SQL} AS sourceId, count(*) AS total,
   sum(json_extract(r.data,'$.attachments[0]') IS NULL AND json_extract(r.data,'$.detailFields[0]') IS NOT NULL) AS checkedNoLinks,
   sum(json_extract(r.data,'$.attachments[0]') IS NOT NULL) AS withLinks,
   sum((SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded')>0) AS withFiles,
-  sum((SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded' AND coalesce(length(d.text),0)=0)>0) AS noText
+  sum((SELECT count(*) FROM documents d WHERE d.record_id=r.id AND ${NO_TEXT_SQL})>0) AS noText
   FROM records r WHERE r.kind='opportunity' AND ${canonicalNoticeSql('r', { crossSource: 'include' })} GROUP BY sourceId`;
 const BATCH_SQL = 'SELECT id, kind, status, completed, failed, total, error, updated_at FROM batches ORDER BY updated_at DESC LIMIT 200';
 const FAILURE_SQL = "SELECT t.record_id, r.title, t.kind, t.status, t.error, t.updated_at, json_extract(t.result,'$.name') AS name, json_extract(t.result,'$.phase') AS phase FROM research_tasks t LEFT JOIN records r ON r.id=t.record_id WHERE t.status IN ('failed','waiting_for_user') ORDER BY t.updated_at DESC LIMIT 200";

@@ -136,7 +136,7 @@ export function RunLinks({ compact = false, except }: { compact?: boolean; excep
   const links: [string, string, string][] = [
     ['/sources#pc-runs-title', 'Collection runs', 'CanadaBuys, bids&tenders, local government and browser sites'],
     ['/scraper/history', 'BC Bid runs', 'Scrapes, details and award history'],
-    ['/documents?tab=history', 'Download history', 'Attachment downloads and text extraction'],
+    ['/documents?tab=history', 'Download history', 'Attachment downloads'],
   ];
   if (compact) return <p className="pc-run-links rw-muted">Other run lists: {links.filter(([to]) => to.split('#')[0] !== except).map(([to, label], i) => <span key={to}>{i > 0 && ' · '}<PluginLink to={to.split('#')[0]}>{label}</PluginLink></span>)}</p>;
   return <ul className="pc-status-list pc-run-link-list">{links.map(([to, label, note]) => <li key={to}><PluginLink to={to.split('#')[0]}>{label}</PluginLink><small className="rw-muted">{note}</small></li>)}</ul>;

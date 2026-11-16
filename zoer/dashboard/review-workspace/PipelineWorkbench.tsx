@@ -1,3 +1,4 @@
+import { isTextPending, workbenchExclusions } from '../document-processing';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Btn, Select } from '@zoer/plugin-ui/controls';
@@ -73,10 +74,10 @@ function StageDetails({ stage, templateText, prompt }: { stage: WorkbenchStage; 
 
 async function readScope(recordId: string) {
   const [docs, notice] = await Promise.all([
-    sql('SELECT name, status, length(text) AS cp FROM documents WHERE record_id=? ORDER BY name LIMIT 200', [recordId]),
+    sql('SELECT name, status, length(text) AS cp, error FROM documents WHERE record_id=? ORDER BY name LIMIT 200', [recordId]),
     sql("SELECT code_points AS cp FROM procurement_extractions WHERE record_id=? AND source_kind='notice' ORDER BY created_at DESC LIMIT 1", [recordId]),
   ]);
-  return { docs: docs.map(d => ({ name: String(d.name), status: String(d.status), cp: Number(d.cp) || 0 })), noticeCp: notice[0] ? Number(notice[0].cp) : null };
+  return { docs: docs.map(d => ({ name: String(d.name), status: String(d.status), cp: Number(d.cp) || 0, pending: isTextPending({ status: d.status, error: d.error, chars: d.cp }) })), noticeCp: notice[0] ? Number(notice[0].cp) : null };
 }
 async function readItems(stageRunId: string) {
   const [requirements, facts, totals] = await Promise.all([
@@ -117,7 +118,7 @@ function TestPanel({ stage, testStage }: { stage: WorkbenchStage; testStage: 'tr
     record: record.data?.title ?? recordId, stage: testStage, model: modelText, noticeKnown,
     scope: [`Notice view${noticeKnown ? ` (${scope.data.noticeCp!.toLocaleString()} code points)` : ''}`, ...(testStage === 'extract' ? readable.map(d => `${d.name} (${d.cp.toLocaleString()} code points)`) : [])],
     excluded: testStage === 'triage' ? (docs.length ? [`${docs.length} saved file${docs.length === 1 ? '' : 's'} (triage reads the notice only)`] : [])
-      : [...docs.filter(d => d.status === 'downloaded' && !d.cp).map(d => `${d.name}: Saved; no usable text extracted`), ...docs.filter(d => d.status !== 'downloaded').map(d => `${d.name}: download ${d.status}`), ...(docs.length ? [] : ['No downloaded files for this notice'])],
+      : [...workbenchExclusions(docs), ...(docs.length ? [] : ['No downloaded files for this notice'])],
     lengths: [noticeKnown ? scope.data.noticeCp! : 1, ...readable.map(d => d.cp)],
   }) : [];
   const blocker = busy ? 'Starting…' : !recordId ? 'Choose a saved notice.' : !modelId ? 'Choose a computer and model.' : scope.isPending ? 'Checking evidence scope…' : '';

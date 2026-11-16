@@ -13,7 +13,7 @@ import { toneOf } from './DimensionChips';
 import { evidenceScopeOf, type RowReview } from './opportunity-queries';
 import { label } from './queries';
 import { hasProfileFilters, profileGate, readProfileFilterHits, readProfileRules } from './profile-filter';
-import { EXPORT_COLUMNS, PIPELINE_BATCH, chunkRuns, exportJson, readExportRows, readPreflight, snapshotManifest, summarizePreflight, type PipelineStage, type SelectionSnapshot } from './selection';
+import { EXPORT_COLUMNS, PIPELINE_BATCH, chunkRuns, exportJson, readExportRows, readPreflight, preflightScopeText, snapshotManifest, summarizePreflight, type PipelineStage, type SelectionSnapshot } from './selection';
 import './review.css';
 
 function Chip({ value, text, tone }: { value?: unknown; text?: string; tone?: string }) {
@@ -35,7 +35,7 @@ export function ReviewLine({ review, profileText }: { review: RowReview | undefi
     items.push(<span key="elig" className="rw-o-inline">Eligibility <b>{label(a.eligibility)}</b></span>);
   }
   if (d) items.push(<Hint key="decision" content={d.note || undefined}><span className="rw-o-inline">Your decision <b>{label(d.decision)}</b>{d.needsReconfirmation && <span className="rw-o-warn"> · reconfirm</span>}</span></Hint>);
-  const basis = e.extracted || e.triaged ? `${scope.label}. ${scope.detail}.` : e.downloaded > 0 ? `${e.usable.toLocaleString()} of ${e.downloaded.toLocaleString()} file${e.downloaded === 1 ? '' : 's'} readable.` : undefined;
+  const basis = e.extracted || e.triaged ? `${scope.label}. ${scope.detail}.` : e.downloaded > 0 ? `${e.usable.toLocaleString()} of ${e.downloaded.toLocaleString()} file${e.downloaded === 1 ? '' : 's'} readable${e.pending ? ` · ${e.pending.toLocaleString()} text pending` : ''}.` : undefined;
   return items.length ? <Hint content={basis}><div className="rw-o-line">{items}</div></Hint> : null;
 }
 
@@ -146,8 +146,8 @@ export function PipelinePreflight({ snapshot, stage, onClose }: { snapshot: Sele
         <div><dt>Records</dt><dd>{n(snapshot.ids.length)} notice{snapshot.ids.length === 1 ? '' : 's'} · {snapshot.origin === 'matching' ? 'frozen selection of all matching notices' : 'individually selected'} · captured {new Date(snapshot.capturedAt).toLocaleString()}{snapshot.note && <span className="rw-warn"> {snapshot.note}</span>}</dd></div>
         <div><dt>Scope</dt><dd>{snapshot.description.join(' · ') || 'All saved notices'}</dd></div>
         <div><dt>Stage</dt><dd><strong>{STAGE_TEXT[stage].title}.</strong> {STAGE_TEXT[stage].scope}</dd></div>
-        <div><dt>Evidence scope</dt><dd>{preflight.isPending ? 'Reading…' : preflight.isError ? `Could not read the evidence scope: ${preflight.error.message}` : stage === 'triage' ? `All ${n(summary!.records)} use the saved notice only.` : `${n(summary!.withText)} notice${summary!.withText === 1 ? '' : 's'} with usable-text documents (${n(summary!.readableDocs)} documents) · ${n(summary!.noticeOnly)} notice-only (no usable document text)`}</dd></div>
-        <div><dt>Estimated model calls</dt><dd>{summary ? <>About {n(summary.estimatedCalls)}. <span className="rw-o-muted">{stage === 'triage' ? 'One call per notice processed.' : 'One call per 12,000 characters (code points) of each readable document, plus one per notice.'} This is an estimate; chunk overlap and repair retries can add calls.</span></> : '—'}</dd></div>
+        <div><dt>Evidence scope</dt><dd>{preflight.isPending ? 'Reading…' : preflight.isError ? `Could not read the evidence scope: ${preflight.error.message}` : preflightScopeText(stage, summary!)}</dd></div>
+        <div><dt>Estimated model calls</dt><dd>{summary ? <>About {n(summary.estimatedCalls)}. <span className="rw-o-muted">{stage === 'triage' ? 'One call per notice processed.' : 'One call per 12,000 characters (code points) of each readable document, plus one per notice.'}{stage === 'extract' && summary.pendingDocs > 0 ? ' Files with text pending are extracted when the run starts and are not in this estimate.' : ''} This is an estimate; chunk overlap and repair retries can add calls.</span></> : '—'}</dd></div>
         <div><dt>Reuse</dt><dd>{summary ? force ? `Re-running all ${n(summary.records)}, including ${n(preflight.data!.filter(r => r.current).length)} with a current result.` : `${n(summary.reused)} already have a current ${stage === 'triage' ? 'triage' : 'extraction'} result and will be reused unless you re-run them.` : '—'}</dd></div>
         <div><dt>Limits</dt><dd>At most {PIPELINE_BATCH} notices per run. {runs.length > 1 ? `This selection starts as ${runs.length} sequential runs.` : 'This selection fits in one run.'}</dd></div>
         <div><dt>Profile filters</dt><dd>{gateQuery.isPending ? 'Checking…' : gateQuery.isError ? 'Could not be checked; nothing starts until they can.' : !hasProfileFilters(gateQuery.data?.rules) ? `${snapshot.profileText} has no quick filters (excluded keywords or contract value range).` : gate.filtered.length ? <>{n(gate.filtered.length)} filtered by the profile{gate.kinds.keyword ? ` · ${n(gate.kinds.keyword)} excluded keyword` : ''}{gate.kinds.value ? ` · ${n(gate.kinds.value)} value out of range` : ''}. {includeFiltered ? 'They are included in this run.' : 'They are skipped, so no model calls are spent on them.'}</> : 'None of the selected notices is filtered by the profile. Unknown contract values pass.'}</dd></div>

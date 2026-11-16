@@ -154,7 +154,7 @@ describe('selection snapshots and batch preflight', () => {
       { id: 'b', readableDocs: 0, calls: 0, current: false },
       { id: 'c', readableDocs: 1, calls: callsForText(10_000), current: true },
     ];
-    expect(summarizePreflight('extract', records, false)).toEqual({ records: 3, withText: 2, noticeOnly: 1, readableDocs: 3, estimatedCalls: (3 + 1 + 1) + 1, reused: 1, runs: 1 });
+    expect(summarizePreflight('extract', records, false)).toEqual({ records: 3, withText: 2, noticeOnly: 1, readableDocs: 3, estimatedCalls: (3 + 1 + 1) + 1, reused: 1, runs: 1, pendingDocs: 0 });
     expect(summarizePreflight('extract', records, true).estimatedCalls).toBe(5 + 1 + 2);
     expect(summarizePreflight('triage', records, false)).toMatchObject({ estimatedCalls: 2, noticeOnly: 3, withText: 0, reused: 1 });
   });

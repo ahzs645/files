@@ -149,6 +149,11 @@ test('snapshots, preflight, row columns, compare and exports read through the br
   const rows = await q.readRowReview(['o01', 'o03', 'o04', 'o06', 'o08'], 'pv1', true);
   expect(q.evidenceScopeOf(rows.get('o01')!.evidence).detail).toBe('Attachment discovery not checked');
   expect(q.evidenceScopeOf(rows.get('o03')!.evidence).detail).toBe('Saved; no usable text extracted');
+  // AC-031: files waiting for text extraction are "text pending", never "no usable text".
+  const facts = (downloaded: number, usable: number, pending: number) => q.evidenceScopeOf({ ...rows.get('o03')!.evidence, discoveryChecked: true, downloaded, usable, pending }).detail;
+  expect(facts(2, 0, 1)).toBe('Saved; text pending');
+  expect(facts(3, 1, 2)).toBe('1 of 3 downloaded files with usable text · 2 text pending');
+  expect(facts(1, 0, 0)).toBe('Saved; no usable text extracted');
   expect(rows.get('o04')!.evidence).toMatchObject({ triaged: true, extracted: true, processed: 2, downloaded: 2, usable: 2, route: 'Open competition' });
   expect(rows.get('o04')!.assessment?.relevance).toBe('strong');
   expect(rows.get('o06')!.decision?.decision).toBe('no_bid');
