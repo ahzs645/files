@@ -5,8 +5,8 @@ Plan: [PLANS.md](PLANS.md) · Traceability: [TRACEABILITY.md](TRACEABILITY.md)
 | Milestone | State | Plan Guardian |
 |---|---|---|
 | M1 — Host: save first, extract later | VERIFIED (host commit `1a84ff7a`, branch `feat/deferred-document-extraction`, not pushed) | readiness: PASS (audit 4); completion audit 5: FAIL (PG-011), corrected; completion audit 6: PASS |
-| M2 — Plugin: Processing tab and pending state | VERIFIED | readiness: PASS (audit 4); completion audit 6: PASS |
-| M3 — Deployment to OTE | NOT STARTED | readiness not yet audited |
+| M2 — Plugin: Processing tab and pending state | VERIFIED (plugin commit `aeb57bf`, not pushed) | readiness: PASS (audit 4); completion audit 6: PASS |
+| M3 — Deployment to OTE | BLOCKED (see Blockers) | readiness not yet audited |
 
 ## Validation results (2026-11-16, before the completion audit)
 
@@ -151,4 +151,21 @@ VERIFIED. Non-blocking items carried forward:
 
 ## Blockers
 
-None recorded yet.
+### M3 — Deployment to OTE — BLOCKED (2026-11-16)
+
+Affected requirement: REQ-014 (AC-017, AC-018, AC-026, AC-027). Nothing has been deployed: the live
+host still reports commit `4f7eb40a` and the installed plugin is 0.40.1.
+
+1. **Cluster access.** The backend rollout runs on the node `10.70.20.50` over SSH (the procedure
+   used for the 4f7eb40a rollout). From this machine the node's port 22 is not reachable now
+   (`nc -z 10.70.20.50 22` fails; an SSH attempt hung). It needs the user's LAN or WireGuard
+   connection.
+2. **Authorization.** The backend rollout drains running jobs on a shared cluster and the plugin
+   upgrade refuses to run while any job is active. At the time of the check `scrape.full` and
+   `procurement.collect` were running and `procurement.alerts` was pending. The user must choose
+   between waiting for them and freezing/resuming them, and give the go-ahead.
+3. **Order.** The host must be rolled out before the plugin package: plugin 0.41.0 binds the host
+   handler `documents.extract.pending.v1`, which the live host does not have.
+
+Also open before the final audit: the four pre-existing host test failures and the RDN test skipped
+on this machine need CI/Linux evidence or the user's recorded acceptance.
