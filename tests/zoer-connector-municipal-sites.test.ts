@@ -165,7 +165,12 @@ describe('municipal-sites after the 2026 site moves', () => {
       detailUrl: 'https://www.rdn.ca/government/current-bid-opportunities/26-043-surfside-well-drilling-itt', sourceUrl: 'https://www.rdn.ca/government/current-bid-opportunities',
     });
     expect(records.every(record => record.publishedAt)).toBe(true);
-    expect(records.find(record => record.externalId === '26-005')).toMatchObject({ publishedAt: '2025-01-06', status: 'Open' });
+    expect(records.find(record => record.externalId === '26-005')).toMatchObject({ publishedAt: '2025-01-06' });
+  });
+  itWith2026Rules('opens RDN\'s standing notices on the new list once BC stays on UTC−07', () => {
+    // 26-005 prints no status, so it is open only when its printed 1:00 AM agrees with 08:00Z.
+    const records = parseListing(portal('rdn'), fixture('rdn-2026-11-listing.html')).rows.map(row => siteRecord(row, portal('rdn'), LATER));
+    expect(records.find(record => record.externalId === '26-005')).toMatchObject({ closingAt: '2026-12-31T01:00:00-07:00', status: 'Open', statusDerivedFrom: 'closingAt' });
   });
   it('saves RDN\'s notice-page documents as public links on its own host', () => {
     const url = 'https://www.rdn.ca/government/current-bid-opportunities/26-043-surfside-well-drilling-itt';
