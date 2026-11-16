@@ -20,7 +20,7 @@ export const COLLECT_ACTIONS = ['scrape.full', 'scrape.sample', 'listing.capture
 
 /** Open notices closing today through `days` days ahead: pursued first, then shortlisted, then soonest. */
 export async function readClosingSoon(source: string, asOf: number, pursued: string[], days = SOON_DAYS) {
-  const scope = and(openSql(asOf), sourceSql(source), deadlineWindowSql(days, asOf)), ids = pursued.slice(0, MAX_PURSUED);
+  const scope = and(sourceSql(source), openSql(asOf, '', { crossSource: 'exclude', source }), deadlineWindowSql(days, asOf)), ids = pursued.slice(0, MAX_PURSUED);
   const rank = ids.length ? `CASE WHEN id IN (${ids.map(() => '?').join(',')}) THEN 1 ELSE 0 END` : '0';
   const [rows, [total]] = await Promise.all([
     sql(`SELECT id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing, ${r.source} AS sourceId, ${rank} AS pursued, CASE WHEN ${r.field('starred')}=1 THEN 1 ELSE 0 END AS shortlisted FROM records WHERE ${scope.sql} ORDER BY pursued DESC, shortlisted DESC, ${r.closing}, id LIMIT 8`, [...ids, ...scope.parameters]),
@@ -56,7 +56,7 @@ export async function readNewSince(source: string, runIds: string[], asOf: numbe
   if (!runIds.length) return { total: 0, bySource: [] as { sourceId: string; count: number }[], rows: [] as any[], openTotal: 0 };
   const ids = runIds.slice(0, MAX_RUN_IDS), marks = ids.map(() => '?').join(','), key = r.field('sourceKey');
   const fresh = and({ sql: `${r.kind}='opportunity' AND ${key} IN (SELECT record_id FROM record_history WHERE run_id IN (${marks})) AND ${key} NOT IN (SELECT record_id FROM record_history WHERE run_id NOT IN (${marks}))`, parameters: [...ids, ...ids] }, sourceSql(source));
-  const open = and(fresh, openSql(asOf));
+  const open = and(fresh, openSql(asOf, '', { crossSource: 'exclude', source }));
   const [bySource, rows, [openTotal]] = await Promise.all([
     sql(`SELECT ${r.source} AS sourceId, count(*) AS count FROM records WHERE ${fresh.sql} GROUP BY sourceId ORDER BY count DESC, sourceId`, fresh.parameters),
     sql(`SELECT id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing, ${r.source} AS sourceId FROM records WHERE ${open.sql} ORDER BY coalesce(${r.closing},'9999'), id LIMIT 8`, open.parameters),

@@ -142,8 +142,8 @@ export function notClosedSql(value: string, asOf: number = Date.now()): Fragment
  * whose closing date has not passed, is a no-fixed-date placeholder, or is unknown) and the canonical-notice rule
  * (duplicates.ts: current CanadaBuys amendment only, no merged rows, no local copies of BC Bid notices).
  */
-export function openSql(asOf: number = Date.now(), alias = '', crossSource: 'exclude' | 'include' = 'exclude'): Fragment {
-  return and(listedOpenSql(asOf, alias), { sql: canonicalNoticeSql(alias, { crossSource }), parameters: [] });
+export function openSql(asOf: number = Date.now(), alias = '', options: Parameters<typeof canonicalNoticeSql>[1] = { crossSource: 'exclude' }): Fragment {
+  return and(listedOpenSql(asOf, alias), { sql: canonicalNoticeSql(alias, options), parameters: [] });
 }
 
 export const sourceSql = (source: string | undefined, alias = ''): Fragment | null => source ? { sql: `${recordColumns(alias).source}=?`, parameters: [source] } : null;
@@ -157,10 +157,12 @@ export function assessmentScope(profileVersionId: string | null, table = ''): Fr
 /** The three acquisition gaps, each usable on its own (no parameters). Copy follows INTERFACE-SPEC §3. */
 export function acquireParts(alias = '') {
   const r = recordColumns(alias);
+  const recordId = recordColumns(alias || 'records').id;
+  const documents = `SELECT 1 FROM documents d WHERE d.record_id=${recordId}`;
   return {
     unchecked: `${r.field('attachments')} IS NULL AND ${r.id} NOT IN (SELECT record_id FROM documents)`,
-    notDownloaded: `${r.field('attachments[0]')} IS NOT NULL AND ${r.id} NOT IN (SELECT record_id FROM documents WHERE status='downloaded')`,
-    noText: `${r.id} IN (SELECT record_id FROM documents WHERE status='downloaded' AND coalesce(length(text),0)=0)`,
+    notDownloaded: `${r.field('attachments[0]')} IS NOT NULL AND NOT EXISTS (${documents} AND d.status='downloaded')`,
+    noText: `EXISTS (${documents} AND d.status='downloaded' AND coalesce(length(d.text),0)=0)`,
   };
 }
 export const ACQUIRE_REASON_TEXT = { unchecked: 'Attachment discovery not checked', notDownloaded: 'Attachment links not downloaded', noText: 'Saved; no usable text extracted' } as const;

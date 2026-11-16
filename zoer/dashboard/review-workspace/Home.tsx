@@ -17,7 +17,7 @@ import { ACQUIRE_REASON_TEXT, QUEUES, QUEUE_TEXT, queueSql, reviewScopeHref, typ
 import { Today } from './Today';
 import { SOON_DAYS } from './today-data';
 import { friendlyDeadline } from './deadline-text';
-import { readAttentionSummary, readCoverage, readDeadlines, readPolicies, readQueue, readRecentDecisions, readReviewCoverage, readSourceHealth } from './home-data';
+import { readAttentionSummary, readCoverage, readDeadlines, readPolicies, readQueue, readQueueExamples, readRecentDecisions, readReviewCoverage, readSourceHealth } from './home-data';
 import { StatusCard } from '../procurement/Status';
 import { useNarrowScreen } from '../mobile';
 import './review.css';
@@ -64,10 +64,16 @@ type RowStatus = 'pending' | 'error' | 'blocked' | 'zero' | 'active';
 function QueueRow({ queue, profile, source, asOf, available, workspacePending, onStatus }: { queue: QueueId; profile: string | null; source: string; asOf: number; available: boolean; workspacePending: boolean; onStatus: (queue: QueueId, status: RowStatus) => void }) {
   const legacy = queue === 'acquire', unavailable = queueSql(queue, profile).unavailable;
   const enabled = (legacy || available) && !unavailable;
-  const result = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'queue', queue, profile, source, asOf], enabled, queryFn: () => readQueue(queue, profile, source, asOf), refetchInterval: 60_000 });
+  const key = [...REVIEW_KEY, 'home', 'queue', queue, profile, source, asOf];
+  const result = useQuery({ queryKey: key, enabled, queryFn: () => readQueue(queue, profile, source, asOf), refetchInterval: 60_000 });
+  const [examplesOpen, setExamplesOpen] = useState(false);
+  const examples = useQuery({
+    queryKey: [...key, 'examples'], enabled: enabled && examplesOpen && (result.data ?? 0) > 0,
+    queryFn: () => readQueueExamples(queue, profile, source, asOf), refetchInterval: 60_000,
+  });
   const text = QUEUE_TEXT[queue], profiled = queue === 'eligibility' || queue === 'changes' || queue === 'decide';
   const href = reviewScopeHref({ source: source || undefined, queue, ...(profiled ? { profile } : {}) });
-  const status: RowStatus = unavailable ? 'blocked' : !enabled ? 'pending' : result.isPending ? 'pending' : result.isError ? 'error' : result.data?.total === 0 ? 'zero' : 'active';
+  const status: RowStatus = unavailable ? 'blocked' : !enabled ? 'pending' : result.isPending ? 'pending' : result.isError ? 'error' : result.data === 0 ? 'zero' : 'active';
   const heading = `rw-queue-${queue}`;
   useEffect(() => { onStatus(queue, status); }, [queue, status, onStatus]);
 
@@ -79,17 +85,17 @@ function QueueRow({ queue, profile, source, asOf, available, workspacePending, o
 
   const line = status === 'pending' ? (workspacePending ? 'Checking the review workspace…' : 'Loading…') : status === 'error' ? `Could not load: ${result.error?.message ?? 'no result'}` : QUEUE_SUMMARY[queue];
   return <li className="rw-queue-row" data-queue={queue} aria-labelledby={heading}>
-    <RouteLink to={href} className="rw-queue-link" label={`${text.title}: ${status === 'active' ? n(result.data!.total) : line}`}>
-      <Hint content={text.description}><span className="rw-queue-count">{status === 'active' ? n(result.data!.total) : '–'}</span></Hint>
+    <RouteLink to={href} className="rw-queue-link" label={`${text.title}: ${status === 'active' ? n(result.data) : line}`}>
+      <Hint content={text.description}><span className="rw-queue-count">{status === 'active' ? n(result.data) : '–'}</span></Hint>
       <span className="rw-queue-text"><h3 id={heading}>{text.title}</h3><p className={status === 'error' ? 'rw-bad' : 'rw-muted'}>{line}</p></span>
       <ChevronRight size={16} className="rw-queue-chevron" aria-hidden="true" />
     </RouteLink>
-    {status === 'active' && result.data!.items.length > 0 && <details className="rw-queue-examples">
+    {status === 'active' && <details className="rw-queue-examples" open={examplesOpen} onToggle={event => setExamplesOpen(event.currentTarget.open)}>
       <summary data-zoer-disclosure="">Show examples</summary>
-      <ul className="rw-queue-items">{result.data!.items.map(item => <li key={item.id}>
+      {examplesOpen && <Loadable query={examples} what="examples">{items => <ul className="rw-queue-items">{items.map(item => <li key={item.id}>
         <RouteLink to={`/procurement?notice=${encodeURIComponent(item.id)}`} className="rw-item-title">{item.title || item.id}</RouteLink>
         <Hint content={deadlineText(item.closing, asOf).detail || undefined}><span className="rw-item-meta">{[item.buyer, deadlineText(item.closing, asOf).text, item.reason ? ACQUIRE_REASON_TEXT[item.reason as keyof typeof ACQUIRE_REASON_TEXT] : ''].filter(Boolean).join(' · ')}</span></Hint>
-      </li>)}{result.data!.total > result.data!.items.length && <li className="rw-muted">and {n(result.data!.total - result.data!.items.length)} more</li>}</ul>
+      </li>)}{(result.data ?? 0) > items.length && <li className="rw-muted">and {n((result.data ?? 0) - items.length)} more</li>}</ul>}</Loadable>}
     </details>}
   </li>;
 }
@@ -118,8 +124,8 @@ function AttentionTiles({ source, profile, active, asOf, available }: { source: 
   return <div className="rw-tiles">
     <Tile href={reviewScopeHref({ source: source || undefined, open: true })} tone="info" title="Open opportunities" note={writes ? 'Saved in Zoer' : 'In this published copy'} count={summary.data ? n(summary.data.open) : dash} />
     <Tile href={active ? reviewScopeHref({ source: source || undefined, open: true, readiness: 'conditions', profile }) : writes ? '/profiles' : '/home'} tone="warn" title="Need information" note={active ? 'Needs information or investigation' : 'Choose a profile'} count={active ? (summary.data ? n(summary.data.needInfo) : dash) : dash} />
-    <Tile href={reviewScopeHref({ source: source || undefined, queue: 'decide', profile })} tone="ok" title="Ready for your decision" note="Nothing is approved automatically" count={!available ? dash : decide.data ? n(decide.data.total) : dash} />
-    <Tile href={reviewScopeHref({ source: source || undefined, queue: 'changes', profile })} tone="violet" title="Decisions to reconfirm" note="Evidence or scope changed" count={!available ? dash : changes.data ? n(changes.data.total) : dash} />
+    <Tile href={reviewScopeHref({ source: source || undefined, queue: 'decide', profile })} tone="ok" title="Ready for your decision" note="Nothing is approved automatically" count={available && decide.data !== undefined ? n(decide.data) : dash} />
+    <Tile href={reviewScopeHref({ source: source || undefined, queue: 'changes', profile })} tone="violet" title="Decisions to reconfirm" note="Evidence or scope changed" count={available && changes.data !== undefined ? n(changes.data) : dash} />
   </div>;
 }
 

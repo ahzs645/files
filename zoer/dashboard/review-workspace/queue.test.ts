@@ -58,6 +58,7 @@ db.query("INSERT INTO procurement_decisions VALUES('d7a','o7','a7','monitor','ol
 db.query("INSERT INTO procurement_changes VALUES('c5','o5','document_added','{}',?,NULL,NULL)").run(T);
 db.query("INSERT INTO procurement_tasks VALUES('k1','o1','Get files','acquire_evidence',NULL,NULL,NULL,NULL,'open',NULL,1,?,?)").run(T, T);
 db.query("INSERT INTO batches VALUES('b1','download','succeeded','{}',3,0,3,NULL,'2026-09-25T00:00:00Z'),('b2','download','failed','{}',0,2,2,'Portal timed out','2026-09-26T00:00:00Z'),('b3','review','partial','{}',4,1,5,NULL,'2026-09-24T00:00:00Z')").run();
+db.exec("UPDATE records SET rowid=3072 WHERE id='o3'; UPDATE records SET rowid=5120 WHERE id='o5'");
 db.close();
 const asOf = Date.parse('2026-09-27T19:00:00Z'); // noon in Vancouver
 
@@ -66,21 +67,25 @@ const ids = async (where: { sql: string; parameters: (string | number)[] }) => (
 test('Home queue counts match the drill-down predicate exactly', async () => {
   const expected: Record<string, string[]> = { acquire: ['o1', 'o2', 'o3'], requirements: ['o5'], eligibility: ['o5', 'o7'], changes: ['o5', 'o7'], decide: ['o6'] };
   for (const queue of QUEUES) {
-    const result = await data.readQueue(queue, 'pv1', '', asOf), drill = await ids(reviewPredicate({ queue }, { profileVersionId: 'pv1', asOf }));
+    const total = await data.readQueue(queue, 'pv1', '', asOf), drill = await ids(reviewPredicate({ queue }, { profileVersionId: 'pv1', asOf }));
     expect([queue, drill]).toEqual([queue, expected[queue]]);
-    expect([queue, result.total]).toEqual([queue, drill.length]);
-    expect(result.items.map(item => item.id).sort()).toEqual(drill);
+    expect([queue, total]).toEqual([queue, drill.length]);
+    expect((await data.readQueueExamples(queue, 'pv1', '', asOf)).map(item => item.id).sort()).toEqual(drill);
   }
-  const acquire = await data.readQueue('acquire', 'pv1', '', asOf);
-  expect(Object.fromEntries(acquire.items.map(item => [item.id, item.reason]))).toEqual({ o1: 'unchecked', o2: 'notDownloaded', o3: 'noText' });
-  expect((await data.readQueue('decide', 'pv1', 'bc-bid', asOf)).total).toBe(0);
-  expect((await data.readQueue('decide', 'pv1', 'canadabuys', asOf)).total).toBe(1);
+  const acquire = await data.readQueueExamples('acquire', 'pv1', '', asOf);
+  expect(acquire.map(item => item.id)).toEqual(['o3', 'o2', 'o1']);
+  expect(Object.fromEntries(acquire.map(item => [item.id, item.reason]))).toEqual({ o1: 'unchecked', o2: 'notDownloaded', o3: 'noText' });
+  expect(await data.readQueue('decide', 'pv1', 'bc-bid', asOf)).toBe(0);
+  expect(statements.at(-1)).not.toContain("GROUP BY json_extract(data,'$.externalId')");
+  expect(await data.readQueue('decide', 'pv1', 'canadabuys', asOf)).toBe(1);
+  expect(statements.at(-1)).toContain("GROUP BY json_extract(data,'$.externalId')");
   // Another profile version's assessment is never reused.
-  expect((await data.readQueue('decide', 'pv2', '', asOf)).total).toBe(0);
+  expect(await data.readQueue('decide', 'pv2', '', asOf)).toBe(0);
   expect(await ids(reviewPredicate({ queue: 'eligibility' }, { profileVersionId: null, asOf }))).toEqual([]);
 });
 
 test('coverage stages, policies, deadlines, decisions and source health', async () => {
+  expect((await data.readAttentionSummary('', 'pv1', asOf)).needInfo).toBe(1);
   expect(await data.readCoverage('')).toEqual({ saved: 10, unchecked: 3, linked: 3, withFiles: 2, withText: 1, files: 2, usable: 1, noText: 1 });
   expect((await data.readCoverage('canadabuys')).saved).toBe(1);
   expect(await data.readReviewCoverage('', 'pv1')).toEqual({ triaged: 2, extracted: 1, assessed: 3 });
@@ -104,14 +109,14 @@ test('Home queues and deadlines exclude hidden notices until they are restored',
   const edit = new Database(path);
   try {
     edit.query('INSERT INTO workspace_state VALUES(?,?,?)').run('procurement:hidden:o1', JSON.stringify({ recordId: 'o1', hidden: true }), T);
-    const queue = await data.readQueue('acquire', 'pv1', '', asOf);
-    expect(queue.total).toBe(2);
-    expect(queue.items.map(item => item.id)).not.toContain('o1');
+    expect(await data.readQueue('acquire', 'pv1', '', asOf)).toBe(2);
+    const examples = await data.readQueueExamples('acquire', 'pv1', '', asOf);
+    expect(examples.map(item => item.id)).not.toContain('o1');
     const deadlines = await data.readDeadlines('', asOf);
     expect(deadlines.total).toBe(2);
     expect(deadlines.rows.map(row => row.id)).not.toContain('o1');
     edit.query('DELETE FROM workspace_state WHERE key=?').run('procurement:hidden:o1');
-    expect((await data.readQueue('acquire', 'pv1', '', asOf)).total).toBe(3);
+    expect(await data.readQueue('acquire', 'pv1', '', asOf)).toBe(3);
     expect((await data.readDeadlines('', asOf)).total).toBe(3);
   } finally {
     edit.query('DELETE FROM workspace_state WHERE key=?').run('procurement:hidden:o1');

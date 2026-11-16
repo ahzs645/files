@@ -57,6 +57,8 @@ npm run zoer:test:worker
 
 Output: `dist/zoer-bcbid`. To build without running the worker smoke, use `npm run zoer:build`. The Vite build embeds the source dashboard JS/CSS in one HTML file. Installing the built package needs no source checkout, local web server, new Convex instance or CDP credential. The source dashboard's `convex/react` transport is replaced only for this build with `zoer/dashboard/backend.tsx`. Source query names, routes, components, styles, parsers, normalization and award-analysis calculations are reused directly.
 
+The workspace runs catalog SQL reads one at a time. Home reads the open-opportunity count and Acquire evidence queue in bounded catalog ranges, loads queue examples when expanded, and skips CanadaBuys amendment checks for other source filters. The Home and Status document checks look up saved file states by notice ID. Retry re-runs failed reads on the current view.
+
 The complete Convex bridge in `convex/_generated/` is versioned, as [Convex recommends](https://docs.convex.dev/understanding/best-practices/other-recommendations#check-generated-code-into-version-control), so clean checkouts can typecheck without deployment credentials. Regenerate it with `npm run convex:codegen` in a configured development environment when Convex modules change, and include those changes in the commit. Do not replace its module-specific API types with preliminary `AnyApi` stubs or ignore code-generation errors. `convex/tsconfig.json` prevents emitting duplicate JavaScript beside the TypeScript function sources.
 
 From a Zoer checkout:

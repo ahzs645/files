@@ -15,3 +15,6 @@ test-results/
 output/
 /chat-inputs/
 __pycache__/
+
+# Local Cold Fire Creek site work (backups, DB dumps, theme zips) — not part of this repo
+/cold-fire-creek-*/

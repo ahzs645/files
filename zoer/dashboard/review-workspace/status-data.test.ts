@@ -30,6 +30,7 @@ for (let i = 0; i < 230; i++) {
   if (i < 150) { doc(id, `${id}/a`, 'downloaded'); doc(id, `${id}/b`, 'downloaded'); }
   else if (i < 160) { doc(id, `${id}/a`, 'downloaded'); doc(id, `${id}/b`, 'failed', 'getaddrinfo EAI_AGAIN'); }
   else if (i < 165) doc(id, `${id}/a`, 'failed', 'Manual browser verification required. Open the attachment in the saved browser, complete the browser check manually, then retry.');
+  else if (i === 229) doc(id, `${id}/b`, 'downloaded');
 }
 record('opportunity:2000', { closingDate: '2026-12-02' });                                       // open, no links: needs details
 record('opportunity:2001', { closingDate: '2026-10-01', attachments: [{ url: 'x' }] });          // closed: out of scope
@@ -38,11 +39,12 @@ db.query("INSERT INTO research_tasks VALUES('r','opportunity:1160','attachment',
 
 test('document gap of open BC Bid notices, per file, read in pages through the host validator', async () => {
   const gap = await readDocumentGap(ASOF);
-  expect(gap).toMatchObject({ open: 231, withLinks: 230, noLinks: 1, waitingNotices: 1, links: 460, saved: 310, failed: 10, waiting: 5, never: 135, fullySaved: 150, missingNotices: 80 });
+  expect(gap).toMatchObject({ open: 231, withLinks: 230, noLinks: 1, waitingNotices: 1, links: 460, saved: 311, failed: 10, waiting: 5, never: 134, fullySaved: 150, missingNotices: 80 });
   expect(gap.reasons.map(reason => reason.count)).toEqual([10, 5]);
   expect(gap.reasons[0].text).toMatch(/could not be reached/);
   expect(String(gap.notices[0].closing) <= String(gap.notices.at(-1)!.closing)).toBe(true);
   // Paging: more than one statement per list, none using a subquery in FROM/JOIN.
   expect(statements.filter(sql => sql.includes('OFFSET')).length).toBeGreaterThan(2);
+  expect(statements.filter(sql => sql.includes('FROM documents')).every(sql => !sql.includes('FROM records'))).toBe(true);
   expect(statements.every(sql => !/\b(?:FROM|JOIN)\s*\(/i.test(sql))).toBe(true);
 });
