@@ -6,7 +6,7 @@ Plan: [PLANS.md](PLANS.md) · Traceability: [TRACEABILITY.md](TRACEABILITY.md)
 |---|---|---|
 | M1 — Host: save first, extract later | VERIFIED (host commit `1a84ff7a`, branch `feat/deferred-document-extraction`, not pushed) | readiness: PASS (audit 4); completion audit 5: FAIL (PG-011), corrected; completion audit 6: PASS |
 | M2 — Plugin: Processing tab and pending state | VERIFIED (plugin commit `aeb57bf`, not pushed) | readiness: PASS (audit 4); completion audit 6: PASS |
-| M3 — Deployment to OTE | BLOCKED (see Blockers) | readiness not yet audited |
+| M3 — Deployment to OTE | BLOCKED: handed to the user (see Blockers) | readiness not audited; no completion audit; no final audit |
 
 ## Validation results (2026-11-16, before the completion audit)
 
@@ -151,7 +151,17 @@ VERIFIED. Non-blocking items carried forward:
 
 ## Blockers
 
-### M3 — Deployment to OTE — BLOCKED (2026-11-16)
+### M3 — Deployment to OTE — handed to the user (2026-11-16)
+
+The user asked for the deployment, then for it to be attempted once the node was reachable, and
+finally decided (2026-11-16): "Just finish it, I will deploy it later". Deployment is therefore not
+performed in this work. REQ-014 stays BLOCKED, not complete, until the user deploys and the four
+checks pass. Prepared for it: `dist/procurement-0.41.0.zip` (built from the committed tree, package
+digest `2284f6a5…f2777`) and the runbook `zoer/docs/2026-11-16-deferred-extraction-deploy.md`.
+On the second attempt the node's SSH port answered and key authentication succeeded, but no shell
+was returned (three attempts); nothing was changed on the cluster or on the live plugin.
+
+Earlier record of the blocker:
 
 Affected requirement: REQ-014 (AC-017, AC-018, AC-026, AC-027). Nothing has been deployed: the live
 host still reports commit `4f7eb40a` and the installed plugin is 0.40.1.
