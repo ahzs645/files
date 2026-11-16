@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Btn } from '@zoer/plugin-ui/controls';
+import { fileSize } from '../file-size';
 import { host } from '../bridge';
 import { useWorkspace } from '../backend';
 import { useCapabilities } from '../capabilities';
@@ -33,7 +34,7 @@ export function NoticeFiles({ id, source, attachments, documents, onRefresh }: {
     {earlier > 0 && <p className="rw-muted">{earlier} more saved file{earlier === 1 ? ' comes' : 's come'} from links this notice no longer lists (for example replaced addenda); {earlier === 1 ? 'it is' : 'they are'} kept.</p>}
     {!missing.length ? <p className="rw-muted">Every linked file is saved.</p> : <>
       <ul className="pc-notice-file-list">{shown.map(row => <li key={row.url} data-state={row.state}>
-        <div><a href={row.url} target="_blank" rel="noreferrer" className="pc-wrap">{row.name} ↗</a></div>
+        <div><a href={row.url} target="_blank" rel="noreferrer" className="pc-wrap">{row.name} ↗</a>{row.size !== undefined && <small> · {fileSize(row.size)}</small>}</div>
         <small className="pc-wrap"><span className="pc-status" data-tone={row.state === 'never' ? undefined : 'warn'}>{STATE_TEXT[row.state as Exclude<LinkState, 'saved'>]}</span>{row.reason ? ` ${row.reason}` : ''}</small>
       </li>)}</ul>
       {missing.length > shown.length && <Btn size="sm" variant="ghost" onClick={() => setAll(true)}>Show all {missing.length} missing files</Btn>}

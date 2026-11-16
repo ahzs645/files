@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
-import { BatchHistory, BatchProgress, useCatalogState } from './BatchHistory';
+import { BatchProgress } from './BatchProgress';
+import { BatchHistory, useCatalogState } from './BatchHistory';
 import { BulkDocuments } from './BulkDocuments';
 import { RecordPicker } from './RecordPicker';
 import { host } from './bridge';
@@ -19,6 +20,7 @@ export function Documents() {
   const {model}=useWorkspace();
   const browserBusy=!model||sourceCaptureActive(model.captureRuns)||documentDownloadActive(model.documentRuns);
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
+  const [showSize,setShowSize] = useState(true);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [recordId, setRecordId] = usePluginQuery('record');
   const [tab, setTab] = usePluginQuery('tab');
@@ -47,7 +49,11 @@ export function Documents() {
   return <section className="research doc-page">
     {/* Download · Files · History are the section's tabs (Shell); the page itself has no heading. */}
     <DocumentStats refreshKey={refreshKey} onShowFailed={() => patchPluginQuery({ tab: 'files', fileStatus: 'failed' }, 'push')} />
-    <BatchProgress batches={state.batches} tasks={state.tasks} />
+    <label className="research-note"><input type="checkbox" checked={showSize} onChange={e => setShowSize(e.target.checked)} /> Show file sizes</label>
+    <BatchProgress showSize={showSize} batches={state.batches} tasks={state.tasks} onSkip={collection && state.fileTransferControls ? async (taskId,transferId) => {
+      await host('catalog.skipDownload',{taskId,transferId});
+      await refresh();
+    } : undefined} />
     {collection && attention && current !== 'history' && <p className="doc-attention" role="status"><span className="doc-dot" aria-hidden="true" />The last download needs attention. <button type="button" onClick={() => setTab('history')}>Open history</button></p>}
     {(error || state.loadError) && <p role="alert">{error || state.loadError}</p>}{message && <p role="status">{message}</p>}
     {collection && current === '' && <>
@@ -56,7 +62,7 @@ export function Documents() {
       <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} more={[{ label: 'Open database viewer', onClick: () => void host('catalog.open') }]}
         actions={<><Button disabled={busy || browserBusy || !selection.size} onClick={() => void download()}>Download selected</Button><Hint action content="Saved files of the selected notices and a CSV, as one zip"><Button variant="ghost" disabled={busy || !selection.size || selection.size > BUNDLE_MAX_NOTICES} onClick={() => void bundle()}>Save files as zip</Button></Hint></>} />
     </>}
-    {current === 'files' && <DocumentFiles onDetails={setRecordId} refreshKey={refreshKey} running={running} browserBusy={browserBusy} />}
+    {current === 'files' && <DocumentFiles showSize={showSize} fileTransferControls={!!state.fileTransferControls} onDetails={setRecordId} refreshKey={refreshKey} running={running} browserBusy={browserBusy} />}
     {collection && current === 'history' && <BatchHistory title="Download history" kind="download" batches={state.batches} tasks={state.tasks} onChanged={refresh} onError={setError} browserBusy={browserBusy} />}
     {recordId && <NoticeView id={recordId} layout="dialog" initialTab="documents" onClose={() => setRecordId('')} />}
   </section>;

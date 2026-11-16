@@ -1,3 +1,4 @@
+import { fileSize } from './file-size';
 import { Hint } from './host-ui';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -31,16 +32,19 @@ export function DocumentStats({refreshKey = '', onShowFailed}: {refreshKey?: str
 const STATUS:[string,string][]=[['all','All files'],['failed','Failed'],['unreadable','No text'],['warnings','With warnings']];
 
 /** Searchable list of saved files with a per-bid retry or text extraction. */
-export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy = false}: {onDetails(id:string):void;refreshKey?:string;running:boolean;browserBusy?:boolean}) {
+export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy = false, fileTransferControls = false, showSize = true}: {showSize?:boolean;fileTransferControls?:boolean;onDetails(id:string):void;refreshKey?:string;running:boolean;browserBusy?:boolean}) {
   const [filter,setFilter]=usePluginQuery('fileStatus','all'),[search,setSearch]=useState(''),[page,setPage]=useState(0);
   const [busy,setBusy]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState('');
   const {collection}=useCapabilities();
   const where=filter==='failed'?"d.status='failed'":filter==='unreadable'?"d.status='downloaded' AND coalesce(length(d.text),0)=0":filter==='warnings'?"d.error IS NOT NULL AND d.status='downloaded'":"1=1";
   const parameters=[`%${search}%`,`%${search}%`,`%${search}%`];
   const clause=`d.name LIKE ? AND ${where} OR r.title LIKE ? AND ${where} OR d.record_id LIKE ? AND ${where}`;
-  const files=useQuery({queryKey:['procurement','document-files',filter,search,page],queryFn:()=>query(`SELECT d.id,d.record_id,d.name,d.media_type,d.status,d.bytes,length(d.text) chars,d.error,d.updated_at,r.title FROM documents d JOIN records r ON r.id=d.record_id WHERE ${clause} ORDER BY d.updated_at DESC,d.id LIMIT 51 OFFSET ?`,[...parameters,page*50]),refetchInterval:10000});
+  const expectedSize = fileTransferControls
+    ? "(SELECT json_extract(t.result,'$.expectedBytes') FROM research_tasks t WHERE d.status='failed' AND t.source_id=d.id AND t.kind='attachment' AND json_extract(t.result,'$.expectedBytes') IS NOT NULL ORDER BY t.updated_at DESC LIMIT 1)"
+    : "NULL";
+  const files=useQuery({queryKey:['procurement','document-files',filter,search,page,fileTransferControls],queryFn:()=>query(`SELECT d.id,d.record_id,d.name,d.media_type,d.status,d.bytes,${expectedSize} expectedBytes,length(d.text) chars,d.error,d.updated_at,r.title FROM documents d JOIN records r ON r.id=d.record_id WHERE ${clause} ORDER BY d.updated_at DESC,d.id LIMIT 51 OFFSET ?`,[...parameters,page*50]),refetchInterval:10000});
   const rows=(files.data?.rows??[]).slice(0,50);
-  const act=async(row:any,extract:boolean)=>{setBusy(row.id);setError('');setMessage('');try{if(!extract)await assertDocumentBrowserIdle(host);await host('action',{actionId:extract?'documents.extract':'documents.download',input:{recordIds:[row.record_id],...(extract?{}:{force:false})}});setMessage(`${extract?'Text extraction':'Download retry'} started for ${row.title}.`);}catch(e){setError((e as Error).message);}finally{setBusy('');}};
+  const act=async(row:any,extract:boolean)=>{setBusy(row.id);setError('');setMessage('');try{if(!extract)await assertDocumentBrowserIdle(host);await host('action',{actionId:extract?'documents.extract':'documents.download',input:{recordIds:[row.record_id],...(extract?{}:{force:false,...(fileTransferControls?{documentId:row.id}:{})})}});setMessage(`${extract?'Text extraction':'Download retry'} started for ${!extract && fileTransferControls ? row.name : row.title}.`);}catch(e){setError((e as Error).message);}finally{setBusy('');}};
   return <section className="zoer-history" aria-label="Saved files">
     <div className="research-toolbar">
       <label className="research-label research-grow"><span className="sr-only">Search files</span><input maxLength={250} aria-label="Search files" placeholder="Search by file name, bid number or title" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} /></label>
@@ -52,11 +56,11 @@ export function DocumentFiles({onDetails, refreshKey = '', running, browserBusy 
       return <article key={row.id}>
         <div className="research-file-info">
           <strong>{row.name}</strong>
-          <span className="research-note">{row.title}{(id=>id.includes(':')?'':` · ${id}`)(String(row.record_id).replace(/^(opportunity|award):/,''))}{row.bytes?` · ${bytes(row.bytes)}`:''}</span>
+          <span className="research-note">{row.title}{(id=>id.includes(':')?'':` · ${id}`)(String(row.record_id).replace(/^(opportunity|award):/,''))}{showSize && ` · ${fileSize(row.status==='downloaded' ? row.bytes : row.expectedBytes)}`}</span>
           {row.error&&<Hint content={row.error}><span className="research-file-warning doc-clamp">{shortError(row.error)}</span></Hint>}
         </div>
         <Hint content={row.chars?`${Number(row.chars).toLocaleString()} characters of text`:undefined}><span className="doc-chip" data-tone={state[0]}>{state[1]}</span></Hint>
-        <div className="research-toolbar doc-file-actions"><Button variant="ghost" onClick={()=>onDetails(row.record_id)}>Open</Button>{collection&&<Button variant="ghost" disabled={!!busy||running||(browserBusy&&row.status!=='downloaded')} onClick={()=>void act(row,row.status==='downloaded')}>{busy===row.id?'Starting…':row.status==='downloaded'?'Re-extract':'Retry'}</Button>}</div>
+        <div className="research-toolbar doc-file-actions"><Button variant="ghost" onClick={()=>onDetails(row.record_id)}>Open</Button>{collection&&<Button variant="ghost" disabled={!!busy||running||(browserBusy&&row.status!=='downloaded')} onClick={()=>void act(row,row.status==='downloaded')}>{busy===row.id?'Starting…':row.status==='downloaded'?'Re-extract':fileTransferControls?'Retry':'Retry notice'}</Button>}</div>
       </article>;})}</div>}
     <div className="research-toolbar research-pager"><Button variant="ghost" disabled={!page||files.isFetching} onClick={()=>setPage(page-1)}>Previous</Button><span>Page {page+1}</span><Button variant="ghost" disabled={!files.data||files.data.rows.length<=50||files.isFetching} onClick={()=>setPage(page+1)}>Next</Button></div>
     <details><summary data-zoer-disclosure="">Supported file types</summary><p className="research-note">PDF (OCR on up to 40 scanned pages), Word (DOCX, DOC, RTF), Excel (XLSX, XLS), PowerPoint (PPTX, PPT), images by OCR, Google Earth maps (KML, KMZ), text and ZIP, including one nested ZIP level. Text is capped at 1,500,000 characters. Encrypted ZIPs, CAD drawings and GIS data are kept as originals for manual review.</p></details>

@@ -9,6 +9,7 @@ export const fieldValidator = v.object({
 });
 
 export const attachmentValidator = v.object({
+  size: v.optional(v.number()),
   name: v.string(),
   url: v.string()
 });

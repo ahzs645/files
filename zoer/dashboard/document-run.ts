@@ -12,7 +12,7 @@ export function sourceCaptureProgressPath(runs: {actionId:string;status:string}[
 export async function assertDocumentBrowserIdle(host:(method:string,input?:unknown)=>Promise<any>) {
   const state=await host('state',{summary:true});
   if(sourceCaptureActive(state.runs))throw Error('Wait for the active source capture to finish before starting another browser task.');
-  if(documentDownloadActive(state.runs.filter((run:any)=>['documents.download','documents.download.all'].includes(run.actionId))))throw Error('Wait for the active attachment download to finish.');
+  if(documentDownloadActive(state.runs.filter((run:any)=>['documents.download','documents.download.all','documents.download.missing'].includes(run.actionId))))throw Error('Wait for the active attachment download to finish.');
 }
 /** Include queued workflow runs before the research batch is created. */
 export function documentDownloadActive(runs: {id:string;status:string}[] = [], submitted?: string) {

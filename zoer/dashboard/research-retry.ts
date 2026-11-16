@@ -4,7 +4,7 @@ export function researchRetry(batch: {id:string;kind:string;input:string}, fallb
   const saved=JSON.parse(batch.input), review=batch.kind==='review';
   return {
     actionId:review?(saved.computerId?'records.review.cli':'records.review'):(saved.recordIds?.length>50?'documents.download.all':'documents.download'),
-    input:{recordIds:saved.recordIds,force:false,resumeRunId:batch.id,...(review?{promptId:saved.promptId,includeDocuments:!!saved.includeDocuments,...(saved.computerId?{computerId:saved.computerId}:{})}:{})},
+    input:{recordIds:saved.recordIds,force:false,resumeRunId:batch.id,...(!review && saved.documentId?{documentId:saved.documentId}:{}),...(review?{promptId:saved.promptId,includeDocuments:!!saved.includeDocuments,...(saved.computerId?{computerId:saved.computerId}:{})}:{})},
     modelProfileId:saved.modelProfileId||fallbackModel,
   };
 }

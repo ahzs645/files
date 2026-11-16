@@ -445,3 +445,11 @@ describe("shared BC Bid parsers", () => {
     expect(result.attachments).toEqual([]);
   });
 });
+
+it("associates a listed size only with its own attachment and keeps size out of the file name", () => {
+  const link = (id:string) => `<a href="/bare.aspx/en/fil/download_public/${id}">Meeting.mp4</a>`;
+  const html = `<table><tr><td>${link('a')}</td><td>1.5 MiB</td></tr>
+    <tr><td>${link('b')}${link('c')}</td><td>2 MB</td></tr></table>`;
+  const result = parseDetailPage(html,'https://bcbid.gov.bc.ca','https://bcbid.gov.bc.ca/notice');
+  expect(result.attachments.map(a=>[a.name,a.size])).toEqual([['Meeting.mp4',1572864],['Meeting.mp4',undefined],['Meeting.mp4',undefined]]);
+});

@@ -16,24 +16,13 @@ const PAGE = 8;
 /** Saved prompts and batches, refreshed every 10 seconds while the page is visible. */
 export function useCatalogState(onError: (message: string) => void) {
   const state = useQuery({ queryKey: ['procurement', 'catalog-state'], queryFn: async () => {
-    const [next, tasks] = await Promise.all([host('catalog.state'), host('catalog.query', {statement: "SELECT run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]})]);
+    const [next, tasks] = await Promise.all([host('catalog.state'), host('catalog.query', {statement: "SELECT id,run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.transferId') transferId,json_extract(result,'$.receivedBytes') receivedBytes,json_extract(result,'$.expectedBytes') expectedBytes,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]})]);
     return {...next,tasks:tasks.rows};
-  }, refetchInterval: 10000 });
+  }, refetchInterval: query => query.state.data?.batches?.some((batch:any) => batch.status === 'running') ? 3000 : 10000 });
   useEffect(() => { if (state.error) onError(state.error.message); }, [state.error, onError]);
   const refresh = async () => { try { await state.refetch({ throwOnError: true }); } catch (e) { onError((e as Error).message); } };
   // Keep cached batches visible when switching Download / Files / History.
   return [{ ...(state.data ?? { prompts: [], batches: [], tasks: [] }), loadError: state.error?.message }, refresh] as const;
-}
-
-export function BatchProgress({batches, tasks = []}: {batches:any[];tasks?:any[]}) {
-  const active=batches.find(batch=>batch.status==='running');
-  if(!active)return null;
-  const task=tasks.find(task=>task.run_id===active.id);
-  return <section className="zoer-history research-progress" role="status" aria-label="Current processing">
-    <strong>{active.kind==='review'?'AI review in progress':'Document processing in progress'} · {active.completed}/{active.total} records complete</strong>
-    {task&&<p>{task.phase||task.kind} · {task.name||task.record_id}</p>}
-    <p className="research-note">Progress is saved, so you can leave this page.</p>
-  </section>;
 }
 
 export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], onChanged, onError, details, browserBusy = false }: {

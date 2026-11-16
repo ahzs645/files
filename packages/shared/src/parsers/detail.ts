@@ -119,8 +119,17 @@ function isAmendmentHistoryTable(headers: string[]): boolean {
   return /^(#|amendment\s*#?)$/i.test(firstHeader) && /\bamendment reason\b/i.test(secondHeader) && /\bdate\b/i.test(thirdHeader);
 }
 
+function attachmentSize(value: string): number | undefined {
+  const match = /^(?:file size\s*:?\s*)?(\d+(?:,\d{3})*(?:\.\d+)?)\s*(bytes?|[kmgt]i?b)$/i.exec(value);
+  if (!match) return undefined;
+  const unit = match[2].toLowerCase();
+  const exponent = Math.max(0, "kmgt".indexOf(unit[0]) + 1);
+  const bytes = Math.round(Number(match[1].replaceAll(",", "")) * (unit.includes("i") ? 1024 : 1000) ** exponent);
+  return Number.isSafeInteger(bytes) ? bytes : undefined;
+}
+
 function isAttachmentMetadata(value: string): boolean {
-  if (!value) {
+  if (!value || attachmentSize(value) !== undefined) {
     return true;
   }
 
@@ -467,7 +476,12 @@ function readAttachments($: cheerio.CheerioAPI, baseUrl: string, excludedUrls: S
     }
 
     if (!attachments.has(url)) {
+      const row = anchor.closest("tr");
+      const size = row.find("a[href*='download_public']").length === 1
+        ? row.children("td").toArray().map(cell => attachmentSize(normalizeWhitespace($(cell).text()))).find(n => n !== undefined)
+        : undefined;
       attachments.set(url, {
+        ...(size !== undefined ? { size } : {}),
         url,
         name: deriveAttachmentName($, anchor, url)
       });

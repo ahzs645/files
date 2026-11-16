@@ -18,6 +18,7 @@ export interface OpportunityField {
 }
 
 export interface OpportunityAttachment {
+  size?: number;
   name: string;
   url: string;
 }
