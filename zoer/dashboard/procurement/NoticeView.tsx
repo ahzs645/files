@@ -8,7 +8,8 @@ import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { setStar, useWorkspace } from '../backend';
-import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from '../document-run';
+import { useDocumentBrowsers } from '../use-document-browsers';
+import { assertDocumentBrowserIdle } from '../document-run';
 import { downloadDocumentBundle, sizeText } from '../document-bundle';
 import { patchPluginQuery, usePluginLocation } from '../navigation';
 import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
@@ -239,8 +240,7 @@ const HostPdfPreview = (Controls as Record<string, unknown>).PdfPreview as Compo
 const coarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 function Documents({ id, source, documents, cite, onRefresh }: { id: string; source: string; documents: any[]; cite?: Cite; onRefresh(): void }) {
-  const { model } = useWorkspace();
-  const browserBusy = !model || sourceCaptureActive(model.captureRuns) || documentDownloadActive(model.documentRuns);
+  const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   const readable = documents.filter(hasUsableText), saved = documents.filter(doc => doc.status === 'downloaded');
   const [selected, setSelected] = useState<string>(cite?.documentId ?? readable[0]?.id ?? saved[0]?.id ?? documents[0]?.id ?? '');
   const initialMode = (doc: any) => isPdf(doc) && (HostPdfPreview || !coarse()) ? 'pdf' : 'text';

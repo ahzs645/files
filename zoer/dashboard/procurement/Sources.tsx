@@ -20,7 +20,8 @@ import { CanadaBuysImport } from './CanadaBuysImport';
 import { BrowserSourcesCard } from './BrowserSourcesCard';
 import { INVENTORY_SQL, sourceName, sql } from './display';
 import { canonicalNoticeSql } from './canonical';
-import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from '../document-run';
+import { useDocumentBrowsers } from '../use-document-browsers';
+import { assertDocumentBrowserIdle } from '../document-run';
 import { plainError, shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 
@@ -295,8 +296,7 @@ const PluginStatusLink = () => <a className="procurement-link" href={pluginHref(
 /** Capabilities, coverage, run outcomes and a retryable failure queue. Errors are shown as errors, never as zero. */
 function SourceHealth({ inventory, canadaBuysTotal, enabled, failuresOpen, onFailuresOpen }: { inventory?: any[]; canadaBuysTotal?: unknown; enabled: boolean; failuresOpen: boolean; onFailuresOpen: (open: boolean) => void }) {
   const client = useQueryClient();
-  const { model } = useWorkspace();
-  const browserBusy = !model || sourceCaptureActive(model.captureRuns) || documentDownloadActive(model.documentRuns);
+  const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   const attachments = useQuery({ queryKey: ['catalog', 'procurement-source-attachments'], enabled, queryFn: () => sql(ATTACHMENT_SQL), refetchInterval: 120_000 });
   const batches = useQuery({ queryKey: ['catalog', 'procurement-source-batches'], enabled, queryFn: () => sql(BATCH_SQL) as Promise<BatchRow[]>, refetchInterval: 15_000 });
   const failures = useFailures(enabled);

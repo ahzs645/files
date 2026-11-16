@@ -54,7 +54,7 @@ function useRunNow() {
   const run = async (key: StepAction) => {
     setBusy(key); setError(''); setMessage('');
     try {
-      await assertDocumentBrowserIdle(host);
+      await assertDocumentBrowserIdle(host, key === 'keep-documents' ? 'download' : 'capture');
       if (key === 'keep-documents') { await host('action', { actionId: 'documents.download.missing', input: {} }); setMessage('Keeping documents current: missing files of open notices download now, soonest closing first. Progress shows under Documents › History.'); }
       else { await host('action', { actionId: 'scrape.details', input: { missing: { limit: 50 } } }); setMessage('Capturing details for up to 50 open notices without attachment links. Progress shows under BC Bid › Runs.'); }
       await client.invalidateQueries({ queryKey: RUNS_KEY });

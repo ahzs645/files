@@ -10,15 +10,14 @@ import { patchPluginQuery, usePluginQuery } from './navigation';
 import { Hint } from './host-ui';
 import { DocumentFiles, DocumentStats } from './DocumentInventory';
 import { NoticeView } from './procurement/NoticeView';
-import { useWorkspace } from './backend';
 import { useCapabilities } from './capabilities';
-import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from './document-run';
+import { useDocumentBrowsers } from './use-document-browsers';
+import { assertDocumentBrowserIdle } from './document-run';
 
 const TABS: [string, string][] = [['', 'Download'], ['files', 'Files'], ['history', 'History']];
 
 export function Documents() {
-  const {model}=useWorkspace();
-  const browserBusy=!model||sourceCaptureActive(model.captureRuns)||documentDownloadActive(model.documentRuns);
+  const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [showSize,setShowSize] = useState(true);
   const [selection, setSelection] = useState<Set<string>>(new Set());

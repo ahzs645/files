@@ -22,19 +22,19 @@ describe('bulk attachment scope',()=>{
   });
   it('reads every page with one revision and checks the revision again before publishing',async()=>{
     const calls:any[]=[];
-    const records=await readDocumentCandidates(async(method,input:any)=>{calls.push(input);if(input.ids)return {revision:9};return input.parameters[0]?{rows:[{id:'last',attachments:'[]',detailsCaptured:1}]}:{rows:Array.from({length:200},(_,i)=>({id:String(i).padStart(3,'0'),attachments:'[{}]',detailsCaptured:0}))};});
+    const records=await readDocumentCandidates(async(method,input:any)=>{calls.push(input);if(input.ids)return {revision:9};return input.parameters[0]?{rows:[{id:'last',attachments:'[]',detailsCaptured:1}]}:{rows:Array.from({length:200},(_,i)=>({cursor:i+1,id:String(i).padStart(3,'0'),attachments:'[{}]',detailsCaptured:0}))};});
     expect(records).toHaveLength(201);expect(records.at(-1)?.id).toBe('last');
     expect(records.at(-1)?.data.detailsCaptured).toBe(true);
     expect(calls[1].statement).not.toContain('SELECT *');expect(calls[1].statement).not.toContain('descriptionText');
-    expect(calls[2].parameters).toEqual(['199']);expect(calls.at(-1)).toEqual({ids:[],revision:9});
+    expect(calls[2].parameters).toEqual([200]);expect(calls.at(-1)).toEqual({ids:[],revision:9});
   });
   it('fails instead of showing a partial snapshot when the catalog changes',async()=>{
     await expect(readDocumentCandidates(async(_,input:any)=>{if(input.ids&&input.revision)throw Error('Catalog changed');return input.ids?{revision:9}:{rows:[{id:'one',attachments:'[]',detailsCaptured:0}]};})).rejects.toThrow('Catalog changed');
   });
-  it('restricts Open scope before paging historical rows and retains exact scope semantics',async()=>{
+  it('bounds each read before filtering source, status and closing date',async()=>{
     let statement='';
-    const records=await readDocumentCandidates(async(_,input:any)=>{if(input.ids)return {revision:9};statement=input.statement;return {rows:[{id:'one',status:' Open ',closingDate:'2027-01-01',attachments:'[]',detailsCaptured:1}]};},'current');
-    expect(statement).toContain("LIKE '%open%'");expect(statement).toContain("IN ('','bc-bid')");
+    const records=await readDocumentCandidates(async(_,input:any)=>{if(input.ids)return {revision:9};statement=input.statement;return {rows:[{id:'other',sourceId:'canadabuys',status:'Open',closingDate:'',attachments:'[{}]'}, {id:'one',status:' Open ',closingDate:'2027-01-01',attachments:'[]',detailsCaptured:1}]};},'current');
+    expect(statement).toContain("rowid>? ORDER BY rowid LIMIT 200");
     expect(documentScope(records,'current',Date.parse('2026-10-11'))).toMatchObject({total:1,capturedWithoutLinks:1,missingDetails:[]});
   });
   it('retries one revision race during background import without mixing snapshots',async()=>{
@@ -47,16 +47,16 @@ describe('bulk attachment scope',()=>{
     expect(attempt).toBe(2);expect(records.map(row=>row.id)).toEqual(['attempt:2']);
   });
   it('refuses nonadvancing pages and selections beyond the bulk limit',async()=>{
-    const page=Array.from({length:200},(_,i)=>({id:String(i).padStart(4,'0'),attachments:'[]',detailsCaptured:0}));
+    const page=Array.from({length:200},(_,i)=>({cursor:i+1,id:String(i).padStart(4,'0'),attachments:'[]',detailsCaptured:0}));
     await expect(readDocumentCandidates(async(_,input:any)=>input.ids?{revision:1}:{rows:page})).rejects.toThrow('did not advance');
     let index=0;
-    await expect(readDocumentCandidates(async(_,input:any)=>input.ids?{revision:1}:{rows:page.map(r=>({...r,id:String(index++).padStart(5,'0')}))})).rejects.toThrow('3,000-opportunity');
+    await expect(readDocumentCandidates(async(_,input:any)=>input.ids?{revision:1}:{rows:page.map(r=>({...r,cursor:index+1,id:String(index++).padStart(5,'0')}))})).rejects.toThrow('3,000-opportunity');
   });
   it('applies exact current status and deadline rules before the bulk limit',async()=>{
     let page=0,index=0;
     const records=await readDocumentCandidates(async(_,input:any)=>{
       if(input.ids)return {revision:1};
-      if(page++<16)return {rows:Array.from({length:200},()=>({id:String(index++).padStart(5,'0'),status:'Not open',closingDate:'2027-01-01',attachments:'[]',detailsCaptured:0}))};
+      if(page++<16)return {rows:Array.from({length:200},()=>({cursor:index+1,id:String(index++).padStart(5,'0'),status:'Not open',closingDate:'2027-01-01',attachments:'[]',detailsCaptured:0}))};
       return {rows:[{id:String(index++).padStart(5,'0'),status:' Open ',closingDate:'2027-01-01',attachments:'[]',detailsCaptured:1}]};
     },'current');
     expect(records).toHaveLength(1);expect(records[0].data.detailsCaptured).toBe(true);
@@ -109,6 +109,35 @@ describe('shared capture browser guards', () => {
     await expect(assertDocumentBrowserIdle(host)).rejects.toThrow('active attachment download');
     runs=[{id:'done',actionId:'scrape.historical',status:'succeeded'},{id:'extract',actionId:'documents.extract',status:'running'}];
     await expect(assertDocumentBrowserIdle(host)).resolves.toBeUndefined();
-    expect(calls).toEqual(Array.from({length:3},()=>({method:'state',input:{summary:true}})));
+    expect(calls.map(call => call.method)).toEqual(['state', 'schedules.read', 'state', 'state']);
   });
+});
+
+it('permits overlapping work on separate browsers and keeps a shared or unknown browser exclusive', async () => {
+  for (const purpose of ['download', 'capture'] as const) {
+    const actionId = purpose === 'download' ? 'scrape.full' : 'documents.download.all';
+    const runs = [{ id: 'active', actionId, status: 'running' }];
+    const hostWith = (downloads: string) => async (method: string) => method === 'state' ? { runs } : {
+      browsers: { collection: { id: 'scraper' }, downloads: { id: downloads } },
+    };
+    await expect(assertDocumentBrowserIdle(hostWith('dedicated'), purpose)).resolves.toBeUndefined();
+    await expect(assertDocumentBrowserIdle(hostWith('scraper'), purpose)).rejects.toThrow(/Wait for/);
+    await expect(assertDocumentBrowserIdle(hostWith(''), purpose)).rejects.toThrow(/Wait for/);
+    await expect(assertDocumentBrowserIdle(hostWith('dedicated'), purpose === 'download' ? 'capture' : 'download')).rejects.toThrow(/Wait for/);
+  }
+});
+
+it('finishes the preview during a capture and bounds every page at the original high-water mark', async () => {
+  const calls: any[] = [];
+  const host = async (method: string, input: any) => {
+    expect(method).toBe('catalog.query');
+    calls.push(input);
+    if (input.statement.includes('max(rowid)')) return { rows: [{last: 201}] };
+    const rows = Array.from({length: 202}, (_, i) => ({cursor:i+1,id:String(i+1),status:'Open',attachments:'[{}]'}));
+    return { rows: rows.filter(r => r.cursor > input.parameters[0] && r.cursor <= input.parameters[1]).slice(0,200) };
+  };
+  const records = await readDocumentCandidates(host, 'current', true);
+  expect(calls.slice(1).map(call => call.parameters)).toEqual([[0,201], [200,201]]);
+  expect(records).toHaveLength(201);
+  expect(records.some(row => row.id === '202')).toBe(false);
 });

@@ -13,8 +13,8 @@ export function useSchedules() {
   return useQuery({ queryKey: SCHEDULES_KEY, queryFn: readSchedules, select: data => data.schedules, refetchInterval: 10_000 });
 }
 /** The plugin's collection and download browsers as newer Zoer reports them with its schedules; undefined on older Zoer. */
-export function useScheduleBrowsers() {
-  return useQuery({ queryKey: SCHEDULES_KEY, queryFn: readSchedules, select: data => data.browsers, refetchInterval: 10_000 });
+export function useScheduleBrowsers(enabled = true) {
+  return useQuery({ queryKey: SCHEDULES_KEY, queryFn: readSchedules, enabled, select: data => data.browsers, refetchInterval: 10_000 });
 }
 
 /** One-line schedule status (badge + next run), for overview rows and cards. */

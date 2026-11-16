@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { fileSize } from '../file-size';
 import { host } from '../bridge';
-import { useWorkspace } from '../backend';
 import { useCapabilities } from '../capabilities';
-import { assertDocumentBrowserIdle, documentDownloadActive, sourceCaptureActive } from '../document-run';
+import { useDocumentBrowsers } from '../use-document-browsers';
+import { assertDocumentBrowserIdle } from '../document-run';
 import { plainError } from '../error-text';
 import { runProcurementAction } from './state-client';
 import { noticeFileRows, STATE_TEXT } from './notice-files';
@@ -15,14 +15,14 @@ import type { LinkState } from './status-data';
  * its reason, or waiting for a browser check. BC Bid notices can fetch the missing ones from here.
  */
 export function NoticeFiles({ id, source, attachments, documents, onRefresh }: { id: string; source: string; attachments: unknown; documents: any[]; onRefresh(): void }) {
-  const { collection } = useCapabilities(), { model } = useWorkspace();
+  const { collection } = useCapabilities();
+  const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   const [all, setAll] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
   const rows = noticeFileRows(attachments, documents);
   if (!rows.length) return null;
   const missing = rows.filter(row => row.state !== 'saved'), saved = rows.length - missing.length;
   // Files saved from links the notice no longer lists (replaced addenda, earlier captures) are kept but not counted here.
   const linked = new Set(rows.map(row => row.url)), earlier = documents.filter(doc => doc.status === 'downloaded' && !linked.has(doc.url)).length;
-  const browserBusy = !model || sourceCaptureActive(model.captureRuns) || documentDownloadActive(model.documentRuns);
   const shown = all ? missing : missing.slice(0, 8);
   const fetchMissing = async () => {
     setBusy(true); setError(''); setMessage('');
