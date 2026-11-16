@@ -15,7 +15,7 @@ import type { RecentRun } from './source-schedules';
 const r = recordColumns();
 const PAGE = 200, MAX_PAGES = 40;
 /** Open BC Bid opportunities (same open rule as the review table). */
-export const openBcBidScope = (asOf: number) => and(openSql(asOf), sourceSql('bc-bid'));
+export const openBcBidScope = (asOf: number) => and(sourceSql('bc-bid'), openSql(asOf,'',{crossSource:'exclude',source:'bc-bid'}));
 
 async function paged(statement: string, parameters: (string | number)[]) {
   const rows: any[] = [];
@@ -83,7 +83,12 @@ export async function readDocumentGap(asOf = Date.now()): Promise<DocumentGap> {
   const scope = openBcBidScope(asOf);
   const [counts] = await sql(GAP_COUNTS_SQL(scope.sql), scope.parameters);
   const links = await paged(GAP_LINKS_SQL(scope.sql), scope.parameters);
-  const documents = await paged(GAP_DOCUMENTS_SQL(scope.sql), scope.parameters);
+  const documents = [];
+  for (let i = 0; i < links.length; i += PAGE - 1) {
+    const ids = links.slice(i, i + PAGE - 1).map(row => String(row.id));
+    const statement = `SELECT record_id AS recordId, url, status, error FROM documents WHERE record_id IN (${ids.map(() => '?').join(',')}) ORDER BY record_id, url`;
+    documents.push(...await paged(statement, ids));
+  }
   return computeDocumentGap(counts, links, documents);
 }
 export const DOCUMENT_GAP_KEY = ['catalog', 'procurement-status', 'document-gap'] as const;

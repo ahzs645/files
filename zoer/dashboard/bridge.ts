@@ -1,5 +1,6 @@
 import { createRequestQueue } from './request-queue';
 const enqueue = createRequestQueue(4);
+const catalogReads = createRequestQueue(1);
 export type NativeHost = {
   request(method: string, input?: unknown): Promise<any>;
   subscribe(listener: (event: string, result: any) => void): () => void;
@@ -32,8 +33,9 @@ window.addEventListener('message', event => {
 export function host(method: string, input?: unknown): Promise<any> {
   const refused = guard?.(method);
   if (refused) return Promise.reject(new Error(refused));
+  const schedule = (work: () => Promise<any>) => method === 'catalog.query' ? catalogReads(() => enqueue(work)) : enqueue(work);
   const binding = nativeHost;
-  if (binding) return enqueue(async () => {
+  if (binding) return schedule(async () => {
     if (nativeHost !== binding) throw new Error('Workspace closed.');
     const result = await binding.request(method, input);
     if (nativeHost !== binding) throw new Error('Workspace closed.');
@@ -41,7 +43,7 @@ export function host(method: string, input?: unknown): Promise<any> {
   });
   // Opened directly (no parent frame) the window would answer its own postMessage with empty results.
   if (window.parent === window) return Promise.reject(new Error('Open this dashboard inside Zoer, for example http://localhost:5180/#/plugins/bc-bid-monitor during local development.'));
-  return enqueue(() => new Promise((resolve, reject) => {
+  return schedule(() => new Promise((resolve, reject) => {
     const id = `bcbid-${++sequence}`;
     const timer = setTimeout(() => { requests.delete(id); reject(new Error('Zoer workspace request timed out.')); }, 45000);
     requests.set(id, { resolve, reject, timer });

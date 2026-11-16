@@ -19,7 +19,7 @@ import './review-workspace/review.css';
 import { useEffect, useRef, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 import { PageTabPanel, PageTabs } from '@zoer/plugin-ui/analysis';
 import { Btn } from '@zoer/plugin-ui/controls';
-import { useWorkspace } from './backend';
+import { refresh, useWorkspace } from './backend';
 import { useNarrowScreen } from './mobile';
 import { queryClient } from './query-client';
 
@@ -53,11 +53,11 @@ function LoadStatus() {
   const { error } = useWorkspace();
   const queryError = useSyncExternalStore(
     listener => queryClient.getQueryCache().subscribe(listener),
-    () => queryClient.getQueryCache().getAll().find(query => query.getObserversCount() > 0 && query.state.status === 'error')?.state.error?.message ?? '',
+    () => queryClient.getQueryCache().getAll().find(query => query.isActive() && query.state.status === 'error')?.state.error?.message ?? '',
   );
   const message = error || queryError;
   if (!message) return null;
-  return <div role="alert" className="pc-load-status"><span>Couldn’t refresh: {message.replace(/\.$/, '')}. Showing saved data.</span><Btn size="sm" onClick={() => void queryClient.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></div>;
+  return <div role="alert" className="pc-load-status"><span>Couldn’t refresh: {message.replace(/\.$/, '')}. Showing saved data.</span><Btn size="sm" onClick={() => { if (error) void refresh(); void queryClient.refetchQueries({type:'active',predicate:q=>q.state.status==='error'}); }}>Retry</Btn></div>;
 }
 const PAGE_VIEWS: Partial<Record<Page, () => ReactNode>> = {
   home: () => <Home />, status: () => <Status />, insights: () => <Insights />, procurement: () => <Procurement />, pursuits: () => <Pursuits />, documents: () => <Documents />, taxonomy: () => <Taxonomy />,
