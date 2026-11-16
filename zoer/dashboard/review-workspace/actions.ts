@@ -3,6 +3,7 @@ import { host } from '../bridge';
 import { capabilities } from '../capabilities';
 import { sql } from '../procurement/display';
 import { runProcurementAction } from '../procurement/state-client';
+import { queryClient } from '../query-client';
 
 /** Review-workspace capability handshake (CONTRACT §3 `procurement.workspace`). */
 export interface ReviewWorkspace {
@@ -32,6 +33,9 @@ async function probe(): Promise<ReviewWorkspace> {
   try {
     const run = await runProcurementAction('procurement.workspace', {});
     const output = run?.output ?? (await host('state')).runs?.find((item: any) => item.id === run?.id)?.output;
+    // Pages that read review tables without waiting for this handshake failed while they were missing
+    // (a fresh database); read them again now that the tables exist.
+    void queryClient.invalidateQueries({ queryKey: REVIEW_KEY, predicate: query => query.queryKey[1] !== 'handshake' });
     return { available: true, ...(output ?? {}) };
   } catch (e) {
     const message = (e as Error).message;

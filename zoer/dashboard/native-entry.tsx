@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { RouterProvider, createRouter, createMemoryHistory } from '@tanstack/react-router';
 import { routeTree } from '../../apps/dashboard/src/routeTree.gen';
 import { useWorkspace, setStar, isStarPending, startWorkspace } from './backend';
+import { DatabaseSetup } from './DatabaseSetup';
 import './native-entry.css';
 import { bindNativeHost, type NativeHost } from './bridge';
 import { loadCapabilities, resetCapabilities, useCapabilities, useCapabilitiesReady } from './capabilities';
@@ -17,10 +18,14 @@ function createWorkspaceRouter() { return createRouter({ routeTree, history: cre
 function App({ router }: { router: ReturnType<typeof createWorkspaceRouter> }) {
   const navigationReady = useNavigationReady(), capabilitiesReady = useCapabilitiesReady(), { collection, writes } = useCapabilities();
   // Load errors are shown once, inside the content area (Shell's LoadStatus).
-  const { model, notice } = useWorkspace();
+  const { model, notice, setup, error } = useWorkspace();
   const [starredRoute, setStarredRoute] = usePluginQuery("starred");
   const onlyStarred = starredRoute === "1", setOnlyStarred = (value: boolean) => setStarredRoute(value ? "1" : "");
   if (!navigationReady || !capabilitiesReady) return <p role="status">Opening BC Bid…</p>;
+  if (setup) return <div className="bcbid-native flex h-full min-h-0 min-w-0 flex-col" data-native-workspace="bc-bid-monitor"><DatabaseSetup setup={setup} /></div>;
+  // Pages read the catalog and prepare review tables as they mount, so they wait until the catalog is
+  // known to be set up (or a load error is shown in their content area).
+  if (!model && !error) return <p role="status" className="bcbid-native px-4 py-3 text-sm text-text-secondary">{notice || 'Opening Procurement…'}</p>;
   return <div className="bcbid-native flex h-full min-h-0 min-w-0 flex-col" data-native-workspace="bc-bid-monitor">
     {notice && <p role="status" className="px-4 py-3 text-sm text-text-secondary">{notice}</p>}
     <div className="min-h-0 flex-1 zoer-dashboard-body"><BidPreferences.Provider value={{ opportunityDocuments: detail=><NoticeAttachments detail={detail}/>, analysisView: <MarketAnalysis />, scraperSetup: collection ? <ScraperSetup /> : null, onlyStarred, setOnlyStarred, isStarPending, isStarred: (entity, key) => model?.stars.get(entity + ":" + key) === true, setStar: writes ? setStar : undefined, awardsView: <AwardsBrowser />, opportunitiesView: <p role="status">Opening…</p>, historyExtras: collection ? <AwardRunList /> : null, backToCatalog: entity => navigatePlugin(catalogReturnLocation(entity)) }}><RouterProvider router={router} /></BidPreferences.Provider></div>

@@ -146,7 +146,7 @@ Custom AI fields and labels are saved separately from manual tags; accept labels
 
 ### Unified database and migration
 
-First use runs a resumable migration of existing records, stars, run history and checkpoints. It preserves documents, reviews, prompts, tags and original source files. Workers then save directly to the database, including when the dashboard is closed. The dashboard reads database snapshots and uses revision checks rather than replaying JSON or copying data in the background. An older workspace cannot overwrite the primary database through the former sync endpoint.
+Database setup (`catalog.migrate`) runs a resumable migration of existing records, stars, run history and checkpoints. The sandbox dashboard starts it on first use. The native workspace never sets up storage on open: until setup is done it shows only a **Set up database** card (read-only copies explain where to set it up, and the button waits while another run is active), and its pages do not read the catalog or prepare review tables before then. Setup preserves documents, reviews, prompts, tags and original source files. Workers then save directly to the database, including when the dashboard is closed. The dashboard reads database snapshots and uses revision checks rather than replaying JSON or copying data in the background. An older workspace cannot overwrite the primary database through the former sync endpoint.
 
 Both opportunities and awards support JSON import and CSV/JSON export. Imports merge by stable record identity; existing stars are preserved and new records keep imported star flags. Record exports do not include document bytes or the complete AI review/prompt database.
 

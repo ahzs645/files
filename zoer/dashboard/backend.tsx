@@ -11,8 +11,40 @@ import { queryCatalog, readAll, resetCatalogCache } from './queries';
 import { SAVED_BC_BID_BUYERS_QUERY } from './buyer-query';
 import { readWorkspaceMetadata } from './workspace-bootstrap';
 import { bcLastCollection } from './procurement/status-data';
+import { plainError } from './error-text';
 export { readAll } from './queries';
-let snapshot: { model?: Model; error?: string; notice?: string } = {};
+/** Native workspaces never set up storage on open; the user starts it from the setup card. */
+export type DatabaseSetup = {
+  /** Why the last setup run did not finish. */
+  lastError?: string;
+  /** Why setup cannot start right now (another run is active). */
+  blocked?: string;
+  /** A review-only host cannot run setup; the card explains where to do it. */
+  readOnly?: boolean;
+};
+let snapshot: { model?: Model; error?: string; notice?: string; setup?: DatabaseSetup } = {};
+const SETUP_NOTICE = 'Setting up the Procurement database… Existing records and files are kept. You can leave this page open.';
+const terminal = (status: string) => ['succeeded','failed','cancelled','outcome_unknown'].includes(status);
+/** The setup run this page started; until the run list shows it finished, setup counts as in progress. */
+let setupRunId: string | null = null;
+function databaseSetupState(state: WorkspaceState): typeof snapshot {
+  const active = state.runs.find(run => !terminal(run.status));
+  if (active?.actionId === 'catalog.migrate') return { notice: SETUP_NOTICE };
+  if (setupRunId && !state.runs.some(run => run.id === setupRunId && terminal(run.status))) return { notice: SETUP_NOTICE };
+  setupRunId = null;
+  if (!capabilities().writes) return { setup: { readOnly: true } };
+  if (active) return { setup: { blocked: 'Another Procurement run is still active. Setup can start when it finishes.' } };
+  const last = state.runs.filter(run => run.actionId === 'catalog.migrate').sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+  const error = last && last.status !== 'succeeded' ? (typeof last.error === 'string' ? last.error : last.error?.message) || `The last setup attempt ended as ${last.status.replace('_', ' ')}.` : undefined;
+  return { setup: error ? { lastError: plainError(error) } : {} };
+}
+/** Starts the plugin's own `catalog.migrate` action after the user asks for it. */
+export async function setUpDatabase() {
+  const started = await host('action', { actionId: 'catalog.migrate', input: {} }) as { run?: { id?: string }; runId?: string } | undefined;
+  setupRunId = started?.run?.id ?? started?.runId ?? 'pending';
+  snapshot = { notice: SETUP_NOTICE }; emit();
+  await refresh();
+}
 const listeners = new Set<() => void>();
 let databaseRevision = -1;
 let metadataRevision = -1;
@@ -44,7 +76,7 @@ export function refresh() {
       const head = await host('catalog.read', { ids: [] });
       if (current !== generation) return;
       if (!head.primary) {
-        if (import.meta.env.VITE_ZOER_NATIVE) throw new Error('The existing BC Bid catalog is not ready. Open its database in Databases before continuing.');
+        if (import.meta.env.VITE_ZOER_NATIVE) { snapshot = databaseSetupState(state); return; }
         if (!capabilities().writes) throw new Error('This published copy has no saved catalog yet.');
         const active = state.runs.find(run => !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status));
         if (active?.actionId === 'catalog.migrate') { snapshot = { notice: 'Moving saved bids into the database… You can leave this page open.' }; return; }
@@ -53,6 +85,7 @@ export function refresh() {
         else throw new Error('Database migration did not finish. Reload to retry; existing files are retained.');
         snapshot = { notice: 'Moving saved bids into the database… Existing data is retained.' }; return;
       }
+      setupRunId = null;
       // Saved tables do not depend on old scrape receipts. Let them start as soon
       // as the existing catalog is verified; hydrate run history in the background.
       const revisionChanged = head.revision !== databaseRevision;
@@ -96,7 +129,8 @@ export function startWorkspace() {
   const timer = setInterval(() => {
     if (document.hidden) return;
     const active = rawState?.runs.some(run => !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status)) ?? false;
-    if (Date.now() - lastPoll < (active ? 10000 : 30000)) return;
+    // Setup usually finishes in seconds; check on every tick so the workspace opens promptly.
+    if (Date.now() - lastPoll < (setupRunId ? 0 : active ? 10000 : 30000)) return;
     lastPoll = Date.now(); void refresh();
   }, 2500);
   const visible = () => { if (!document.hidden) { lastPoll = Date.now(); void refresh(); } };
@@ -104,7 +138,7 @@ export function startWorkspace() {
   return () => {
     clearInterval(timer); document.removeEventListener('visibilitychange', visible);
     generation++; pending = undefined; snapshot = {}; databaseRevision = -1; metadataRevision = -1;
-    savedEntries = []; fullCheckpoint = null; targetedCheckpoint = null; loadedHistory.clear(); migrationStarted = false;
+    savedEntries = []; fullCheckpoint = null; targetedCheckpoint = null; loadedHistory.clear(); migrationStarted = false; setupRunId = null;
     // The native loader creates a distinct module on auth/environment/version
     // changes. Keep this session's bounded five-minute query cache across closes;
     // cancel old readers, then re-check catalog readiness when it opens again.

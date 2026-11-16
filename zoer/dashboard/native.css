@@ -284,3 +284,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .bcbid-native small{font-size:max(12px,.8em)!important}
 /* Touch targets: these rules sit last so they win over each control's desktop size. */
 @media(pointer:coarse),(max-width:640px){.bid-layout-toggle button,.bid-star{min-width:44px;min-height:44px}.rw-drill{min-height:44px}.procurement-board-card .procurement-title{min-height:44px}.rw-check{min-height:44px}}
+/* First-run database setup card (DatabaseSetup.tsx), shown in place of the workspace. */
+.pc-setup{box-sizing:border-box;width:100%;max-width:36rem;margin:0 auto;padding:2.5rem 1rem;display:flex;flex-direction:column;gap:.75rem;font-size:14px;line-height:1.5;color:var(--color-text-secondary)}
+.pc-setup h2{margin:0;font-size:16px;font-weight:600;color:var(--color-text-primary)}
+.pc-setup p{margin:0}
+.pc-setup .pc-setup-error{padding:.625rem .75rem;border:1px solid color-mix(in srgb,var(--status-error) 30%,transparent);border-radius:.375rem;background:color-mix(in srgb,var(--status-error) 10%,transparent);color:var(--status-error);overflow-wrap:anywhere}
