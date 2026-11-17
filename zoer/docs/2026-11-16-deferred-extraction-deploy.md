@@ -1,10 +1,19 @@
 # Deploying deferred text extraction (host `1a84ff7a`, Procurement 0.41.0)
 
-Status on 2026-11-16: **not deployed**. The live host reports commit `4f7eb40a` and Procurement
-0.40.1. This is the procedure for the operator; none of its steps has been run for this release. It
-follows the 0.40.1 / `4f7eb40a` rollout of the same day (image layer on the node, then a staged
-development package), whose scripts were in `/tmp/ote-attachment-rollout` on the build machine and
-`/var/tmp/ote-transfer-4f7eb40a` on the node.
+Deployed to OTE on November 16, 2026 (Vancouver). The live health endpoint reported host commit
+`1a84ff7a`, and the enabled Procurement extension reported version `0.41.0`. The ten backend
+files below were layered onto the site's existing `dev-1794885905-fec3f15-dirty` image after
+checking their base hashes. The image retains the dirty build flag to reflect the site's other
+changes. The production image passed the backend typecheck.
+
+The catalog reported `deferredExtraction: true`. The live Documents interface showed the Processing
+tab and an empty queue. A bounded extraction run succeeded with zero files selected. The upgrade
+added one local extraction action and requested no additional permissions, network hosts or
+capabilities. All ten schedules retained their settings. The verified SQLite and attachment
+recovery copy is under `/data/backups/procurement-0410-before-aeb57bf` (2,921 files).
+
+The steps below are the original rollout procedure. References to the previous version or
+connectivity describe the pre-deployment checks.
 
 ## What ships
 

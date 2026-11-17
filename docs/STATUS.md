@@ -6,7 +6,7 @@ Plan: [PLANS.md](PLANS.md) · Traceability: [TRACEABILITY.md](TRACEABILITY.md)
 |---|---|---|
 | M1 — Host: save first, extract later | VERIFIED (host commit `1a84ff7a`, branch `feat/deferred-document-extraction`, not pushed) | readiness: PASS (audit 4); completion audit 5: FAIL (PG-011), corrected; completion audit 6: PASS |
 | M2 — Plugin: Processing tab and pending state | VERIFIED (plugin commit `aeb57bf`, not pushed) | readiness: PASS (audit 4); completion audit 6: PASS |
-| M3 — Deployment to OTE | BLOCKED: handed to the user (see Blockers) | readiness not audited; no completion audit; no final audit |
+| M3 — Deployment to OTE | DEPLOYED: live checks passed (see deployment record) | readiness not audited; no completion audit; no final audit |
 
 ## Validation results (2026-11-16, before the completion audit)
 
@@ -149,9 +149,14 @@ VERIFIED. Non-blocking items carried forward:
 5. OPEN before the final audit: the RDN test is skipped on this machine (ICU data) and needs CI
    evidence.
 
-## Blockers
+## Deployment record
 
-### M3 — Deployment to OTE — handed to the user (2026-11-16)
+Procurement 0.41.0 and its matching backend went live on November 16, 2026 (Vancouver).
+The site reported host commit `1a84ff7a` and deferred extraction enabled. The Processing
+tab loaded in the live interface and an empty-queue extraction run succeeded. The
+[deployment runbook](../zoer/docs/2026-11-16-deferred-extraction-deploy.md) records the release and backup.
+
+### Earlier deployment hand-off (before rollout)
 
 The user asked for the deployment, then for it to be attempted once the node was reachable, and
 finally decided (2026-11-16): "Just finish it, I will deploy it later". Deployment is therefore not
