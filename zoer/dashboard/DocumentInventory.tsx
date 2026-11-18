@@ -26,11 +26,12 @@ export function DocumentStats({refreshKey = '', onShowFailed, onShowPending}: {r
     ['Readable by AI',Number(count.readable??0).toLocaleString()],
     // Saved by a download, not read yet: Documents → Processing extracts the text.
     ...(Number(count.pending??0)>0?[['Text pending',Number(count.pending).toLocaleString(),'Saved; text not extracted yet'] as [string,string,string]]:[]),
+    ...(Number(count.extractFailed??0)>0?[['Extraction failed',Number(count.extractFailed).toLocaleString(),'Saved; text could not be read. Retry under Processing'] as [string,string,string]]:[]),
     ['No text',Number(count.unreadable??0).toLocaleString(),'Scans, drawings or unsupported files'],
     ['Failed',Number(count.failed??0).toLocaleString()],
     ['Storage',bytes(Number(count.bytes??0))],
   ];
-  return <dl className="research-metrics doc-stats" aria-label="Document coverage">{tiles.map(([label,value,hint])=><div key={label} data-tone={label==='Failed'&&value!=='0'?'bad':undefined}><dt>{label}</dt><dd>{label==='Failed'&&value!=='0'&&onShowFailed?<button type="button" className="doc-stat-link" aria-label={`Show ${value} failed files`} onClick={onShowFailed}>{value}</button>:label==='Text pending'&&onShowPending?<button type="button" className="doc-stat-link" aria-label={`Open processing for ${value} files waiting for text`} onClick={onShowPending}>{value}</button>:value}</dd>{hint&&<small className="doc-stat-hint">{hint}</small>}</div>)}</dl>;
+  return <dl className="research-metrics doc-stats" aria-label="Document coverage">{tiles.map(([label,value,hint])=><div key={label} data-tone={(label==='Failed'||label==='Extraction failed')&&value!=='0'?'bad':undefined}><dt>{label}</dt><dd>{label==='Failed'&&value!=='0'&&onShowFailed?<button type="button" className="doc-stat-link" aria-label={`Show ${value} failed files`} onClick={onShowFailed}>{value}</button>:label==='Text pending'&&onShowPending?<button type="button" className="doc-stat-link" aria-label={`Open processing for ${value} files waiting for text`} onClick={onShowPending}>{value}</button>:label==='Extraction failed'&&onShowPending?<button type="button" className="doc-stat-link" aria-label={`Open processing for ${value} files whose text extraction failed`} onClick={onShowPending}>{value}</button>:value}</dd>{hint&&<small className="doc-stat-hint">{hint}</small>}</div>)}</dl>;
 }
 
 

@@ -14,7 +14,7 @@ vi.mock('../zoer/dashboard/bridge', () => ({
 
 import { DocumentProcessing } from '../zoer/dashboard/DocumentProcessing';
 import { DocumentFiles } from '../zoer/dashboard/DocumentInventory';
-import { PENDING_EXTRACTION, processingRetry, splitDocumentBatches, workbenchExclusions } from '../zoer/dashboard/document-processing';
+import { EXTRACTION_FAILED, FILE_FILTERS, PENDING_EXTRACTION, fileFilterSql, fileState, fileWarning, processingRetry, splitDocumentBatches, workbenchExclusions } from '../zoer/dashboard/document-processing';
 import { askScopeText, documentCounts, documentSummary, noTextMessage, textState, textStateDetail } from '../zoer/dashboard/procurement/ai';
 import { NoText } from '../zoer/dashboard/procurement/NoText';
 import { SECTION_VIEWS } from '../zoer/dashboard/review-workspace/nav';
@@ -39,15 +39,16 @@ describe('manifest and README', () => {
     for (const id of ['documents.download', 'documents.download.all', 'documents.download.missing'])
       expect(action(id).inputSchema.properties.deferExtraction, id).toEqual({ type: 'boolean', default: true });
   });
-  it('AC-016: declares documents.extract.pending, version 0.41.1 (0.41.0 when released; AC-048), and documents the behaviour', () => {
+  it('AC-016: declares documents.extract.pending (with retryFailed since 0.43.0) and documents the behaviour', () => {
     const pending = action('documents.extract.pending');
     expect(pending.execution).toEqual({ kind: 'host-action', handler: 'documents.extract.pending.v1' });
     expect(pending.requiredCapabilities).toEqual(['artifact-store']);
-    expect(pending.inputSchema).toEqual({ type: 'object', additionalProperties: false, properties: { limit: { type: 'integer', minimum: 1, maximum: 3000 } } });
+    expect(pending.inputSchema).toMatchObject({ type: 'object', additionalProperties: false, properties: { limit: { type: 'integer', minimum: 1, maximum: 3000 }, retryFailed: { type: 'boolean' } } });
+    expect(Object.keys(pending.inputSchema.properties)).toEqual(['limit', 'retryFailed']);
     expect(Object.keys(pending.outputSchema.properties)).toEqual(['selected', 'files', 'completed', 'failed', 'remaining']);
     expect(pending.outputSchema.required).toEqual(['selected', 'files', 'completed', 'failed', 'remaining']);
     expect(pending.outputSchema.additionalProperties).toBe(false);
-    expect(manifest.version).toBe('0.41.1');
+    expect(manifest.version).toBe('0.43.0');
     const readme = readFileSync(join(root, 'zoer/README.md'), 'utf8');
     expect(readme).toContain('Downloads save files without extracting text');
     expect(readme).toContain('**Documents → Processing** extracts text later');
@@ -78,7 +79,8 @@ describe('download and extraction batches', () => {
 });
 
 describe('Processing tab', () => {
-  const pendingRows = (files: number, notices: number) => (statement: string) => statement.includes('count(DISTINCT record_id)') ? [{ files, notices }] : undefined;
+  const pendingRows = (files: number, notices: number, failed = 0, failedNotices = 0) => (statement: string) =>
+    !statement.includes('count(DISTINCT record_id)') ? undefined : statement.includes(EXTRACTION_FAILED) ? [{ files: failed, notices: failedNotices }] : [{ files, notices }];
   const props = { supported: true, collection: true, batches: [] as any[], tasks: [], onChanged: async () => {}, onError: () => {} };
   it('AC-013: lists Download, Processing, Files, History in the section navigation', () => {
     expect(SECTION_VIEWS.documents!.map(([id, label, route]) => [id, label, route])).toEqual([['download', 'Download', '/documents'], ['processing', 'Processing', '/documents?tab=processing'], ['files', 'Files', '/documents?tab=files'], ['history', 'History', '/documents?tab=history']]);
@@ -93,6 +95,31 @@ describe('Processing tab', () => {
     await waitFor(() => expect(calls('action')).toEqual([{ actionId: 'documents.extract.pending', input: {} }]));
     await waitFor(() => expect(changed).toHaveBeenCalled());
     expect(await screen.findByText(/Text extraction started for 7 files/)).toBeTruthy();
+  });
+  it('zero pending is not zero failures: failed extractions are shown, listed and retried from the saved originals', async () => {
+    hostWith(pendingRows(0, 0, 4, 2));
+    view(<DocumentProcessing {...props} />);
+    expect(await screen.findByText('Text extraction failed for 4 files')).toBeTruthy();
+    expect(screen.getByText('No files are waiting for text.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Extract text now' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry failed files' }));
+    await waitFor(() => expect(calls('action')).toEqual([{ actionId: 'documents.extract.pending', input: { retryFailed: true } }]));
+    expect(await screen.findByText(/Text extraction retry started for 4 files/)).toBeTruthy();
+  });
+  it('without failed extractions there is no retry button', async () => {
+    hostWith(pendingRows(3, 1));
+    view(<DocumentProcessing {...props} />);
+    await screen.findByText('3 files');
+    expect(screen.queryByRole('button', { name: 'Retry failed files' })).toBeNull();
+  });
+  it('a failed extraction is its own state, apart from "No text", with the extractor message as its warning', () => {
+    const failed = { status: 'downloaded', chars: 0, error: EXTRACTION_FAILED + 'PDF parser crashed' };
+    expect(fileState(failed)).toEqual(['bad', 'Extraction failed']);
+    expect(fileWarning(failed)).toBe('PDF parser crashed');
+    expect(fileState({ status: 'downloaded', chars: 0, error: 'No text layer; OCR found nothing' })).toEqual(['warn', 'No text']);
+    expect(fileFilterSql('extractFailed')).toContain(`LIKE '${EXTRACTION_FAILED}%'`);
+    expect(fileFilterSql('unreadable')).toContain(`NOT LIKE '${EXTRACTION_FAILED}%'`);
+    expect(FILE_FILTERS.map(([id]) => id)).toContain('extractFailed');
   });
   it('AC-013: shows the running extraction\'s progress', async () => {
     hostWith(pendingRows(2, 1));

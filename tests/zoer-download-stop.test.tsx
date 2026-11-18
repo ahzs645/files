@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // A download that Zoer parked for a scheduled automatic retry (BC Bid browser recovery) used to
 // show "Download running…" with no Stop anywhere: the batch is `paused`, the run `retry_scheduled`.
 const bridge = vi.hoisted(() => ({ host: vi.fn(async (_method: string, _input?: any): Promise<any> => ({})) }));
+const QUEUE = vi.hoisted(() => ({ notices: 3, withLinks: 3, withoutLinks: 0, needsDetails: 0, fullySaved: 1, files: 6, saved: 2, neverTried: 4, retryDue: 0, retryScheduled: 0, waitingForBrowser: 0, skipped: 0, unavailable: 0, exhausted: 0, nextRetryAt: null }));
 vi.mock('../zoer/dashboard/bridge', () => ({
-  host: (method: string, input?: unknown) => bridge.host(method, input),
+  // The download section counts the queue first; tests that do not set it up get one with work to do.
+  host: (method: string, input?: unknown) => method === 'catalog.documentQueue' ? Promise.resolve(QUEUE) : bridge.host(method, input),
   subscribeHost: () => () => {}, guardHost: () => {}, bindNativeHost: () => () => {},
 }));
 const workspace = vi.hoisted(() => ({ model: undefined as any, refresh: vi.fn(async () => {}), reload: vi.fn(async () => {}) }));
@@ -219,14 +221,15 @@ describe('Download all attachments', () => {
   it('AC-044: after the run has ended a new download can start and there is nothing to stop', async () => {
     workspace.model = modelWith(run('cancelled'));
     section();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download all' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download missing files' })).toBeEnabled());
     expect(screen.queryByRole('button', { name: 'Stop download' })).toBeNull();
     expect(screen.queryByText(/The download is paused/)).toBeNull();
   });
 });
 
-it('AC-048: the release that carries the Stop controls is version 0.41.1', () => {
-  expect(JSON.parse(readFileSync(join(process.cwd(), 'zoer/manifest.json'), 'utf8')).version).toBe('0.41.1');
+it('AC-048: the Stop controls shipped in 0.41.1; later releases keep them', () => {
+  const [major, minor, patch] = JSON.parse(readFileSync(join(process.cwd(), 'zoer/manifest.json'), 'utf8')).version.split('.').map(Number);
+  expect(major * 1e6 + minor * 1e3 + patch).toBeGreaterThanOrEqual(41001);
 });
 it('AC-045: the README documents the paused state and where to stop it', () => {
   const readme = readFileSync(join(process.cwd(), 'zoer/README.md'), 'utf8');

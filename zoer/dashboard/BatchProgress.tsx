@@ -41,7 +41,8 @@ export function BatchProgress({batches, tasks = [], onSkip, showSize = true}: {
     {queue.data && <p>{queue.data.fullySaved} of {queue.data.withLinks} opportunities complete</p>}
     {task && <p role="status">{task.phase || task.kind} · {task.name || task.record_id}
       {showSize && task.receivedBytes > 0 ? ` · ${fileSize(task.receivedBytes)} received${task.expectedBytes > 0 ? ` of ${fileSize(task.expectedBytes)}` : ''}`
-        : showSize && task.expectedBytes > 0 ? ` · ${fileSize(task.expectedBytes)}` : ''}
+        // While a file downloads its size is shown, also when the source did not say ("Size unknown").
+        : showSize && (task.expectedBytes > 0 || task.phase === 'Downloading') ? ` · ${fileSize(task.expectedBytes)}` : ''}
       {task.resumeAt && <PacingCountdown key={task.resumeAt} until={task.resumeAt} />}
     </p>}
     {task?.transferId && onSkip && <Button variant="ghost" disabled={skipping} onClick={() => void skip()}>{skipping ? 'Skipping…' : 'Skip file'}</Button>}
