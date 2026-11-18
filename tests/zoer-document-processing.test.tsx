@@ -48,7 +48,9 @@ describe('manifest and README', () => {
     expect(Object.keys(pending.outputSchema.properties)).toEqual(['selected', 'files', 'completed', 'failed', 'remaining']);
     expect(pending.outputSchema.required).toEqual(['selected', 'files', 'completed', 'failed', 'remaining']);
     expect(pending.outputSchema.additionalProperties).toBe(false);
-    expect(manifest.version).toBe('0.43.0');
+    // retryFailed shipped in 0.43.0; later releases keep it.
+    const [major, minor] = manifest.version.split('.').map(Number);
+    expect(major > 0 || minor >= 43).toBe(true);
     const readme = readFileSync(join(root, 'zoer/README.md'), 'utf8');
     expect(readme).toContain('Downloads save files without extracting text');
     expect(readme).toContain('**Documents → Processing** extracts text later');

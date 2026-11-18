@@ -9,6 +9,7 @@ import { refreshAfterChange, useWorkspace } from './backend';
 import { plainError, shortError } from './error-text';
 import { RunLinks } from './procurement/Status';
 import { StatusBadge, type Tone, Hint } from './host-ui';
+import { VERIFICATION_TASKS_SQL, verificationFileText, verificationRuns, type VerificationRun, type VerificationTask } from './verification-runs';
 
 const STATUS_TEXT: Record<string, string> = { waiting_for_user: 'Waiting for you', succeeded: 'Done', failed: 'Failed', running: 'Running', cancelled: 'Stopped', stopped: 'Stopped', queued: 'Queued', paused: 'Paused for update', retry_scheduled: 'Waiting to retry' };
 const statusText = (status: string) => STATUS_TEXT[status] ?? (status.charAt(0).toUpperCase() + status.slice(1)).replace(/_/g, ' ');
@@ -18,13 +19,35 @@ const PAGE = 8;
 /** Saved prompts and batches, refreshed every 10 seconds while the page is visible. */
 export function useCatalogState(onError: (message: string) => void) {
   const state = useQuery({ queryKey: ['procurement', 'catalog-state'], queryFn: async () => {
-    const [next, tasks] = await Promise.all([host('catalog.state'), host('catalog.query', {statement: "SELECT id,run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.transferId') transferId,json_extract(result,'$.receivedBytes') receivedBytes,json_extract(result,'$.expectedBytes') expectedBytes,json_extract(result,'$.resumeAt') resumeAt,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]})]);
-    return {...next,tasks:tasks.rows};
-  }, refetchInterval: query => query.state.data?.batches?.some((batch:any) => batch.status === 'running') ? 3000 : 10000 });
+    const [next, tasks, verifications] = await Promise.all([host('catalog.state'), host('catalog.query', {statement: "SELECT id,run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.transferId') transferId,json_extract(result,'$.receivedBytes') receivedBytes,json_extract(result,'$.expectedBytes') expectedBytes,json_extract(result,'$.resumeAt') resumeAt,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]}),
+      // Saved-original checks have no batch; read them apart so download tasks cannot crowd them out.
+      host('catalog.query', {statement: VERIFICATION_TASKS_SQL, parameters: []}).catch(() => ({rows: []}))]);
+    return {...next,tasks:tasks.rows,verifications:verifications.rows as VerificationTask[]};
+  }, refetchInterval: query => query.state.data?.batches?.some((batch:any) => batch.status === 'running')
+    || query.state.data?.verifications?.some(task => task.status === 'running') ? 3000 : 10000 });
   useEffect(() => { if (state.error) onError(state.error.message); }, [state.error, onError]);
   const refresh = async () => { try { await state.refetch({ throwOnError: true }); } catch (e) { onError((e as Error).message); } };
   // Keep cached batches visible when switching Download / Files / History.
-  return [{ ...(state.data ?? { prompts: [], batches: [], tasks: [] }), loadError: state.error?.message }, refresh] as const;
+  return [{ ...(state.data ?? { prompts: [], batches: [], tasks: [], verifications: [] as VerificationTask[] }), loadError: state.error?.message }, refresh] as const;
+}
+
+const VERIFICATION_STATUS: Record<VerificationRun['status'], string> = { running: 'Checking', failed: 'Differs or failed', stopped: 'Stopped', succeeded: 'Matches' };
+const VERIFICATION_TONE: Record<VerificationRun['status'], Tone> = { running: 'info', failed: 'error', stopped: 'neutral', succeeded: 'success' };
+
+/** Saved-original checks, with each file's phase and bytes while it transfers. */
+export function VerificationHistory({ tasks }: { tasks: readonly VerificationTask[] }) {
+  const runs = verificationRuns(tasks).slice(0, PAGE);
+  if (!runs.length) return null;
+  return <section className="zoer-history" aria-label="Saved-original checks">
+    <h2>Saved-original checks</h2>
+    {runs.map(run => <div key={run.runId} className="research-batch-item"><article className="research-batch"><div>
+      <StatusBadge tone={VERIFICATION_TONE[run.status]}>{VERIFICATION_STATUS[run.status]}</StatusBadge>
+      <time dateTime={run.updatedAt}>{new Date(run.updatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
+      <p>{run.files.filter(file => file.status === 'succeeded').length}/{run.files.length} files match</p>
+      {run.files.map(file => <p className="research-task" key={file.id} aria-live={file.status === 'running' ? 'polite' : undefined}>
+        <strong>{file.name || file.record_id}</strong> · {file.status === 'failed' ? shortError(verificationFileText(file)) : verificationFileText(file)}</p>)}
+    </div></article></div>)}
+  </section>;
 }
 
 export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], onChanged, onError, details, browserBusy = false, links = true }: {

@@ -280,6 +280,8 @@ Exclusions live in the analysis URL and recalculate totals, rankings and matchin
 
 ## Releases
 
+**0.44.3** adds **Saved-original checks** under **Documents → History**. Each `documents.download.portals` verification run lists its files, showing the phase and bytes received while a file transfers and then whether it matches the saved original. It needs a Zoer host that records verification progress (`attachment-verification` tasks).
+
 **0.44.2** adds `public_downloads_respect_robots_txt` under **Extensions → Procurement → Config**. The public download queue ignores robots.txt by default. Enable the checkbox to respect robots.txt and its AI-crawler rules. Configured visiting hours and request pacing still apply along with Retry-After.
 
 **0.44.0** resolves public Comox media links to their files and excludes Surrey email links from attachment lists. On the matching Zoer host, **Settings → Schedules → Public portal downloads** runs using a saved Kitesurf profile. Each pass reuses saved originals and checks crawler rules, visiting hours and pacing for up to 20 new direct public files. The separate BC Bid schedule uses its saved native browser.
