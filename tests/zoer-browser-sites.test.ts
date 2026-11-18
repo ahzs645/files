@@ -224,6 +224,7 @@ describe('Cranbrook notices separated by horizontal rules', () => {
     ]);
     const record = browserRecord(rows[0], cranbrook, cranbrook.url, '2026-11-13T19:00:00.000Z');
     const pdf = 'https://docs.cranbrook.ca/downloads/finance/tenders/RFP-Downtown-Parking-System-Update-November2026.pdf';
+    expect(record.sourceKey).toBe(browserRecord({ ...rows[0], href: undefined }, cranbrook, cranbrook.url, '2026-11-13T19:00:00.000Z').sourceKey);
     expect(record).toMatchObject({ detailUrl: pdf, attachments: [{ name: 'Request For Proposal - Downtown Parking System Update', url: pdf }], attachmentsAccess: 'public', closingAt: '2026-11-25' });
     expect(JSON.stringify(rows)).not.toMatch(/Make Payment|amaistech/);
   });

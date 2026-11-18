@@ -222,6 +222,8 @@ export function parseBrowserListing(site: BrowserSite, html: string, pageUrl: st
 // Records
 // ---------------------------------------------------------------------------------------------
 
+const DIRECT_DOCUMENT_PATH = /\.(?:pdf|docx?|xlsx?|zip)$/i;
+
 /**
  * The site's own id for a notice: the last path segment of its link plus id-like query values
  * (`bids?bidid=11037` → `bids-bidid-11037`), else its number, else its title.
@@ -233,7 +235,10 @@ export function browserNoticeId(row: Pick<SiteRow, 'href' | 'number' | 'title'>,
     const ids = [...parsed.searchParams].filter(([key, value]) => /id$|^(?:p|page|nid|ref|no)$/i.test(key) || /^\d{2,}$/.test(value)).sort(([a], [b]) => a.localeCompare(b));
     const id = slug([last, ...ids.flat()].join('-'));
     // A link back to the listing itself identifies nothing.
-    if (id && url.split('#')[0] !== base.split('#')[0]) return id;
+    // The host used to hide cross-origin document links. Their existing notices
+    // use the displayed number or title as the ID, so adding the file keeps that ID.
+    const publishedOffSite = parsed.origin !== new URL(base).origin && DIRECT_DOCUMENT_PATH.test(parsed.pathname);
+    if (!publishedOffSite && id && url.split('#')[0] !== base.split('#')[0]) return id;
   }
   return slug(row.number ?? leadingNumber(row.title) ?? row.title) || undefined;
 }
@@ -242,7 +247,7 @@ const CLOSED = /closed|award|cancel|evaluat|review|no award|shortlist/i;
 export function browserRecord(row: BrowserRow, site: BrowserSite, pageUrl: string, retrievedAt: string) {
   const id = browserNoticeId(row, pageUrl)!, key = `${SOURCE_ID}:${site.id}:${id}`;
   const detailUrl = (row.href && resolveUrl(row.href, pageUrl)) || site.url;
-  const fileLink = row.href && /\.(?:pdf|docx?|xlsx?|zip)(?:[?#]|$)/i.test(detailUrl) ? detailUrl : undefined;
+  const fileLink = row.href && DIRECT_DOCUMENT_PATH.test(new URL(detailUrl).pathname) ? detailUrl : undefined;
   const closing = row.html.closing !== undefined ? readMoment(row.html.closing, site.timeZone) : undefined;
   const posted = row.html.posted !== undefined ? readMoment(row.html.posted, site.timeZone) : undefined;
   const number = row.number ?? leadingNumber(row.title);
