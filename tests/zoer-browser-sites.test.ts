@@ -372,6 +372,9 @@ describe('browser-sites registration', () => {
     expect(action.inputSchema.properties.sites.items.enum).toEqual(BROWSER_SITES.map(item => item.id));
     expect(action.inputSchema.additionalProperties).toBe(false);
   });
+  it('offers robots.txt as an opt-in setting for public portal downloads', () => {
+    expect(manifest.config.public_downloads_respect_robots_txt).toMatchObject({ type: 'boolean', default: false });
+  });
   it('Zoer’s crawl policy carries every site floor: robots.txt is opt-in per host, pacing still applies', () => {
     const policy = (manifest as any).integration.crawlPolicy;
     // User decision 2026-10-04: robots.txt is ignored unless a host is listed with respect/respect-ai.

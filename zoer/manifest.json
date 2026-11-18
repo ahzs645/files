@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.44.1",
+  "version": "0.44.2",
   "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -1353,7 +1353,7 @@
       {
         "id": "documents.download.portals",
         "title": "Public portal downloads",
-        "description": "Download missing public municipal and browser-collected portal files using a saved Kitesurf browser. Zoer checks robots.txt, visiting hours and pacing before each request. A manual run can verify up to two saved originals against their source.",
+        "description": "Download missing public municipal and browser-collected files. Zoer checks configured visiting hours, pacing and Retry-After. Config can enable robots.txt checks. A manual run can verify up to two saved originals against their source.",
         "effect": "local_write",
         "approval": "when_configured",
         "execution": { "kind": "host-action", "handler": "documents.download.portals.v1" },
@@ -2866,6 +2866,12 @@
     }
   },
   "config": {
+    "public_downloads_respect_robots_txt": {
+      "type": "boolean",
+      "description": "Respect robots.txt for public portal downloads. Off by default. Configured visiting hours, pacing and rate-limit waits apply in either mode.",
+      "required": false,
+      "default": false
+    },
     "bc_bid_request_delay_seconds": {
       "type": "number",
       "description": "Whole seconds between BC Bid page requests, from 10 to 300. Default: 30. Applies to new and resumed captures; longer source-required waits still apply. Attachment downloads have separate 30-second pacing.",

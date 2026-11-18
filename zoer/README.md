@@ -280,6 +280,8 @@ Exclusions live in the analysis URL and recalculate totals, rankings and matchin
 
 ## Releases
 
+**0.44.2** adds `public_downloads_respect_robots_txt` under **Extensions → Procurement → Config**. The public download queue ignores robots.txt by default. Enable the checkbox to respect robots.txt and its AI-crawler rules. Configured visiting hours and request pacing still apply along with Retry-After.
+
 **0.44.0** resolves public Comox media links to their files and excludes Surrey email links from attachment lists. On the matching Zoer host, **Settings → Schedules → Public portal downloads** runs using a saved Kitesurf profile. Each pass reuses saved originals and checks crawler rules, visiting hours and pacing for up to 20 new direct public files. The separate BC Bid schedule uses its saved native browser.
 
 `.github/workflows/zoer-plugin-release.yml` publishes the plugin as a GitHub Release when a `zoer-v<version>` tag matching `zoer/manifest.json` is pushed. It typechecks, tests and builds against Zoer's shared UI source, then signs the package with `zoer/tools/zoer-plugin.mjs release`. The release has two files: `bc-bid-monitor-<version>.zip` and `zoer-plugin.json`. Zoer installs it from Extensions → Stage package → GitHub release (`ahzs645/files`), and its update checker follows new releases. Regenerate `zoer/tools/zoer-plugin.mjs` from a Zoer checkout with `bun run plugin export-cli <path>`.
