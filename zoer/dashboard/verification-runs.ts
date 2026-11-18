@@ -6,9 +6,9 @@ import { fileSize } from './file-size';
  * download attempts, so these runs have no download batch of their own.
  */
 export const VERIFICATION_TASK_KIND = 'attachment-verification';
-export const VERIFICATION_TASKS_SQL = "SELECT id,run_id,record_id,status,error,updated_at,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase,json_extract(result,'$.receivedBytes') receivedBytes,json_extract(result,'$.expectedBytes') expectedBytes,json_extract(result,'$.sha256') sha256 FROM research_tasks WHERE kind='attachment-verification' ORDER BY updated_at DESC LIMIT 60";
+export const VERIFICATION_TASKS_SQL = "SELECT id,run_id,record_id,source_id,status,error,updated_at,json_extract(result,'$.browserSessionId') browserSessionId,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase,json_extract(result,'$.receivedBytes') receivedBytes,json_extract(result,'$.expectedBytes') expectedBytes,json_extract(result,'$.sha256') sha256 FROM research_tasks WHERE kind='attachment-verification' ORDER BY updated_at DESC LIMIT 60";
 
-export interface VerificationTask { id: string; run_id: string; record_id: string; status: string; error?: string | null; updated_at: string; name?: string | null; phase?: string | null; receivedBytes?: number | null; expectedBytes?: number | null; sha256?: string | null }
+export interface VerificationTask { id: string; run_id: string; record_id: string; source_id?: string; browserSessionId?: string | null; status: string; error?: string | null; updated_at: string; name?: string | null; phase?: string | null; receivedBytes?: number | null; expectedBytes?: number | null; sha256?: string | null }
 export interface VerificationRun { runId: string; status: 'running' | 'failed' | 'stopped' | 'succeeded'; updatedAt: string; files: VerificationTask[] }
 
 /** One entry per run, newest first; files keep the order the run checked them. */

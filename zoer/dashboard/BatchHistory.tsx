@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
-import { researchRetry } from './research-retry';
+import { researchRetry, verificationRetry } from './research-retry';
 import { processingRetry } from './document-processing';
 import { assertDocumentBrowserIdle, batchPause, retryTimeText } from './document-run';
 import { refreshAfterChange, useWorkspace } from './backend';
@@ -35,8 +35,10 @@ const VERIFICATION_STATUS: Record<VerificationRun['status'], string> = { running
 const VERIFICATION_TONE: Record<VerificationRun['status'], Tone> = { running: 'info', failed: 'error', stopped: 'neutral', succeeded: 'success' };
 
 /** Saved-original checks, with each file's phase and bytes while it transfers. */
-export function VerificationHistory({ tasks }: { tasks: readonly VerificationTask[] }) {
+export function VerificationHistory({ tasks, onChanged, onError }: { tasks: readonly VerificationTask[]; onChanged: () => Promise<void>; onError: (message: string) => void }) {
   const runs = verificationRuns(tasks).slice(0, PAGE);
+  const [busy, setBusy] = useState(false);
+  const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await onChanged(); } catch (e) { onError(plainError((e as Error).message)); } finally { setBusy(false); } };
   if (!runs.length) return null;
   return <section className="zoer-history" aria-label="Saved-original checks">
     <h2>Saved-original checks</h2>
@@ -46,7 +48,13 @@ export function VerificationHistory({ tasks }: { tasks: readonly VerificationTas
       <p>{run.files.filter(file => file.status === 'succeeded').length}/{run.files.length} files match</p>
       {run.files.map(file => <p className="research-task" key={file.id} aria-live={file.status === 'running' ? 'polite' : undefined}>
         <strong>{file.name || file.record_id}</strong> · {file.status === 'failed' ? shortError(verificationFileText(file)) : verificationFileText(file)}</p>)}
-    </div></article></div>)}
+    </div>
+    {run.status === 'running'
+      ? <Button variant="ghost" disabled={busy} onClick={() => void act(async () => { await host('cancel', { id: run.runId }); void refreshAfterChange(); })}>Stop</Button>
+      : <Hint action content="Download these files again and compare them with the saved originals"><Button variant="ghost" disabled={busy || !run.files.some(file => file.source_id)} onClick={() => void act(async () => {
+          const started = await host('action', verificationRetry(run.files.flatMap(file => file.source_id ? [file.source_id] : []), run.files.find(file => file.browserSessionId)?.browserSessionId));
+          void refreshAfterChange(); return started; })}>Check again</Button></Hint>}
+    </article></div>)}
   </section>;
 }
 
@@ -79,7 +87,7 @@ export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], o
       {['running','retry_scheduled','waiting_for_user'].includes(status)
         ? <Button variant="ghost" disabled={busy} onClick={() => void act(async () => { await host('cancel', { id: batch.id }); void refreshAfterChange(); })}>Stop</Button>
         // Paused for a Zoer update: it resumes on its own, so there is nothing to retry.
-        : status === 'paused' || (kind === 'download' && status === 'succeeded') ? null : <Button variant="ghost" disabled={busy || (needsBrowser && browserBusy)} onClick={() => void act(async () => { if (needsBrowser) await assertDocumentBrowserIdle(host); const started = await host('action', input.extractOnly ? processingRetry(batch) : researchRetry(batch, modelId)); void refreshAfterChange(); return started; })}>Retry</Button>}
+        : status === 'paused' || (kind === 'download' && status === 'succeeded') ? null : <Button variant="ghost" disabled={busy || (needsBrowser && browserBusy)} onClick={() => void act(async () => { if (needsBrowser) await assertDocumentBrowserIdle(host); const started = await host('action', input.extractOnly ? processingRetry(batch) : researchRetry(batch, modelId, model?.workflowRuns?.find((run: any) => run.id === batch.id)?.actionId)); void refreshAfterChange(); return started; })}>Retry</Button>}
       {details && <Button variant="ghost" aria-expanded={open.has(batch.id)} aria-controls={`run-${batch.id}`} onClick={() => toggle(batch.id)}>{open.has(batch.id) ? 'Hide results' : 'Results'}</Button>}
     </article>{details && open.has(batch.id) && <div id={`run-${batch.id}`}>{details(batch)}</div>}</div>; })}
     {rows.length > PAGE && <Button variant="ghost" onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show ${rows.length - PAGE} older`}</Button>}

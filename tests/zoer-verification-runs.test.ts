@@ -23,3 +23,20 @@ describe('saved-original checks', () => {
     expect(runs[0].files.map(file => file.id)).toEqual(['b1', 'b2']);
   });
 });
+
+import { portalRetry, researchRetry, verificationRetry } from '../zoer/dashboard/research-retry';
+describe('History retries of portal work', () => {
+  it('retries a portal queue pass as the portal queue on its recorded browser, never as a native download', () => {
+    const batch = { id: 'run-p', kind: 'download', input: JSON.stringify({ recordIds: ['municipal:a'], deferExtraction: true, portalQueue: true, browserSessionId: 'br-kite' }) };
+    expect(researchRetry(batch)).toEqual({ actionId: 'documents.download.portals', input: {}, browserSessionId: 'br-kite' });
+    // An older pass without the marker is identified by its workflow run's action and runs on the Settings browser.
+    const older = { id: 'run-o', kind: 'download', input: JSON.stringify({ recordIds: ['municipal:a'], deferExtraction: true }) };
+    expect(researchRetry(older, '', 'documents.download.portals')).toEqual(portalRetry());
+    expect(researchRetry(older).actionId).toBe('documents.download');
+  });
+
+  it('checks the same saved originals again, at most two, on the recorded browser', () => {
+    expect(verificationRetry(['doc-1', 'doc-2', 'doc-1'], 'br-kite')).toEqual({ actionId: 'documents.download.portals', input: { verifyDocumentIds: ['doc-1', 'doc-2'] }, browserSessionId: 'br-kite' });
+    expect(verificationRetry(['doc-1'], 'not a browser id')).toEqual({ actionId: 'documents.download.portals', input: { verifyDocumentIds: ['doc-1'] } });
+  });
+});

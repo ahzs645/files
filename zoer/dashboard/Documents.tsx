@@ -71,7 +71,7 @@ export function Documents() {
     {current === 'processing' && <DocumentProcessing supported={!!state.deferredExtraction} collection={collection} batches={processing} tasks={state.tasks} onChanged={refresh} onError={setError} />}
     {current === 'files' && <DocumentFiles showSize={showSize} fileTransferControls={!!state.fileTransferControls} onDetails={setRecordId} refreshKey={refreshKey} downloadRunning={downloadRunning} processingRunning={processingRunning} browserBusy={browserBusy} />}
     {collection && current === 'history' && <BatchHistory title="Download history" kind="download" batches={withoutProcessing} tasks={state.tasks} onChanged={refresh} onError={setError} browserBusy={browserBusy} />}
-    {collection && current === 'history' && <VerificationHistory tasks={state.verifications ?? []} />}
+    {collection && current === 'history' && <VerificationHistory tasks={state.verifications ?? []} onChanged={refresh} onError={setError} />}
     {recordId && <NoticeView id={recordId} layout="dialog" initialTab="documents" onClose={() => setRecordId('')} />}
   </section>;
 }
