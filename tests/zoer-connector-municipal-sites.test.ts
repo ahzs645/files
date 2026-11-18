@@ -210,6 +210,7 @@ describe('municipal-sites document links', () => {
     expect(documentLink('https://www.facebook.com/sharer.php?u=https://www.saanich.ca/x.html', 'Share on Facebook', page, true)).toBeUndefined();
     expect(documentLink('https://www.govdeals.ca/PentictonBC', 'View for more details', page, true)).toBeUndefined();
     expect(documentLink('https://fernie.civicweb.net/filepro/documents/196929/?preview=205758', 'RFQ', page, true)).toEqual({ name: 'RFQ', url: 'https://fernie.civicweb.net/filepro/documents/196929/?preview=205758' });
+    expect(documentLink('https://www.saanich.ca/cdn-cgi/l/email-protection#1234', '[email protected]', page, true)).toBeUndefined();
   });
   it('saves a notice\'s mixed public and login-only documents with the record', () => {
     const html = `<main><h1>RFP 1</h1><div class="field__label">Documents</div><div class="field__items"><a href="/files/rfp.pdf">RFP</a> <a href="https://x.bonfirehub.ca/opportunities/1">Bonfire</a> <a href="https://twitter.com/intent/tweet?u=1">Tweet</a></div></main>`;
@@ -258,6 +259,7 @@ describe('municipal-sites notice pages', () => {
     expect(housing.documents.map(d => d.name)).toContain('ADD-2026-068-Addendum-No-1.pdf');
     expect(readMoment(housing.closingHtml!, p.timeZone).at).toBe('2026-10-16T15:00:00-07:00');
     const shortlist = parseNoticePage(fixture('surrey-detail-shortlist.html'), 'https://www.surrey.ca/x')!;
+    expect(shortlist.documents).toHaveLength(3);
     const rolling = siteRecord({ title: 'Shortlist', href: '/x', cells: {}, html: {} }, p, NOW, shortlist);
     expect(rolling.closingDate).toBe('submissions can be received at any time');
     expect(rolling).not.toHaveProperty('closingAt');
@@ -360,6 +362,31 @@ describe('municipal-sites collection', () => {
     expect(result.records[0]).toMatchObject({ contacts: [{ name: 'Christina Vugteveen', email: 'cvugteveen@fvrd.ca' }], documentsCount: 2 });
   });
 
+  it.each([
+    { links: '<a href="/sites/default/files/2026-10/Final%20RFP.pdf">PDF</a>', resolved: '/sites/default/files/2026-10/Final%20RFP.pdf' },
+    { links: '<a href="/sites/default/files/one.pdf">First</a><a href="/sites/default/files/two.pdf">Second</a>', resolved: null },
+    { links: '<a href="https://example.ca/sites/default/files/Final.pdf">Offsite</a>', resolved: null },
+  ])('only replaces a Comox media page with its unique same-origin file', async ({ links, resolved }) => {
+    const origin = 'https://www.comox.ca', media = `${origin}/media/4140`;
+    const fetch = routes({
+      [`${origin}/opportunities`]: 'comox-listing.html',
+      [`${origin}/government-bylaws/bid-opportunities/202606-comox-valley-workforce-development-labour-market`]: 'comox-detail.html',
+      [`${origin}/government-bylaws/bid-opportunities/canoe-request-proposals`]: 'comox-detail.html',
+    });
+    const withMedia: NetFetch = async request => {
+      if (request.url !== media) return fetch(request);
+      fetch.calls.push(request.url);
+      return { status: 200, headers: {}, text: `<main><a href="/sites/default/files/unrelated.pdf">Other</a><article class="media media--type-file">${links}</article></main>` };
+    };
+    const result = await collectSitePortal(withMedia, portal('comox'), { now: () => NOW });
+    expect(fetch.calls.filter(url => url === media)).toHaveLength(1);
+    expect(fetch.calls).toHaveLength(4);
+    expect(result.records.map(record => record.attachments)).toEqual(Array.from({ length: 2 }, () => [
+      { name: 'Final Town of Comox LMP RFP.pdf', url: resolved ? `${origin}${resolved}` : media },
+    ]));
+    expect(result.warnings).toEqual(resolved ? [] : [expect.stringMatching(/Could not resolve 1 Comox media page/)]);
+  });
+
   it('fails the portal with a coded error on HTTP errors and layout changes', async () => {
     const forbidden: NetFetch = async () => ({ status: 403, headers: {}, text: '' });
     await expect(collectSitePortal(forbidden, portal('rdn'), { now: () => NOW })).rejects.toMatchObject({ code: 'source_forbidden' });
@@ -390,7 +417,7 @@ describe('municipal-sites registration', () => {
     expect(new Set(SITE_PORTALS.map(p => p.id)).size).toBe(SITE_PORTALS.length);
     const collect = manifest.integration.actions.find((action: any) => action.id === 'procurement.collect');
     expect(collect.inputSchema.properties.sourceId.enum).toContain('municipal-sites');
-    expect(municipalSites).toMatchObject({ needsSession: false, requestsPerPortal: 31 });
+    expect(municipalSites).toMatchObject({ needsSession: false, requestsPerPortal: 56 });
   });
 
   it('describes the source honestly on the Sources page', () => {

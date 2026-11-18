@@ -20,6 +20,7 @@ export const SOURCE_ID = 'municipal-sites';
 const MAX_PAGES = 3;
 /** Notice pages read per portal per run; the busiest of these sites listed 13 open notices on 2026-10-03. */
 const MAX_DETAILS = 25;
+const MAX_COMOX_MEDIA_PAGES = 25;
 
 const oneLine = (html: string) => htmlToText(html).replace(/\s*\n\s*/g, ' ').trim();
 const attr = (tag: string, name: string) => decodeEntities(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i').exec(tag)?.[1] ?? '');
@@ -302,7 +303,8 @@ const KEYS: Record<string, keyof NoticePage | 'skip' | 'posted'> = {
   closingdate: 'closing', closingtime: 'closing', applicationdeadline: 'closing', status: 'status', pdf: 'documents', attachments: 'documents', competitionnumber: 'number',
   tendertitle: 'skip', tenderrfptitle: 'skip', posteddate: 'posted', postdate: 'posted', dateposted: 'posted', publisheddate: 'posted', share: 'skip',
 };
-const FILE = /\.(pdf|docx?|xlsx?|zip|dwg|pptx?)(?:[?#]|$)|\/filepro\/document|\/sites\/default\/files\/|\/assets\//i;
+const FILE_EXTENSION = /\.(pdf|docx?|xlsx?|zip|dwg|pptx?)(?:[?#]|$)/i;
+const FILE_PATH = /\/filepro\/document|\/sites\/default\/files\/|\/assets\//i;
 /**
  * Bid platforms whose documents need a supplier account (Bonfire, bids&tenders, MERX, Biddingo, Jaggaer, Ariba) or
  * Zoer's browser (BC Bid): a link there is saved as login-only and never downloaded with a plain request.
@@ -315,7 +317,9 @@ const LOGIN_HOSTS = /(?:^|\.)(?:bonfirehub\.ca|bonfirehub\.com|bidsandtenders\.c
  * documents.
  */
 export function documentLink(url: string, name: string, pageUrl: string, inDocumentsSection: boolean): { name: string; url: string; access?: 'login' } | undefined {
-  const host = new URL(url).hostname, file = FILE.test(url);
+  const { hostname: host, pathname } = new URL(url);
+  if (/^\/cdn-cgi\/l\/email-protection\/?$/i.test(pathname)) return undefined;
+  const file = FILE_EXTENSION.test(url) || FILE_PATH.test(url);
   if (!file && !inDocumentsSection) return undefined;
   if (LOGIN_HOSTS.test(host)) return { name, url, access: 'login' };
   return file || host === new URL(pageUrl).hostname ? { name, url } : undefined;
@@ -481,6 +485,46 @@ export function listedAsClosed(row: SiteRow & { html: Partial<Record<Role, strin
   return closing.precision === 'date' && closing.at! < zonedIso(Date.parse(now), portal.timeZone).slice(0, 10);
 }
 
+/** Comox's Drupal media pages render a file link inside a file-media article. */
+function comoxMediaFile(html: string, mediaUrl: URL): string | undefined {
+  const files = new Set<string>();
+  for (const [, tag, body] of html.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/gi)) {
+    if (!attr(tag, 'class').split(/\s+/).includes('media--type-file')) continue;
+    for (const [, anchor] of body.matchAll(/<a\b([^>]*)>/gi)) {
+      const href = resolveUrl(attr(anchor, 'href'), mediaUrl.href);
+      if (!href) continue;
+      const target = new URL(href);
+      if (target.origin === mediaUrl.origin && target.pathname.startsWith('/sites/default/files/') && FILE_EXTENSION.test(target.pathname)) files.add(href);
+    }
+  }
+  return files.size === 1 ? [...files][0] : undefined;
+}
+
+async function resolveComoxDocuments(fetch: NetFetch, pages: Map<string, NoticePage>, portal: SitePortal, warnings: string[]) {
+  const origin = new URL(portal.url).origin;
+  const resolved = new Map<string, string | undefined>();
+  const unresolved = new Set<string>();
+  for (const page of pages.values()) {
+    for (const doc of page.documents) {
+      const mediaUrl = new URL(doc.url);
+      if (doc.access === 'login' || mediaUrl.origin !== origin || !/^\/media\/\d+$/.test(mediaUrl.pathname)) continue;
+      if (!resolved.has(mediaUrl.href) && resolved.size < MAX_COMOX_MEDIA_PAGES) {
+        const response = await fetch({ url: mediaUrl.href, accept: 'text/html' }).catch(error => {
+          rethrowRunLimits(error);
+          return undefined;
+        });
+        if (response?.status === 429 || (response?.status === 503 && response.retryAfterMs !== undefined)) {
+          throw httpFailure(`${portal.label} media page`, response.status, response.retryAfterMs);
+        }
+        resolved.set(mediaUrl.href, response?.status === 200 ? comoxMediaFile(response.text, mediaUrl) : undefined);
+      }
+      const direct = resolved.get(mediaUrl.href);
+      if (direct) doc.url = direct;
+      else unresolved.add(mediaUrl.href);
+    }
+  }
+  if (unresolved.size) warnings.push(`Could not resolve ${unresolved.size} Comox media page link(s) to a unique file. The original page links are retained.`);
+}
 
 export async function collectSitePortal(fetch: NetFetch, base: ConnectorPortal, context: { now: () => string }): Promise<PortalResult> {
   const portal = SITE_PORTALS.find(candidate => candidate.id === base.id);
@@ -519,6 +563,7 @@ export async function collectSitePortal(fetch: NetFetch, base: ConnectorPortal, 
     if (open.length > MAX_DETAILS) warnings.push(`Only the first ${MAX_DETAILS} of ${open.length} notice pages were read this run; the rest carry listing fields only.`);
   }
   if (failures.length) warnings.push(`Notice pages could not be read for ${failures.length} notice(s) (${[...new Set(failures)].slice(0, 3).join('; ')}); those records carry listing fields only.`);
+  if (portal.id === 'comox') await resolveComoxDocuments(fetch, pages, portal, warnings);
   // These listings print no total; the count is unknown rather than the number of rows read.
   return { portalId: portal.id, records: [...rows].map(([id, row]) => siteRecord(row, portal, retrievedAt, pages.get(id))), warnings };
 }
@@ -529,7 +574,7 @@ export const municipalSites: SourceConnector = {
   jurisdiction: 'British Columbia',
   coverage: `Bids listed on the own websites of ${SITE_PORTALS.length} BC local governments (${SITE_PORTALS.map(p => p.label).join(', ')}), with each open notice's page (description, contacts, document links saved with each notice; links to bid platforms such as Bonfire are marked as needing a sign-in). Each site lists what it chooses: some show recently closed notices, some only open ones. Files are not downloaded by this connector. A notice missing from a later listing is kept; absence is not proof of closure.`,
   portals: SITE_PORTALS,
-  requestsPerPortal: 2 * MAX_PAGES + MAX_DETAILS,
+  requestsPerPortal: 2 * MAX_PAGES + MAX_DETAILS + MAX_COMOX_MEDIA_PAGES,
   needsSession: false,
   collectPortal: collectSitePortal,
 };

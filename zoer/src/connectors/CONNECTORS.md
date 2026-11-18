@@ -304,4 +304,9 @@ keeps its existing key/shape (`COLLECTION_KEY`) and gains nothing here.
     bctransit. RDN moved to www.rdn.ca (`list` layout, notice keys now the path slug), Dawson Creek to
     `/business-development/bidding-opportunities/`. Posted dates: list labels "Post Date", notice-page "Posted Date"
     and GovStack's `gs-news-details-date`. State entries of portals no longer in a connector move to `retiredPortals`.
+- 2026-11-18 (municipal attachment links). Surrey's email-protection links are excluded from attachments.
+  Comox file media pages are read through the existing crawl-policy-aware network service, up to 25 distinct
+  pages per portal pass. A media page with a unique same-origin file in its file article contributes the
+  file URL. Unresolved pages retain their source links and produce a warning. The maximum is 56 requests
+  for the portal, within the action's existing 64-request limit.
 
