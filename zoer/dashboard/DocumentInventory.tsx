@@ -7,6 +7,7 @@ import { Select } from '@zoer/plugin-ui/database';
 import { host } from './bridge';
 import { shortError } from './error-text';
 import { assertDocumentBrowserIdle } from './document-run';
+import { refreshAfterChange } from './backend';
 import { useCapabilities } from './capabilities';
 import { usePluginQuery } from './navigation';
 import { DOCUMENT_STATS_SQL, FILE_FILTERS, fileFilterSql, fileState, fileWarning } from './document-processing';
@@ -48,7 +49,7 @@ export function DocumentFiles({onDetails, refreshKey = '', downloadRunning, proc
     : "NULL";
   const files=useQuery({queryKey:['procurement','document-files',filter,search,page,fileTransferControls],queryFn:()=>query(`SELECT d.id,d.record_id,d.name,d.media_type,d.status,d.bytes,${expectedSize} expectedBytes,length(d.text) chars,d.error,d.updated_at,r.title FROM documents d JOIN records r ON r.id=d.record_id WHERE ${clause} ORDER BY d.updated_at DESC,d.id LIMIT 51 OFFSET ?`,[...parameters,page*50]),refetchInterval:10000});
   const rows=(files.data?.rows??[]).slice(0,50);
-  const act=async(row:any,extract:boolean)=>{setBusy(row.id);setError('');setMessage('');try{if(!extract)await assertDocumentBrowserIdle(host);await host('action',{actionId:extract?'documents.extract':'documents.download',input:{recordIds:[row.record_id],...(extract?{}:{force:false,...(fileTransferControls?{documentId:row.id}:{})})}});setMessage(`${extract?'Text extraction':'Download retry'} started for ${!extract && fileTransferControls ? row.name : row.title}.`);}catch(e){setError((e as Error).message);}finally{setBusy('');}};
+  const act=async(row:any,extract:boolean)=>{setBusy(row.id);setError('');setMessage('');try{if(!extract)await assertDocumentBrowserIdle(host);await host('action',{actionId:extract?'documents.extract':'documents.download',input:{recordIds:[row.record_id],...(extract?{}:{force:false,...(fileTransferControls?{documentId:row.id}:{})})}});void refreshAfterChange();setMessage(`${extract?'Text extraction':'Download retry'} started for ${!extract && fileTransferControls ? row.name : row.title}.`);}catch(e){setError((e as Error).message);}finally{setBusy('');}};
   return <section className="zoer-history" aria-label="Saved files">
     <div className="research-toolbar">
       <label className="research-label research-grow"><span className="sr-only">Search files</span><input maxLength={250} aria-label="Search files" placeholder="Search by file name, bid number or title" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} /></label>

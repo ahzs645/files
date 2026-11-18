@@ -7,6 +7,8 @@ Plan: [PLANS.md](PLANS.md) · Traceability: [TRACEABILITY.md](TRACEABILITY.md)
 | M1 — Host: save first, extract later | VERIFIED (host commit `1a84ff7a`, branch `feat/deferred-document-extraction`, not pushed) | readiness: PASS (audit 4); completion audit 5: FAIL (PG-011), corrected; completion audit 6: PASS |
 | M2 — Plugin: Processing tab and pending state | VERIFIED (plugin commit `aeb57bf`, not pushed) | readiness: PASS (audit 4); completion audit 6: PASS |
 | M3 — Deployment to OTE | DEPLOYED: live checks passed (see deployment record) | readiness not audited; no completion audit; no final audit |
+| M4 — Plugin: stop a download that waits for its automatic retry | VERIFIED (REQ-017) | audit 7: FAIL (PG-M4-01, PG-M4-02), corrected; audit 8: PASS |
+| M5 — Release 0.41.1, deployment to OTE and pull request | IN PROGRESS (REQ-018: version 0.41.1 set; deployment and pull request pending) | audit 9: FAIL (PG-M4-03 to PG-M4-05, records only), corrected; audit 10 (pre-commit, M5 readiness): PASS; completion audit pending |
 
 ## Validation results (2026-11-16, before the completion audit)
 
@@ -184,3 +186,87 @@ host still reports commit `4f7eb40a` and the installed plugin is 0.40.1.
 
 Also open before the final audit: the four pre-existing host test failures and the RDN test skipped
 on this machine need CI/Linux evidence or the user's recorded acceptance.
+
+## M4 — stop a download that waits for its automatic retry (2026-11-18)
+
+Reported by the user on OTE: the Download section showed a disabled "Download running…" button and
+nothing could stop the run or start a new one. Live state at 08:17Z: run
+`workflow_run_eb879f69-4c61-4ad4-9f97-97bbd63ef265` `retry_scheduled`, batch `paused` 203/492,
+recovery scheduled for 08:18:40Z. At 08:18:44Z the recovery attempt failed by itself ("Automatic
+recovery stopped: browser control changed during the cooldown."); the batch became `partial` and
+the page was usable again without any intervention. No live run was cancelled or started.
+
+Change: plugin dashboard only (REQ-017, AC-040 to AC-047 in PLANS.md). The user then asked for the
+fix to be committed, deployed to OTE and sent as a pull request; that is M5 (REQ-018).
+
+| Command (2026-11-18, after the audit 7 corrections) | Result |
+|---|---|
+| `npm run zoer:typecheck` | pass |
+| P1 `npm run zoer:test` | 87 files passed, 1 skipped; 1155 tests passed, 9 skipped (`tests/zoer-download-stop.test.tsx`: 22 passed) |
+| P2 `npm run zoer:test:catalog` | 38 pass, 0 fail |
+| P3 `npm run zoer:build` | built `dist/zoer-bcbid` and `dist/zoer-native`; warning, not from this change: `"PdfPreview" is not exported by "../zoer/frontend/src/plugin-ui/controls.ts"` (imported at `procurement/NoticeView.tsx:240`) with the default sibling host checkout |
+
+Run with the default sibling host checkout `../zoer` (no `ZOER_UI_ROOT` / `ZOER_SOURCE_ROOT`).
+Host follow-up, not part of this change: the catalog reconciliation leaves a `paused` batch
+unchanged after its run ends (`routes/plugin-catalog.ts` only corrects `running`).
+
+Process note: M4 was implemented before its plan addition and readiness were audited (AGENTS.md
+gates 1 and 2); audit 7 covered plan addition, completion and regression together.
+
+### Audit 7 — plan addition, M4 completion and regression — 2026-11-18 — FAIL
+
+| Finding | Summary | Correction |
+|---|---|---|
+| PG-M4-01 (blocking) | `batchPause` took a run missing from the dashboard's cached run list as ended. The cache is polled less often than the batch list, so a newly parked or update-paused batch could read "Stopped" with Retry, and the Download section could lack "Stop download", until the next poll; History Retry and Download selected did not reload the run list. | AC-046 and AC-047 added to PLANS.md and AC-040/AC-043 reworded. `batchPause` calls a missing run ended only when the list holds a run created after the batch's last write; `activeDownloadBatch` gives the section the stoppable batch from the batch list; `refreshAfterChange` reloads the run list after History Retry, Download selected, a per-file retry and both Stop controls, waiting out a refresh already in flight. |
+| PG-M4-02 (blocking) | AC-041 "nothing is downloading" and AC-040 `nextStepAt` precedence had no assertion. | The AC-041 test asserts the whole sentence; the AC-040 test gives the run and the batch a message with a different time. |
+
+Non-blocking items acted on: a refresh in flight could show the pre-cancel state after Stop
+(`refreshAfterChange`); Stop in History no longer waits for the workspace reload before the batch
+list reloads; the waiting line says "Nothing is running" for a batch that downloads nothing; a
+retry time that has passed is not shown; the plan revision is 6; the build warning is recorded.
+Carried forward, not changed: host cancel of a `retry_scheduled` run is evidenced by code reading
+only; keyboard focus is not moved when "Stop download" disappears; REQ-014's status text predates
+this work; the new test file is untracked until the user asks for a commit; version and deployment
+of the plugin are the user's decision.
+
+### Audit 8 — re-audit of plan addition, M4 completion and regression — 2026-11-18 — PASS
+
+PG-M4-01 and PG-M4-02 confirmed corrected; no blocking findings; AC-040 to AC-047 pass and REQ-017
+is VERIFIED. No regression on REQ-016 / AC-024. Non-blocking items carried forward:
+
+1. Known limit (in PLANS.md): a paused batch whose ended run has left the returned history keeps
+   its paused reading, with Stop offered, until any later run exists. "Download all" stays enabled.
+2. For at most one poll a parked batch known only from the batch list shows an enabled
+   "Download all" beside "Stop download"; the start is refused by the fresh check.
+3. If only a source capture blocks a new download while the waiting batch is unknown to the run
+   list, the disabled button reads "Download all", not "Download paused…".
+4. `procurement/Sources.tsx` and the notice views start downloads without `refreshAfterChange`;
+   no functional effect, because the section reads the batch list.
+5. Host cancel of a `retry_scheduled` run is evidenced by code reading only; keyboard focus is not
+   moved when "Stop download" disappears; double activation is guarded without a criterion.
+6. Not committed (the test file is untracked) and not deployed; plugin version and rollout are the
+   user's decision.
+
+### Audit 9 — pre-commit audit of the release delta — 2026-11-18 — FAIL (records only)
+
+Code, manifest and tests were found fit to commit.
+
+| Finding | Summary | Correction |
+|---|---|---|
+| PG-M4-03 | M4 was recorded VERIFIED while holding the unmet deployment criterion; a deployment record was claimed that did not exist. | Release, deployment and pull request are milestone M5 (REQ-018, IN PROGRESS); M4 is REQ-017 only; the claim is removed. |
+| PG-M4-04 | REQ-013 / AC-016 and their traceability row still named version 0.41.0. | Both annotated: 0.41.0 at its release, 0.41.1 since REQ-018 / AC-048 on the user's deployment request. |
+| PG-M4-05 | The pull request had no criterion or target; the package also carries upstream `61dd5fb` and `72fb23b`, unstated; no Home/Status check. | AC-050 added (to `main` of `amirrad98/files`, as pull request 1); M5 states what ships; AC-049 checks Home and Status, names the no-active-run check and what the record must hold. |
+
+| Command (2026-11-18, release delta, `ZOER_UI_ROOT` / `ZOER_SOURCE_ROOT` = `../zoer-ote-attachment-transfer`) | Result |
+|---|---|
+| `npm run zoer:typecheck` | pass |
+| P1 `npm run zoer:test` | 87 files passed, 1 skipped; 1156 tests passed, 9 skipped |
+| P2 `npm run zoer:test:catalog` | 38 pass, 0 fail |
+| P3 `npm run zoer:build` | built `dist/zoer-bcbid` (manifest 0.41.1) and `dist/zoer-native`; same `PdfPreview` warning (an optional guarded lookup, also present in the live package's build) |
+
+### Audit 10 — re-audit of the pre-commit scope — 2026-11-18 — PASS
+
+PG-M4-03 to PG-M4-05 confirmed closed. The tree is fit for the M4 completion commit, which also
+carries the 0.41.1 version line and the M5 plan; M5 is ready to carry out and needs its own
+completion audit after the deployment record and the pull request exist. REQ-018 is IN PROGRESS
+until then.

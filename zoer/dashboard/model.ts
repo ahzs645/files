@@ -92,7 +92,7 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
   const awardRuns = state.runs.filter(run => run.actionId === 'awards.history').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const documentRuns = state.runs.filter(run => ['documents.download', 'documents.download.all','documents.download.missing'].includes(run.actionId));
   const captureRuns = state.runs.filter(isSourceCaptureRun);
-  return { stars, awardCheckpoint, awardRecentCheckpoint: null as any, awardRuns, documentRuns, captureRuns, opportunities: [...opportunities.values()].map(row => ({ ...row, starred: stars.get('opportunity:' + row.sourceKey) === true })), awards: [...awards.values()].map(row => ({ ...row, starred: stars.get('award:' + row.importKey) === true })), runs, history, runsTruncated: state.runsTruncated };
+  return { stars, awardCheckpoint, awardRecentCheckpoint: null as any, awardRuns, documentRuns, captureRuns, /** Every returned run, by any action: the latest 100 plus all active ones. */ workflowRuns: state.runs, opportunities: [...opportunities.values()].map(row => ({ ...row, starred: stars.get('opportunity:' + row.sourceKey) === true })), awards: [...awards.values()].map(row => ({ ...row, starred: stars.get('award:' + row.importKey) === true })), runs, history, runsTruncated: state.runsTruncated };
 }
 export type Model = ReturnType<typeof buildModel>;
 export function queryModel(model: Model, name: string, args: any = {}): any {

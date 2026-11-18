@@ -123,6 +123,12 @@ export function refresh() {
   return pending;
 }
 
+/** Reload after a change made from the dashboard: a refresh already in flight may have read the old run list. */
+export async function refreshAfterChange() {
+  if (pending) await pending;
+  return refresh();
+}
+
 export function startWorkspace() {
   void refresh();
   let lastPoll = Date.now();

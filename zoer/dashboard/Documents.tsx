@@ -12,7 +12,8 @@ import { DocumentFiles, DocumentStats } from './DocumentInventory';
 import { NoticeView } from './procurement/NoticeView';
 import { useCapabilities } from './capabilities';
 import { useDocumentBrowsers } from './use-document-browsers';
-import { assertDocumentBrowserIdle } from './document-run';
+import { activeDownloadBatch, assertDocumentBrowserIdle } from './document-run';
+import { refreshAfterChange, useWorkspace } from './backend';
 import { splitDocumentBatches } from './document-processing';
 import { DocumentProcessing } from './DocumentProcessing';
 
@@ -20,6 +21,7 @@ const TABS: [string, string][] = [['', 'Download'], ['processing', 'Processing']
 
 export function Documents() {
   const { downloadBlocked: browserBusy } = useDocumentBrowsers();
+  const { model } = useWorkspace();
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [showSize,setShowSize] = useState(true);
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -39,7 +41,8 @@ export function Documents() {
       await assertDocumentBrowserIdle(host);
       await host('action', { actionId: 'documents.download', input: { recordIds: [...selection], force: false } });
       setMessage(`Download started for ${selection.size} ${selection.size === 1 ? 'opportunity' : 'opportunities'}.`);
-      await refresh();
+      // The run list decides what can be stopped; reload it with the batch list.
+      await Promise.all([refresh(), refreshAfterChange()]);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   const bundle = async () => {
@@ -60,7 +63,7 @@ export function Documents() {
     {collection && attention && current !== 'history' && <p className="doc-attention" role="status"><span className="doc-dot" aria-hidden="true" />The last download needs attention. <button type="button" onClick={() => setTab('history')}>Open history</button></p>}
     {(error || state.loadError) && <p role="alert">{error || state.loadError}</p>}{message && <p role="status">{message}</p>}
     {collection && current === '' && <>
-      <BulkDocuments running={downloadRunning} onStarted={refresh} />
+      <BulkDocuments running={downloadRunning} activeBatch={activeDownloadBatch(downloads, model?.workflowRuns)} onStarted={refresh} />
       <h2 className="doc-subhead">Or pick opportunities</h2>
       <RecordPicker selection={selection} setSelection={setSelection} onDetails={setRecordId} more={[{ label: 'Open database viewer', onClick: () => void host('catalog.open') }]}
         actions={<><Button disabled={busy || browserBusy || !selection.size} onClick={() => void download()}>Download selected</Button><Hint action content="Saved files of the selected notices and a CSV, as one zip"><Button variant="ghost" disabled={busy || !selection.size || selection.size > BUNDLE_MAX_NOTICES} onClick={() => void bundle()}>Save files as zip</Button></Hint></>} />

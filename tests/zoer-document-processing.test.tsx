@@ -39,7 +39,7 @@ describe('manifest and README', () => {
     for (const id of ['documents.download', 'documents.download.all', 'documents.download.missing'])
       expect(action(id).inputSchema.properties.deferExtraction, id).toEqual({ type: 'boolean', default: true });
   });
-  it('AC-016: declares documents.extract.pending, version 0.41.0, and documents the behaviour', () => {
+  it('AC-016: declares documents.extract.pending, version 0.41.1 (0.41.0 when released; AC-048), and documents the behaviour', () => {
     const pending = action('documents.extract.pending');
     expect(pending.execution).toEqual({ kind: 'host-action', handler: 'documents.extract.pending.v1' });
     expect(pending.requiredCapabilities).toEqual(['artifact-store']);
@@ -47,7 +47,7 @@ describe('manifest and README', () => {
     expect(Object.keys(pending.outputSchema.properties)).toEqual(['selected', 'files', 'completed', 'failed', 'remaining']);
     expect(pending.outputSchema.required).toEqual(['selected', 'files', 'completed', 'failed', 'remaining']);
     expect(pending.outputSchema.additionalProperties).toBe(false);
-    expect(manifest.version).toBe('0.41.0');
+    expect(manifest.version).toBe('0.41.1');
     const readme = readFileSync(join(root, 'zoer/README.md'), 'utf8');
     expect(readme).toContain('Downloads save files without extracting text');
     expect(readme).toContain('**Documents → Processing** extracts text later');
