@@ -13,6 +13,22 @@ test('native requests call the host directly, without window messaging', async (
     expect(post).not.toHaveBeenCalled();
   } finally { release(); }
 });
+test('catalog SQL reads are serialized without blocking other workspace requests', async () => {
+  const finish: Array<() => void> = [];
+  const request = vi.fn((method: string) => method === 'catalog.query'
+    ? new Promise(resolve => finish.push(() => resolve({ rows: [] })))
+    : Promise.resolve({ ready: true }));
+  const release = bindNativeHost({ request, subscribe: () => () => {} });
+  try {
+    const reads = Array.from({ length: 2 }, () => host('catalog.query'));
+    expect(await host('state')).toEqual({ ready: true });
+    expect(finish).toHaveLength(1);
+    finish[0]();
+    await vi.waitFor(() => expect(finish).toHaveLength(2));
+    finish.slice(1).forEach(resolve => resolve());
+    await expect(Promise.all(reads)).resolves.toEqual(Array.from({ length: 2 }, () => ({ rows: [] })));
+  } finally { release(); }
+});
 test('closing a workspace fences in-flight and queued calls before another mount', async () => {
   let finish!: (value: unknown) => void;
   const oldRequest = vi.fn(() => new Promise(resolve => { finish = resolve; }));

@@ -57,7 +57,11 @@ function LoadStatus() {
   );
   const message = error || queryError;
   if (!message) return null;
-  return <div role="alert" className="pc-load-status"><span>Couldn’t refresh: {message.replace(/\.$/, '')}. Showing saved data.</span><Btn size="sm" onClick={() => { if (error) void refresh(); void queryClient.refetchQueries({type:'active',predicate:q=>q.state.status==='error'}); }}>Retry</Btn></div>;
+  const retry = () => {
+    if (error) void refresh();
+    void queryClient.refetchQueries({ type: 'active', predicate: query => query.state.status === 'error' });
+  };
+  return <div role="alert" className="pc-load-status"><span>Couldn’t refresh: {message.replace(/\.$/, '')}. Showing saved data.</span><Btn size="sm" onClick={retry}>Retry</Btn></div>;
 }
 const PAGE_VIEWS: Partial<Record<Page, () => ReactNode>> = {
   home: () => <Home />, status: () => <Status />, insights: () => <Insights />, procurement: () => <Procurement />, pursuits: () => <Pursuits />, documents: () => <Documents />, taxonomy: () => <Taxonomy />,

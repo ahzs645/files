@@ -12,55 +12,66 @@ import { QUEUES, acquireParts, and, assessmentScope, deadlineWindowSql, fitBucke
 const r = recordColumns();
 const num = (value: unknown) => Number(value ?? 0);
 /** Open work for Home: open opportunities not hidden as "not relevant"; the Opportunities list leaves them out by default too. */
-const openWork = (asOf: number, source:string): Fragment => and(sourceSql(source), openSql(asOf,'',{crossSource:'exclude',source}), { sql: `${r.id} NOT IN (${HIDDEN_IDS_SQL})`, parameters: [] });
+const openWork = (asOf: number, source: string): Fragment => and(sourceSql(source), openSql(asOf, '', { crossSource: 'exclude', source }), { sql: `${r.id} NOT IN (${HIDDEN_IDS_SQL})`, parameters: [] });
+
+/**
+ * Keep each scan within Zoer's catalog reader deadline. The kind index can
+ * locate the occupied ranges without fetching record JSON, then restrict each
+ * read by rowid. Only the combined result is shown.
+ */
+async function* openWorkRanges(asOf: number, source: string): AsyncGenerator<Fragment> {
+  const scope = openWork(asOf, source);
+  let after: number | undefined;
+  while (true) {
+    const ranges = await sql(`SELECT min(rowid) AS first, max(rowid) AS last FROM records WHERE kind='opportunity'${after === undefined ? '' : ' AND rowid>?'} GROUP BY rowid / 1024 ORDER BY last LIMIT 200`, after === undefined ? [] : [after]);
+    for (const range of ranges) {
+      yield and({ sql: 'rowid BETWEEN ? AND ?', parameters: [Number(range.first), Number(range.last)] }, scope);
+    }
+    if (ranges.length < 200) return;
+    after = Number(ranges.at(-1).last);
+  }
+}
 
 /** Opportunity notices from one source (or all), open or closed. */
 export const opportunityScope = (source: string): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source));
 /** Insights scope: opportunities from the chosen source, open ones only unless `open` is false. */
-export const insightScope = (source: string, open: boolean, asOf: number): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, open ? openSql(asOf, '', {source,crossSource:source ? 'include' : 'exclude'}) : { sql: canonicalNoticeSql('', { source,crossSource: source ? 'include' : 'exclude' }), parameters: [] }, sourceSql(source));
+export const insightScope = (source: string, open: boolean, asOf: number): Fragment => {
+  const options = { crossSource: source ? 'include' : 'exclude', source } as const;
+  return and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source),
+    open ? openSql(asOf, '', options) : { sql: canonicalNoticeSql('', options), parameters: [] });
+};
 const inScope = (scope: Fragment, column = 'record_id'): Fragment => ({ sql: `${column} IN (SELECT id FROM records WHERE ${scope.sql})`, parameters: scope.parameters });
 
-export type QueueResult = { total: number; items: any[] };
-/** The live catalog reader bounds each query. Split the more expensive attachment checks by row range. */
-async function* openRanges(asOf:number,source:string) {
-  let last:number|undefined;
-  const scope = openWork(asOf,source);
-  for (;;) {
-    const ranges = await sql(`SELECT min(rowid) AS first, max(rowid) AS last FROM records WHERE kind='opportunity'${last===undefined?'':' AND rowid>?'} GROUP BY rowid / 1024 ORDER BY last LIMIT 200`, last===undefined?[]:[last]);
-    for (const range of ranges) yield and({sql:'rowid BETWEEN ? AND ?',parameters:[Number(range.first),Number(range.last)]},scope);
-    if (ranges.length<200) return;
-    last = Number(ranges.at(-1).last);
-  }
-}
-
-export async function readQueueCount(queue:QueueId,profile:string|null,source:string,asOf:number) {
-  const filter = queueSql(queue,profile);
-  const count = async (range:Fragment) => {
-    const scope = and(range,filter);
-    const [row] = await sql(`SELECT count(*) AS total FROM records WHERE ${scope.sql}`,scope.parameters);
+/** Exact queue size. The list of examples is read only when expanded. */
+export async function readQueue(queue: QueueId, profile: string | null, source: string, asOf: number) {
+  const predicate = queueSql(queue, profile);
+  const count = async (scope: Fragment) => {
+    const where = and(scope, predicate);
+    const [row] = await sql(`SELECT count(*) AS total FROM records WHERE ${where.sql}`, where.parameters);
     return num(row?.total);
   };
-  if (queue !== 'acquire') return count(openWork(asOf,source));
+  if (queue !== 'acquire') return count(openWork(asOf, source));
   let total = 0;
-  for await (const range of openRanges(asOf,source)) total += await count(range);
+  for await (const range of openWorkRanges(asOf, source)) total += await count(range);
   return total;
 }
 
-export async function readQueueExamples(queue:QueueId,profile:string|null,source:string,asOf:number) {
-  const filter=queueSql(queue,profile), p=acquireParts();
-  const reason = queue==='acquire' ? `CASE WHEN ${p.unchecked} THEN 'unchecked' WHEN ${p.notDownloaded} THEN 'notDownloaded' ELSE 'noText' END AS reason, ` : '';
-  const examples = (range:Fragment) => {
-    const scope=and(range,filter);
-    return sql(`SELECT ${reason}id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing FROM records WHERE ${scope.sql} ORDER BY coalesce(${r.closing},'9999'), id LIMIT 5`,scope.parameters);
+export async function readQueueExamples(queue: QueueId, profile: string | null, source: string, asOf: number) {
+  const predicate = queueSql(queue, profile), p = acquireParts();
+  const reason = queue === 'acquire' ? `CASE WHEN ${p.unchecked} THEN 'unchecked' WHEN ${p.notDownloaded} THEN 'notDownloaded' ELSE 'noText' END AS reason, ` : '';
+  const readTop = (scope: Fragment) => {
+    const where = and(scope, predicate);
+    return sql(`SELECT ${reason}id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing FROM records WHERE ${where.sql} ORDER BY coalesce(${r.closing},'9999'), id LIMIT 5`, where.parameters);
   };
-  if (queue!=='acquire') return examples(openWork(asOf,source));
-  const compare = (a:string,b:string) => a<b?-1:a>b?1:0;
-  let items:any[]=[];
-  for await (const range of openRanges(asOf,source)) items=[...items,...await examples(range)].sort((a,b)=>compare(a.closing??'9999',b.closing??'9999')||compare(a.id,b.id)).slice(0,5);
+  if (queue !== 'acquire') return readTop(openWork(asOf, source));
+  const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+  let items: any[] = [];
+  for await (const range of openWorkRanges(asOf, source)) {
+    items = [...items, ...await readTop(range)]
+      .sort((a, b) => compare(a.closing ?? '9999', b.closing ?? '9999') || compare(a.id, b.id))
+      .slice(0, 5);
+  }
   return items;
-}
-export async function readQueue(queue:QueueId,profile:string|null,source:string,asOf:number):Promise<QueueResult> {
-  return {total:await readQueueCount(queue,profile,source,asOf),items:await readQueueExamples(queue,profile,source,asOf)};
 }
 
 /** Legacy-computable coverage stages (records and documents only). */
@@ -81,12 +92,13 @@ export async function readReviewCoverage(source: string, profile: string | null)
 
 /** Open opportunities in scope, and (only with a profile) those whose current assessment suggests needing information or investigation. */
 export async function readAttentionSummary(source: string, profile: string | null, asOf: number) {
-  const condition = profile ? fitSql({readiness:'conditions'},profile) : null;
-  const extra = condition ? `, sum(CASE WHEN ${condition.sql} THEN 1 ELSE 0 END) AS needInfo` : '';
-  const result = {open:0,needInfo:0};
-  for await (const range of openRanges(asOf,source)) {
-    const [row] = await sql(`SELECT count(*) AS count${extra} FROM records WHERE ${range.sql}`,[...(condition?.parameters??[]),...range.parameters]);
-    result.open+=num(row?.count); result.needInfo+=num(row?.needInfo);
+  const conditions = profile ? fitSql({ readiness: 'conditions' }, profile) : null;
+  const needInfo = conditions ? `, sum(CASE WHEN ${conditions.sql} THEN 1 ELSE 0 END) AS needInfo` : '';
+  const result = { open: 0, needInfo: 0 };
+  for await (const range of openWorkRanges(asOf, source)) {
+    const [row] = await sql(`SELECT count(*) AS count${needInfo} FROM records WHERE ${range.sql}`, [...(conditions?.parameters ?? []), ...range.parameters]);
+    result.open += num(row?.count);
+    result.needInfo += num(row?.needInfo);
   }
   return result;
 }
@@ -120,7 +132,7 @@ export async function readRecentDecisions(source: string) {
  * first days (Home passes SOON_DAYS + 1 so it leaves out what Today's "Closing within 3 days" already lists).
  */
 export async function readDeadlines(source: string, asOf: number, days = 14, fromDay = 0) {
-  const scope = and(openWork(asOf,source), deadlineWindowSql(days, asOf), fromDay > 0 ? { sql: `${r.closing}>=?`, parameters: [addDays(zoneDate(asOf), fromDay)] } : null);
+  const scope = and(openWork(asOf, source), deadlineWindowSql(days, asOf), fromDay > 0 ? { sql: `${r.closing}>=?`, parameters: [addDays(zoneDate(asOf), fromDay)] } : null);
   const rows = await sql(`SELECT id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing, (SELECT count(*) FROM records WHERE ${scope.sql}) AS total FROM records WHERE ${scope.sql} ORDER BY ${r.closing}, id LIMIT 8`, [...scope.parameters, ...scope.parameters]);
   return { total: num(rows[0]?.total), rows };
 }
@@ -158,7 +170,7 @@ export async function readBottlenecks(source: string, profile: string | null, as
   const queues = await Promise.all(QUEUES.map(async queue => {
     const q = queueSql(queue, profile);
     if (q.unavailable) return [queue, null] as const;
-    const f = and(openWork(asOf,source), q);
+    const f = and(openWork(asOf, source), q);
     return [queue, num((await sql(`SELECT count(*) AS count FROM records WHERE ${f.sql}`, f.parameters))[0]?.count)] as const;
   }));
   const [runs, tasks] = await Promise.all([

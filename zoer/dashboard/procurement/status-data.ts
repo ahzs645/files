@@ -15,7 +15,10 @@ import type { RecentRun } from './source-schedules';
 const r = recordColumns();
 const PAGE = 200, MAX_PAGES = 40;
 /** Open BC Bid opportunities (same open rule as the review table). */
-export const openBcBidScope = (asOf: number) => and(sourceSql('bc-bid'), openSql(asOf,'',{crossSource:'exclude',source:'bc-bid'}));
+export const openBcBidScope = (asOf: number) => and(sourceSql('bc-bid'), openSql(asOf, '', { crossSource: 'exclude', source: 'bc-bid' }));
+
+const GAP_COUNTS_SQL = (scope: string) => `SELECT count(*) AS open, sum(${r.field('attachments[0]')} IS NOT NULL) AS withLinks, sum(${r.field('attachments[0]')} IS NULL) AS noLinks, sum(id IN (SELECT record_id FROM research_tasks WHERE status='waiting_for_user')) AS waitingNotices FROM records WHERE ${scope}`;
+const GAP_LINKS_SQL = (scope: string) => `SELECT id, ${r.title} AS title, ${r.closing} AS closing, ${r.field('attachments')} AS links FROM records WHERE ${scope} AND ${r.field('attachments[0]')} IS NOT NULL ORDER BY id`;
 
 async function paged(statement: string, parameters: (string | number)[]) {
   const rows: any[] = [];
@@ -26,10 +29,6 @@ async function paged(statement: string, parameters: (string | number)[]) {
   }
   return rows;
 }
-
-export const GAP_COUNTS_SQL = (scope: string) => `SELECT count(*) AS open, sum(${r.field('attachments[0]')} IS NOT NULL) AS withLinks, sum(${r.field('attachments[0]')} IS NULL) AS noLinks, sum(id IN (SELECT record_id FROM research_tasks WHERE status='waiting_for_user')) AS waitingNotices FROM records WHERE ${scope}`;
-export const GAP_LINKS_SQL = (scope: string) => `SELECT id, ${r.title} AS title, ${r.closing} AS closing, ${r.field('attachments')} AS links FROM records WHERE ${scope} AND ${r.field('attachments[0]')} IS NOT NULL ORDER BY id`;
-export const GAP_DOCUMENTS_SQL = (scope: string) => `SELECT record_id AS recordId, url, status, error FROM documents WHERE record_id IN (SELECT id FROM records WHERE ${scope} AND ${r.field('attachments[0]')} IS NOT NULL) ORDER BY record_id, url`;
 
 export type LinkState = 'saved' | 'failed' | 'waiting' | 'never';
 export interface GapLink { url: string; name: string; state: LinkState; error: string | null }
@@ -84,9 +83,11 @@ export async function readDocumentGap(asOf = Date.now()): Promise<DocumentGap> {
   const [counts] = await sql(GAP_COUNTS_SQL(scope.sql), scope.parameters);
   const links = await paged(GAP_LINKS_SQL(scope.sql), scope.parameters);
   const documents = [];
-  for (let i = 0; i < links.length; i += PAGE - 1) {
-    const ids = links.slice(i, i + PAGE - 1).map(row => String(row.id));
-    const statement = `SELECT record_id AS recordId, url, status, error FROM documents WHERE record_id IN (${ids.map(() => '?').join(',')}) ORDER BY record_id, url`;
+  for (let start = 0; start < links.length; start += PAGE - 1) {
+    // Reuse the selected notices and leave one parameter for the page offset.
+    const ids = links.slice(start, start + PAGE - 1).map(row => String(row.id));
+    const placeholders = ids.map(() => '?').join(',');
+    const statement = `SELECT record_id AS recordId, url, status, error FROM documents WHERE record_id IN (${placeholders}) ORDER BY record_id, url`;
     documents.push(...await paged(statement, ids));
   }
   return computeDocumentGap(counts, links, documents);

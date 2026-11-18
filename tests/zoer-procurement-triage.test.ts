@@ -16,7 +16,7 @@ import { setHiddenNotices } from '../zoer/dashboard/procurement/state-client';
 import { noticeStatus } from '../zoer/dashboard/procurement/display';
 import { cleanDraft, emptyDraft, normalizeDraft, validateDraft } from '../zoer/dashboard/review-workspace/profile-types';
 import { VALUE_FACTS_SQL, filterReason, hasProfileFilters, keywordHitsSql, profileFilterRules, profileGate, readProfileFilterHits, readProfileRules, valueHit } from '../zoer/dashboard/review-workspace/profile-filter';
-import { readDeadlines, readQueue } from '../zoer/dashboard/review-workspace/home-data';
+import { readDeadlines, readQueue, readQueueExamples } from '../zoer/dashboard/review-workspace/home-data';
 
 afterEach(() => { host.mockReset(); });
 const filters = { source: '', kind: 'all', search: '', region: '', category: '', classification: '', buyer: '', supplier: '', deadline: 'all', shortlist: false };
@@ -160,6 +160,7 @@ describe('Home leaves hidden notices out of open work', () => {
     const seen: string[] = [];
     host.mockImplementation(async (method: string, input: any) => { if (method !== 'catalog.query') throw Error(method); validateCatalogSelect(input.statement, input.parameters); seen.push(input.statement); return { rows: [] }; });
     await readQueue('decide', 'pv1', 'bc-bid', Date.now());
+    await readQueueExamples('decide', 'pv1', 'bc-bid', Date.now());
     await readDeadlines('', Date.now());
     // The queue reads its count and its examples separately (bounded Home reads), then the deadlines.
     expect(seen).toHaveLength(3);
