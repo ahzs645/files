@@ -18,7 +18,7 @@ const PAGE = 8;
 /** Saved prompts and batches, refreshed every 10 seconds while the page is visible. */
 export function useCatalogState(onError: (message: string) => void) {
   const state = useQuery({ queryKey: ['procurement', 'catalog-state'], queryFn: async () => {
-    const [next, tasks] = await Promise.all([host('catalog.state'), host('catalog.query', {statement: "SELECT id,run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.transferId') transferId,json_extract(result,'$.receivedBytes') receivedBytes,json_extract(result,'$.expectedBytes') expectedBytes,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]})]);
+    const [next, tasks] = await Promise.all([host('catalog.state'), host('catalog.query', {statement: "SELECT id,run_id,record_id,kind,status,error,updated_at,json_extract(result,'$.transferId') transferId,json_extract(result,'$.receivedBytes') receivedBytes,json_extract(result,'$.expectedBytes') expectedBytes,json_extract(result,'$.resumeAt') resumeAt,json_extract(result,'$.name') name,json_extract(result,'$.phase') phase FROM research_tasks ORDER BY updated_at DESC LIMIT 100",parameters:[]})]);
     return {...next,tasks:tasks.rows};
   }, refetchInterval: query => query.state.data?.batches?.some((batch:any) => batch.status === 'running') ? 3000 : 10000 });
   useEffect(() => { if (state.error) onError(state.error.message); }, [state.error, onError]);
@@ -53,7 +53,7 @@ export function BatchHistory({ title, kind, batches, modelId = '', tasks = [], o
         {pause?.state === 'retry' && <p role="status">Nothing is {needsBrowser ? 'downloading' : 'running'}. Zoer retries automatically{retryTimeText(pause.retryAt) && ` at ${retryTimeText(pause.retryAt)}`}; Stop ends the wait and keeps what is saved.</p>}
         {steps.length > 0 && <details className="doc-steps"><summary data-zoer-disclosure="">Latest steps</summary>{steps.map((task, index) => <p className="research-task" key={index}><strong>{task.phase || task.kind}</strong> · {task.name || task.record_id} · {status === 'paused' && task.status === 'running' ? 'Paused for update' : status !== 'running' && task.status === 'running' ? 'Interrupted' : statusText(task.status)}{task.error ? ` · ${shortError(task.error)}` : ''}</p>)}</details>}
       </div>
-      {status === 'running' || status === 'retry_scheduled'
+      {['running','retry_scheduled','waiting_for_user'].includes(status)
         ? <Button variant="ghost" disabled={busy} onClick={() => void act(async () => { await host('cancel', { id: batch.id }); void refreshAfterChange(); })}>Stop</Button>
         // Paused for a Zoer update: it resumes on its own, so there is nothing to retry.
         : status === 'paused' || (kind === 'download' && status === 'succeeded') ? null : <Button variant="ghost" disabled={busy || (needsBrowser && browserBusy)} onClick={() => void act(async () => { if (needsBrowser) await assertDocumentBrowserIdle(host); const started = await host('action', input.extractOnly ? processingRetry(batch) : researchRetry(batch, modelId)); void refreshAfterChange(); return started; })}>Retry</Button>}

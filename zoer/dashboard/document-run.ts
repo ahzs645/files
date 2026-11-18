@@ -22,7 +22,7 @@ export async function assertDocumentBrowserIdle(host:(method:string,input?:unkno
   const { runs } = await host('state', { summary: true });
   const capturing = sourceCaptureActive(runs);
   const downloading = documentDownloadActive(runs.filter((run: {actionId: string}) =>
-    ['documents.download', 'documents.download.all', 'documents.download.missing'].includes(run.actionId)));
+    ['documents.download', 'documents.download.all', 'documents.download.missing','documents.download.queue'].includes(run.actionId)));
   if (!capturing && !downloading) return;
 
   if ((purpose === 'download' && !downloading) || (purpose === 'capture' && !capturing)) {

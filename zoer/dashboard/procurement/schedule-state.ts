@@ -92,6 +92,7 @@ export const findSchedule = (rows: ScheduleRow[] | undefined, actionId: string) 
 /** What each of this plugin's scheduled actions is called on the Status page, Sources and Home. */
 const ACTION_LABELS: Record<string, string> = {
   'scrape.full': 'BC Bid · current opportunities', 'awards.history': 'BC Bid · award history', 'scrape.sample': 'BC Bid · sample check',
+  'documents.extract.pending': 'Extract text from saved files',
   'scrape.details': 'BC Bid · capture missing details', 'documents.download.missing': 'BC Bid · keep documents current', 'documents.download.all': 'BC Bid · download documents',
   'procurement.alerts': 'Alert checks', 'procurement.collect.browser': 'BC sites (your browser)', 'procurement.collect': 'Collection',
 };

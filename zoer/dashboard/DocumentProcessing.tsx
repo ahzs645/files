@@ -5,6 +5,10 @@ import { BatchHistory } from './BatchHistory';
 import { BatchProgress } from './BatchProgress';
 import { host } from './bridge';
 import { PENDING_COUNT_SQL } from './document-processing';
+import { useWorkspace, refreshAfterChange } from './backend';
+import { ScheduleBadge, useSchedules } from './procurement/ScheduleControl';
+import { SettingsLink } from './procurement/Status';
+import { findSchedule } from './procurement/schedule-state';
 
 /**
  * Text extraction (OCR included) for files a download saved without reading them. It is its own run:
@@ -21,13 +25,17 @@ export function DocumentProcessing({ supported, collection, batches, tasks = [],
   const starting = useRef(false);
   const pending = useQuery({ queryKey: ['procurement', 'document-pending'], enabled: supported, queryFn: () => host('catalog.query', { statement: PENDING_COUNT_SQL, parameters: [] }), refetchInterval: 10000 });
   const row = pending.data?.rows?.[0], files = Number(row?.files ?? 0), notices = Number(row?.notices ?? 0);
-  const running = batches.some(batch => batch.status === 'running');
+  const {model} = useWorkspace();
+  const schedules = useSchedules();
+  const running = batches.some(batch => batch.status === 'running')
+    || (model?.workflowRuns ?? []).some(run => ['documents.extract.pending','documents.extract'].includes(run.actionId)
+      && !['succeeded','failed','cancelled','outcome_unknown'].includes(run.status));
   const start = async () => {
     if (starting.current) return; starting.current = true; setBusy(true); setError(''); setMessage('');
     try {
       await host('action', { actionId: 'documents.extract.pending', input: {} });
       setMessage(`Text extraction started for ${files.toLocaleString()} ${files === 1 ? 'file' : 'files'}. You can leave this page.`);
-      await onChanged(); await pending.refetch();
+      await Promise.all([onChanged(), pending.refetch(), refreshAfterChange()]);
     } catch (e) { setError((e as Error).message); } finally { starting.current = false; setBusy(false); }
   };
   return <>
@@ -41,7 +49,11 @@ export function DocumentProcessing({ supported, collection, batches, tasks = [],
         {pending.isPending ? <p role="status">Counting files waiting for text…</p> : pending.error ? <p role="alert">{(pending.error as Error).message}</p>
           : files ? <p><strong>{files.toLocaleString()} {files === 1 ? 'file' : 'files'}</strong> from {notices.toLocaleString()} {notices === 1 ? 'notice' : 'notices'} {files === 1 ? 'is' : 'are'} saved and waiting for text.</p>
           : <p>No files are waiting for text.</p>}
-        <p className="research-note">Downloads save each file without reading it. Text extraction, including OCR, runs here on its own: start it during a download or later. An AI review of a notice extracts that notice’s waiting files first.</p>
+        <p className="research-note">Text extraction and OCR use saved originals and can run during a download. AI reviews extract any pending files for the notice first.</p>
+        {collection && <div className="research-toolbar">
+          {schedules.isSuccess && <ScheduleBadge row={findSchedule(schedules.data,'documents.extract.pending')} />}
+          <SettingsLink section="schedules">Manage extraction schedule</SettingsLink>
+        </div>}
       </>}
       {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
     </section>
