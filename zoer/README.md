@@ -280,6 +280,8 @@ Exclusions live in the analysis URL and recalculate totals, rankings and matchin
 
 ## Releases
 
+**0.44.6** stops showing stale browser-check waits on Status. A notice counts as waiting for a browser check only when the check came after the last saved attachment; once a file has been saved since, earlier checks are retries due, which **Keep documents current** runs, and their files count as failed instead of waiting for you. A check that stopped the download browser on any notice, including a closed one, still shows the card with its time.
+
 **0.44.5** stops counting open BC Bid notices with no public files as missing attachment links. When a current, complete detail capture saved an empty attachment list, Status shows the notice under **No public files on BC Bid** (the buyer often posts files on its own site) instead of asking you to capture details again.
 
 **0.44.4** adds **Check again** and **Stop** to Saved-original checks. Retrying a public portal queue pass from Download history reruns the portal queue on the browser it used, not a native BC Bid download, and portal runs count as active downloads. It needs a Zoer host that records the portal browser on its batches.

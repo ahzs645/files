@@ -69,10 +69,11 @@ export function detailsStep(gap: DocumentGap | undefined): SetupStep {
 }
 
 export function browserCheckStep(gap: DocumentGap | undefined): SetupStep | null {
-  if (!gap || (!gap.waiting && !gap.waitingNotices)) return null;
+  if (!gap || (!gap.waiting && !gap.waitingNotices && !gap.checkPendingSince)) return null;
   const count = Math.max(gap.waitingNotices, 0);
+  const since = gap.checkPendingSince ? ` at ${new Date(gap.checkPendingSince).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : '';
   return { id: 'browser-check', title: 'Browser check', tone: 'warn', status: 'Waiting for you', actions: ['open-browser'],
-    detail: `BC Bid asked for a browser check${count ? ` on ${plural(count, 'notice')}` : ''}. Open the download browser in Zoer, complete the check, then hand control back; waiting downloads continue from where they stopped.` };
+    detail: `BC Bid asked for a browser check${since}${count ? ` on ${plural(count, 'open notice')}` : ''}. Open the download browser in Zoer, complete the check, then hand control back; waiting downloads continue from where they stopped.` };
 }
 
 /** The whole checklist plus a one-line verdict for Home. */

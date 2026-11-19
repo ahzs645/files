@@ -51,3 +51,14 @@ test('document gap of open BC Bid notices, per file, read in pages through the h
   expect(statements.filter(sql => sql.includes('FROM documents')).every(sql => !sql.includes('FROM records'))).toBe(true);
   expect(statements.every(sql => !/\b(?:FROM|JOIN)\s*\(/i.test(sql))).toBe(true);
 });
+
+test('a file saved after a browser check means the check was cleared: earlier checks are retries due, not waiting', async () => {
+  db.query("INSERT INTO research_tasks VALUES('r2','opportunity:1001','attachment','succeeded',NULL,NULL,?)").run('2026-11-02T00:00:00Z');
+  const gap = await readDocumentGap(ASOF);
+  expect(gap).toMatchObject({ waitingNotices: 0, waiting: 0, failed: 15, checkPendingSince: null });
+  db.query("INSERT INTO research_tasks VALUES('r3','opportunity:1161','attachment','waiting_for_user',NULL,NULL,?)").run('2026-11-03T00:00:00Z');
+  expect(await readDocumentGap(ASOF)).toMatchObject({ waitingNotices: 1, checkPendingSince: '2026-11-03T00:00:00Z' });
+  // A check on a closed notice still means the download browser is stopped, though no open notice is waiting.
+  db.query("INSERT INTO research_tasks VALUES('r4','opportunity:2001','attachment','waiting_for_user',NULL,NULL,?)").run('2026-11-04T00:00:00Z');
+  expect(await readDocumentGap(ASOF)).toMatchObject({ waitingNotices: 1, checkPendingSince: '2026-11-04T00:00:00Z' });
+});

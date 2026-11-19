@@ -4,7 +4,7 @@ import { plainError, shortError, tidyMessage } from '../zoer/dashboard/error-tex
 import { scheduleKind, scheduleLabel, scheduleState, scheduleSummary, type ScheduleRow } from '../zoer/dashboard/procurement/schedule-state';
 import { reenableable, stoppedSchedules } from '../zoer/dashboard/procurement/source-schedules';
 import { computeDocumentGap, lastCollectionText, lastCollections } from '../zoer/dashboard/procurement/status-data';
-import { detailsStep, setupChecklist } from '../zoer/dashboard/procurement/status-checklist';
+import { browserCheckStep, detailsStep, setupChecklist } from '../zoer/dashboard/procurement/status-checklist';
 import { noticeFileRows } from '../zoer/dashboard/procurement/notice-files';
 import { awardProgress } from '../zoer/dashboard/award-progress';
 import { hostSettingsHref } from '../zoer/dashboard/navigation';
@@ -75,6 +75,12 @@ describe('Status checklist', () => {
     expect(detailsStep(captured)).toMatchObject({ tone: 'good', status: 'All captured' });
     expect(detailsStep(captured).detail).toContain('227 other open notices were captured and have no public files on BC Bid');
     expect(detailsStep({ ...captured, noLinks: 2 })).toMatchObject({ tone: 'warn', status: '2 without links' });
+  });
+  it('shows a pending browser check even when it stopped on a closed notice', () => {
+    expect(browserCheckStep({ ...gap, waiting: 0, waitingNotices: 0, checkPendingSince: null })).toBeNull();
+    const step = browserCheckStep({ ...gap, waiting: 0, waitingNotices: 0, checkPendingSince: '2026-11-19T16:46:26Z' });
+    expect(step).toMatchObject({ id: 'browser-check', status: 'Waiting for you' });
+    expect(step!.detail).toMatch(/^BC Bid asked for a browser check at .+\. Open the download browser/);
   });
   it('degrades on older Zoer (no browser names) and names browsers on newer Zoer', () => {
     const old = setupChecklist({ browsers: undefined, rows: LIVE, gap });
