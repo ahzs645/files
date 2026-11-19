@@ -146,7 +146,7 @@ function DocumentGapPanel({ gap, error, phone }: { gap?: DocumentGap; error: Err
   const [all, setAll] = useState(false);
   const cells: [string, number | undefined, string][] = [
     ['Open notices', gap?.open, ''], ['With attachment links', gap?.withLinks, ''], ['Every file saved', gap?.fullySaved, 'good'],
-    ['Files never tried', gap?.never, 'warn'], ['Files failed', gap?.failed, 'warn'], ['Files waiting for a browser check', gap?.waiting, 'warn'], ['No links yet (needs details)', gap?.noLinks, ''],
+    ['Files never tried', gap?.never, 'warn'], ['Files failed', gap?.failed, 'warn'], ['Files waiting for a browser check', gap?.waiting, 'warn'], ['No links yet (needs details)', gap?.noLinks, ''], ['No public files on BC Bid', gap?.noFiles, ''],
   ];
   const shown = all ? gap?.notices ?? [] : (gap?.notices ?? []).slice(0, phone ? 4 : 8);
   return <section className="rw-panel" aria-labelledby="pc-status-gap">

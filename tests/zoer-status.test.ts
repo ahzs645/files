@@ -4,7 +4,7 @@ import { plainError, shortError, tidyMessage } from '../zoer/dashboard/error-tex
 import { scheduleKind, scheduleLabel, scheduleState, scheduleSummary, type ScheduleRow } from '../zoer/dashboard/procurement/schedule-state';
 import { reenableable, stoppedSchedules } from '../zoer/dashboard/procurement/source-schedules';
 import { computeDocumentGap, lastCollectionText, lastCollections } from '../zoer/dashboard/procurement/status-data';
-import { setupChecklist } from '../zoer/dashboard/procurement/status-checklist';
+import { detailsStep, setupChecklist } from '../zoer/dashboard/procurement/status-checklist';
 import { noticeFileRows } from '../zoer/dashboard/procurement/notice-files';
 import { awardProgress } from '../zoer/dashboard/award-progress';
 import { hostSettingsHref } from '../zoer/dashboard/navigation';
@@ -68,6 +68,13 @@ describe('Status checklist', () => {
   it('counts files per state and lists notices closing soonest first', () => {
     expect(gap).toMatchObject({ links: 3, saved: 1, failed: 1, never: 1, fullySaved: 0, missingNotices: 2 });
     expect(gap.notices.map(notice => notice.id)).toEqual(['o2', 'o1']);
+  });
+  it('keeps captured notices with no public files out of the details gap', () => {
+    const captured = computeDocumentGap({ open: 230, withLinks: 3, withoutLinks: 227, noFiles: 227, waitingNotices: 0 }, [], []);
+    expect(captured).toMatchObject({ noLinks: 0, noFiles: 227 });
+    expect(detailsStep(captured)).toMatchObject({ tone: 'good', status: 'All captured' });
+    expect(detailsStep(captured).detail).toContain('227 other open notices were captured and have no public files on BC Bid');
+    expect(detailsStep({ ...captured, noLinks: 2 })).toMatchObject({ tone: 'warn', status: '2 without links' });
   });
   it('degrades on older Zoer (no browser names) and names browsers on newer Zoer', () => {
     const old = setupChecklist({ browsers: undefined, rows: LIVE, gap });

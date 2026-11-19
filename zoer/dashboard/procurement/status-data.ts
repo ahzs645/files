@@ -5,6 +5,7 @@ import { COLLECTION_KEY, connectorCollectionKey } from './source-adapters';
 import { readConnectorCollection } from './source-overview';
 import { bcCheckpointHealth, bcSourceHealth, type BcBidCollectionRun } from './source-health';
 import type { RecentRun } from './source-schedules';
+import { DETAIL_CAPTURE_VERSION } from '../../src/detail-policy';
 
 /**
  * Data for the Status page and Home's status card: the document gap of open BC Bid notices and the last successful
@@ -17,7 +18,12 @@ const PAGE = 200, MAX_PAGES = 40;
 /** Open BC Bid opportunities (same open rule as the review table). */
 export const openBcBidScope = (asOf: number) => and(sourceSql('bc-bid'), openSql(asOf, '', { crossSource: 'exclude', source: 'bc-bid' }));
 
-const GAP_COUNTS_SQL = (scope: string) => `SELECT count(*) AS open, sum(${r.field('attachments[0]')} IS NOT NULL) AS withLinks, sum(${r.field('attachments[0]')} IS NULL) AS noLinks, sum(id IN (SELECT record_id FROM research_tasks WHERE status='waiting_for_user')) AS waitingNotices FROM records WHERE ${scope}`;
+/**
+ * A current, complete detail capture that saved an empty attachment list: BC Bid lists no public files for the
+ * notice (often the buyer's own bidding site holds them), so capturing details again cannot add links.
+ */
+const NO_PUBLIC_FILES = `${r.field('attachments')} = '[]' AND coalesce(${r.field('detailCaptureVersion')},1) >= ${DETAIL_CAPTURE_VERSION} AND coalesce(${r.field('detailNeedsRefresh')},0) = 0`;
+const GAP_COUNTS_SQL = (scope: string) => `SELECT count(*) AS open, sum(${r.field('attachments[0]')} IS NOT NULL) AS withLinks, sum(${r.field('attachments[0]')} IS NULL) AS withoutLinks, sum(${NO_PUBLIC_FILES}) AS noFiles, sum(id IN (SELECT record_id FROM research_tasks WHERE status='waiting_for_user')) AS waitingNotices FROM records WHERE ${scope}`;
 const GAP_LINKS_SQL = (scope: string) => `SELECT id, ${r.title} AS title, ${r.closing} AS closing, ${r.field('attachments')} AS links FROM records WHERE ${scope} AND ${r.field('attachments[0]')} IS NOT NULL ORDER BY id`;
 
 async function paged(statement: string, parameters: (string | number)[]) {
@@ -34,7 +40,8 @@ export type LinkState = 'saved' | 'failed' | 'waiting' | 'never';
 export interface GapLink { url: string; name: string; state: LinkState; error: string | null }
 export interface GapNotice { id: string; title: string; closing: string | null; links: GapLink[] }
 export interface DocumentGap {
-  open: number; withLinks: number; noLinks: number; waitingNotices: number;
+  /** `noLinks`: open notices still waiting for a detail capture; `noFiles`: captured, and BC Bid lists no public files. */
+  open: number; withLinks: number; noLinks: number; noFiles: number; waitingNotices: number;
   links: number; saved: number; failed: number; waiting: number; never: number;
   fullySaved: number; missingNotices: number;
   /** Failed files grouped by their plain reason, most common first. */
@@ -69,7 +76,7 @@ export function computeDocumentGap(counts: any, linkRows: any[], documentRows: a
   const missing = notices.filter(notice => notice.links.some(link => link.state !== 'saved'));
   const n = (value: unknown) => Number(value ?? 0) || 0;
   return {
-    open: n(counts?.open), withLinks: n(counts?.withLinks), noLinks: n(counts?.noLinks), waitingNotices: n(counts?.waitingNotices),
+    open: n(counts?.open), withLinks: n(counts?.withLinks), noLinks: Math.max(0, n(counts?.withoutLinks ?? counts?.noLinks) - n(counts?.noFiles)), noFiles: n(counts?.noFiles), waitingNotices: n(counts?.waitingNotices),
     links: all.length, saved: count('saved'), failed: count('failed'), waiting: count('waiting'), never: count('never'),
     fullySaved: notices.length - missing.length, missingNotices: missing.length,
     reasons: [...reasons].map(([text, count]) => ({ text, count })).sort((a, b) => b.count - a.count),

@@ -33,13 +33,16 @@ for (let i = 0; i < 230; i++) {
   else if (i === 229) doc(id, `${id}/b`, 'downloaded');
 }
 record('opportunity:2000', { closingDate: '2026-12-02' });                                       // open, no links: needs details
+record('opportunity:2003', { closingDate: '2026-12-02', attachments: [], detailCaptureVersion: 3 });   // captured, no public files
+record('opportunity:2004', { closingDate: '2026-12-02', attachments: [], detailCaptureVersion: 3, detailNeedsRefresh: true }); // empty list, refresh due: needs details
+record('opportunity:2005', { closingDate: '2026-12-02', attachments: [], detailCaptureVersion: 2 });   // empty list from an older capture: needs details
 record('opportunity:2001', { closingDate: '2026-10-01', attachments: [{ url: 'x' }] });          // closed: out of scope
 record('opportunity:2002', { sourceId: 'canadabuys', closingDate: '2026-12-02', attachments: [{ url: 'y' }] }); // another source
 db.query("INSERT INTO research_tasks VALUES('r','opportunity:1160','attachment','waiting_for_user',NULL,NULL,?)").run(T);
 
 test('document gap of open BC Bid notices, per file, read in pages through the host validator', async () => {
   const gap = await readDocumentGap(ASOF);
-  expect(gap).toMatchObject({ open: 231, withLinks: 230, noLinks: 1, waitingNotices: 1, links: 460, saved: 311, failed: 10, waiting: 5, never: 134, fullySaved: 150, missingNotices: 80 });
+  expect(gap).toMatchObject({ open: 234, withLinks: 230, noLinks: 3, noFiles: 1, waitingNotices: 1, links: 460, saved: 311, failed: 10, waiting: 5, never: 134, fullySaved: 150, missingNotices: 80 });
   expect(gap.reasons.map(reason => reason.count)).toEqual([10, 5]);
   expect(gap.reasons[0].text).toMatch(/could not be reached/);
   expect(String(gap.notices[0].closing) <= String(gap.notices.at(-1)!.closing)).toBe(true);

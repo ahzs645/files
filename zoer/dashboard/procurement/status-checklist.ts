@@ -63,8 +63,9 @@ export function documentsStep(gap: DocumentGap | undefined): SetupStep {
 export function detailsStep(gap: DocumentGap | undefined): SetupStep {
   const base = { id: 'details', title: 'Attachment links for open notices', actions: ['capture-details'] as StepAction[] };
   if (!gap) return { ...base, tone: 'idle', status: 'Loading…', detail: '' };
-  if (!gap.noLinks) return { ...base, tone: 'good', status: 'All captured', detail: 'Every open BC Bid notice has its attachment links saved.' };
-  return { ...base, tone: 'warn', status: `${n(gap.noLinks)} without links`, detail: `${plural(gap.noLinks, 'open notice')} ${gap.noLinks === 1 ? 'has' : 'have'} no attachment links saved yet, so ${gap.noLinks === 1 ? 'its' : 'their'} files cannot be downloaded. Capturing details reads up to 50 of them per run, soonest closing first. Some notices have no public files.` };
+  const noFiles = gap.noFiles ? ` ${plural(gap.noFiles, 'other open notice')} ${gap.noFiles === 1 ? 'was' : 'were'} captured and ${gap.noFiles === 1 ? 'has' : 'have'} no public files on BC Bid (the buyer often posts them on its own site).` : '';
+  if (!gap.noLinks) return { ...base, tone: 'good', status: 'All captured', detail: `Every open BC Bid notice has its details captured.${noFiles}` };
+  return { ...base, tone: 'warn', status: `${n(gap.noLinks)} without links`, detail: `${plural(gap.noLinks, 'open notice')} ${gap.noLinks === 1 ? 'has' : 'have'} no attachment links saved yet, so ${gap.noLinks === 1 ? 'its' : 'their'} files cannot be downloaded. Capturing details reads up to 50 of them per run, soonest closing first.${noFiles}` };
 }
 
 export function browserCheckStep(gap: DocumentGap | undefined): SetupStep | null {
