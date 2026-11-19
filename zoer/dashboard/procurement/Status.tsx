@@ -9,7 +9,7 @@ import { plainError } from '../error-text';
 import { hostHref, hostSettingsHref, navigatePlugin, pluginHref } from '../navigation';
 import { useNarrowScreen } from '../mobile';
 import { sourceName } from './display';
-import { browserText, scheduleLabel, scheduleState, type ScheduleRow } from './schedule-state';
+import { browserText, findSchedule, scheduleLabel, scheduleState, type ScheduleRow } from './schedule-state';
 import { useScheduleBrowsers, useSchedules } from './ScheduleControl';
 import { RUNS_KEY, usePresets, useRecentRuns } from './CollectionRuns';
 import { DOCUMENT_GAP_KEY, LAST_COLLECTION_KEYS, lastCollectionText, lastCollections, readDocumentGap, type DocumentGap } from './status-data';
@@ -32,7 +32,13 @@ export function SettingsLink({ section, children, className = 'procurement-link'
 
 /** The document gap, shared by Status and Home (one cached read; heavy, so refreshed every two minutes). */
 export function useDocumentGap(enabled = true) {
-  return useQuery({ queryKey: DOCUMENT_GAP_KEY, enabled, queryFn: () => readDocumentGap(), staleTime: 60_000, refetchInterval: 120_000 });
+  const schedules = useSchedules(), { data: browsers } = useScheduleBrowsers(enabled);
+  const downloads = findSchedule(schedules.data, 'documents.download.missing');
+  const browserId = (downloads?.enabled ? downloads.browser?.id ?? downloads.body?.resources?.browserSessionId : undefined)
+    ?? (browsers?.downloadsUseCollection ? browsers.collection?.id : browsers?.downloads?.id ?? browsers?.collection?.id)
+    ?? '';
+  return useQuery({ queryKey: [...DOCUMENT_GAP_KEY, browserId], enabled: enabled && !schedules.isPending,
+    queryFn: () => readDocumentGap(Date.now(), browserId), staleTime: 60_000, refetchInterval: 120_000 });
 }
 /** Last successful collection per source (the same helper Sources uses). */
 export function useLastCollections() {
@@ -56,7 +62,7 @@ function useRunNow() {
     try {
       await assertDocumentBrowserIdle(host, key === 'keep-documents' ? 'download' : 'capture');
       if (key === 'keep-documents') { await host('action', { actionId: 'documents.download.missing', input: {} }); setMessage('Keeping documents current: missing files of open notices download now, soonest closing first. Progress shows under Documents › History.'); }
-      else { await host('action', { actionId: 'scrape.details', input: { missing: { limit: 50 } } }); setMessage('Capturing details for up to 50 open notices without attachment links. Progress shows under BC Bid › Runs.'); }
+      else { await host('action', { actionId: 'scrape.details', input: { missing: { limit: 50 } } }); setMessage('Capturing missing or incomplete details for up to 50 open BC Bid notices. Progress shows under BC Bid › Runs.'); }
       await client.invalidateQueries({ queryKey: RUNS_KEY });
     } catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(''); }
   };
@@ -146,7 +152,7 @@ function DocumentGapPanel({ gap, error, phone }: { gap?: DocumentGap; error: Err
   const [all, setAll] = useState(false);
   const cells: [string, number | undefined, string][] = [
     ['Open notices', gap?.open, ''], ['With attachment links', gap?.withLinks, ''], ['Every file saved', gap?.fullySaved, 'good'],
-    ['Files never tried', gap?.never, 'warn'], ['Files failed', gap?.failed, 'warn'], ['Files waiting for a browser check', gap?.waiting, 'warn'], ['No links yet (needs details)', gap?.noLinks, ''], ['No public files on BC Bid', gap?.noFiles, ''],
+    ['Files never tried', gap?.never, 'warn'], ['Files failed', gap?.failed, 'warn'], ['Files waiting for a browser check', gap?.waiting, 'warn'], ['No links yet (needs details)', gap?.noLinks, ''], ['Links saved, details still needed', gap?.detailsWithLinks, 'warn'], ['No public files on BC Bid', gap?.noFiles, ''],
   ];
   const shown = all ? gap?.notices ?? [] : (gap?.notices ?? []).slice(0, phone ? 4 : 8);
   return <section className="rw-panel" aria-labelledby="pc-status-gap">

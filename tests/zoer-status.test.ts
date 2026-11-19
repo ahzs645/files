@@ -70,11 +70,12 @@ describe('Status checklist', () => {
     expect(gap.notices.map(notice => notice.id)).toEqual(['o2', 'o1']);
   });
   it('keeps captured notices with no public files out of the details gap', () => {
-    const captured = computeDocumentGap({ open: 230, withLinks: 3, withoutLinks: 227, noFiles: 227, waitingNotices: 0 }, [], []);
+    const captured = computeDocumentGap({ open: 230, withLinks: 3, noLinks: 0, noFiles: 227, waitingNotices: 0 }, [], []);
     expect(captured).toMatchObject({ noLinks: 0, noFiles: 227 });
     expect(detailsStep(captured)).toMatchObject({ tone: 'good', status: 'All captured' });
-    expect(detailsStep(captured).detail).toContain('227 other open notices were captured and have no public files on BC Bid');
-    expect(detailsStep({ ...captured, noLinks: 2 })).toMatchObject({ tone: 'warn', status: '2 without links' });
+    expect(detailsStep(captured).detail).toContain('227 open notices have no public files on BC Bid after a complete capture');
+    expect(detailsStep({ ...captured, noLinks: 2, detailsWithLinks: 5 })).toMatchObject({ tone: 'warn', status: '7 need details' });
+    expect(detailsStep({ ...captured, detailsWithLinks: 5 })).toMatchObject({ tone: 'warn', status: '5 need details', actions: ['capture-details'] });
   });
   it('shows a pending browser check even when it stopped on a closed notice', () => {
     expect(browserCheckStep({ ...gap, waiting: 0, waitingNotices: 0, checkPendingSince: null })).toBeNull();
