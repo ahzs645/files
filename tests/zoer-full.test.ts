@@ -25,6 +25,25 @@ describe('full current public crawl', () => {
     await expect(scrapeFull({ captureUrl: async (_, number) => ({ ...listing(1), pagination: { currentPage: number!, hasNext: true, visiblePages: [1] } }) }, async doc => { saved.push(structuredClone(doc)); return 'a'; })).rejects.toThrow('repeated');
     expect(saved.at(-1)).toMatchObject({ complete: false, currentPage: 1 });
   });
+  it('preserves the completed detail and stops the scrape at the first shared cooldown', async () => {
+    const saved: any[] = [];
+    const requested: string[] = [];
+    const message = 'bcbid.gov.bc.ca asked Zoer to wait (Retry-After) until 2026-11-23T00:00:00.000Z; nothing was requested.';
+    const rateLimit = Object.assign(new Error(`${message} [crawl retryAfterMs=60000]`), { code: 'crawl_rate_limited' });
+    await expect(scrapeFull({ captureUrl: async (url, number) => {
+      requested.push(url);
+      if (url === LISTING_URL) return listing(number!, 1);
+      if (requested.length === 2) return detail(url);
+      throw rateLimit;
+    } }, async doc => { saved.push(structuredClone(doc)); return 'a'; })).rejects.toThrow(message);
+    const checkpoint = saved.at(-1);
+    expect(checkpoint).toMatchObject({ complete: false, detailsCompleted: 1, failures: [], error: message });
+    expect(requested).toEqual([LISTING_URL, saved.find(doc => doc.kind === 'detail').sourceUrl, checkpoint.pending[0].detailUrl]);
+    const resumed: string[] = [];
+    const result = await scrapeFull({ captureUrl: async url => { resumed.push(url); return detail(url); } }, async () => 'b', checkpoint);
+    expect(resumed).toEqual([checkpoint.pending[0].detailUrl]);
+    expect(result.detailCount).toBe(2);
+  });
   it('retains partial detail failures and resumes only pending records', async () => {
     const saved: any[] = [];
     let calls = 0;

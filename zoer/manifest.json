@@ -712,6 +712,12 @@
           "route": "/scraper?continue=1",
           "cases": [
             {
+              "match": "asked Zoer to wait.*Retry-After",
+              "title": "BC Bid asked Zoer to wait",
+              "actionLabel": "Continue scrape",
+              "route": "/scraper?continue=1"
+            },
+            {
               "match": "browser check|verification",
               "title": "BC Bid needs a browser check",
               "actionLabel": "Continue scrape",

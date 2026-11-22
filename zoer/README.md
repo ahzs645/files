@@ -140,6 +140,8 @@ The Zoer-only shell uses compact section tabs and the host light/dark theme. The
 
 Start scrape follows the live Next page control rather than trusting the first visible pager range. Repeated or missing pages fail explicitly; partial runs never report full completion. Details include Overview and available Opportunity Details/Addenda/Interested Supplier List tabs. Attachment links in captured public BC Bid content are saved; linked third-party portals and attachment file contents are outside this crawl. The original bounded sample action remains available for diagnostics.
 
+When Zoer reports a BC Bid rate-limit cooldown, a full scrape saves its checkpoint and stops. After the displayed time, resume with **Continue scrape**. Completed listings and details are preserved.
+
 A live capture uses a temporary tab in the selected browser and closes it after capture. This avoids the reused-tab navigation stall without replacing the saved browser or closing the user's tabs. Source parsers handle both original field attributes and sanitized read-only field classes. Published read-only contacts/dates/addresses are content, not editable login form values.
 
 ### Documents & AI

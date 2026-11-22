@@ -6,6 +6,7 @@ import { parseCapture, type PageCapture } from './capture';
 import { LISTING_URL } from './scrape';
 import { activeTargetFilters, reportedListingTotal } from './targeted-scrape';
 import { DETAIL_CAPTURE_VERSION } from './detail-policy';
+import { transientFailure } from './connectors/errors';
 import { emptyListingEvidence, firstPositions, MAX_REPEATED_APPEARANCES, reconcileListing, repeatedAppearances, sourceTotal, validListingEvidence,
   type ListingEvidence, type ListingReconciliation, type Position } from './listing-reconciliation';
 
@@ -80,7 +81,7 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
       try { return await browser.captureUrl(url, pageNumber); }
       catch (error) {
         failure = error;
-        if (isPauseError(error)) throw error;
+        if (isPauseError(error) || transientFailure(error)?.code === 'crawl_rate_limited') throw error;
         if (/manual|browser check|cancel|unavailable|budget|invalid.ticket/i.test(String(error))) throw error;
       }
     }
@@ -152,7 +153,7 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
         state.pending = state.pending.filter(item => item.sourceKey !== row.sourceKey);
         state.detailsCompleted++;
       } catch (error) {
-        if (isPauseError(error)) throw error;
+        if (isPauseError(error) || transientFailure(error)?.code === 'crawl_rate_limited') throw error;
         const message = error instanceof Error ? error.message : String(error);
         state.failures.push({ sourceKey: row.sourceKey, message });
         if (/manual|browser check|cancel|unavailable|budget|invalid.ticket/i.test(message)) throw error;
@@ -172,9 +173,12 @@ export async function scrapeFull(browser: { captureUrl(url: string, pageNumber?:
       try { await checkpoint(); } catch { /* resumeCheckpoint carries the same progress */ }
       return paused(compactOrNull(state));
     }
-    state.error = error instanceof Error ? error.message : String(error);
+    const transient = transientFailure(error);
+    const rateLimited = transient?.code === 'crawl_rate_limited' ? transient : null;
+    state.error = rateLimited?.message ?? (error instanceof Error ? error.message : String(error));
     // Report the original failure (browser check, cancellation…) even if saving the checkpoint also fails.
     await checkpoint().catch(() => undefined);
+    if (rateLimited) throw new Error(rateLimited.message, { cause: error });
     throw error;
   }
 }
