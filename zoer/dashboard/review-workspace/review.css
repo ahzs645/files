@@ -496,3 +496,22 @@
   .rw-stats dd a,.rw-item-title{display:inline-flex;align-items:center;min-height:44px}
   .rw-lane-link{min-height:44px;display:inline-flex;align-items:center}
 }
+
+/* ---- Review pages cleanup (2026-11-27): profile prompt, Decisions, extracted facts, AI pipeline, AI results ---- */
+.rw-profile-prompt{grid-column:1/-1;padding:.5rem 0}
+.rw-profile-publish{font-size:12.5px;color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.rw-insights-line{grid-column:1/-1;font-size:13px;color:var(--text-secondary)}
+.rw-insights-line a{color:var(--accent)}
+.rw-queue-counts li{flex-direction:row;align-items:baseline;justify-content:space-between;gap:.75rem;font-size:13px}
+.rw-queue-counts li b{font-variant-numeric:tabular-nums;color:var(--text-primary)}
+.rw-eg-quiet{color:var(--text-secondary)}
+.rw-eg td small.rw-eg-detail{margin-top:.125rem}
+.rw-disclosure{margin-top:.25rem}
+.rw-disclosure>summary{font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer;padding:.25rem 0}
+.rw-disclosure>.rw-note,.rw-disclosure>.rw-pre{margin-top:.375rem}
+.rw-picks>button{flex:0 0 auto;width:100%;gap:.125rem;overflow-wrap:anywhere}
+.rw-picks>button>span{display:block;max-width:100%}
+.ai-coverage li>div{flex-wrap:wrap}
+@media(max-width:400px){.ai-coverage li>div{flex-direction:column;align-items:flex-start;gap:.125rem}.ai-coverage .ai-bar-track{width:100%}}
+@media(max-width:640px){.rw-test{min-width:0}.rw-test .rw-picks{max-height:16rem}}
+@media(max-width:640px){.rw-stage-rail{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.25rem}.rw-stage-rail>button{flex:0 0 auto;max-width:14rem}}

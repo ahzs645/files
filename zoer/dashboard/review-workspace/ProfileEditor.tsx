@@ -6,6 +6,8 @@ import { host } from '../bridge';
 import { sql } from '../procurement/display';
 import { REVIEW_KEY, reviewWrite, useReviewInvalidate, useReviewWorkspace } from './actions';
 import { setActiveProfileVersion } from './profile-context';
+import { usePluginQuery } from '../navigation';
+import { when as whenTime } from '../format';
 import {
   EVIDENCE_KINDS, PROFILE_SCENARIOS, cleanDraft, countablePartners, emptyDraft, emptyEvidence, expiryWarnings, normalizeDraft, sameDraft, validateDraft,
   type DraftIssue, type ProfileDraft, type ProfileEvidenceItem, type ProfileEvidenceKind,
@@ -23,7 +25,7 @@ const KIND_LABEL: Record<ProfileEvidenceKind, [string, string, string]> = {
 };
 const HOLDER_LABEL: Record<ProfileEvidenceKind, string> = { credential: 'Holder', insurance: 'Policy holder', reference: 'Client or delivered by', equipment: 'Owned by or access through', other: 'Holder' };
 const today = () => new Date().toISOString().slice(0, 10);
-const when = (value: string | null | undefined) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleDateString(undefined, { dateStyle: 'medium' }) : 'Unknown';
+const when = (value: string | null | undefined) => whenTime(value, new Date(), 'Unknown');
 export const friendlyError = (e: unknown) => { const message = (e as Error)?.message ?? String(e); return /^Conflict:/i.test(message) ? 'Someone else changed this; reload and review it.' : message; };
 
 /** The run summary from `host('state', {summary})` may omit output; read the full run once when needed. */
@@ -53,9 +55,11 @@ export function ProfilesPage() {
   const workspace = useReviewWorkspace();
   const available = !!workspace.data?.available;
   const profiles = useQuery({ queryKey: [...REVIEW_KEY, 'profiles'], queryFn: readProfiles, enabled: available });
-  const [selected, setSelected] = useState<string>(''), [pending, setPending] = useState<string | null>(null), [dirty, setDirty] = useState(false);
+  // `?profile=<id>` (from the "Publish" link next to "Assess as") opens that profile.
+  const [linked] = usePluginQuery('profile');
+  const [selected, setSelected] = useState<string>(linked), [pending, setPending] = useState<string | null>(null), [dirty, setDirty] = useState(false);
   const list = profiles.data ?? [];
-  const current = selected === 'new' ? null : list.find(p => p.id === selected) ?? (selected ? null : list[0] ?? null);
+  const current = selected === 'new' ? null : list.find(p => p.id === selected) ?? list[0] ?? null;
   const creating = selected === 'new' || (!current && !profiles.isPending && !list.length);
   const choose = (id: string) => { if (dirty && id !== (current?.id ?? 'new')) setPending(id); else { setSelected(id); setDirty(false); } };
   // The Profiles tab names the page; how versions work is on the Publish button's tooltip.
@@ -94,6 +98,7 @@ function ProfileWorkspace({ profile, onDirty, onCreated }: { profile: ProfileRow
   const warnings = useMemo(() => expiryWarnings(draft.evidence, today()), [draft.evidence]);
   // The name lives on the profile row, so only the saved draft data decides whether there is anything to publish.
   const unpublished = !!profile && !versions.isPending && (!latest || !sameDraft(profile.draft, latest.data));
+  const neverPublished = !!profile && !versions.isPending && !latest, canPublish = !!profile && !dirty && unpublished;
 
   const save = async () => {
     const clean = cleanDraft(draft), found = validateDraft(name, clean);
@@ -140,10 +145,11 @@ function ProfileWorkspace({ profile, onDirty, onCreated }: { profile: ProfileRow
 
   return <div className="rw-profile-main">
     <div className="rw-profile-toolbar">
-      <div><h2>{profile ? profile.name : 'New profile'}</h2><p className="rw-note">{profile ? <>Draft {profile.draftVersion} · saved {when(profile.updatedAt)}</> : 'Save a draft first; publish it when the evidence is ready.'}{dirty && <span className="rw-chip" data-tone="needs_information"><b>Unsaved changes</b></span>}{!dirty && unpublished && <span className="rw-chip" data-tone="needs_information"><b>Draft differs from the published version</b></span>}</p></div>
+      <div><h2>{profile ? profile.name : 'New profile'}</h2><p className="rw-note">{profile ? <>Draft {profile.draftVersion} · saved {when(profile.updatedAt)}</> : 'Save a draft first; publish it when the evidence is ready.'}{dirty && <span className="rw-chip" data-tone="needs_information"><b>Unsaved changes</b></span>}{!dirty && unpublished && <span className="rw-chip" data-tone="needs_information"><b>{neverPublished ? 'Not published' : 'Draft differs from the published version'}</b></span>}</p>
+        {!dirty && neverPublished && <p className="rw-note">This draft is not used for any assessment until you publish it.</p>}</div>
       <div className="rw-actions">
         <Btn variant="secondary" disabled={locked || !dirty} loading={busy === 'save'} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save draft'}</Btn>
-        <Btn variant="primary" disabled={locked || !profile || dirty || !unpublished} loading={busy === 'publish'} tooltip={`Creates a new version; earlier assessments keep theirs.${profile && dirty ? ' Save the draft first.' : ''}`} onClick={() => void publish()}>{busy === 'publish' ? 'Publishing…' : 'Publish new version'}</Btn>
+        <Btn variant={canPublish || busy === 'publish' ? 'primary' : 'secondary'} disabled={locked || !canPublish} loading={busy === 'publish'} tooltip={`${neverPublished ? 'Publishing makes this profile available in “Assess as”.' : 'Creates a new version; earlier assessments keep theirs.'}${profile && dirty ? ' Save the draft first.' : ''}`} onClick={() => void publish()}>{busy === 'publish' ? 'Publishing…' : neverPublished ? 'Publish first version' : 'Publish new version'}</Btn>
       </div>
     </div>
     {error && <p role="alert" className="rw-error">{error}</p>}{message && <p role="status">{message}</p>}
@@ -244,7 +250,7 @@ function DraftForm({ name, setName, draft, setDraft, disabled, issueFor }: { nam
       <Field label="Proposal hours available per response" issues={issueFor('responseHours')} hint="Leave blank if unknown; response feasibility then stays unknown."><input inputMode="numeric" value={draft.responseHours ?? ''} disabled={disabled} onChange={e => patch({ responseHours: numberOrNull(e.target.value) })} /></Field>
     </fieldset>
     <fieldset className="rw-fieldset"><legend>Internal commercial policy (optional)</legend>
-      <p className="rw-note">Stored with origin <code>internal_policy</code>: your own pricing policy, never buyer eligibility and never an estimate of the buyer’s budget.</p>
+      <p className="rw-note">Your own pricing policy. It never counts as buyer eligibility or as an estimate of the buyer’s budget.</p>
       <div className="rw-grid">
         <Field label="Rate basis" issues={issueFor('commercial.rateBasis')}><Select aria-label="Rate basis" presentation="dropdown" searchable={false} disabled={disabled} value={draft.commercial.rateBasis ?? ''} onChange={e => patch({ commercial: { ...draft.commercial, rateBasis: (e.target.value || null) as ProfileDraft['commercial']['rateBasis'] } })}><option value="">Not set</option><option value="hourly">Hourly</option><option value="daily">Daily</option></Select></Field>
         <Field label="Rate from" issues={issueFor('commercial.rateLow')}><input inputMode="decimal" value={draft.commercial.rateLow ?? ''} disabled={disabled} onChange={e => patch({ commercial: { ...draft.commercial, rateLow: numberOrNull(e.target.value) } })} /></Field>
