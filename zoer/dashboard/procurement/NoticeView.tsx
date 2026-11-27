@@ -1,6 +1,10 @@
 import {SourceCapture} from '../../../apps/dashboard/src/components/opportunities/SourceCapture';
 import { Hint } from '../host-ui';
-import { plausibleAwardDate } from '../award-dates';
+import { awardDateCell } from '../award-dates';
+import { awardMoney } from '../bid-columns';
+import { fileSize } from '../file-size';
+import { count, plural, when as formatWhen } from '../format';
+import { cardDeadline } from '../review-workspace/deadline-text';
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ChevronLeft, Download, FileText, FileWarning, RefreshCw, Star, X } from 'lucide-react';
@@ -15,7 +19,7 @@ import { patchPluginQuery, usePluginLocation } from '../navigation';
 import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
 import { PURSUIT_STAGES, type PursuitStage } from './state-contract';
 import { readProcurementState, runProcurementAction, saveProcurementState } from './state-client';
-import { noticeStatus, shortDate, sourceName, sql } from './display';
+import { rowStatus, sourceName, sql } from './display';
 import { cleanRegionText } from './region';
 import { NoticeHideButton } from './Triage';
 import { useCapabilities } from '../capabilities';
@@ -39,14 +43,18 @@ import { PublisherNotices } from './PublisherNotices';
 import { ParticipationCard } from './ParticipationCard';
 import { resolvedPublisherLinks, type PublisherLink } from './publisher-links';
 
-/** Route values: `decision|requirements|evidence|changes|activity|ai`; old `overview`/`documents` still open their tab. */
+/**
+ * Route values: `decision|requirements|evidence|changes|activity|ai`; old `overview`/`documents` still open their tab.
+ * The `evidence` tab holds the notice's files, so it reads "Documents · N" (N = saved documents); extracted values are
+ * "Extracted facts" (the top-level Evidence page), never this tab.
+ */
 export type NoticeTab = NoticeTabId | 'overview' | 'documents';
 type Cite = { documentId: string; quote: string };
-const TAB_NAMES: Record<NoticeTabId, string> = { decision: 'Decision', requirements: 'Requirements', evidence: 'Evidence', changes: 'Changes', activity: 'Activity', ai: 'Ask AI' };
+const TAB_NAMES: Record<NoticeTabId, string> = { decision: 'Decision', requirements: 'Requirements', evidence: 'Documents', changes: 'Changes', activity: 'Activity', ai: 'Ask AI' };
 
 /**
  * One notice with several distinct truths: AI suggestion, human decision and pursuit stage (Decision), requirement
- * ledger (Requirements), files and source text (Evidence), changes, activity, and the earlier Ask AI results.
+ * ledger (Requirements), files and source text (Documents), changes, activity, and the earlier Ask AI results.
  * Side panel on wide screens, a sheet otherwise. The tab is route-backed (`tab`) when opened with `?notice=<id>`.
  */
 export function NoticeView({ id, layout, onClose, initialTab = 'decision', backLabel = 'Back' }: { id: string; layout: 'panel' | 'dialog' | 'page'; onClose(): void; initialTab?: NoticeTab; backLabel?: string }) {
@@ -89,7 +97,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
   const showCitation = (documentId: string, quote: string) => { setCite({ documentId, quote }); setTab('evidence'); };
   const title = record?.title ?? 'Notice';
   const pendingChanges = (changes.data ?? []).filter(change => !change.acknowledgedAt).length;
-  const tabs = (available ? NOTICE_TABS : LEGACY_TABS).filter(value => ai || value !== 'ai').map(value => [value, value === 'evidence' && documents.length ? `${TAB_NAMES[value]} · ${documents.length}` : value === 'ai' && reviews.length ? `${TAB_NAMES[value]} · ${reviews.length}` : value === 'changes' && pendingChanges ? `${TAB_NAMES[value]} · ${pendingChanges} new` : TAB_NAMES[value]] as const);
+  const tabs = (available ? NOTICE_TABS : LEGACY_TABS).filter(value => ai || value !== 'ai').map(value => [value, value === 'evidence' && documents.length ? `${TAB_NAMES[value]} · ${count(documents.length)}` : value === 'ai' && reviews.length ? `${TAB_NAMES[value]} · ${count(reviews.length)}` : value === 'changes' && pendingChanges ? `${TAB_NAMES[value]} · ${count(pendingChanges)} new` : TAB_NAMES[value]] as const);
   const tabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
     const index = tabs.findIndex(([value]) => value === tab), n = tabs.length;
     const next = event.key === 'ArrowRight' ? (index + 1) % n : event.key === 'ArrowLeft' ? (index - 1 + n) % n : event.key === 'Home' ? 0 : event.key === 'End' ? n - 1 : -1;
@@ -170,8 +178,8 @@ function EvidenceInventory({ id, documents, attachments, onShowDocument }: { id:
   const gaps = coverageGaps(current?.coverage), limitations: string[] = Array.isArray(current?.coverage?.limitations) ? current!.coverage.limitations.map(String) : [];
   const extracted = new Set((extractions.data ?? []).map(item => item.documentId).filter(Boolean));
   const notExtracted = documents.filter(doc => doc.status === 'downloaded' && !extracted.has(doc.id));
-  return <section className="rw-panel" aria-label="Evidence inventory">
-    <h3>Evidence inventory</h3>
+  return <section className="rw-panel" aria-label="Files and extracted text">
+    <h3>Files and extracted text</h3>
     <dl className="rw-summary">
       <div><dt>Files</dt><dd>{documentSummary(documentCounts(documents, attachments))}</dd></div>
       <div><dt>AI scope</dt><dd>{scopeText(current?.coverage, current ? 'extract' : triaged ? 'triage' : null)}</dd></div>
@@ -181,10 +189,10 @@ function EvidenceInventory({ id, documents, attachments, onShowDocument }: { id:
     {extractions.isPending ? <p className="rw-muted" role="status">Loading extracted text versions…</p> : extractions.error ? <p className="rw-error" role="alert">Could not load extracted text versions: {(extractions.error as Error).message}</p>
       : !extractions.data?.length ? <p className="rw-note">No immutable text versions yet. They are frozen when triage or extraction runs.</p>
       : <ul className="rw-nd-extractions">{extractions.data.map(item => <li key={item.id}>
-        <div><strong>{item.sourceKind === 'notice' ? 'Saved notice text' : item.name}</strong> <span className="rw-note">{item.status === 'unreadable' ? 'Saved; no usable text extracted' : label(item.status)} · {item.codePoints.toLocaleString()} characters · extracted {when(item.createdAt)} · {item.extractorVersion}</span></div>
+        <div><strong>{item.sourceKind === 'notice' ? 'Saved notice text' : item.name}</strong> <span className="rw-note">{item.status === 'unreadable' ? 'Saved; no usable text extracted' : label(item.status)} · {plural(item.codePoints, 'character')} · extracted {when(item.createdAt)} · {item.extractorVersion}</span></div>
         {item.limitations.length > 0 && <small className="rw-note">{item.limitations.join('; ')}</small>}
         <div className="rw-actions">
-          {(item.spans ?? 0) > 0 && <button type="button" className="pc-link-btn" aria-expanded={open === item.id} onClick={() => setOpen(open === item.id ? '' : item.id)}>{open === item.id ? 'Hide' : 'Show'} {item.spans} cited passage{item.spans === 1 ? '' : 's'}</button>}
+          {(item.spans ?? 0) > 0 && <button type="button" className="pc-link-btn" aria-expanded={open === item.id} onClick={() => setOpen(open === item.id ? '' : item.id)}>{open === item.id ? 'Hide' : 'Show'} {plural(item.spans ?? 0, 'cited passage')}</button>}
           {item.documentId && documents.some(doc => doc.id === item.documentId) && <button type="button" className="pc-link-btn" onClick={() => onShowDocument(item.documentId!)}>Show file below</button>}
         </div>
         {open === item.id && (spans.isPending ? <p className="rw-muted" role="status">Loading passages…</p> : spans.error ? <p className="rw-error" role="alert">{(spans.error as Error).message}</p>
@@ -198,8 +206,9 @@ function EvidenceInventory({ id, documents, attachments, onShowDocument }: { id:
 /** The notice's key facts and description: the first thing on the Decision tab, above the review workspace, on every width. */
 function NoticeFacts({ id, record, reviews, documents, workspace }: Pick<Parameters<typeof Overview>[0], 'id' | 'record' | 'reviews'> & { documents: Parameters<typeof documentCounts>[0]; workspace: boolean }) {
   const data = record.data, award = record.kind === 'award', review = latestReview(reviews);
-  const when = shortDate(award ? (plausibleAwardDate(data.awardDate) ? data.awardDate : undefined) : data.closingAt ?? data.closingDate ?? data.closingDateRaw, Date.now(), !award);
-  const contract = award && typeof data.contractValue === 'number' ? new Intl.NumberFormat(undefined, { style: 'currency', currency: data.currency || 'CAD', maximumFractionDigits: 0 }).format(data.contractValue) : '';
+  // One deadline format (list rows use the same): "Closes Tue, Dec 1 · 4 days left" / "Closed Oct 2"; award dates as the awards table shows them.
+  const closing = cardDeadline(data.closingAt ?? data.closingDate ?? data.closingDateRaw, 'opportunity', Date.now()), awarded = awardDateCell(data.awardDate);
+  const contract = award ? awardMoney(data.contractValue, data.currency) : '—';
   const factMoney = useFactMoney(id, workspace && !award);
   // Extracted facts win over the legacy review: only buyer budget / estimated value may fill the budget line.
   const budget = award ? null : factMoney ? { label: factMoney.headline.length === 1 ? factMoney.headline[0].label : factMoney.headline.length ? 'Buyer budget / estimated value' : 'Budget', text: factMoney.headline.length ? factMoney.headline.map(line => factMoney.headline.length > 1 ? `${line.label}: ${line.text}` : line.text).join('; ') : factMoney.text, ai: true, others: factMoney.others.map(line => ({ label: line.label, text: line.text })) } : buyerValue(review);
@@ -207,10 +216,10 @@ function NoticeFacts({ id, record, reviews, documents, workspace }: Pick<Paramet
   const description = String(data.sourceDescriptionText || data.descriptionText || data.opportunityDescription || '');
   const region = cleanRegionText(data.region ?? data.issuingLocation);
   const facts: [string, string, string?][] = [
-    [award ? 'Awarded' : 'Closes', !award && when.tone === 'passed' ? `Closed ${when.text}` : when.text, award ? undefined : when.tone],
-    ...(budget ? [[budget.label, budget.text, budget.ai ? 'ai' : undefined] as [string, string, string?], ...budget.others.map(o => [o.label, o.text, 'ai'] as [string, string, string?])] : [['Contract value', contract || 'Not disclosed'] as [string, string]]),
+    award ? ['Awarded', awarded.future ? `${awarded.text} · after today, check the source` : awarded.text === '—' ? 'Not provided' : awarded.text] : ['Deadline', closing.text, closing.tone || undefined],
+    ...(budget ? [[budget.label, budget.text, budget.ai ? 'ai' : undefined] as [string, string, string?], ...budget.others.map(o => [o.label, o.text, 'ai'] as [string, string, string?])] : [['Contract value', contract === '—' ? 'Not disclosed' : contract] as [string, string]]),
     ['Buyer', String(data.issuedBy || data.issuingOrganization || 'Not provided')],
-    ...(award ? [['Supplier', String(data.successfulSupplier || 'Not provided')] as [string, string]] : [['Status', (status => !status ? 'Not provided' : status.title ? `${status.text} · source status: ${String(data.status || 'not given')}` : status.text)(noticeStatus(data.status, data.closingAt ?? data.closingDate ?? data.closingDateRaw, record.kind))] as [string, string]]),
+    ...(award ? [['Supplier', String(data.successfulSupplier || 'Not provided')] as [string, string]] : [['Status', (status => `${status.text}${typeof data.status === 'string' && data.status.trim() && data.status.trim().toLowerCase() !== status.text.toLowerCase() ? ` · source says “${data.status.trim()}”` : ''}`)(rowStatus(data.status, data.closingAt ?? data.closingDate ?? data.closingDateRaw, record.kind))] as [string, string]]),
     ...(award ? [] : [['Place', placeText(data.place) || 'Not identified'] as [string, string]]),
     // The source's own region (CanadaBuys delivery regions), unless it only repeats the place.
     ...(!award && region && !data.regionFromPlace && region !== data.place?.municipality && region !== data.place?.regionalDistrict ? [['Region', region] as [string, string]] : []),
@@ -218,7 +227,7 @@ function NoticeFacts({ id, record, reviews, documents, workspace }: Pick<Paramet
     ['Documents', listedDocumentsText(data, documents) ?? documentSummary(documentCounts(documents, data.attachments))],
   ];
   return <div className="pc-notice-section">
-    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd><Hint content={label === 'Closes' ? deadlineLabel(data.closingAt ?? data.closingDate ?? data.closingDateRaw) : label === 'Place' && data.place ? placeHow(data.place) : undefined}><span>{text}</span></Hint></dd></div>)}</dl>
+    <dl className="pc-facts">{facts.map(([label, text, tone]) => <div key={label} data-tone={tone}><dt>{label}{tone === 'ai' ? <span aria-hidden="true"> ✦</span> : null}</dt><dd><Hint content={label === 'Deadline' ? deadlineLabel(data.closingAt ?? data.closingDate ?? data.closingDateRaw) : label === 'Place' && data.place ? placeHow(data.place) : undefined}><span>{text}</span></Hint></dd></div>)}</dl>
     {description && <section className="pc-description"><p data-clamped={!more && description.length > 600 || undefined}>{description}</p>{description.length > 600 && <button type="button" className="pc-link-btn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}</section>}
   </div>;
 }
@@ -239,21 +248,20 @@ function Overview({ id, record, reviews, tags, onTab, onSaved }: { id: string; r
       <header><h3>AI summary</h3><span className="pc-card-links">{writes && (review.result.labels ?? []).some((label: string) => !tags.includes(label)) && <button type="button" className="pc-link-btn" disabled={saving} onClick={() => void saveTags([...tags, ...(review.result.labels ?? [])])}>Save as tags</button>}<button type="button" className="pc-link-btn" onClick={() => onTab('ai')}>Details</button></span></header>
       <p>{review.result.summary}</p><LabelChips labels={review.result.labels ?? []} />
       <p className="pc-card-meta">{[review.model, ago(review.created_at), coverageText(review)].filter(Boolean).join(' · ')}</p>
-    </section> : <section className="pc-card pc-card-empty" aria-label="AI summary"><header><h3>No AI summary yet</h3></header>{writes && ai ? <><p>Summarize this notice and its documents, and tag it with AI categories.</p><Btn size="sm" onClick={() => onTab('ai')}>Summarize &amp; categorize</Btn></> : <p>This notice has not been summarized.</p>}</section>}
+    </section> : <section className="pc-card pc-card-empty" aria-label="AI summary"><header><h3>Not summarized yet</h3></header>{writes && ai && <><p>Summarize this notice and its documents, and give it AI tags.</p><Btn size="sm" variant="primary" onClick={() => onTab('ai')}>Summarize &amp; tag</Btn></>}</section>}
     {verdict && <section className="pc-card" aria-label="Bid or no-bid"><header><h3>Bid / no-bid</h3><span className="pc-card-meta">{ago(verdict.created_at)}</span></header><p className="pc-verdict" data-verdict={verdictTone(verdict.result.fields?.recommendation)}>{verdictText(verdict.result.fields?.recommendation)}</p><p>{verdict.result.summary}</p></section>}
     <NoticeContacts contacts={data.contacts} />
     {!award && <PossibleDuplicates notice={noticeSummary(id, record)} />}
-    <section className="pc-tags" aria-label="Your tags"><h3>Your tags</h3>
+    <section className="pc-tags" aria-label="Tags"><h3>Tags</h3>
       {writes && editing ? <div className="pc-tag-editor"><input aria-label="Tags, comma-separated" value={draft} onChange={e => setDraft(e.target.value)} placeholder="e.g. shortlist-q4, partner: Dominion" /><Btn size="sm" disabled={saving} onClick={() => void saveTags()}>{saving ? 'Saving…' : 'Save'}</Btn><Btn size="sm" variant="ghost" onClick={() => { setEditing(false); setDraft(tags.join(', ')); }}>Cancel</Btn></div>
         : <div className="pc-tag-list">{tags.map(tag => <span key={tag} className="pc-tag">{tag}</span>)}{writes ? <button type="button" className="pc-link-btn" onClick={() => setEditing(true)}>{tags.length ? 'Edit' : 'Add tags'}</button> : !tags.length && <span className="pc-card-meta">No tags.</span>}</div>}
       {error && <p role="alert">{error}</p>}
 </section>
-    {(data.sourceFileName || data.importedAt) && <p className="procurement-coverage">Imported {shortDate(data.importedAt).text}{data.sourceFileName ? ` from ${data.sourceFileName}` : ''}</p>}
+    {(data.sourceFileName || data.importedAt) && <p className="procurement-coverage">Imported {formatWhen(data.importedAt, Date.now(), 'at an unrecorded time')}{data.sourceFileName ? ` from ${data.sourceFileName}` : ''}</p>}
   </div>;
 }
 
 const isPdf = (doc: any) => doc?.status === 'downloaded' && (/pdf/i.test(doc.media_type ?? '') || /\.pdf$/i.test(doc.name ?? ''));
-const size = (bytes: number) => bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 // Zoer 2026-09-26+ draws PDF pages itself; older hosts and the sandboxed build fall back to the browser viewer.
 const HostPdfPreview = (Controls as Record<string, unknown>).PdfPreview as ComponentType<{ url: string; label: string; className?: string; onError?(error: Error): void }> | undefined;
@@ -272,7 +280,7 @@ function Documents({ id, source, documents, cite, hasBcBidFiles, hasPublisherLin
   const choose = (value: string) => { setSelected(value); setMode(initialMode(documents.find(item => item.id === value))); };
   const downloadAll = async () => {
     setBusy(true); setError(''); setMessage('');
-    try { const bundle = await downloadDocumentBundle(host, [id], { scope: 'one notice' }); setMessage(`Downloaded ${bundle.name}: ${bundle.documents} file${bundle.documents === 1 ? '' : 's'} (${sizeText(bundle.bytes)}) with the notice as CSV.`); }
+    try { const bundle = await downloadDocumentBundle(host, [id], { scope: 'one notice' }); setMessage(`Downloaded ${bundle.name}: ${plural(bundle.documents, 'file')} (${sizeText(bundle.bytes)}) with the notice as CSV.`); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   const getAttachments = async () => {
@@ -288,11 +296,11 @@ function Documents({ id, source, documents, cite, hasBcBidFiles, hasPublisherLin
     } catch (e) { setError((e as Error).message); }
     finally { if (!publisherDownload) onRefresh(); setBusy(false); }
   };
-  if (!documents.length) return <div className="pc-notice-section"><div className="pc-card pc-card-empty"><header><h3>No documents yet</h3></header>
-    {!collection ? <p>No documents were saved for this notice.</p> : source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || (browserBusy && (hasBcBidFiles || !hasPublisherLinks))} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
+  if (!documents.length) return <div className="pc-notice-section"><div className="pc-card pc-card-empty"><header><h3>No documents saved</h3></header>
+    {!collection ? null : source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || (browserBusy && (hasBcBidFiles || !hasPublisherLinks))} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
     {error && <p role="alert">{error}</p>}
 {message && <p role="status">{message}</p>}</div></div>;
-  const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${textStateDetail(item)}` : 'Couldn’t download this file';
+  const detail = (item: any) => item.status === 'downloaded' ? `${fileSize(item.bytes)}${textStateDetail(item)}` : 'Couldn’t download this file';
   return <div className="pc-docs">
     <div className="pc-doc-bar">
       {documents.length > 1
@@ -303,7 +311,7 @@ function Documents({ id, source, documents, cite, hasBcBidFiles, hasPublisherLin
       {doc && isPdf(doc) && <span className="pc-preview-modes" role="group" aria-label="Preview as"><button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')}>PDF</button><button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>Text</button></span>}
       <span className="pc-doc-tools">
         {doc?.status === 'downloaded' && <Btn size="sm" variant="ghost" aria-label={`Download ${doc.name}`} tooltip="Download" icon={<Download aria-hidden="true" className="h-4 w-4" />} onClick={() => void host('catalog.download', { id: doc.id, name: doc.name }).catch(e => setError(e.message))}><span className="sr-only">Download</span></Btn>}
-        {writes && saved.length > 1 && <Btn size="sm" variant="ghost" aria-label={`Download all ${saved.length} documents as one zip`} tooltip="Download all documents (zip)" disabled={busy} icon={<Archive aria-hidden="true" className="h-4 w-4" />} onClick={() => void downloadAll()}><span className="sr-only">Download all documents</span></Btn>}
+        {writes && saved.length > 1 && <Btn size="sm" variant="ghost" aria-label={`Download all ${count(saved.length)} documents as one zip`} tooltip="Download all documents (zip)" disabled={busy} icon={<Archive aria-hidden="true" className="h-4 w-4" />} onClick={() => void downloadAll()}><span className="sr-only">Download all documents</span></Btn>}
         {collection && source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy || (!publisherDownload && browserBusy)} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
       </span>
     </div>
@@ -351,7 +359,7 @@ function TextPreview({ doc, quote }: { doc: any; quote: string }) {
   return <div className="pc-text pc-doc-view" ref={box}>{quote && parts.length === 1 && <p role="status" className="pc-card-meta">The quoted passage wasn’t found verbatim in this version.</p>}<pre>{parts[0]}{parts.length > 1 && <mark ref={mark}>{parts[1]}</mark>}{parts[2]}</pre></div>;
 }
 
-const ACTIONS: [string, string][] = [['summary', 'Summarize & categorize'], ['requirements', 'Mandatory requirements'], ['bid-no-bid', 'Bid / no-bid'], ['amendments', 'What changed in addenda?']];
+const ACTIONS: [string, string][] = [['summary', 'Summarize & tag'], ['requirements', 'Mandatory requirements'], ['bid-no-bid', 'Bid / no-bid'], ['amendments', 'What changed in addenda?']];
 
 function Ai({ id, reviews, documents, onCite, onRefresh }: { id: string; reviews: any[]; documents: any[]; onCite(documentId: string, quote: string): void; onRefresh(): void }) {
   const { writes, ai } = useCapabilities(), canRun = writes && ai;
