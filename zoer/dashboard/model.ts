@@ -9,8 +9,8 @@ import { isSourceCaptureRun } from './document-run';
 import { reconciliationSummary, type ListingReconciliation } from '../src/listing-reconciliation';
 import { plainError } from './error-text';
 
-/** `buyer City of Nanaimo · keyword "paving"` for a targeted refresh's saved filters. */
-export const targetedLabel = (filters: any) => [filters?.organization && `buyer ${filters.organization}`, filters?.region && `region ${filters.region}`, filters?.industryCategory && `industry ${filters.industryCategory}`, filters?.keyword && `keyword "${filters.keyword}"`].filter(Boolean).join(' · ') || 'targeted refresh';
+/** `buyer City of Nanaimo · keyword "paving"` for a targeted collection's saved filters. */
+export const targetedLabel = (filters: any) => [filters?.organization && `buyer ${filters.organization}`, filters?.region && `region ${filters.region}`, filters?.industryCategory && `industry ${filters.industryCategory}`, filters?.opportunityType && `type ${filters.opportunityType}`, filters?.keyword && `keyword "${filters.keyword}"`].filter(Boolean).join(' · ') || 'no filter';
 export interface WorkspaceState { runs: any[]; artifacts: any[]; runsTruncated?: boolean }
 const TERMINAL = ['succeeded', 'failed', 'cancelled', 'outcome_unknown'];
 /**
@@ -26,6 +26,21 @@ export const PAUSED_FOR_UPDATE = 'Paused for update. Zoer continues automaticall
 export interface SavedDocument { record: { id: string; runId: string; createdAt: string }; document: any }
 const emptyCounts = () => ({ listingCount: 0, detailCount: 0, opportunityCount: 0, addendaCount: 0, attachmentCount: 0, pageCount: 0, failedDetails: 0 });
 const defaults = { descriptionText: '', detailFields: [], attachments: [], addenda: [], commodities: [], searchText: '' };
+const SCRAPE_ACTIONS = ['scrape.full', 'scrape.details', 'scrape.targeted', 'scrape.sample', 'listing.capture', 'detail.capture'];
+/** What each BC Bid run was, in plain words (run cards on the BC Bid page and BC Bid runs). */
+export const RUN_TITLES: Record<string, string> = { 'scrape.full': 'Full collection', 'scrape.details': 'Detail refresh', 'scrape.targeted': 'Targeted collection', 'scrape.sample': 'Browser test', 'listing.capture': 'One listing page', 'detail.capture': 'One opportunity page' };
+export const BROWSER_CHECK = /browser check|browser verification|verification required|complete (?:the|any required) (?:browser )?check/i;
+const num = (value: number) => value.toLocaleString();
+const opportunities_ = (value: number) => `${num(value)} ${value === 1 ? 'opportunity' : 'opportunities'}`;
+const details_ = (value: number) => `${num(value)} ${value === 1 ? 'detail' : 'details'}`;
+/** A scrape stopped by BC Bid's human verification: the next step belongs to the collection browser, not the download one. */
+export const browserCheckText = (saved: number) => `BC Bid asked for a browser check ${saved > 0 ? `after ${opportunities_(saved)} were saved` : 'before any opportunities were saved'}.`;
+function succeededText(actionId: string, doc: any, counts: { listingCount: number; detailCount: number }, full: boolean, reconciliation: ListingReconciliation | null) {
+  if (!counts.listingCount && !counts.detailCount) return actionId === 'scrape.details' ? 'Nothing to update' : actionId === 'scrape.targeted' && doc ? `No matching opportunities · ${targetedLabel(doc.filters)}` : 'Nothing new';
+  const saved = `${opportunities_(counts.listingCount)} · ${details_(counts.detailCount)}`;
+  if (full) return `${saved} · all current public opportunities${reconciliation ? ` · ${reconciliationSummary(reconciliation)}` : ''}`;
+  return doc?.scope === 'bcbid-targeted' ? `${saved} · ${targetedLabel(doc.filters)}` : saved;
+}
 export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
   const opportunities = new Map<string, any>();
   const awards = new Map<string, any>();
@@ -68,7 +83,7 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
       }
     }
   }
-  const runs = state.runs.filter(run => ['scrape.full', 'scrape.details', 'scrape.targeted', 'scrape.sample', 'listing.capture', 'detail.capture'].includes(run.actionId)).map(run => {
+  const runs = state.runs.filter(run => SCRAPE_ACTIONS.includes(run.actionId)).map(run => {
     const doc = byRun.get(run.id);
     const full = doc?.scope === 'all-current-public-opportunities';
     const rows = [...(history.get(run.id)?.values() ?? [])];
@@ -81,14 +96,20 @@ export function buildModel(state: WorkspaceState, documents: SavedDocument[]) {
     const interrupted = run.status === 'outcome_unknown';
     // Displayed source total vs rows read vs distinct opportunities, once the listing pages are all read.
     const reconciliation = full && doc.phase !== 'listing' && doc.reconciliation ? doc.reconciliation as ListingReconciliation : null;
-    const savedSoFar = doc && full ? ` Saved so far: ${counts.listingCount} listings · ${counts.detailCount} details · ${doc.pending?.length ?? 0} remaining.` : '';
-    const message = paused ? PAUSED_FOR_UPDATE + savedSoFar : run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved progress is retained; resume the saved scrape to continue.' : plainError(run.error)) || (status === 'succeeded' ? `${counts.listingCount} listings · ${counts.detailCount} details · ${full ? `all current public opportunities${reconciliation ? ` · ${reconciliationSummary(reconciliation)}` : ''}` : doc?.scope === 'bcbid-targeted' ? targetedLabel(doc.filters) : 'bounded capture'}` : status === 'cancelled' ? 'Stopped by operator' : doc ? `Saved ${counts.listingCount} listings across ${doc.currentPage ?? 1} pages · ${counts.detailCount} details${full ? ` · ${doc.pending?.length ?? 0} remaining` : ""}` : 'Opening BC Bid and collecting the listing page');
-    return { _id: run.id, status, paused, trigger: 'manual', startedAt: Date.parse(run.createdAt), completedAt: run.completedAt ? Date.parse(run.completedAt) : null,
-      cancellationRequested: !!run.cancelRequestedAt, counts, reconciliation, errorMessage: interrupted || paused ? null : plainError(run.error || doc?.error) || null, errorCode: interrupted ? 'scrape_interrupted' : status === 'failed' ? 'scrape_failed' : null,
+    const savedSoFar = doc && full ? ` Saved so far: ${opportunities_(counts.listingCount)} · ${details_(counts.detailCount)} · ${num(doc.pending?.length ?? 0)} remaining.` : '';
+    const browserCheck = status === 'failed' && !interrupted && BROWSER_CHECK.test(`${run.error ?? ''} ${doc?.error ?? ''}`);
+    const message = paused ? PAUSED_FOR_UPDATE + savedSoFar : run.queueReason || (interrupted ? 'Interrupted before completion was confirmed. Saved progress is kept; resume the collection to continue.' : browserCheck ? browserCheckText(counts.listingCount) : plainError(run.error))
+      || (status === 'succeeded' ? succeededText(run.actionId, doc, counts, full, reconciliation) : status === 'cancelled' ? 'Stopped by you' : doc ? `Saved ${opportunities_(counts.listingCount)} across ${num(doc.currentPage ?? 1)} ${doc.currentPage === 1 ? 'page' : 'pages'} · ${details_(counts.detailCount)}${full ? ` · ${num(doc.pending?.length ?? 0)} remaining` : ''}` : 'Opening BC Bid and reading the first listing page');
+    // Trigger (scheduled or manual) is not in Zoer's run summary, so it is omitted rather than guessed.
+    return { _id: run.id, actionId: run.actionId as string, title: RUN_TITLES[run.actionId] ?? 'BC Bid run', status, paused, trigger: null as null | 'manual' | 'scheduled', startedAt: Date.parse(run.createdAt), completedAt: run.completedAt ? Date.parse(run.completedAt) : null,
+      cancellationRequested: !!run.cancelRequestedAt, counts, reconciliation, browserCheck, waitingForUser: false, errorMessage: interrupted || paused ? null : browserCheck ? message : plainError(run.error || doc?.error) || null, errorCode: interrupted ? 'scrape_interrupted' : status === 'failed' ? 'scrape_failed' : null,
       progress: { phase, message, percent: status === 'succeeded' ? 100 : full ? (doc.phase === "listing" ? 10 : 30 + 69 * counts.detailCount / Math.max(1, counts.listingCount)) : doc ? Math.min(90, 20 + counts.detailCount * 20) : 0, current: counts.detailCount, total: full ? counts.listingCount : doc?.detailLimit ?? 3,
         pagesCompleted: doc?.currentPage ?? counts.pageCount, totalPages: doc?.totalPages ?? null, listingsDiscovered: counts.listingCount, detailsCompleted: counts.detailCount, detailsTotal: full ? counts.listingCount : doc?.detailLimit ?? null,
         batchesCompleted: doc ? 1 : 0, batchesTotal: null, heartbeatAt: Date.parse(heartbeat.get(run.id) ?? doc?.capturedAt ?? run.createdAt) } };
   }).sort((a, b) => b.startedAt - a.startedAt);
+  // "Waiting for you" only on the newest run of an action: an older browser check was superseded by a later attempt.
+  const newest = new Set<string>();
+  for (const run of runs) { if (!newest.has(run.actionId)) { newest.add(run.actionId); run.waitingForUser = run.browserCheck; } }
   const awardRuns = state.runs.filter(run => run.actionId === 'awards.history').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const documentRuns = state.runs.filter(run => ['documents.download', 'documents.download.all','documents.download.missing','documents.download.queue','documents.download.portals'].includes(run.actionId));
   const captureRuns = state.runs.filter(isSourceCaptureRun);

@@ -126,11 +126,11 @@ describe('targeted BC Bid refresh', () => {
     expect(h.docs.some(doc => doc.scope === 'all-current-public-opportunities')).toBe(false);
     expect(h.docs.at(-1)).toMatchObject({ kind: 'scrape', scope: 'bcbid-targeted', complete: true, records: [], listingCount: 4, detailsCompleted: 3 });
     expect(h.receipts).toEqual([expect.objectContaining({ status: 'complete', runId: 'run-t', filters: { organization: 'Ministry of Health' }, pages: 2, listingCount: 4, detailsCompleted: 3, filtersCleared: true })]);
-    // The scraper page shows the run with its filter, not as a generic bounded capture.
+    // The BC Bid page shows the run with its filter, not as a generic bounded capture.
     const model = buildModel({ runs: [{ id: 'run-t', actionId: 'scrape.targeted', status: 'succeeded', createdAt: '2026-10-03T20:00:00Z' }], artifacts: [] },
       [{ record: { id: 'run-t', runId: 'run-t', createdAt: '2026-10-03T20:02:00Z' }, document: h.docs.at(-1) }]);
-    expect(model.runs[0].progress.message).toBe('4 listings · 3 details · buyer Ministry of Health');
-    expect(receiptSummary(h.receipts[0])).toMatchObject({ counts: '2 pages · 4 notices (2 new, 1 changed) · 3 details', notes: [] });
+    expect(model.runs[0].progress.message).toBe('4 opportunities · 3 details · buyer Ministry of Health');
+    expect(receiptSummary(h.receipts[0])).toMatchObject({ counts: '2 pages · 4 opportunities (2 new, 1 changed) · 3 details', notes: [] });
   });
 
   it('aborts without saving when BC Bid does not confirm the filter, then still clears the search', async () => {
@@ -141,7 +141,7 @@ describe('targeted BC Bid refresh', () => {
     expect(h.calls).toHaveLength(2);
     expect(h.calls[1]).toMatchObject({ applySearch: true, searchFields: [{ value: '' }] });
     expect(h.receipts).toEqual([expect.objectContaining({ status: 'failed', pages: 0, listingCount: 0, error: expect.stringContaining('did not confirm') })]);
-    expect(receiptSummary(h.receipts[0])!.title).toMatch(/^Last refresh failed: buyer Ministry of Health/);
+    expect(receiptSummary(h.receipts[0])!.title).toMatch(/^Last targeted collection failed: buyer Ministry of Health/);
   });
 
   it('does not trust a buyer tag when no result names that buyer', async () => {
@@ -171,7 +171,7 @@ describe('targeted BC Bid refresh', () => {
     const output = await scrapeTargeted(h.browser, h.store, { organization: 'Ministry of Health', maxPages: 2, details: false });
     expect(output).toMatchObject({ pageCount: 2, truncated: true, detailCount: 0, detailsSkipped: 4 });
     expect(h.calls.filter(call => call.url !== LISTING_URL)).toEqual([]);
-    expect(receiptSummary(h.receipts[0])!.notes).toEqual(['More result pages remain; raise Pages to include them.', '4 new or changed notices still need details.']);
+    expect(receiptSummary(h.receipts[0])!.notes).toEqual(['More result pages remain; raise Pages to include them.', '4 new or changed opportunities still need details.']);
   });
 
   it.each([{ label: 'absent', sourceId: undefined }, { label: 'legacy blank', sourceId: '' }])('keeps changed details retryable after a listing-only refresh ($label sourceId)', async ({ sourceId }) => {

@@ -17,7 +17,8 @@ import { Spinner } from "../ui/Spinner";
 import { ProgressBar } from "./ProgressBar";
 import { StatusPill } from "./StatusPill";
 
-type RunRecord = ScrapeRun & { _id: string };
+/** The plugin's model adds what the run was and whether its browser check still waits for a person. */
+type RunRecord = Omit<ScrapeRun, "trigger"> & { _id: string; trigger?: ScrapeRun["trigger"] | null; title?: string; waitingForUser?: boolean };
 
 type RunOpportunityRecord = {
   sourceKey: string;
@@ -57,12 +58,13 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
 
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-subtle p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <StatusPill status={run.status} interrupted={run.errorCode === "scrape_interrupted"} paused={run.paused} />
-        <span className="text-xs text-text-tertiary">{formatTimestamp(run.startedAt)}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <StatusPill status={run.status} interrupted={run.errorCode === "scrape_interrupted"} paused={run.paused} waiting={run.waitingForUser} />
+        {run.title ? <span className="text-sm font-semibold text-text-primary">{run.title}</span> : null}
+        <span className="ml-auto text-xs text-text-tertiary">{formatTimestamp(run.startedAt)}</span>
       </div>
 
-      <div className="text-sm font-medium text-text-primary">
+      <div className="text-sm text-text-primary">
         {run.progress.message}
       </div>
 
@@ -75,11 +77,12 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
       ) : null}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
-        <span>Listings {run.counts.listingCount}</span>
-        <span>Details {run.counts.detailCount || run.progress.detailsCompleted}</span>
-        <span>Opportunities {run.counts.opportunityCount}</span>
-        <span>{formatRuntime(runtime)}</span>
-        <span className="capitalize text-text-tertiary">{run.trigger}</span>
+        {/* Counts are in the headline for finished and running runs; an unfinished one states what it kept. */}
+        {(run.status === "failed" || run.status === "cancelled") && run.counts.listingCount > 0 ? (
+          <span>{run.counts.listingCount.toLocaleString()} {run.counts.listingCount === 1 ? "opportunity" : "opportunities"} saved</span>
+        ) : null}
+        <span>{run.status === "running" || run.status === "stopping" ? `Running for ${formatRuntime(runtime)}` : `Took ${formatRuntime(runtime)}`}</span>
+        {run.trigger ? <span className="text-text-tertiary">{run.trigger === "scheduled" ? "Scheduled" : "Manual"}</span> : null}
       </div>
 
       {run.errorMessage && run.errorMessage !== run.progress.message ? (
@@ -94,7 +97,7 @@ export function RunHistoryCard({ run }: { run: RunRecord }) {
             onClick={() => setExpanded((current) => !current)}
             className="inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-medium text-accent hover:text-accent-strong transition-colors"
           >
-            {expanded ? "Hide scraped opportunities" : "See scraped opportunities"}
+            {expanded ? "Hide opportunities from this run" : "Opportunities from this run"}
             {expanded ? <ChevronUp size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
           </button>
           {expanded ? <ScrapedOpportunities run={run} scrapedOpportunities={scrapedOpportunities} /> : null}
@@ -137,13 +140,13 @@ function ScrapedOpportunities({ run, scrapedOpportunities }: { run: RunRecord; s
                 </div>
               ) : scrapedOpportunities.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border-default px-3 py-4 text-sm text-text-tertiary">
-                  No scraped opportunities were recorded for this run.
+                  No opportunities were recorded for this run.
                 </div>
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-3 text-xs text-text-tertiary">
                     <span>
-                      Showing {scrapedOpportunities.length}{" "}
+                      Showing {scrapedOpportunities.length.toLocaleString()}{" "}
                       {scrapedOpportunities.length === 1 ? "opportunity" : "opportunities"}
                     </span>
                     {run.counts.opportunityCount > scrapedOpportunities.length ? (

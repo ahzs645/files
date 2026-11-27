@@ -7,10 +7,18 @@ export const STATUS_CONFIG: Record<
   idle: { label: "Idle", bg: "bg-bg-subtle", text: "text-text-secondary", dot: "bg-text-secondary" },
   running: { label: "Running", bg: "bg-accent-muted", text: "text-accent", dot: "bg-accent" },
   stopping: { label: "Stopping", bg: "bg-orange-muted", text: "text-orange", dot: "bg-orange" },
-  succeeded: { label: "Succeeded", bg: "bg-green-muted", text: "text-green", dot: "bg-green" },
+  succeeded: { label: "Done", bg: "bg-green-muted", text: "text-green", dot: "bg-green" },
   failed: { label: "Failed", bg: "bg-red-muted", text: "text-red", dot: "bg-red" },
-  cancelled: { label: "Cancelled", bg: "bg-yellow-muted", text: "text-yellow", dot: "bg-yellow" },
+  // Stopped by a person: neutral, not a warning.
+  cancelled: { label: "Stopped", bg: "bg-bg-subtle", text: "text-text-secondary", dot: "bg-text-secondary" },
 };
+
+/** Run states outside the scrape status: a browser check (BC Bid's human verification) and a lost, resumable worker. */
+export const EXTRA_STATUS = {
+  waiting: { label: "Waiting for you", bg: "bg-orange-muted", text: "text-orange", dot: "bg-orange" },
+  interrupted: { label: "Interrupted", bg: "bg-orange-muted", text: "text-orange", dot: "bg-orange" },
+  paused: { label: "Paused for update", bg: "bg-bg-subtle", text: "text-text-secondary", dot: "bg-text-secondary" },
+} as const;
 
 export function getOpportunityStatusTone(status: string): "open" | "closed" | "neutral" {
   if (/open/i.test(status)) return "open";
