@@ -22,6 +22,23 @@ const COLLECT_ACTIONS = [COLLECT_ACTION, BROWSER_COLLECT_ACTION];
 export function useRecentRuns(enabled = true) {
   return useQuery({ queryKey: RUNS_KEY, queryFn: async () => ((await host('runs.recent', { limit: 30 }))?.runs ?? []) as RecentRun[], refetchInterval: 5000, retry: false, enabled });
 }
+export const COLLECTION_RUNS_KEY = ['catalog', 'procurement-collection-runs'] as const;
+/**
+ * Collection runs read by action (`runs.recent` with `actionId`), newest first: the shared 30-run list above is
+ * mostly hourly download runs, so collection runs fall out of it. Older Zoer without the filter answers with an error.
+ */
+export function useCollectionRuns(enabled = true) {
+  return useQuery({ queryKey: COLLECTION_RUNS_KEY, enabled, retry: false, refetchInterval: 5000, queryFn: async () => {
+    const lists = await Promise.all(COLLECT_ACTIONS.map(actionId => host('runs.recent', { actionId, limit: 20 }).then(result => (result?.runs ?? []) as RecentRun[])));
+    return lists.flat().filter(run => COLLECT_ACTIONS.includes(run.actionId)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  } });
+}
+/** The host's run list (`state`: the newest 100 runs plus every active one); null when this Zoer cannot answer. */
+export const readWorkflowRuns = (): Promise<{ id: string; status: string; actionId?: string }[] | null> =>
+  host('state', { summary: true }).then(state => Array.isArray(state?.runs) ? state.runs : null, () => null);
+export function useWorkflowRuns(enabled = true) {
+  return useQuery({ queryKey: ['catalog', 'procurement-workflow-runs'], enabled, queryFn: readWorkflowRuns, refetchInterval: 30_000 });
+}
 /** Saved collection presets (`presets.list`, S6). */
 export function usePresets() {
   return useQuery({ queryKey: PRESETS_KEY, queryFn: async () => ((await host('presets.list', { actionId: COLLECT_ACTION }))?.presets ?? []) as Preset[], refetchInterval: 30_000, retry: false });
@@ -44,13 +61,13 @@ export function CollectionRuns({ runs, error, loading }: { runs?: RecentRun[]; e
   const shown = (runs ?? []).filter(run => COLLECT_ACTIONS.includes(run.actionId)).slice(0, 8);
   const act = async (run: RecentRun, method: 'run.pause' | 'run.resume' | 'cancel') => {
     setBusy(`${method}:${run.runId}`); setFailure('');
-    try { await host(method, { id: run.runId }); await client.invalidateQueries({ queryKey: RUNS_KEY }); }
+    try { await host(method, { id: run.runId }); await client.invalidateQueries({ queryKey: RUNS_KEY }); await client.invalidateQueries({ queryKey: COLLECTION_RUNS_KEY }); }
     catch (e) { setFailure(plainError((e as Error).message)); } finally { setBusy(''); }
   };
   return <section className="rw-panel pc-runs" aria-labelledby="pc-runs-title">
     <header className="rw-panel-head"><h2 id="pc-runs-title">Collection runs</h2><span className="rw-muted">Each run saves portal by portal; a paused or interrupted run continues where it stopped.</span></header>
     <RunLinks compact except="/sources" />
-    {error ? <p className="rw-muted">Run history is not available from this Zoer version.</p> : loading ? <p role="status">Loading runs…</p> : !shown.length ? <p className="rw-muted">No collection has run yet.</p> :
+    {error ? <p className="rw-muted">Collection run history is not available from this Zoer version.</p> : loading ? <p role="status">Loading runs…</p> : !shown.length ? <p className="rw-muted">No collection run in Zoer’s run history.</p> :
     <ul className="pc-run-list">{shown.map(run => {
       const state = runState(run)!;
       return <li key={run.runId} data-live={isLive(run) || undefined}>
