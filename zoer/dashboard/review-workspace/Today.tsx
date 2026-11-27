@@ -10,6 +10,7 @@ import { REVIEW_KEY } from './actions';
 import { useCapabilities } from '../capabilities';
 import { RouteLink, deadlineText } from './Home';
 import { reviewScopeHref } from './queue';
+import { count, windowEnd } from '../format';
 import { LAST_VISIT_KEY, QUIET_DAYS, SOON_DAYS, quietPursuits, readClosingSoon, readNewSince, runsSince, todayLayout, visitWindow, type RunRow } from './today-data';
 
 const SHOW = 5, PHONE_SHOW = 3; // review.css hides rows after the third on phones; the "more" links cover them.
@@ -95,9 +96,9 @@ export function Today({ source, asOf }: { source: string; asOf: number }) {
       <div><h2 id="rw-today-title">Today</h2><p>{new Date(asOf).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}{source ? ` · ${sourceName(source)}` : ''}</p></div>
     </header>
     <div className="rw-today-grid" data-columns={layout.columns}>
-      <Column title={`Closing within ${SOON_DAYS} days`} count={soon.data ? soon.data.total.toLocaleString() : '–'} note="Open notices, pursued and shortlisted first."
+      <Column title={`Closing within ${SOON_DAYS} days`} count={soon.data ? count(soon.data.total) : '–'} note={`Open notices${source ? '' : ' from all sources'} closing today through ${windowEnd(SOON_DAYS, asOf)}; pursued and shortlisted first.`}
         footer={soon.data && soon.data.total > PHONE_SHOW ? <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&deadline=week&sort=deadline'} className="rw-today-more">All closing in 7 days →</RouteLink> : null}>
-        {soon.isPending || state.isPending ? <p className="rw-muted" role="status">Loading…</p> : soon.isError ? <Failed what="closing notices" error={soon.error} retry={soon.refetch} /> : soon.data.rows.length === 0 ? <p className="rw-muted">Nothing saved closes in the next {SOON_DAYS} days.</p> :
+        {soon.isPending || state.isPending ? <p className="rw-muted" role="status">Loading…</p> : soon.isError ? <Failed what="closing notices" error={soon.error} retry={soon.refetch} /> : soon.data.rows.length === 0 ? <p className="rw-muted">No open notice closes by {windowEnd(SOON_DAYS, asOf)}.</p> :
           <ul className="rw-today-list">{soon.data.rows.slice(0, SHOW).map(row => { const d = deadlineText(row.closing, asOf); return <Row key={row.id} to={`/procurement?notice=${encodeURIComponent(row.id)}`} title={row.title || row.id} tag={row.pursued ? 'Pursuing' : row.shortlisted ? 'Shortlisted' : undefined}
             meta={d.text} detail={d.detail} sub={[row.buyer, source ? '' : sourceName(row.sourceId)].filter(Boolean).join(' · ')} />; })}</ul>}
       </Column>

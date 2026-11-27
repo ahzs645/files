@@ -3,6 +3,7 @@ import { noTextSql } from '../document-processing';
 import { HIDDEN_IDS_SQL } from '../procurement/state-contract';
 import { addDays, zoneDate } from '../procurement/deadline';
 import { canonicalNoticeSql } from '../procurement/canonical';
+import { activeBatches, batchKindSql } from '../procurement/source-health';
 import { QUEUES, acquireParts, and, assessmentScope, deadlineWindowSql, fitBucketSql, fitSql, openSql, queueSql, recordColumns, sourceSql, type Fragment, type QueueId } from './queue';
 
 /**
@@ -32,8 +33,14 @@ async function* openWorkRanges(asOf: number, source: string): AsyncGenerator<Fra
   }
 }
 
-/** Opportunity notices from one source (or all), open or closed. */
-export const opportunityScope = (source: string): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source));
+/**
+ * Saved notices from one source (or all), open and closed, each counted once: the canonical-notice rule Opportunities
+ * uses (canonical.ts; all sources exclude cross-posted copies, one source keeps its own copies). See populations.ts.
+ */
+export const opportunityScope = (source: string): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source),
+  { sql: canonicalNoticeSql('', { crossSource: source ? 'include' : 'exclude', source }), parameters: [] });
+/** Every stored opportunity row of a source (or all): only for counting the files saved on them ("Files saved (all)"). */
+const storedScope = (source: string): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source));
 /** Insights scope: opportunities from the chosen source, open ones only unless `open` is false. */
 export const insightScope = (source: string, open: boolean, asOf: number): Fragment => {
   const options = { crossSource: source ? 'include' : 'exclude', source } as const;
@@ -78,7 +85,9 @@ export async function readQueueExamples(queue: QueueId, profile: string | null, 
 export async function readCoverage(source: string) {
   const scope = opportunityScope(source), p = acquireParts();
   const [row] = await sql(`SELECT count(*) AS saved, sum(${p.unchecked}) AS unchecked, sum(${r.field('attachments[0]')} IS NOT NULL) AS linked, sum(id IN (SELECT record_id FROM documents WHERE status='downloaded')) AS withFiles, sum(id IN (SELECT record_id FROM documents WHERE status='downloaded' AND length(text)>0)) AS withText FROM records WHERE ${scope.sql}`, scope.parameters);
-  const [files] = await sql(`SELECT count(*) AS files, sum(length(text)>0) AS usable, sum(${noTextSql()}) AS noText FROM documents WHERE status='downloaded' AND record_id IN (SELECT id FROM records WHERE ${scope.sql})`, scope.parameters);
+  // Files count on every existing notice row (a cross-posted copy can hold the only saved file), as Documents does.
+  const stored = storedScope(source);
+  const [files] = await sql(`SELECT count(*) AS files, sum(length(text)>0) AS usable, sum(${noTextSql()}) AS noText FROM documents WHERE status='downloaded' AND record_id IN (SELECT id FROM records WHERE ${stored.sql})`, stored.parameters);
   const all = { ...row, ...files };
   return Object.fromEntries(Object.entries(all).map(([key, value]) => [key, num(value)])) as Record<'saved' | 'unchecked' | 'linked' | 'withFiles' | 'withText' | 'files' | 'usable' | 'noText', number>;
 }
@@ -109,16 +118,25 @@ export async function readPolicies(profile: string | null) {
 }
 
 export type BatchHealth = { kind: string; succeeded?: string; running?: number; failed?: any; partial?: any };
-/** Last successful, partial and failed batch per kind. A failure is reported as a failure, never as zero results. */
-export async function readSourceHealth(): Promise<BatchHealth[]> {
-  const [summary, latest] = await Promise.all([
-    sql('SELECT kind, status, count(*) AS runs, max(updated_at) AS at FROM batches GROUP BY kind, status'),
-    sql("SELECT b.kind, b.status, b.error, b.completed, b.failed, b.total, b.updated_at AS at FROM batches b WHERE b.status IN ('failed','partial') AND b.updated_at=(SELECT max(x.updated_at) FROM batches x WHERE x.kind=b.kind AND x.status=b.status)"),
+/**
+ * Last successful, partial and failed batch per kind (text-extraction batches apart from downloads, `batchKindSql`).
+ * A failure is reported as a failure, never as zero results. A batch counts as running only while its workflow run is
+ * active in `runs` (the host's run list, `state`); Zoer can leave a stopped run's batch marked running for days, so
+ * without a run list nothing is reported as running.
+ */
+export async function readSourceHealth(runs?: readonly { id: string; status: string }[] | null): Promise<BatchHealth[]> {
+  const kind = batchKindSql(), kindB = batchKindSql('b'), kindX = batchKindSql('x');
+  const [summary, latest, marked] = await Promise.all([
+    sql(`SELECT ${kind} AS runKind, status, count(*) AS runs, max(updated_at) AS at FROM batches GROUP BY runKind, status`),
+    sql(`SELECT ${kindB} AS runKind, b.status, b.error, b.completed, b.failed, b.total, b.updated_at AS at FROM batches b WHERE b.status IN ('failed','partial') AND b.updated_at=(SELECT max(x.updated_at) FROM batches x WHERE ${kindX}=${kindB} AND x.status=b.status)`),
+    sql(`SELECT id, ${kind} AS runKind FROM batches WHERE status='running' ORDER BY updated_at DESC`),
   ]);
-  const kinds = [...new Set(summary.map(row => String(row.kind)))].sort();
+  const kinds = [...new Set(summary.map(row => String(row.runKind)))].sort();
   return kinds.map(kind => {
-    const of = (status: string) => summary.find(row => row.kind === kind && row.status === status);
-    return { kind, succeeded: of('succeeded')?.at, running: of('running') ? num(of('running').runs) : undefined, failed: latest.find(row => row.kind === kind && row.status === 'failed'), partial: latest.find(row => row.kind === kind && row.status === 'partial') };
+    const of = (status: string) => summary.find(row => row.runKind === kind && row.status === status);
+    const active = runs ? activeBatches(marked.filter(row => row.runKind === kind), runs).length : 0;
+    const pick = (status: string) => { const row = latest.find(item => item.runKind === kind && item.status === status); return row && { ...row, kind }; };
+    return { kind, succeeded: of('succeeded')?.at, running: active || undefined, failed: pick('failed'), partial: pick('partial') };
   });
 }
 

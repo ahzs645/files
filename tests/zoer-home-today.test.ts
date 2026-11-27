@@ -16,7 +16,8 @@ function validateCatalogSelect(statement: string, parameters: unknown[]) {
 
 const db = new DatabaseSync(':memory:');
 db.exec(`CREATE TABLE records(id TEXT PRIMARY KEY,kind TEXT NOT NULL,title TEXT NOT NULL,data TEXT NOT NULL,hash TEXT NOT NULL,updated_at TEXT NOT NULL);
-CREATE TABLE record_history(run_id TEXT NOT NULL,record_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run_id,record_id));`);
+CREATE TABLE record_history(run_id TEXT NOT NULL,record_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(run_id,record_id));
+CREATE TABLE workspace_state(key TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at TEXT NOT NULL);`);
 const statements: { statement: string; parameters: unknown[] }[] = [];
 vi.mock('../zoer/dashboard/procurement/display', () => ({
   sourceName: (id: string) => id,

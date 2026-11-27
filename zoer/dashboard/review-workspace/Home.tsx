@@ -19,12 +19,14 @@ import { SOON_DAYS } from './today-data';
 import { friendlyDeadline } from './deadline-text';
 import { readAttentionSummary, readCoverage, readDeadlines, readPolicies, readQueue, readQueueExamples, readRecentDecisions, readReviewCoverage, readSourceHealth } from './home-data';
 import { StatusCard } from '../procurement/Status';
+import { readWorkflowRuns } from '../procurement/CollectionRuns';
+import { count, plural as countOf, when as shortWhen } from '../format';
 import { useNarrowScreen } from '../mobile';
 import './review.css';
 
 /** One short line per queue for the compact attention row (QUEUE_TEXT's own description is the long form, kept for its title attribute). */
 const QUEUE_SUMMARY: Record<QueueId, string> = {
-  acquire: 'Missing links, downloads, or usable text.',
+  acquire: 'Open notices with no attachment list yet, no file saved yet, or only unreadable files.',
   requirements: 'Extracted requirements awaiting a reviewer decision.',
   eligibility: 'Unresolved eligibility or an unknown requirement match.',
   changes: 'Unacknowledged changes or decisions to reconfirm.',
@@ -122,7 +124,7 @@ function AttentionTiles({ source, profile, active, asOf, available }: { source: 
   const changes = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'queue', 'changes', profile, source, asOf], enabled: available, queryFn: () => readQueue('changes', profile, source, asOf), refetchInterval: 60_000 });
   const dash = <span className="rw-muted">–</span>, { writes } = useCapabilities();
   return <div className="rw-tiles">
-    <Tile href={reviewScopeHref({ source: source || undefined, open: true })} tone="info" title="Open opportunities" note={writes ? 'Saved in Zoer' : 'In this published copy'} count={summary.data ? n(summary.data.open) : dash} />
+    <Tile href={reviewScopeHref({ source: source || undefined, open: true })} tone="info" title={source ? `Open ${sourceName(source)} opportunities` : 'Open opportunities (all sources)'} note={writes ? 'Saved in Zoer, each counted once' : 'In this published copy, each counted once'} count={summary.data ? n(summary.data.open) : dash} />
     <Tile href={active ? reviewScopeHref({ source: source || undefined, open: true, readiness: 'conditions', profile }) : writes ? '/profiles' : '/home'} tone="warn" title="Need information" note={active ? 'Needs information or investigation' : 'Choose a profile'} count={active ? (summary.data ? n(summary.data.needInfo) : dash) : dash} />
     <Tile href={reviewScopeHref({ source: source || undefined, queue: 'decide', profile })} tone="ok" title="Ready for your decision" note="Nothing is approved automatically" count={available && decide.data !== undefined ? n(decide.data) : dash} />
     <Tile href={reviewScopeHref({ source: source || undefined, queue: 'changes', profile })} tone="violet" title="Decisions to reconfirm" note="Evidence or scope changed" count={available && changes.data !== undefined ? n(changes.data) : dash} />
@@ -140,13 +142,13 @@ function CovRow({ name, value, of, tone = 'info' }: { name: string; value: numbe
 function Coverage({ source, profile, available }: { source: string; profile: string | null; available: boolean }) {
   const legacy = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'coverage', source], queryFn: () => readCoverage(source), refetchInterval: 60_000 });
   const review = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'review-coverage', source, profile], enabled: available, queryFn: () => readReviewCoverage(source, profile), refetchInterval: 60_000 });
-  return <Panel title="Coverage" note={<RouteLink to="/documents">Documents</RouteLink>}>
+  return <Panel title="Coverage of all saved notices (open and closed)" note={<RouteLink to="/documents">Documents</RouteLink>}>
     <Loadable query={legacy} what="coverage">{c => { const saved = Number(c.saved ?? 0); return <div className="rw-cov">
-      <CovRow name="Saved notices" value={saved} />
+      <CovRow name="Saved notices, each counted once" value={saved} />
       {Number(c.unchecked ?? 0) > 0 && <CovRow name="Attachments not checked" value={c.unchecked} of={saved} tone="warn" />}
-      <CovRow name="With attachment links" value={c.linked} of={saved} />
-      <CovRow name="With downloaded files" value={c.withFiles} of={saved} tone="teal" />
-      <CovRow name="Files readable by AI" value={c.usable} of={c.files} tone="teal" />
+      <CovRow name="Notices with attachment links" value={c.linked} of={saved} />
+      <CovRow name="Notices with at least one saved file" value={c.withFiles} of={saved} tone="teal" />
+      <CovRow name="Saved files readable by AI (of all saved files)" value={c.usable} of={c.files} tone="teal" />
       {available && (review.isPending ? <p className="rw-muted">Loading review stages…</p> : review.isError || !review.data ? <p className="rw-error">Could not load review stages: {review.error?.message}</p> : <>
         <CovRow name="Triaged" value={review.data.triaged} of={saved} tone="violet" />
         <CovRow name="Requirements extracted" value={review.data.extracted} of={saved} tone="violet" />
@@ -158,16 +160,17 @@ function Coverage({ source, profile, available }: { source: string; profile: str
 
 const BATCH_KINDS = BATCH_KIND_TEXT;
 function SourceHealth({ inventory }: { inventory: any[] | undefined }) {
-  const health = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'source-health'], queryFn: readSourceHealth, refetchInterval: 30_000 });
-  const sources = new Map<string, { count: number; importedAt: string | null }>(), { collection } = useCapabilities();
-  for (const row of inventory ?? []) if (row.kind === 'opportunity') sources.set(row.sourceId, { count: Number(row.count), importedAt: row.importedAt ?? null });
+  // "Running" only while the batch's workflow run is active (readSourceHealth); the run list comes from the host.
+  const health = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'source-health'], queryFn: async () => readSourceHealth(await readWorkflowRuns()), refetchInterval: 30_000 });
+  const sources = new Map<string, { count: number; linked: number; importedAt: string | null }>(), { collection } = useCapabilities();
+  for (const row of inventory ?? []) if (row.kind === 'opportunity') sources.set(row.sourceId, { count: Number(row.count), linked: Number(row.linked ?? 0), importedAt: row.importedAt ?? null });
   return <Panel title="Source health" note={collection ? <RouteLink to="/sources">Sources</RouteLink> : undefined}>
-    {sources.size > 0 && <ul className="rw-list">{[...sources].map(([id, s]) => <li key={id}><strong>{sourceName(id)}</strong> <span className="rw-muted">{plural(s.count, 'saved notice')}{s.importedAt ? ` · last import ${when(s.importedAt)}` : ''}</span></li>)}</ul>}
+    {sources.size > 0 && <ul className="rw-list">{[...sources].map(([id, s]) => <li key={id}><strong>{sourceName(id)}</strong> <span className="rw-muted">{countOf(s.count, 'saved notice')}{s.linked > 0 && id !== 'bc-bid' ? ` (incl. ${count(s.linked)} also on BC Bid)` : ''}{s.importedAt ? ` · last import ${shortWhen(s.importedAt)}` : ''}</span></li>)}</ul>}
     <Loadable query={health} what="batch history">{kinds => kinds.length === 0 ? <p className="rw-muted">No batches recorded yet.</p> : <ul className="rw-list">{kinds.map(k => <li key={k.kind}>
       <strong>{BATCH_KINDS[k.kind] ?? k.kind}</strong>
-      <span className="rw-muted">Last succeeded: {k.succeeded ? when(k.succeeded) : 'no successful run recorded'}{k.running ? ` · ${k.running} running` : ''}</span>
-      {k.partial && <details className="rw-queue-examples"><summary data-zoer-disclosure="" className="rw-warn">Partial run {when(k.partial.at)}: {n(k.partial.completed)}/{n(k.partial.total)} succeeded</summary><p className="rw-muted">{n(k.partial.failed)} failed of {n(k.partial.total)}. Saved results are kept.</p></details>}
-      {k.failed && <details className="rw-queue-examples"><summary data-zoer-disclosure="" className="rw-bad">Failed attempt {when(k.failed.at)}</summary><p className="rw-muted">{k.failed.error || 'No error message recorded.'} Earlier saved results are kept.</p></details>}
+      <span className="rw-muted">Last done: {k.succeeded ? shortWhen(k.succeeded) : 'no successful run recorded'}{k.running ? ` · ${count(k.running)} running now` : ''}</span>
+      {k.partial && <details className="rw-queue-examples"><summary data-zoer-disclosure="" className="rw-warn">Partly failed {shortWhen(k.partial.at)}: {n(k.partial.completed)} of {n(k.partial.total)} done</summary><p className="rw-muted">{n(k.partial.failed)} failed of {n(k.partial.total)}. Saved results are kept.</p></details>}
+      {k.failed && <details className="rw-queue-examples"><summary data-zoer-disclosure="" className="rw-bad">Failed {shortWhen(k.failed.at)}</summary><p className="rw-muted">{k.failed.error || 'No error message recorded.'} Earlier saved results are kept.</p></details>}
     </li>)}</ul>}</Loadable>
   </Panel>;
 }
@@ -194,7 +197,7 @@ function Deadlines({ source, asOf }: { source: string; asOf: number }) {
         <RouteLink to={`/procurement?notice=${encodeURIComponent(row.id)}`} className="rw-item-title">{row.title || row.id}</RouteLink>
         <Hint content={d.detail || undefined}><span className="rw-muted">{[d.text, row.buyer].filter(Boolean).join(' · ')}</span></Hint>
       </li>; })}</ul>
-      {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'notice')} in days {SOON_DAYS + 1}–14 · all open notices by closing date →</RouteLink>}
+      {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'open notice')}{source ? '' : ' (all sources)'} in days {SOON_DAYS + 1}–14 · all open notices by closing date →</RouteLink>}
     </>}</Loadable>
   </Panel>;
 }
