@@ -45,8 +45,8 @@ describe('document completeness: Status, Sources and Home say what Documents say
     const queue = { notices: 689, withLinks: 466, withoutLinks: 223, needsDetails: 0, fullySaved: 367, files: 3359, saved: 2371, neverTried: 451, retryDue: 528, retryScheduled: 3, waitingForBrowser: 1, skipped: 3, unavailable: 1, exhausted: 1, nextRetryAt: null };
     const gap = computeDocumentGap({ open: 689, withLinks: 466 }, links, docs, [], queue);
     expect(gap).toMatchObject({ withLinks: 466, fullySaved: 367, links: 3359, saved: 2371, never: 451, waiting: 1, failed: 536, missingNotices: 99 });
-    expect(documentsStep(gap)).toMatchObject({ status: '367 of 466 notices complete' });
-    expect(documentsStep(gap).detail).toMatch(/^988 linked files missing on 99 notices: 451 never tried, 528 ready to retry, 3 scheduled for retry, 1 waiting for a browser check, 3 skipped, 1 unavailable, 1 retry limit reached\./);
+    expect(documentsStep(gap)).toMatchObject({ status: '367 of 466 have every file' });
+    expect(documentsStep(gap).detail).toMatch(/^367 of 466 open BC Bid notices with attachment links have every file saved\. 988 linked files missing on 99 notices: 451 never tried, 528 ready to retry, 3 scheduled for retry, 1 waiting for a browser check, 3 skipped, 1 unavailable, 1 retry limit reached\./);
     // The per-notice list stays local and is not hidden by the host counts.
     expect(gap.notices.map(notice => notice.id)).toEqual(['o1']);
   });
@@ -54,12 +54,12 @@ describe('document completeness: Status, Sources and Home say what Documents say
     const gap = computeDocumentGap({ open: 1, withLinks: 1 }, links, docs);
     expect(gap.queue).toBeNull();
     expect(missingFileParts(gap)).toEqual([[1, 'never tried']]);
-    expect(documentsStep(gap).status).toBe('0 of 1 notices complete');
+    expect(documentsStep(gap).status).toBe('0 of 1 have every file');
   });
   it('states browser-check waits in files', () => {
     const gap = computeDocumentGap({ open: 1, withLinks: 1 }, links, [], [{ recordId: 'o1', url: 'https://example.com/b' }]);
     const step = browserCheckStep({ ...gap, checkPendingSince: '2026-11-27T21:23:00Z' })!;
-    expect(step.detail).toMatch(/; 1 file of an open notice waits for it\./);
+    expect(step.detail).toMatch(/ so 2 missing files of open notices wait \(1 file of an open notice hit the check\)\./);
     expect(gap.reasons).toEqual([{ text: expect.stringMatching(/browser check/), count: 1 }]);
   });
 });

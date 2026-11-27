@@ -81,7 +81,11 @@ describe('Status checklist', () => {
     expect(browserCheckStep({ ...gap, waiting: 0, waitingNotices: 0, checkPendingSince: null })).toBeNull();
     const step = browserCheckStep({ ...gap, waiting: 0, waitingNotices: 0, checkPendingSince: '2026-11-19T16:46:26Z' });
     expect(step).toMatchObject({ id: 'browser-check', status: 'Waiting for you' });
-    expect(step!.detail).toMatch(/^BC Bid asked for a browser check at .+\. Open the download browser/);
+    expect(step!.detail).toMatch(/^BC Bid asked for a browser check in the download browser, .+\. BC Bid attachment downloads stop at it/);
+    // No download run is active: nothing continues by itself (stuck.md cause 5).
+    expect(step!.detail).not.toMatch(/continues/);
+    expect(step!.detail).toMatch(/No download run is active, so start one afterwards under Operations › Documents\.$/);
+    expect(browserCheckStep({ ...gap, checkPendingSince: '2026-11-19T16:46:26Z' }, undefined, true)!.detail).toMatch(/the active download run then continues\.$/);
   });
   it('degrades on older Zoer (no browser names) and names browsers on newer Zoer', () => {
     const old = setupChecklist({ browsers: undefined, rows: LIVE, gap });

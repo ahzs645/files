@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
@@ -6,183 +6,223 @@ import { useWorkspace } from '../backend';
 import { useCapabilities } from '../capabilities';
 import { assertDocumentBrowserIdle } from '../document-run';
 import { plainError } from '../error-text';
-import { hostHref, hostSettingsHref, navigatePlugin, pluginHref } from '../navigation';
-import { useNarrowScreen } from '../mobile';
-import { sourceName } from './display';
-import { browserText, findSchedule, scheduleLabel, scheduleState, type ScheduleRow } from './schedule-state';
-import { useScheduleBrowsers, useSchedules } from './ScheduleControl';
-import { RUNS_KEY, usePresets, useRecentRuns } from './CollectionRuns';
-import { DOCUMENT_GAP_KEY, LAST_COLLECTION_KEYS, lastCollectionText, lastCollections, readDocumentGap, type DocumentGap } from './status-data';
-import { missingFileParts, setupChecklist, type SetupStep, type StepAction } from './status-checklist';
-import { readDocumentQueue } from '../document-queue';
-import { friendlyDeadline } from '../review-workspace/deadline-text';
+import { hostHref, usePluginLocation } from '../navigation';
+import { StatusBadge, type Tone as BadgeTone } from '../host-ui';
+import { count as n } from '../format';
+import { INVENTORY_SQL, sourceName, sql } from './display';
+import { PluginLink, SettingsLink } from './links';
+import { findSchedule, scheduleKind, scheduleLabel, scheduleState, type ScheduleRow } from './schedule-state';
+import { useSchedules } from './ScheduleControl';
+import { RUNS_KEY, useCollectionRuns, usePresets, useRecentRuns, useWorkflowRuns } from './CollectionRuns';
+import { STATUS_SOURCES, lastCollectionText, lastCollections } from './status-data';
+import { COLLECTION_KEY, connectorCollectionKey } from './source-adapters';
+import { connectorStatus, readConnectorCollection } from './source-overview';
+import { BATCH_SQL, bcCheckpointHealth, bcSourceHealth, type BatchRow } from './source-health';
+import { liveRunFor, runState, sourceSchedule, type Preset, type RecentRun } from './source-schedules';
+import { batchProgress, runOutcome, runningNow, runsHref, scheduleLine, scheduleSections, runGroup, type Need, type Outcome, type RunGroup } from './overview-data';
+import { useCollectionEntries, useOverviewStatus } from './overview-hooks';
+import { StoppedSchedules } from './schedule-actions';
+import { CoveragePanel } from '../review-workspace/CoveragePanel';
+import type { StepAction } from './status-checklist';
 import './status.css';
 
-const n = (value: number) => value.toLocaleString();
-const follow = (to: string) => (event: MouseEvent) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); navigatePlugin(to); } };
-/** In-plugin link with a real href (new tab works) and host navigation on a plain click. */
-export function PluginLink({ to, children, className = 'procurement-link' }: { to: string; children: ReactNode; className?: string }) {
-  return <a className={className} href={pluginHref(to)} onClick={follow(to)}>{children}</a>;
-}
-/** Zoer's plugin Settings window, opened at its Browsers or Schedules section. Hidden outside Zoer. */
-export function SettingsLink({ section, children, className = 'procurement-link' }: { section: 'browsers' | 'schedules'; children?: ReactNode; className?: string }) {
-  const href = hostSettingsHref(section);
-  if (!href) return null;
-  return <a className={className} href={href}>{children ?? (section === 'browsers' ? 'Open Settings › Browsers' : 'Open Settings › Schedules')}</a>;
-}
+// Other pages import these from here.
+export { PluginLink, SettingsLink } from './links';
+export { useDocumentGap, useLastCollections, useSetupStatus } from './overview-hooks';
 
-/** The document gap, shared by Status and Home (one cached read; heavy, so refreshed every two minutes). */
-export function useDocumentGap(enabled = true) {
-  const schedules = useSchedules(), { data: browsers } = useScheduleBrowsers(enabled);
-  const downloads = findSchedule(schedules.data, 'documents.download.missing');
-  const browserId = (downloads?.enabled ? downloads.browser?.id ?? downloads.body?.resources?.browserSessionId : undefined)
-    ?? (browsers?.downloadsUseCollection ? browsers.collection?.id : browsers?.downloads?.id ?? browsers?.collection?.id)
-    ?? '';
-  return useQuery({ queryKey: [...DOCUMENT_GAP_KEY, browserId], enabled: enabled && !schedules.isPending,
-    queryFn: () => readDocumentGap(Date.now(), browserId, () => readDocumentQueue('open')), staleTime: 60_000, refetchInterval: 120_000 });
-}
-/** Last successful collection per source (the same helper Sources uses). */
-export function useLastCollections() {
-  const { model } = useWorkspace(), recent = useRecentRuns();
-  const entries = useQuery({ queryKey: ['catalog', 'procurement-status', 'collections'], queryFn: () => host('catalog.workspace', { keys: LAST_COLLECTION_KEYS }), refetchInterval: 30_000 });
-  return lastCollections(entries.data?.entries, recent.data ?? (recent.error ? [] : undefined), model?.captureRuns);
-}
-/** The checklist from today's reads; shared by Status and Home's card. */
-export function useSetupStatus() {
-  const { collection } = useCapabilities();
-  const schedules = useSchedules(), browsers = useScheduleBrowsers(), gap = useDocumentGap(collection);
-  const checklist = setupChecklist({ browsers: browsers.data, rows: schedules.data, gap: gap.data });
-  return { schedules, gap, checklist };
-}
+const TONE: Record<string, BadgeTone> = { good: 'success', warn: 'warning', busy: 'running', idle: 'neutral' };
 
-/** Runs "Keep documents current" or "Capture missing details" now; on a host without them, says so plainly. */
+/** Starts the one run a "Needs you" row offers: download the missing files of open BC Bid notices, or capture missing details. */
 function useRunNow() {
   const client = useQueryClient(), [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState('');
   const run = async (key: StepAction) => {
     setBusy(key); setError(''); setMessage('');
     try {
-      await assertDocumentBrowserIdle(host, key === 'keep-documents' ? 'download' : 'capture');
-      if (key === 'keep-documents') { await host('action', { actionId: 'documents.download.missing', input: {} }); setMessage('Keeping documents current: missing files of open notices download now, soonest closing first. Progress shows under Documents › History.'); }
-      else { await host('action', { actionId: 'scrape.details', input: { missing: { limit: 50 } } }); setMessage('Capturing missing or incomplete details for up to 50 open BC Bid notices. Progress shows under BC Bid › Runs.'); }
-      await client.invalidateQueries({ queryKey: RUNS_KEY });
+      await assertDocumentBrowserIdle(host, key === 'download-missing' ? 'download' : 'capture');
+      if (key === 'download-missing') { await host('action', { actionId: 'documents.download.queue', input: { scope: 'open' } }); setMessage('Downloading the missing files of open BC Bid notices, soonest closing first. It shows under Running now.'); }
+      else { await host('action', { actionId: 'scrape.details', input: { missing: { limit: 50 } } }); setMessage('Capturing missing or incomplete details for up to 50 open BC Bid notices. It shows under Running now.'); }
+      await client.invalidateQueries({ queryKey: RUNS_KEY }); await client.invalidateQueries({ queryKey: ['catalog', 'procurement-workflow-runs'] });
     } catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(''); }
   };
   return { busy, error, message, run };
 }
 
-function StepActions({ step, runNow, writes }: { step: SetupStep; runNow: ReturnType<typeof useRunNow>; writes: boolean }) {
-  return <div className="pc-step-actions">{step.actions.map(action => {
-    if (action === 'settings-browsers') return <SettingsLink key={action} section="browsers" />;
-    if (action === 'settings-schedules') return <SettingsLink key={action} section="schedules" />;
-    if (action === 'open-browser') return <a key={action} className="procurement-link" href={hostHref('#/browsers')}>Open the Zoer browser</a>;
-    if (!writes || step.tone === 'good') return null;
-    const label = action === 'keep-documents' ? 'Keep documents current now' : 'Capture missing details now';
-    return <Btn key={action} size="sm" variant="secondary" disabled={!!runNow.busy} onClick={() => void runNow.run(action)}>{runNow.busy === action ? 'Starting…' : label}</Btn>;
-  })}</div>;
+/** Run lists now live on Operations › Runs; this stays for pages that still render it. */
+export function RunLinks({ compact = false, except }: { compact?: boolean; except?: string }) {
+  const location = usePluginLocation();
+  if (except === '/runs' || location.split('?')[0] === '/runs') return null;
+  return <p className={compact ? 'pc-run-links rw-muted' : 'rw-muted'}>Every run list is under <PluginLink to="/runs">Operations › Runs</PluginLink>.</p>;
 }
 
-/** One place to see whether BC Bid keeps itself current, and what still needs the person. */
+/** Operations › Overview (`/status`): what needs you, what is running, the sources, schedules, coverage and last outcomes. */
 export function Status() {
-  const { writes } = useCapabilities(), { schedules, gap, checklist } = useSetupStatus(), presets = usePresets(), runNow = useRunNow();
-  const last = useLastCollections(), phone = useNarrowScreen('(max-width: 640px)');
+  const { writes, collection } = useCapabilities(), status = useOverviewStatus(), presets = usePresets(), runNow = useRunNow();
+  const { overview } = status, checkPending = overview.needs.some(need => need.id === 'browsers' && need.title === 'Browser check');
   return <section className="procurement-workspace pc-status-page" aria-labelledby="pc-status-title">
     <header className="pc-status-head">
-      <div><h1 id="pc-status-title">Status</h1><p className="rw-muted">Is collection running, and what still needs you?</p></div>
-      <span className="pc-status" data-tone={checklist.needs ? 'warn' : 'good'}>{checklist.verdict}</span>
+      <div><h1 id="pc-status-title">Overview</h1><p className="rw-muted">What is running, what is stuck, and what needs you.</p></div>
     </header>
+    <p className="pc-ov-verdict" role="status"><StatusBadge tone={overview.needs.length ? 'warning' : overview.unknown.length ? 'neutral' : 'success'}>{overview.verdict}</StatusBadge></p>
     {runNow.error && <p role="alert" className="pc-wrap">{runNow.error}</p>}{runNow.message && <p role="status">{runNow.message}</p>}
-    <section className="rw-panel" aria-labelledby="pc-setup-title">
-      <header className="rw-panel-head"><h2 id="pc-setup-title">Setup checklist</h2></header>
-      <ol className="pc-checklist">{checklist.steps.map(step => <li key={step.id} data-tone={step.tone}>
-        <span className="pc-step-mark" aria-hidden="true">{step.tone === 'good' ? '✓' : step.tone === 'warn' ? '!' : '·'}</span>
-        <div className="pc-step-body">
-          <div className="pc-step-title"><strong>{step.title}</strong><span className="pc-status" data-tone={step.tone}>{step.status}</span></div>
-          {step.detail && <p className="pc-wrap">{step.detail}</p>}
-          <StepActions step={step} runNow={runNow} writes={writes} />
-        </div>
-      </li>)}</ol>
+
+    <section className="rw-panel" aria-labelledby="pc-ov-needs">
+      <header className="rw-panel-head"><h2 id="pc-ov-needs">Needs you</h2></header>
+      {overview.needs.length === 0 ? <p className="rw-muted">{overview.unknown.length ? 'Nothing so far; some checks are still loading or not reported.' : 'Nothing needs you right now.'}</p> :
+        <ol className="pc-checklist">{overview.needs.map(need => <NeedRow key={need.id} need={need} rows={status.schedules.data ?? []} presets={presets.data} writes={writes} runNow={runNow} checkPending={checkPending} />)}</ol>}
+      {overview.clear.length > 0 && <details className="pc-ov-clear"><summary data-zoer-disclosure="">All clear ({overview.clear.length})</summary>
+        <ul className="pc-status-schedules">{overview.clear.map(step => <li key={step.id}><div className="pc-step-title"><strong>{step.title}</strong><StatusBadge tone={TONE[step.tone]} variant="dot">{step.status}</StatusBadge></div>{step.detail && <p className="rw-muted pc-wrap">{step.detail}</p>}</li>)}</ul>
+      </details>}
+      {overview.unknown.length > 0 && <p className="rw-muted pc-wrap">Not known yet: {overview.unknown.map(step => `${step.title} (${step.status.replace(/…$/, '').toLowerCase()})`).join(' · ')}.</p>}
     </section>
 
-    <section className="rw-panel" aria-labelledby="pc-status-schedules">
-      <header className="rw-panel-head"><h2 id="pc-status-schedules">Schedules</h2><span className="rw-muted">The same list as Zoer’s Settings › Schedules</span><SettingsLink section="schedules" /></header>
-      {schedules.error ? <p role="alert">Schedules could not be read: {plainError((schedules.error as Error).message)}</p> : !schedules.data ? <p role="status" className="rw-muted">Loading schedules…</p> : !schedules.data.length ? <p className="rw-muted">No schedules saved.</p> :
-        <ul className="pc-status-schedules">{schedules.data.map((row, i) => <ScheduleItem key={`${row.actionId}:${row.presetId ?? i}`} row={row} name={scheduleLabel(row, presets.data, sourceName)} />)}</ul>}
-    </section>
-
-    <div className="pc-status-grid">
-      <section className="rw-panel" aria-labelledby="pc-status-collections">
-        <header className="rw-panel-head"><h2 id="pc-status-collections">Last successful collection</h2><PluginLink to="/sources">Sources</PluginLink></header>
-        <dl className="pc-status-list">{last.map(item => <div key={item.id}><dt>{item.name}</dt><dd>{lastCollectionText(item)}</dd></div>)}</dl>
-      </section>
-      <section className="rw-panel" aria-labelledby="pc-status-runs">
-        <header className="rw-panel-head"><h2 id="pc-status-runs">Run lists</h2></header>
-        <RunLinks />
-      </section>
-    </div>
-
-    <DocumentGapPanel gap={gap.data} error={gap.error as Error | null} phone={phone} />
+    {collection && <RunningNow />}
+    {collection && <SourcesGlance rows={status.schedules.data} presets={presets.data} />}
+    <SchedulesPanel rows={status.schedules.data} error={status.schedules.error as Error | null} presets={presets.data} />
+    <CoveragePanel />
+    {collection && <LastOutcomes />}
   </section>;
 }
 
-function ScheduleItem({ row, name }: { row: ScheduleRow; name: string }) {
-  // Only browser schedules name a browser; plain-HTTP collection has none, so it shows no browser line.
-  const bound = !!row.body?.resources?.browserSessionId;
-  const browser = row.browser ? `${browserText(row.browser)}${row.browser.missing ? ' (no longer exists; choose another in Settings)' : row.browser.ready === false ? ' (not ready)' : ''}` : bound ? row.browser === null ? 'Its saved browser no longer exists; choose another in Settings' : 'A saved browser (named in Settings)' : null;
-  const state = scheduleState(row);
-  return <li>
-    <div className="pc-step-title"><strong>{name}</strong><span className="pc-status" data-tone={state.tone}>{state.status}</span></div>
-    <p className="rw-muted pc-wrap">{[browser && `Browser: ${browser}`, state.next, state.last].filter(Boolean).join(' · ')}</p>
-    {state.retrying && <p className="pc-wrap">{state.retrying}</p>}
-    {state.stopped && <p className="pc-wrap" role="note">{state.stopped}</p>}
-    {(state.stopped || state.retrying) && state.error && <details><summary data-zoer-disclosure="">Zoer’s message</summary><p className="pc-wrap">{plainError(state.error)}</p></details>}
+function NeedRow({ need, rows, presets, writes, runNow, checkPending }: { need: Need; rows: ScheduleRow[]; presets?: Preset[]; writes: boolean; runNow: ReturnType<typeof useRunNow>; checkPending: boolean }) {
+  const action = (item: StepAction) => {
+    if (item === 'open-browser') return <a key={item} className="procurement-link" href={hostHref('#/browsers')}>Open the browser in Zoer</a>;
+    if (item === 'settings-browsers') return <SettingsLink key={item} section="browsers" />;
+    if (item === 'settings-schedules') return null; // The grouped list below carries its own Settings link.
+    if (!writes) return null;
+    // Downloads stop at a pending browser check, so starting one now would only stop there again.
+    if (item === 'download-missing' && checkPending) return <span key={item} className="rw-muted">Downloads wait for the browser check above.</span>;
+    const label = item === 'download-missing' ? 'Download missing files' : 'Capture missing details now';
+    return <Btn key={item} size="sm" variant="secondary" disabled={!!runNow.busy} onClick={() => void runNow.run(item)}>{runNow.busy === item ? 'Starting…' : label}</Btn>;
+  };
+  return <li data-tone="warn">
+    <span className="pc-step-mark" aria-hidden="true">!</span>
+    <div className="pc-step-body">
+      <div className="pc-step-title"><strong>{need.title}</strong><StatusBadge tone="warning">{need.status}</StatusBadge></div>
+      {need.id !== 'schedules' && need.lines.map(line => <p key={line} className="pc-wrap">{line}</p>)}
+      {need.id === 'schedules' && <StoppedSchedules rows={rows} presets={presets} writes={writes} />}
+      <div className="pc-step-actions">{need.actions.map(action)}{need.owner && <PluginLink to={need.owner.to}>{`Open ${need.owner.label}`}</PluginLink>}</div>
+    </div>
   </li>;
 }
 
-/** Where each kind of run is listed; the three lists link to each other. */
-export function RunLinks({ compact = false, except }: { compact?: boolean; except?: string }) {
-  const links: [string, string, string][] = [
-    ['/sources#pc-runs-title', 'Collection runs', 'CanadaBuys, bids&tenders, local government and browser sites'],
-    ['/scraper/history', 'BC Bid runs', 'Scrapes, details and award history'],
-    ['/documents?tab=history', 'Download history', 'Attachment downloads'],
-  ];
-  if (compact) return <p className="pc-run-links rw-muted">Other run lists: {links.filter(([to]) => to.split('#')[0] !== except).map(([to, label], i) => <span key={to}>{i > 0 && ' · '}<PluginLink to={to.split('#')[0]}>{label}</PluginLink></span>)}</p>;
-  return <ul className="pc-status-list pc-run-link-list">{links.map(([to, label, note]) => <li key={to}><PluginLink to={to.split('#')[0]}>{label}</PluginLink><small className="rw-muted">{note}</small></li>)}</ul>;
+/** Live runs only: a run counts while its workflow run is active in Zoer's run list (never a batch left marked running). */
+function RunningNow() {
+  const { model } = useWorkspace(), collectionRuns = useCollectionRuns();
+  const runs = useWorkflowRuns();
+  const batches = useQuery({ queryKey: ['catalog', 'procurement-source-batches'], queryFn: () => sql(BATCH_SQL) as Promise<BatchRow[]>, refetchInterval: 15_000 });
+  const list = runs.data === undefined ? (model?.workflowRuns ?? undefined) : runs.data;
+  const progress: Record<string, string | null> = {};
+  for (const run of collectionRuns.data ?? []) { const state = runState(run); if (state) progress[run.runId] = [state.text, state.detail].filter(Boolean).join(' · '); }
+  for (const batch of batches.data ?? []) progress[batch.id] ??= batchProgress(batch);
+  const now = runningNow(list, progress);
+  return <section className="rw-panel" aria-labelledby="pc-ov-running">
+    <header className="rw-panel-head"><h2 id="pc-ov-running">Running now</h2><PluginLink to="/runs">Open Operations › Runs</PluginLink></header>
+    {list === undefined ? <p className="rw-muted" role="status">Loading runs…</p> : !now.known ? <p className="rw-muted">This Zoer version does not report running runs.</p> : !now.items.length ? <p className="rw-muted">Nothing running.</p> :
+      <ul className="pc-status-schedules">{now.items.map(item => <li key={item.id}>
+        <div className="pc-step-title"><strong>{item.label}</strong><StatusBadge tone={item.state === 'Waiting for you' ? 'warning' : 'running'} variant="dot">{item.state}</StatusBadge></div>
+        <p className="rw-muted pc-wrap">{[item.progress, item.since].filter(Boolean).join(' · ')} · <PluginLink to={runsHref(item.group)}>{runListName(item.group)}</PluginLink></p>
+      </li>)}</ul>}
+  </section>;
 }
+const runListName = (group: RunGroup) => ({ collection: 'Collection runs', 'bc-bid': 'BC Bid runs', downloads: 'Download runs', extraction: 'Text extraction runs', reviews: 'AI review runs', other: 'All runs' })[group];
 
-function DocumentGapPanel({ gap, error, phone }: { gap?: DocumentGap; error: Error | null; phone: boolean }) {
-  const [all, setAll] = useState(false);
-  // Missing files split as Documents › Download splits them (the host's buckets when reported).
-  const cells: [string, number | undefined, string][] = [
-    ['Open notices', gap?.open, ''], ['With attachment links', gap?.withLinks, ''], ['Every linked file saved', gap?.fullySaved, 'good'],
-    ...(gap ? missingFileParts(gap).map(([count, text]): [string, number, string] => [`Files ${text}`, count, 'warn']) : []),
-    ['No links yet (needs details)', gap?.noLinks, ''], ['Links saved, details still needed', gap?.detailsWithLinks, 'warn'], ['No public files on BC Bid (details captured)', gap?.noFiles, ''],
-  ];
-  const shown = all ? gap?.notices ?? [] : (gap?.notices ?? []).slice(0, phone ? 4 : 8);
-  return <section className="rw-panel" aria-labelledby="pc-status-gap">
-    <header className="rw-panel-head"><h2 id="pc-status-gap">Documents of open BC Bid notices</h2><PluginLink to="/documents?tab=history">Download history</PluginLink></header>
-    {error ? <p role="alert">The document gap could not be read: {plainError(error.message)}</p> : !gap ? <p role="status" className="rw-muted">Counting saved files…</p> : <>
-      <dl className="pc-gap-grid">{cells.map(([label, value, tone]) => <div key={label} data-tone={tone && value ? tone : undefined}><dt>{label}</dt><dd>{value === undefined ? '–' : n(value)}</dd></div>)}</dl>
-      <p className="rw-muted pc-wrap">{n(gap.saved)} of {n(gap.links)} linked files saved. Counts are files linked from open BC Bid notices, each file once (BC Bid file ID, not the link’s spelling), as Documents › Download counts them; a notice is complete when every linked file is saved.</p>
-      {gap.reasons.length > 0 && <><h3>Why files are missing</h3><ul className="pc-gap-reasons">{gap.reasons.slice(0, 6).map(reason => <li key={reason.text}><strong>{n(reason.count)}</strong><span className="pc-wrap">{reason.text}</span></li>)}</ul></>}
-      {gap.notices.length > 0 && <><h3>Closing soonest with missing files</h3>
-        <ul className="pc-gap-notices">{shown.map(notice => { const missing = notice.links.filter(link => link.state !== 'saved'); return <li key={notice.id}>
-          <PluginLink to={`/procurement?notice=${encodeURIComponent(notice.id)}&tab=evidence`} className="rw-item-title">{notice.title}</PluginLink>
-          <small className="rw-muted">{[notice.closing ? friendlyDeadline(notice.closing, Date.now()).text : 'Closing date not recorded', `${missing.length} of ${notice.links.length} files missing`].join(' · ')}</small>
-        </li>; })}</ul>
-        {gap.notices.length > shown.length && <Btn size="sm" variant="ghost" onClick={() => setAll(true)}>Show all {n(gap.notices.length)}</Btn>}
-      </>}
-    </>}
+/** One compact row per source: status, saved, last successful collection, next scheduled run. Actions live on Sources. */
+function SourcesGlance({ rows, presets }: { rows?: ScheduleRow[]; presets?: Preset[] }) {
+  const { model } = useWorkspace(), recent = useRecentRuns(), collectionRuns = useCollectionRuns(), entries = useCollectionEntries();
+  const inventory = useQuery({ queryKey: ['catalog', 'procurement-inventory'], queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60_000 });
+  const values = entries.data?.entries as { key: string; value: unknown }[] | undefined, entry = (key: string) => values?.find(item => item.key === key)?.value;
+  const runs = recent.data ?? (recent.error ? [] : undefined);
+  const last = lastCollections(values, runs, model?.captureRuns);
+  const live = [...(collectionRuns.data ?? []), ...(recent.data ?? [])] as RecentRun[];
+  const bcRuns = [...new Map([...(recent.data ?? []), ...((model?.captureRuns ?? []) as any[])].map((run: any) => [run.runId ?? run.id, run])).values()];
+  const saved = (id: string) => inventory.error ? 'Unknown' : !inventory.data ? '…' : n((inventory.data ?? []).filter(row => row.sourceId === id && row.kind === 'opportunity').reduce((sum, row) => sum + Number(row.count), 0));
+  const status = (id: string): { tone: string; text: string } => {
+    if (!values) return { tone: 'idle', text: entries.error ? 'Status unknown' : 'Loading…' };
+    if (id === 'bc-bid') { const health = bcSourceHealth(runs || model ? bcRuns : undefined, bcCheckpointHealth('checkpoint:full', entry('checkpoint:full'))); return { tone: health.tone, text: health.status }; }
+    const run = liveRunFor(live, id);
+    if (id === 'canadabuys') {
+      const state = run ? runState(run) : null, value = entry(COLLECTION_KEY) as any;
+      if (state) return { tone: state.tone, text: state.text };
+      return value?.error ? { tone: 'warn', text: 'Needs attention' } : value?.status === 'paused' ? { tone: 'idle', text: 'Part-way; continues next run' } : value?.lastSuccessAt ? { tone: 'good', text: 'Collected' } : { tone: 'idle', text: 'Not collected' };
+    }
+    try { return connectorStatus(readConnectorCollection(entry(connectorCollectionKey(id)), id), Date.now(), run); } catch { return { tone: 'warn', text: 'Saved state not readable' }; }
+  };
+  const next = (id: string) => {
+    if (!rows) return '…';
+    const row = id === 'bc-bid' ? findSchedule(rows, 'scrape.full') : sourceSchedule(rows, presets, id);
+    if (!row) return 'Not scheduled';
+    const kind = scheduleKind(row);
+    return kind === 'stopped' ? 'Schedule needs review' : kind === 'paused' ? 'Schedule off' : scheduleState(row).next ?? 'Next run not recorded';
+  };
+  const known = new Set<string>(STATUS_SOURCES);
+  return <section className="rw-panel" aria-labelledby="pc-ov-sources">
+    <header className="rw-panel-head"><h2 id="pc-ov-sources">Sources at a glance</h2><PluginLink to="/sources">Open Operations › Sources</PluginLink></header>
+    <table className="pc-ov-table">
+      <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Saved</th><th scope="col">Last successful collection</th><th scope="col">Next scheduled run</th></tr></thead>
+      <tbody>{STATUS_SOURCES.filter(id => known.has(id)).map(id => { const s = status(id), item = last.find(entry => entry.id === id); return <tr key={id}>
+        <th scope="row"><PluginLink to={id === 'bc-bid' ? '/scraper' : '/sources'}>{sourceName(id)}</PluginLink></th>
+        <td data-label="Status"><StatusBadge tone={TONE[s.tone] ?? 'neutral'} variant="dot">{s.text}</StatusBadge></td>
+        <td data-label="Saved">{saved(id)}</td>
+        <td data-label="Last successful collection">{lastCollectionText(item)}</td>
+        <td data-label="Next scheduled run">{next(id)}</td>
+      </tr>; })}</tbody>
+    </table>
   </section>;
 }
 
-/** Home's compact status: the checklist verdict, schedules and documents in three lines, and the way to Status. */
+/** The one schedule list, grouped Needs review / Off / On; collapsed to "N of M on" when none needs review. */
+function SchedulesPanel({ rows, error, presets }: { rows?: ScheduleRow[]; error: Error | null; presets?: Preset[] }) {
+  const sections = scheduleSections(rows), name = (row: ScheduleRow) => scheduleLabel(row, presets, sourceName);
+  // Needs review rows are one line each: their reasons and last runs are under Needs you.
+  const group = (title: string, list: ScheduleRow[], compact = false) => list.length > 0 && <>
+    <h3>{title} ({list.length})</h3>
+    <ul className={`pc-status-schedules${compact ? ' pc-ov-compact' : ''}`}>{list.map((row, i) => { const line = scheduleLine(row); return <li key={`${row.actionId}:${row.presetId ?? i}`}>
+      <div className="pc-step-title"><strong>{name(row)}</strong><StatusBadge tone={TONE[line.tone]} variant="dot">{line.status}</StatusBadge></div>
+      {!compact && line.detail && <p className="rw-muted pc-wrap">{line.detail}</p>}
+    </li>; })}</ul>
+  </>;
+  const body = <>{group('Needs review', sections.review, true)}{group('Off', sections.off)}{group('On', sections.on)}</>;
+  return <section className="rw-panel" aria-labelledby="pc-status-schedules">
+    <header className="rw-panel-head"><h2 id="pc-status-schedules">Schedules</h2><SettingsLink section="schedules" /></header>
+    {error ? <p role="alert">Schedules could not be read: {plainError(error.message)}</p> : !rows ? <p role="status" className="rw-muted">Loading schedules…</p> : !rows.length ? <p className="rw-muted">No schedules saved.</p> :
+      sections.review.length ? <><p className="rw-muted">{sections.summary}; {sections.review.length} need{sections.review.length === 1 ? 's' : ''} review (reasons under Needs you).</p>{body}</> :
+      <details><summary data-zoer-disclosure="">{sections.summary}</summary>{body}</details>}
+  </section>;
+}
+
+const BATCH_GROUPS: Record<string, RunGroup> = { download: 'downloads', extract: 'extraction' };
+const LIVE_BATCH = ['running', 'paused', 'waiting_for_user', 'pending', 'queued'];
+/** Last outcome of each run list, from the same reads as Runs and Sources; each links to its list. */
+function LastOutcomes() {
+  const { model } = useWorkspace(), { writes, ai } = useCapabilities(), collectionRuns = useCollectionRuns();
+  const batches = useQuery({ queryKey: ['catalog', 'procurement-source-batches'], queryFn: () => sql(BATCH_SQL) as Promise<BatchRow[]>, refetchInterval: 15_000 });
+  const runs = useWorkflowRuns();
+  const runList: { id: string; status: string }[] | null | undefined = runs.data;
+  // A batch left marked running after its run ended shows the run's real outcome (populations.ts "Running").
+  const batchRuns = (group: RunGroup) => batches.data ? batches.data.filter(row => (BATCH_GROUPS[row.kind] ?? 'reviews') === group).map(row => {
+    const run = runList?.find(item => item.id === row.id), stale = LIVE_BATCH.includes(row.status) && !!runList && !(run && !['succeeded', 'failed', 'cancelled', 'outcome_unknown'].includes(run.status));
+    return { status: stale ? run?.status ?? 'outcome_unknown' : row.status, createdAt: row.updated_at, error: row.error };
+  }) : batches.error ? null : undefined;
+  const bcRuns = ((model?.captureRuns ?? []) as any[]).filter(run => runGroup(run.actionId) === 'bc-bid').map(run => ({ status: run.status, createdAt: run.createdAt, finishedAt: run.completedAt ?? run.finishedAt, error: run.error }));
+  const rows: (Outcome | null)[] = [
+    collectionRuns.data || collectionRuns.error ? runOutcome('collection', collectionRuns.error ? null : collectionRuns.data) : null,
+    model ? runOutcome('bc-bid', bcRuns) : null,
+    // Batches are read newest 200 first, so an empty list means "none recently", not "never".
+    ...(['downloads', 'extraction', ...(writes && ai ? ['reviews'] : [])] as RunGroup[]).map(group => { const list = batchRuns(group); return list === undefined ? null : list?.length === 0 ? { ...runOutcome(group, list), status: 'None recently', detail: 'None among the 200 most recent runs.' } : runOutcome(group, list); }),
+  ];
+  return <section className="rw-panel" aria-labelledby="pc-ov-outcomes">
+    <header className="rw-panel-head"><h2 id="pc-ov-outcomes">Last outcome by run type</h2></header>
+    <ul className="pc-status-schedules">{rows.map((row, i) => !row ? <li key={i}><p className="rw-muted" role="status">Loading…</p></li> : <li key={row.group}>
+      <div className="pc-step-title"><PluginLink to={runsHref(row.group)}>{row.title}</PluginLink><StatusBadge tone={TONE[row.tone]} variant="dot">{row.status}</StatusBadge></div>
+      <p className="rw-muted pc-wrap">{[row.at, row.detail && plainError(row.detail), row.lastDone].filter(Boolean).join(' · ') || 'No runs recorded yet.'}</p>
+    </li>)}</ul>
+  </section>;
+}
+
+/** Home used to show this card; it now shows one line (review-workspace/OperationsLine.tsx). Kept as that line for older imports. */
 export function StatusCard() {
-  const { checklist } = useSetupStatus();
-  const pick = (id: string) => checklist.steps.find(step => step.id === id);
-  const lines = ['schedules', 'download-browser', 'browser-check', 'documents', 'details'].map(pick).filter((step): step is SetupStep => !!step && (step.tone === 'warn' || step.id === 'schedules' || step.id === 'documents')).slice(0, 4);
-  return <section className="rw-panel pc-status-card" aria-label="Status">
-    <header><h2>Status</h2><p><PluginLink to="/status">Open Status</PluginLink></p></header>
-    <p><span className="pc-status" data-tone={checklist.needs ? 'warn' : 'good'}>{checklist.verdict}</span></p>
-    <ul className="rw-list">{lines.map(step => <li key={step.id}><strong>{step.title}</strong> <span className="rw-muted">{step.status}</span></li>)}</ul>
-  </section>;
+  const { overview } = useOverviewStatus();
+  if (!overview.needs.length) return null;
+  return <p className="rw-ops-line"><PluginLink to="/status">{`Operations: ${overview.verdict} →`}</PluginLink></p>;
 }
+
