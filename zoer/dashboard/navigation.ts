@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { RouterHistory } from '@tanstack/history';
 import { host, subscribeHost } from './bridge';
+import { SHELL_PATHS } from './review-workspace/nav';
 let location = '/', ready = false;
 let baseUrl = window.location.origin + '/';
 /** Absolute path prefix from the host (contract §2 `hrefBase`); anchors become `hrefBase + location` when set. */
@@ -37,9 +38,10 @@ export function hostSettingsHref(section: 'browsers' | 'schedules', at = locatio
   params.set('hostSettings', section);
   return baseUrl + '#/plugins/bc-bid-monitor' + (path === '/' ? '' : path) + '?' + params;
 }
+/** Plugin location → legacy router location: pages the shell renders itself park the router on `/`. */
 const internal = (value: string) => {
   const [path, query] = value.split('?');
-  return (path === '/documents' || path === '/ai-review' || path === '/settings' || path === '/procurement' || path === '/pursuits' || path === '/sources' || path === '/bc-bid-dashboard' || path === '/home' || path === '/insights' || path === '/evidence' || path === '/profiles' || path === '/workbench' || path === '/status' ? '/' : path === '/analysis' || path.startsWith('/analysis/') ? '/contract-awards/analysis' : path) + (query ? '?' + query : '');
+  return (SHELL_PATHS.includes(path) ? '/' : path === '/analysis' || path.startsWith('/analysis/') ? '/contract-awards/analysis' : path) + (query ? '?' + query : '');
 };
 // Last catalog list location (with its query) so a record's Back link returns to the same filters.
 const catalogReturn = new Map<'opportunity' | 'award', string>();

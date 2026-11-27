@@ -123,7 +123,7 @@ describe('versioned procurement taxonomy', () => {
     const predicate = taxonomyPredicate(classification); expect(db.prepare(`SELECT count(*) AS total FROM records WHERE kind='opportunity' AND ${predicate.sql}`).get(...predicate.parameters)).toMatchObject({ total: 1 });
     db.close();
   });
-  it('exposes a taxonomy section and direct detail route', () => { expect(sectionOf('/taxonomy?code=43211508')).toBe('taxonomy'); expect(pageOf('/taxonomy')).toBe('taxonomy'); });
+  it('exposes Taxonomy as a Setup view with a direct detail route', () => { expect(sectionOf('/taxonomy?code=43211508')).toBe('setup'); expect(pageOf('/taxonomy')).toBe('taxonomy'); });
   it('browses, searches literal wildcard characters and reads version changes through the real bounded SQL validator', () => {
     const db = new DatabaseSync(':memory:'); db.exec('CREATE TABLE records(id TEXT PRIMARY KEY,kind TEXT,data TEXT)');
     const add = (id: string, kind: string, data: any) => db.prepare('INSERT INTO records VALUES(?,?,?)').run(id, kind, JSON.stringify(data));

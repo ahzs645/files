@@ -2,38 +2,37 @@
  * Review-workspace navigation (CONTRACT §5.3). Pure route → section/view/page mapping so it stays testable
  * without rendering the shell. Every pre-existing route keeps working; it now opens inside its matching section.
  */
-export type Section = 'home' | 'opportunities' | 'pursuits' | 'documents' | 'evidence' | 'insights' | 'status' | 'workbench' | 'profiles' | 'sources' | 'taxonomy';
+export type Section = 'home' | 'opportunities' | 'pursuits' | 'insights' | 'operations' | 'setup';
 /** [section, label, default route] */
 export type SectionTab = [Section, string, string];
 
+/** Daily review work. */
 export const PRIMARY_SECTIONS: SectionTab[] = [
-  ['home', 'Home', '/home'], ['opportunities', 'Opportunities', '/procurement'], ['pursuits', 'Pursuits', '/pursuits'],
-  ['documents', 'Documents', '/documents'], ['evidence', 'Evidence', '/evidence'], ['insights', 'Insights', '/insights'],
+  ['home', 'Home', '/home'], ['opportunities', 'Opportunities', '/procurement'], ['pursuits', 'Pursuits', '/pursuits'], ['insights', 'Insights', '/insights'],
 ];
-/** Visually secondary: configuration rather than daily review work. Status (setup checklist, is collection running) comes first. */
-export const CONFIGURE_SECTIONS: SectionTab[] = [
-  ['status', 'Status', '/status'], ['workbench', 'AI workbench', '/ai-review'], ['profiles', 'Profiles', '/profiles'], ['sources', 'Sources', '/sources'], ['taxonomy', 'Taxonomy', '/taxonomy'],
-];
+/** Keeping collection running (Operations) and rarely changed configuration (Setup), after the daily sections. */
+export const OPERATE_SECTIONS: SectionTab[] = [['operations', 'Operations', '/status'], ['setup', 'Setup', '/profiles']];
+/** @deprecated Use OPERATE_SECTIONS; kept for one release. */
+export const CONFIGURE_SECTIONS = OPERATE_SECTIONS;
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + '/');
 const pathOf = (location: string) => location.split('?')[0] || '/';
+const paramsOf = (location: string) => new URLSearchParams(location.split('?')[1] ?? '');
 
-/** Review mode (a host that neither collects nor writes): Evidence is a view of Insights instead of its own section. */
+/** Review mode: a host that neither collects nor writes (Home and Today drop collection-only lines). */
 export const reviewMode = (caps?: NavCapabilities) => !!caps && !caps.writes && !caps.collection;
-export function sectionOf(location: string, caps?: NavCapabilities): Section {
+/** AI review's Analysis is Insights › AI results; the same page without `view=analysis` starts reviews (Operations). */
+const aiResults = (location: string) => pathOf(location) === '/ai-review' && paramsOf(location).get('view') === 'analysis';
+// `caps` is accepted for callers that pass it; the section of a route no longer depends on the host.
+export function sectionOf(location: string, _caps?: NavCapabilities): Section {
   const path = pathOf(location);
   if (path === '/' || path === '/home') return 'home';
-  if (path === '/procurement' || under(path, '/opportunities')) return 'opportunities';
+  if (path === '/procurement' || under(path, '/opportunities') || path === '/evidence' || path === '/files') return 'opportunities';
   if (path === '/pursuits') return 'pursuits';
-  if (path === '/documents') return 'documents';
-  if (path === '/evidence') return reviewMode(caps) ? 'insights' : 'evidence';
-  if (path === '/insights' || under(path, '/analysis') || under(path, '/contract-awards')) return 'insights';
-  if (path === '/ai-review' || path === '/workbench') return 'workbench';
-  if (path === '/profiles') return 'profiles';
-  if (path === '/taxonomy') return 'taxonomy';
-  if (path === '/status') return 'status';
-  // /sources, BC Bid's own pages (/bc-bid-dashboard, /scraper, /scraper/history, /settings) and anything unknown.
-  return 'sources';
+  if (path === '/insights' || under(path, '/analysis') || under(path, '/contract-awards') || aiResults(location)) return 'insights';
+  if (path === '/profiles' || path === '/workbench' || path === '/taxonomy' || path === '/settings') return 'setup';
+  // /status, /sources, /documents, /runs, /ai-review, BC Bid's own pages (/bc-bid-dashboard, /scraper, /scraper/history) and anything unknown.
+  return 'operations';
 }
 
 /**
@@ -43,12 +42,30 @@ export function sectionOf(location: string, caps?: NavCapabilities): Section {
 export function redirectOf(location: string): string | null {
   const [path, query] = location.split('?');
   if (path === '/opportunities') return opportunitiesTableHref(query);
+  if (path === '/bc-bid-dashboard') return '/scraper' + (query ? '?' + query : '');
+  if (path === '/documents') return documentsRedirect(query);
   if (path !== '/' && path !== '') return null;
   if (!query) return '/home';
   // Old root searches covered awards too; the list now starts on opportunities.
   const params = new URLSearchParams(query);
   if (params.has('search') && !params.has('kind')) params.set('kind', 'all');
   return `/procurement?${params}`;
+}
+
+/**
+ * Documents used to be four tabs (`?tab=`). Files is Opportunities › Files, History is Operations › Runs (download runs)
+ * and Processing is the extraction panel of the one Documents page; every other key (record, fileStatus...) is kept.
+ */
+const DOCUMENT_TABS: Record<string, [string, string, string]> = {
+  files: ['/files', '', ''], history: ['/runs', 'kind', 'downloads'], processing: ['/documents', 'focus', 'extraction'],
+};
+function documentsRedirect(query = ''): string | null {
+  const params = new URLSearchParams(query), target = DOCUMENT_TABS[params.get('tab') ?? ''];
+  if (!target) return null;
+  const [path, key, value] = target, next = new URLSearchParams(key ? { [key]: value } : {});
+  params.delete('tab');
+  for (const [name, item] of params) if (name !== key) next.append(name, item);
+  return path + (next.size ? '?' + next : '');
 }
 
 /** Keys that stay on the shared notice filters when a `/opportunities` link opens the table. */
@@ -67,35 +84,35 @@ export function opportunitiesTableHref(query = ''): string {
 /** A section's alternative views, shown as the host's second-level PageTabs under the section nav. [view id, label, route] */
 export type SectionView = [string, string, string];
 export const SECTION_VIEWS: Partial<Record<Section, SectionView[]>> = {
-  opportunities: [['table', 'Browse', '/procurement'], ['matrix', 'Fit matrix', '/procurement?view=matrix'], ['compare', 'Compare', '/procurement?view=compare']],
-  insights: [['decisions', 'Decision insights', '/insights'], ['market', 'Market analysis', '/analysis/overview'], ['awards', 'Award history', '/contract-awards']],
-  documents: [['download', 'Download', '/documents'], ['processing', 'Processing', '/documents?tab=processing'], ['files', 'Files', '/documents?tab=files'], ['history', 'History', '/documents?tab=history']],
-  // Run reviews and Analysis used to be a second button row inside AI review; they are views of the section now.
-  workbench: [['reviews', 'Run reviews', '/ai-review'], ['analysis', 'Analysis', '/ai-review?view=analysis'], ['stages', 'Pipeline stages', '/workbench']],
+  // Every notice-level table: notices, extracted fields and saved attachments.
+  opportunities: [['table', 'Browse', '/procurement'], ['matrix', 'Fit matrix', '/procurement?view=matrix'], ['compare', 'Compare', '/procurement?view=compare'], ['evidence', 'Evidence', '/evidence'], ['files', 'Files', '/files']],
+  insights: [['decisions', 'Decisions', '/insights'], ['awards', 'Awards', '/contract-awards'], ['market', 'Market', '/analysis/overview'], ['ai', 'AI results', '/ai-review?view=analysis']],
+  // What is running, what is stuck, what needs the user; starting jobs. BC Bid's own pages are Sources and Runs.
+  operations: [['overview', 'Overview', '/status'], ['sources', 'Sources', '/sources'], ['documents', 'Documents', '/documents'], ['reviews', 'AI reviews', '/ai-review'], ['runs', 'Runs', '/runs']],
+  setup: [['profiles', 'Profiles', '/profiles'], ['pipeline', 'AI pipeline', '/workbench'], ['taxonomy', 'Taxonomy', '/taxonomy'], ['data', 'Import & export', '/settings']],
 };
 
 /** Host capabilities that decide which sections and views exist (subset of HostCapabilities, kept local so this stays pure). */
 export type NavCapabilities = { collection: boolean; writes: boolean; ai: boolean };
 type Need = keyof NavCapabilities;
 /**
- * Sections that only exist when the host can collect (Sources, BC Bid's scraper pages, the taxonomy import page),
- * write (profile editor) or call AI models (the AI workbench).
+ * Views that need a host capability (every listed one): collection for the operations pages and the taxonomy import and
+ * export pages, writes for the profile editor, writes and AI for starting reviews and stage tests, AI for AI results.
+ * A section exists when at least one of its views survives; Home and Pursuits have no views and always exist.
  */
-const SECTION_NEEDS: Partial<Record<Section, Need>> = { status: 'collection', sources: 'collection', taxonomy: 'collection', profiles: 'writes', workbench: 'ai' };
-/** Views that start host work: downloads, text extraction and their batch history are collection; running reviews and stage tests write. */
-const VIEW_NEEDS: Partial<Record<Section, Record<string, Need>>> = { documents: { download: 'collection', processing: 'collection', history: 'collection' }, workbench: { reviews: 'writes', stages: 'writes' } };
-const has = (caps: NavCapabilities, need: Need | undefined) => !need || caps[need];
+const VIEW_NEEDS: Partial<Record<Section, Record<string, Need | Need[]>>> = {
+  insights: { ai: 'ai' },
+  operations: { overview: 'collection', sources: 'collection', documents: 'collection', reviews: ['writes', 'ai'], runs: 'collection' },
+  setup: { profiles: 'writes', pipeline: ['writes', 'ai'], taxonomy: 'collection', data: 'collection' },
+};
+const has = (caps: NavCapabilities, need: Need | Need[] | undefined) => !need || (Array.isArray(need) ? need : [need]).every(item => caps[item]);
 /** A section's views this host can show (undefined when the section has no views). */
-/** Evidence as the last Insights view in review mode; `/evidence` keeps resolving there. */
-const EVIDENCE_VIEW: SectionView = ['evidence', 'Evidence', '/evidence'];
 export function sectionViews(section: Section, caps: NavCapabilities): SectionView[] | undefined {
-  const views = SECTION_VIEWS[section]?.filter(([id]) => has(caps, VIEW_NEEDS[section]?.[id]));
-  return section === 'insights' && views && reviewMode(caps) ? [...views, EVIDENCE_VIEW] : views;
+  return SECTION_VIEWS[section]?.filter(([id]) => has(caps, VIEW_NEEDS[section]?.[id]));
 }
 export function sectionAllowed(section: Section, caps: NavCapabilities) {
-  if (section === 'evidence' && reviewMode(caps)) return false;
   const views = sectionViews(section, caps);
-  return has(caps, SECTION_NEEDS[section]) && (!views || views.length > 0);
+  return !views || views.length > 0;
 }
 /** The daily sections a phone keeps in its strip; the rest sit behind the pinned More menu. */
 export const PHONE_SECTIONS: readonly Section[] = ['home', 'opportunities', 'pursuits', 'insights'];
@@ -124,50 +141,43 @@ export function gatedRedirectOf(location: string, caps: NavCapabilities): string
   return viewHref(section, views[0][0], location);
 }
 
-/** The active view id within a section, or '' when the section has no views. */
+const OPERATIONS_VIEWS: Record<string, string> = { '/status': 'overview', '/sources': 'sources', '/documents': 'documents', '/ai-review': 'reviews', '/runs': 'runs', '/scraper/history': 'runs', '/bc-bid-dashboard': 'sources' };
+const SETUP_VIEWS: Record<string, string> = { '/profiles': 'profiles', '/workbench': 'pipeline', '/taxonomy': 'taxonomy', '/settings': 'data' };
+/** The active view id within a section, or '' when the section has no views (or the path is not one of them). */
 export function viewOf(location: string, caps?: NavCapabilities): string {
-  const path = pathOf(location), params = new URLSearchParams(location.split('?')[1] ?? '');
+  const path = pathOf(location), params = paramsOf(location);
   switch (sectionOf(location, caps)) {
-    case 'opportunities': { const view = params.get('view'); return view === 'matrix' || view === 'compare' ? view : 'table'; }
-    case 'insights': return path === '/insights' ? 'decisions' : path === '/evidence' ? 'evidence' : under(path, '/analysis') || under(path, '/contract-awards/analysis') ? 'market' : 'awards';
-    case 'workbench': return path === '/workbench' ? 'stages' : params.get('view') === 'analysis' ? 'analysis' : 'reviews';
-    case 'documents': { const tab = params.get('tab'); return tab === 'processing' || tab === 'files' || tab === 'history' ? tab : 'download'; }
+    case 'opportunities': { if (path === '/evidence' || path === '/files') return path.slice(1); const view = params.get('view'); return view === 'matrix' || view === 'compare' ? view : 'table'; }
+    case 'insights': return path === '/insights' ? 'decisions' : path === '/ai-review' ? 'ai' : under(path, '/analysis') || under(path, '/contract-awards/analysis') ? 'market' : 'awards';
+    // BC Bid's detail page is a source page; its run list is a run list.
+    case 'operations': return OPERATIONS_VIEWS[path] ?? (under(path, '/scraper') ? 'sources' : '');
+    case 'setup': return SETUP_VIEWS[path] ?? '';
     default: return '';
   }
 }
 
-/** Views that are one page told apart by a query key; switching among them keeps the rest of the page's state. */
-const VIEW_KEYS: Partial<Record<Section, string>> = { documents: 'tab', workbench: 'view' };
-
 /**
  * Route for switching to another view. Moving between the review table, matrix and comparison keeps the
  * current filters (source, queue, profile...) so the same scope is shown differently; it drops the page cursor.
- * Documents' Download/Files/History and AI review's Run reviews/Analysis keep the record picker's search and
- * filters (and the open record) the same way, as their in-page tabs used to.
+ * Every other view is its own page and starts fresh.
  */
 export function viewHref(section: Section, view: string, location: string): string {
-  const target = (section === 'insights' && view === 'evidence' ? EVIDENCE_VIEW : SECTION_VIEWS[section]?.find(([id]) => id === view))?.[2] ?? '/';
+  const target = SECTION_VIEWS[section]?.find(([id]) => id === view)?.[2] ?? '/';
   const path = pathOf(location);
-  const key = VIEW_KEYS[section];
-  if (key && pathOf(target) === path) {
-    const params = new URLSearchParams(location.split('?')[1] ?? '');
-    params.delete(key);
-    const next = new URLSearchParams(target.split('?')[1] ?? '').get(key);
-    if (next) params.set(key, next);
-    return path + (params.size ? '?' + params : '');
-  }
   if (section !== 'opportunities' || path !== '/procurement' || !target.startsWith('/procurement')) return target;
-  const params = new URLSearchParams(location.split('?')[1] ?? '');
+  const params = paramsOf(location);
   for (const key of ['view', 'page', 'after', 'notice', 'tab']) params.delete(key);
   const next = new URLSearchParams(target.split('?')[1] ?? '').get('view');
   if (next) params.set('view', next);
   return '/procurement' + (params.size ? '?' + params : '');
 }
 
-/** Which page component the shell renders; `router` defers to the legacy route tree (grid, awards, analysis, BC Bid pages). */
-export type Page = 'home' | 'status' | 'insights' | 'procurement' | 'pursuits' | 'documents' | 'evidence' | 'ai-review' | 'workbench' | 'profiles' | 'sources' | 'settings' | 'router' | 'taxonomy';
+/** Which page component the shell renders; `router` defers to the legacy route tree (awards, analysis, BC Bid pages). */
+export type Page = 'home' | 'status' | 'insights' | 'procurement' | 'pursuits' | 'documents' | 'evidence' | 'files' | 'runs' | 'ai-review' | 'workbench' | 'profiles' | 'sources' | 'settings' | 'router' | 'taxonomy';
 const PAGES: Record<string, Page> = {
   '/home': 'home', '/status': 'status', '/insights': 'insights', '/procurement': 'procurement', '/pursuits': 'pursuits', '/documents': 'documents', '/evidence': 'evidence',
-  '/ai-review': 'ai-review', '/workbench': 'workbench', '/profiles': 'profiles', '/sources': 'sources', '/settings': 'settings', '/taxonomy': 'taxonomy',
+  '/files': 'files', '/runs': 'runs', '/ai-review': 'ai-review', '/workbench': 'workbench', '/profiles': 'profiles', '/sources': 'sources', '/settings': 'settings', '/taxonomy': 'taxonomy',
 };
+/** Paths the shell renders itself; the legacy router sees `/` for them (`navigation.ts`). */
+export const SHELL_PATHS: readonly string[] = Object.keys(PAGES);
 export const pageOf = (location: string): Page => PAGES[pathOf(location)] ?? 'router';
