@@ -1,3 +1,6 @@
+import { documentFileKey, requiresBrowserVerification } from './procurement/document-identity';
+import { plainError } from './error-text';
+
 /**
  * Text extraction apart from the download.
  *
@@ -24,7 +27,11 @@ export const extractionFailedSql = (alias = '') => `${column(alias, 'status')}='
 export const noTextSql = (alias = '') => `${column(alias, 'status')}='downloaded' AND coalesce(length(${column(alias, 'text')}),0)=0 AND coalesce(${column(alias, 'error')},'')<>'${PENDING_EXTRACTION}' AND coalesce(${column(alias, 'error')},'') NOT LIKE '${EXTRACTION_FAILED}%'`;
 export const NO_TEXT_SQL = noTextSql('d');
 
-export const DOCUMENT_STATS_SQL = `SELECT count(*) files,sum(status='downloaded') downloaded,sum(status='failed') failed,sum(length(text)>0) readable,sum(${pendingSql()}) pending,sum(${extractionFailedSql()}) extractFailed,sum(${noTextSql()}) unreadable,sum(bytes) bytes FROM documents`;
+/**
+ * Tile counts for Operations › Documents: files of notices that still exist (populations.ts "Files saved (all)"), so they
+ * agree with Opportunities › Files. `failed` counts failed rows (diagnostics); the tile counts files (`unsavedFailures`).
+ */
+export const DOCUMENT_STATS_SQL = `SELECT count(*) files,sum(status='downloaded') downloaded,sum(status='failed') failed,sum(length(text)>0) readable,sum(${pendingSql()}) pending,sum(${extractionFailedSql()}) extractFailed,sum(${noTextSql()}) unreadable,sum(CASE WHEN status='downloaded' THEN bytes ELSE 0 END) bytes FROM documents WHERE record_id IN (SELECT id FROM records)`;
 /** What a text extraction run can pick up: pending files of notices that still exist (the host counts the same way). */
 export const PENDING_COUNT_SQL = `SELECT count(*) files,count(DISTINCT record_id) notices FROM documents WHERE ${pendingSql()} AND record_id IN (SELECT id FROM records)`;
 /** Failed extractions of notices that still exist: what Retry failed files queues again (the host counts the same way). */
@@ -33,27 +40,39 @@ export const EXTRACTION_FAILED_COUNT_SQL = `SELECT count(*) files,count(DISTINCT
 export const PREFLIGHT_PENDING_SQL = (count: number) => `SELECT record_id AS id, count(*) AS pending FROM documents WHERE ${pendingSql()} AND record_id IN (${Array(count).fill('?').join(',')}) GROUP BY record_id`;
 
 export type FileFilter = 'all' | 'failed' | 'pending' | 'extractFailed' | 'unreadable' | 'warnings';
-export const FILE_FILTERS: [FileFilter, string][] = [['all', 'All files'], ['failed', 'Failed'], ['pending', 'Text pending'], ['extractFailed', 'Extraction failed'], ['unreadable', 'No text'], ['warnings', 'With warnings']];
-/** The Files list condition for a filter (documents aliased `d`). A pending file matches `pending` only. */
+export const FILE_FILTERS: [FileFilter, string][] = [['all', 'Saved files'], ['failed', 'Not saved: download failed'], ['pending', 'Text pending'], ['extractFailed', 'Text failed'], ['unreadable', 'No text'], ['warnings', 'Saved with warnings']];
+/**
+ * The Files list condition for a filter (documents aliased `d`). A pending file matches `pending` only. "All" is the
+ * saved-files library; failed downloads are their own list (`unsavedFailures`, one row per file still not saved), and
+ * `failed` here is every failed row, kept for diagnostics.
+ */
 export function fileFilterSql(filter: string): string {
   if (filter === 'failed') return "d.status='failed'";
   if (filter === 'pending') return pendingSql('d');
   if (filter === 'extractFailed') return extractionFailedSql('d');
   if (filter === 'unreadable') return NO_TEXT_SQL;
   if (filter === 'warnings') return `d.status='downloaded' AND d.error IS NOT NULL AND d.error<>'${PENDING_EXTRACTION}'`;
-  return '1=1';
+  return "d.status='downloaded'";
 }
 
 type FileRow = { status?: unknown; error?: unknown; chars?: unknown; text_length?: unknown; textLength?: unknown };
 const chars = (row: FileRow) => Number(row.chars ?? row.text_length ?? row.textLength ?? 0);
 export const isTextPending = (row: FileRow | null | undefined) => !!row && row.status === 'downloaded' && row.error === PENDING_EXTRACTION && !chars(row);
 export const isExtractionFailed = (row: FileRow | null | undefined) => !!row && row.status === 'downloaded' && !chars(row) && String(row.error ?? '').startsWith(EXTRACTION_FAILED);
-/** [tone, label] of a file in the Files list. */
+/**
+ * A failed download held by BC Bid's browser check: waiting for the person, not a failure to retry (the failure queue's
+ * rule, procurement/source-health.ts `failedFiles`). "Document download did not start" also matches the host's check
+ * test but is a stalled page, so it stays a failure.
+ */
+export const isWaitingForCheck = (row: FileRow | null | undefined) => !!row && row.status === 'failed'
+  && requiresBrowserVerification(row.error) && !/^Document download did not start\b/i.test(String(row.error ?? ''));
+/** [tone, label] of a file in the Files list (one word per state, see the audit's status table). */
 export function fileState(row: FileRow): [string, string] {
-  if (row.status === 'failed') return ['bad', 'Failed'];
+  if (isWaitingForCheck(row)) return ['warn', 'Waiting for you'];
+  if (row.status === 'failed') return ['bad', 'Download failed'];
   if (chars(row) > 0) return ['good', 'Readable'];
-  if (isExtractionFailed(row)) return ['bad', 'Extraction failed'];
-  return isTextPending(row) ? ['info', 'Text pending'] : ['warn', 'No text'];
+  if (isExtractionFailed(row)) return ['warn', 'Text failed'];
+  return isTextPending(row) ? ['info', 'Text pending'] : ['neutral', 'No text'];
 }
 /** The warning shown beside a file: its stored error, except the pending marker (the chip already says it). */
 export const fileWarning = (row: FileRow) => !row.error || row.error === PENDING_EXTRACTION ? ''
@@ -81,4 +100,38 @@ export function workbenchExclusions(docs: Array<{ name: string; status: string; 
     ...docs.filter(doc => doc.status === 'downloaded' && !doc.cp).map(doc => `${doc.name}: ${doc.pending ? 'Text pending; extracted when this stage runs' : 'Saved; no usable text extracted'}`),
     ...docs.filter(doc => doc.status !== 'downloaded').map(doc => `${doc.name}: download ${doc.status}`),
   ];
+}
+
+/**
+ * Every document row of the notices that have a failed row (any source, open or closed), read in pages: the failure
+ * queue's read (procurement/source-health.ts `FAILED_FILES_SQL`) with the row id and size, so each file can be retried.
+ */
+export const FAILED_ROWS_SQL = "SELECT d.id, d.record_id AS recordId, r.title AS title, d.url, d.name, d.status, d.error, d.bytes, d.updated_at AS updatedAt FROM documents d LEFT JOIN records r ON r.id=d.record_id WHERE d.record_id IN (SELECT record_id FROM documents WHERE status='failed') ORDER BY d.record_id, d.url";
+export interface FailedRow { id: string; recordId: string; title?: string | null; url: string; name?: string | null; status: string; error?: string | null; bytes?: number | null; updatedAt?: string | null }
+/**
+ * Files not saved after a failed download: per notice and file identity (document-identity.ts) the latest failed row,
+ * unless another row of the same file is saved. The failure queue's rule (`failedFiles`), keeping the rows.
+ */
+export function unsavedFailures<T extends FailedRow>(rows: readonly T[]): T[] {
+  const key = (row: T) => `${row.recordId}\u0000${documentFileKey(row.url)}`;
+  const saved = new Set(rows.filter(row => row.status === 'downloaded').map(key)), latest = new Map<string, T>();
+  for (const row of rows) {
+    if (row.status !== 'failed' || saved.has(key(row))) continue;
+    const prior = latest.get(key(row));
+    if (!prior || String(prior.updatedAt ?? '') < String(row.updatedAt ?? '')) latest.set(key(row), row);
+  }
+  return [...latest.values()].sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')) || a.id.localeCompare(b.id));
+}
+/** The browser-check sentence, shown once for every file it holds. */
+export const BROWSER_CHECK_REASON = plainError('Manual browser verification required.');
+export interface FailureGroup<T> { reason: string; waiting: boolean; rows: T[] }
+/** Failed files grouped by their plain reason: files held by a browser check first, then the largest groups. */
+export function groupByReason<T extends FailedRow>(rows: readonly T[]): FailureGroup<T>[] {
+  const groups = new Map<string, FailureGroup<T>>();
+  for (const row of rows) {
+    const waiting = isWaitingForCheck({ status: 'failed', error: row.error }), reason = waiting ? BROWSER_CHECK_REASON : plainError(row.error ?? '') || 'No reason recorded.';
+    const group = groups.get(reason) ?? { reason, waiting, rows: [] };
+    group.rows.push(row); groups.set(reason, group);
+  }
+  return [...groups.values()].sort((a, b) => Number(b.waiting) - Number(a.waiting) || b.rows.length - a.rows.length);
 }

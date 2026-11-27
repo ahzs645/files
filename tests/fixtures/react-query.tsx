@@ -11,7 +11,7 @@ export function QueryClientProvider({ client, children }: { client: QueryClient;
 export const useQueryClient = () => new QueryClient();
 export const keepPreviousData = undefined;
 
-export function useQuery<T>(options: { queryKey: unknown[]; queryFn: () => Promise<T>; enabled?: boolean }) {
+export function useQuery<T>(options: { queryKey: unknown[]; queryFn: () => Promise<T>; enabled?: boolean; select?: (data: T) => any }) {
   const enabled = options.enabled !== false, key = JSON.stringify(options.queryKey);
   const [state, setState] = useState<{ data?: T; error: Error | null; isFetching: boolean }>({ error: null, isFetching: enabled });
   const queryFn = useRef(options.queryFn); queryFn.current = options.queryFn;
@@ -21,5 +21,7 @@ export function useQuery<T>(options: { queryKey: unknown[]; queryFn: () => Promi
     catch (error) { setState(current => ({ ...current, error: error as Error, isFetching: false })); if (input?.throwOnError) throw error; return { error }; }
   }, []);
   useEffect(() => { if (enabled) void run(); }, [enabled, key, run]);
-  return { data: state.data, error: state.error, isError: !!state.error, isFetching: state.isFetching, isPending: enabled && state.data === undefined && !state.error, refetch: run };
+  // `select` shapes the data as the real hook does (shared reads such as the schedule list pick their part).
+  const data = options.select && state.data !== undefined ? options.select(state.data) : state.data;
+  return { data, error: state.error, isError: !!state.error, isFetching: state.isFetching, isPending: enabled && state.data === undefined && !state.error, isSuccess: state.data !== undefined && !state.error, refetch: run };
 }
