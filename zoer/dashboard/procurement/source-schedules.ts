@@ -74,8 +74,11 @@ export async function migrateAllSchedule(host: Host, legacy: ScheduleRow, labels
   if (legacy.enabled) await host('schedules.save', { actionId: COLLECT_ACTION, input: legacy.body?.input ?? { sourceId: 'all' }, enabled: false, intervalHours: legacy.intervalHours });
 }
 
-/** Actions the dashboard can schedule itself; browser actions are scheduled in Zoer's settings with their browser. */
-export const DASHBOARD_SCHEDULED_ACTIONS = [COLLECT_ACTION, 'procurement.alerts'];
+/**
+ * Actions the dashboard can schedule itself: the ones that run without a browser (text extraction and linked publisher
+ * checks included). Browser actions are scheduled in Zoer's settings with their browser.
+ */
+export const DASHBOARD_SCHEDULED_ACTIONS = [COLLECT_ACTION, 'procurement.alerts', 'documents.extract.pending', 'procurement.publisher.sweep'];
 /**
  * Schedules Zoer stopped (any error, including a network failure) that this page can turn back on: not the legacy
  * `all` row, not browser actions (they need their browser, chosen in Zoer's settings) and not rows restored from a

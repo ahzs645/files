@@ -39,3 +39,21 @@
 @media(max-width:640px){
   .pc-gap-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* Operations › Overview (Needs you, Running now, Sources at a glance, Schedules, Last outcome). */
+.pc-ov-verdict{margin-top:-.5rem}
+.pc-ov-clear>summary{font-size:13px;color:var(--text-secondary);cursor:pointer}
+.pc-ov-groups{display:flex;flex-direction:column;gap:.625rem;margin-top:.25rem}
+.pc-ov-groups>li{display:flex;flex-direction:column;gap:.25rem;padding:.5rem .625rem;border:1px solid var(--border-muted);border-radius:.5rem}
+.pc-ov-table{width:100%;border-collapse:collapse;font-size:13px}
+.pc-ov-table th,.pc-ov-table td{padding:.5rem .5rem .5rem 0;text-align:left;vertical-align:top;border-top:1px solid var(--border-muted)}
+.pc-ov-table thead th{border-top:0;font-size:12px;font-weight:600;color:var(--text-secondary)}
+.pc-ov-table td{color:var(--text-secondary)}
+.pc-ov-table td[data-label=Saved]{font-variant-numeric:tabular-nums}
+.rw-panel h3+.pc-status-schedules{margin-top:0}
+@media(max-width:640px){
+  .pc-ov-table thead{display:none}
+  .pc-ov-table tr{display:flex;flex-direction:column;gap:.125rem;padding:.5rem 0;border-top:1px solid var(--border-muted)}
+  .pc-ov-table th,.pc-ov-table td{border-top:0;padding:0}
+  .pc-ov-table td::before{content:attr(data-label) ": ";color:var(--text-muted)}
+}
+.pc-ov-compact>li{padding:.375rem 0}

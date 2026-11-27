@@ -78,11 +78,39 @@ export function quietPursuits(pursuits: Pursuit[], now: number, source = '', day
 }
 
 export const LAST_VISIT_KEY = 'bc-bid-monitor:home:last-visit';
+/** A visit ends after this long without the page being seen; the next page load starts a new one. */
+export const VISIT_GAP_MS = 30 * 60_000;
 /** The window for "new since your last visit": the stored time, or the last 24 hours on a first visit. */
 export function visitWindow(stored: string | null, now: number): { since: number; first: boolean } {
   const value = stored === null ? NaN : Number(stored);
   return Number.isFinite(value) && value > 0 && value <= now ? { since: value, first: false } : { since: now - 86_400_000, first: true };
 }
+
+/** What is stored under LAST_VISIT_KEY: when this visit's window starts and when the page was last seen. */
+export interface VisitMarker { since: number; seen: number; first: boolean }
+/**
+ * The last-visit rule. A visit is a stretch of time with the page seen at least every VISIT_GAP_MS (30 minutes); the
+ * page records "seen" on load and every minute while it is visible. "New since your last visit" counts from the end
+ * of the previous visit: a reload, a reopened tab or a return within 30 minutes keeps the same window; coming back
+ * after a longer gap starts a new visit whose window starts when the previous one was last seen. "Mark as seen"
+ * starts the window now. Nothing stored (or unreadable) is a first visit: the last 24 hours. Older plugin versions
+ * stored a bare timestamp of the last load; that is read as a visit last seen then.
+ */
+export function nextVisit(stored: string | null, now: number, gap = VISIT_GAP_MS): VisitMarker {
+  let previous: { since: number; seen: number; first?: boolean } | null = null;
+  if (stored !== null) {
+    try {
+      const value = JSON.parse(stored);
+      if (typeof value === 'number') previous = { since: value, seen: value };
+      else if (value && Number.isFinite(value.since) && Number.isFinite(value.seen)) previous = { since: value.since, seen: value.seen, first: value.first === true };
+    } catch { previous = null; }
+  }
+  if (!previous || !(previous.seen > 0) || previous.seen > now || previous.since > now) { const first = visitWindow(null, now); return { since: first.since, seen: now, first: true }; }
+  if (now - previous.seen <= gap) return { since: previous.since, seen: now, first: previous.first === true };
+  return { since: previous.seen, seen: now, first: false };
+}
+/** The marker after the page was seen again during the same visit. */
+export const visitSeen = (marker: VisitMarker, now: number): VisitMarker => ({ ...marker, seen: Math.max(marker.seen, now) });
 
 /**
  * Which Today columns a host shows. "New since your last visit" counts collection runs and the alert footer reports

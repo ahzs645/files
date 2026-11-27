@@ -82,12 +82,13 @@ describe('schedules', () => {
     expect(scheduleState(row({}), now).next).toMatch(/^Next run /);
     expect(scheduleState(row({ nextRunAt: '2026-10-03T18:00:00Z' }), now).next).toMatch(/^Due now; starts when no other run/);
     expect(scheduleState(row({ lastStatus: 'pending' }), now)).toMatchObject({ tone: 'busy', next: 'Running now', last: 'Last scheduled run is running' });
-    expect(scheduleState(row({ enabled: false, intervalHours: 12 }), now)).toMatchObject({ tone: 'idle', status: 'Paused · was every 12 hours', stopped: null });
+    expect(scheduleState(row({ enabled: false, intervalHours: 12 }), now)).toMatchObject({ tone: 'idle', status: 'Off · was every 12 hours', stopped: null });
     const stopped = scheduleState(row({ enabled: false, lastStatus: 'failed', error: 'CanadaBuys returned HTTP 503.' }), now);
-    expect(stopped).toMatchObject({ tone: 'warn', status: 'Paused: needs your review', error: 'CanadaBuys returned HTTP 503.', last: 'Last scheduled run failed' });
-    expect(stopped.stopped).toMatch(/did not succeed/);
-    expect(stopReason('Plugin or settings changed. Review and save this schedule again.')).toMatch(/Older Zoer versions paused schedules/);
-    expect(stopReason('Scheduled action, permissions or settings changed. Review and save this schedule again.')).toMatch(/Compatible version and interface updates keep schedules enabled/);
+    expect(stopped).toMatchObject({ tone: 'warn', status: 'Needs review', error: 'CanadaBuys returned HTTP 503.', last: 'Last scheduled run failed' });
+    // An unrecognised message is shown as Zoer wrote it, never replaced by a generic sentence.
+    expect(stopped.stopped).toBe('CanadaBuys returned HTTP 503.');
+    expect(stopReason('Plugin or settings changed. Review and save this schedule again.')).toMatch(/plugin update changed what this schedule is approved to run/);
+    expect(stopReason('Scheduled action, permissions or settings changed. Review and save this schedule again.')).not.toMatch(/Compatible version/);
     expect(stopReason('Scheduled batch has failed records. Review its batch history.')).toMatch(/failed items/);
     expect(stopReason('Restored from backup. Choose destination connections and review before enabling.')).toMatch(/backup/);
   });

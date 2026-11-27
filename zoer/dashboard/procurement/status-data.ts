@@ -1,6 +1,7 @@
 import { sql, sourceName } from './display';
 import { and, openSql, recordColumns, sourceSql } from '../review-workspace/queue';
 import { plainError } from '../error-text';
+import { when } from '../format';
 import { COLLECTION_KEY, connectorCollectionKey } from './source-adapters';
 import { readConnectorCollection } from './source-overview';
 import { bcCheckpointHealth, bcSourceHealth, type BcBidCollectionRun } from './source-health';
@@ -196,10 +197,10 @@ export function lastCollections(entries: { key: string; value: unknown }[] | und
   });
 }
 
-/** "Nov 12, 2026, 11:50 PM · Current opportunities (full scrape)", "Not recorded", or "Unknown". */
+/** "Nov 12, 11:50 PM · Current opportunities (full scrape)" (format.ts `when`), "Not recorded", or "Unknown". */
 export function lastCollectionText(last: Pick<LastCollection, 'at' | 'scope' | 'known'> | undefined): string {
   if (!last?.known) return 'Unknown';
   if (!last.at) return last.scope ? `Time not recorded · ${last.scope}` : 'Not recorded';
-  const time = Number.isFinite(Date.parse(last.at)) ? new Date(last.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : last.at;
+  const time = when(last.at, Date.now(), last.at);
   return last.scope ? `${time} · ${last.scope}` : time;
 }
