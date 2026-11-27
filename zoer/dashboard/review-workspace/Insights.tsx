@@ -1,4 +1,3 @@
-import { ChooseProfile } from './ChooseProfile';
 import { useQuery } from '@tanstack/react-query';
 import { Select } from '@zoer/plugin-ui/controls';
 import { patchPluginQuery, usePluginLocation } from '../navigation';
@@ -6,21 +5,23 @@ import { INVENTORY_SQL, sourceName, sql } from '../procurement/display';
 import { REVIEW_KEY, useReviewWorkspace } from './actions';
 import { useActiveProfile } from './profile-context';
 import { ProfilePicker } from './ProfilePicker';
+import { ProfilePrompt } from './ProfilePrompt';
+import { NO_EXTRACTION_TEXT, coverageIsEmpty, staleIsEmpty, visibleQueues } from './insights-data';
+import { count as n, plural, when } from '../format';
 import { label } from './queries';
-import { Loadable, Panel, RouteLink, when } from './Home';
+import { Loadable, Panel, RouteLink } from './Home';
 import { MATCH_BUCKETS, QUEUE_TEXT, READINESS_TEXT, RELEVANCE_TEXT, reviewScopeHref, type Fragment, type MatchBucket, type QueueId, type ReadinessBucket, type RelevanceBucket, type ReviewScope } from './queue';
 import { insightScope, readBottlenecks, readGaps, readMatrix, readRequirementCoverage, readStale } from './home-data';
 import './review.css';
 
-const n = (value: unknown) => Number(value ?? 0).toLocaleString();
-const notices = (count: number) => `${count.toLocaleString()} ${count === 1 ? 'notice' : 'notices'}`;
+const notices = (count: number) => plural(count, 'opportunity', 'opportunities');
 const KNOWN_RELEVANCE: RelevanceBucket[] = ['strong', 'possible', 'weak'];
 const KNOWN_READINESS: ReadinessBucket[] = ['ready', 'conditions', 'blocker'];
 const MATCH_TEXT: Record<MatchBucket, string> = { supported: 'Supported', remediable_gap: 'Remediable gap', unmet: 'Unmet', unknown: 'Unknown', not_applicable: 'Not applicable', none: 'Not matched yet' };
 
 function Cell({ scope, relevance, readiness, count }: { scope: ReviewScope; relevance: RelevanceBucket; readiness: ReadinessBucket; count: number }) {
   const text = `${RELEVANCE_TEXT[relevance]}, ${READINESS_TEXT[readiness]}: ${notices(count)}`;
-  return <RouteLink to={reviewScopeHref({ ...scope, relevance, readiness }, { view: 'table' })} className="rw-cell" label={text}><strong>{n(count)}</strong><span>{count === 1 ? 'notice' : 'notices'}</span></RouteLink>;
+  return <RouteLink to={reviewScopeHref({ ...scope, relevance, readiness }, { view: 'table' })} className="rw-cell" label={text}><strong>{n(count)}</strong><span>{count === 1 ? 'opportunity' : 'opportunities'}</span></RouteLink>;
 }
 
 /** Every bucket that falls outside the 3×3 grid: unknown relevance, unknown readiness, or no current assessment at all. */
@@ -70,33 +71,35 @@ function RequirementGaps({ scope, filter, profile }: { scope: ReviewScope; filte
 }
 
 const STATE_TEXT: [string, string][] = [['accepted', 'Accepted'], ['corrected', 'Corrected'], ['rejected', 'Rejected'], ['needs_clarification', 'Needs clarification'], ['proposed', 'Proposed, not reviewed'], ['ungrounded', 'Ungrounded, not reviewed']];
+/** Requirement review coverage; with nothing extracted in scope it is one line and a link, not a grid of zeros. */
 function ReviewCoverage({ scope, filter }: { scope: ReviewScope; filter: Fragment }) {
   const coverage = useQuery({ queryKey: [...REVIEW_KEY, 'insights', 'review-coverage', filter], queryFn: () => readRequirementCoverage(filter), refetchInterval: 60_000 });
+  if (coverage.isSuccess && coverageIsEmpty(coverage.data)) return <p className="rw-panel rw-insights-line">{NO_EXTRACTION_TEXT} <RouteLink to="/procurement">Open Opportunities</RouteLink></p>;
   return <Panel title="Requirement review coverage" note="Reviewed, unreviewed and unknown are counted separately.">
     <Loadable query={coverage} what="review coverage">{c => <dl className="rw-stats">
-      <div><dt>Notices with a current extraction</dt><dd>{n(c.extracted)} <span>of {notices(c.total)}</span></dd></div>
+      <div><dt>Opportunities with a current extraction</dt><dd>{n(c.extracted)} <span>of {notices(c.total)}</span></dd></div>
       <div><dt>Requirements unknown (not extracted)</dt><dd>{notices(Math.max(0, c.total - c.extracted))}</dd></div>
-      {STATE_TEXT.map(([key, text]) => <div key={key}><dt>{text}</dt><dd>{n(c.states[key])} <span>requirements</span></dd></div>)}
+      {STATE_TEXT.filter(([key]) => c.states[key]).map(([key, text]) => <div key={key}><dt>{text}</dt><dd>{n(c.states[key])} <span>{c.states[key] === 1 ? 'requirement' : 'requirements'}</span></dd></div>)}
       <div><dt>Unreviewed requirements</dt><dd><RouteLink to={reviewScopeHref({ source: scope.source, queue: 'requirements' })}>Open the review queue →</RouteLink></dd></div>
     </dl>}</Loadable>
   </Panel>;
 }
 
+/** Open notices waiting at each step, as one compact list (Home owns the full queue view; pipeline runs are on Operations › Overview and tasks on Pursuits). */
 function Bottlenecks({ source, profile, asOf }: { source: string; profile: string | null; asOf: number }) {
   const data = useQuery({ queryKey: [...REVIEW_KEY, 'insights', 'bottlenecks', source, profile, asOf], queryFn: () => readBottlenecks(source, profile, asOf), refetchInterval: 60_000 });
-  return <Panel title="Queue bottlenecks" note="Open notices waiting at each step.">
-    <Loadable query={data} what="bottlenecks">{b => <>
-      <dl className="rw-stats">{b.queues.map(([queue, count]) => <div key={queue}><dt>{QUEUE_TEXT[queue as QueueId].title}</dt><dd>{count === null ? <span>Needs a company profile</span> : <RouteLink to={reviewScopeHref({ source: source || undefined, queue: queue as QueueId, ...(queue === 'eligibility' || queue === 'changes' || queue === 'decide' ? { profile } : {}) })}>{notices(count)}</RouteLink>}</dd></div>)}</dl>
-      <h3 className="rw-subhead">Pipeline runs</h3>
-      {b.runs.length ? <ul className="rw-list">{b.runs.map(row => <li key={row.stage + row.status}><span className={row.status === 'failed' ? 'rw-bad' : 'rw-muted'}>{label(row.stage)} · {row.status}: {n(row.count)}</span></li>)}</ul> : <p className="rw-muted">No queued, running or failed stage runs.</p>}
-      <h3 className="rw-subhead">Open tasks</h3>
-      {b.tasks.length ? <ul className="rw-list">{b.tasks.map(row => <li key={row.kind}><span className="rw-muted">{String(row.kind).replace(/_/g, ' ')}: {n(row.count)}</span></li>)}</ul> : <p className="rw-muted">No open tasks.</p>}
-    </>}</Loadable>
+  const queues = data.data ? visibleQueues(data.data.queues as readonly (readonly [QueueId, number | null])[]) : [];
+  if (data.isSuccess && !queues.length) return null;
+  return <Panel title="Waiting at each step" note="Open opportunities, by the step they are waiting at.">
+    <Loadable query={data} what="queue counts">{() => <ul className="rw-list rw-queue-counts">{queues.map(([queue, count]) => <li key={queue}>
+      <RouteLink to={reviewScopeHref({ source: source || undefined, queue, ...(queue === 'eligibility' || queue === 'changes' || queue === 'decide' ? { profile } : {}) })}>{QUEUE_TEXT[queue].title}</RouteLink><b>{n(count)}</b>
+    </li>)}</ul>}</Loadable>
   </Panel>;
 }
 
 function StaleDecisions({ scope, filter, profile }: { scope: ReviewScope; filter: Fragment; profile: string | null }) {
   const data = useQuery({ queryKey: [...REVIEW_KEY, 'insights', 'stale', filter, profile], refetchInterval: 60_000, queryFn: () => readStale(filter, profile) });
+  if (data.isSuccess && staleIsEmpty(data.data)) return null;
   return <Panel title="Stale decisions" note="Evidence changed after a decision; the earlier decision is kept until reconfirmed.">
     <Loadable query={data} what="stale decisions">{s => <>
       <p className="rw-muted">{s.decisions.length >= 50 ? 'At least 50' : n(s.decisions.length)} {s.decisions.length === 1 ? 'decision needs' : 'decisions need'} reconfirmation · {notices(s.staleAssessments)} with a stale assessment for this profile · <RouteLink to={reviewScopeHref({ source: scope.source, queue: 'changes', profile })}>Reconfirm changes →</RouteLink></p>
@@ -108,37 +111,36 @@ function StaleDecisions({ scope, filter, profile }: { scope: ReviewScope; filter
   </Panel>;
 }
 
-/** Insights: decision intelligence over current assessments for one profile version; award history stays a separate view. */
+/** Insights › Decisions: decision intelligence over current assessments for one profile version. Zero-only panels are hidden. */
 export function Insights() {
   const location = usePluginLocation(), params = new URLSearchParams(location.split('?')[1]);
   const source = params.get('source') ?? '', open = params.get('all') !== '1';
   const workspace = useReviewWorkspace(), available = workspace.data?.available === true;
   const { profileVersionId, active } = useActiveProfile();
-  const asOf = Math.floor(Date.now() / 300_000) * 300_000; // five-minute as-of buckets keep query keys stable
+  const asOf = Math.floor(Date.now() / 300_000) * 300_000; // five-minute buckets keep query keys stable
   const inventory = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'inventory'], queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60_000 });
   const sources = [...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))];
   const scope: ReviewScope = { source: source || undefined, open: open || undefined, profile: profileVersionId };
   const filter = insightScope(source, open, asOf);
   return <div className="rw-insights procurement-workspace">
     <header className="rw-scope" aria-label="Scope">
-      <div className="rw-scope-title"><h1>Decision insights</h1><p>{open ? 'Open' : 'All saved'} notices{source ? ` from ${sourceName(source)}` : ''} · as of {when(new Date(asOf).toISOString())}</p></div>
+      <div className="rw-scope-title"><h1>Decisions</h1></div>
       <div className="rw-controls">
         <label className="rw-control"><span>Source</span><Select aria-label="Source" presentation="dropdown" searchable={false} value={source} onChange={event => patchPluginQuery({ source: event.target.value || null })}><option value="">All saved sources</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}</option>)}</Select></label>
-        <label className="rw-control"><span>Notices</span><Select aria-label="Notices" presentation="dropdown" searchable={false} value={open ? 'open' : 'all'} onChange={event => patchPluginQuery({ all: event.target.value === 'all' ? '1' : null })}><option value="open">Open notices</option><option value="all">All saved notices</option></Select></label>
+        <label className="rw-control"><span>Opportunities</span><Select aria-label="Opportunities" presentation="dropdown" searchable={false} value={open ? 'open' : 'all'} onChange={event => patchPluginQuery({ all: event.target.value === 'all' ? '1' : null })}><option value="open">Open opportunities</option><option value="all">All saved opportunities</option></Select></label>
         {available ? <ProfilePicker /> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
       </div>
     </header>
     {workspace.isPending ? <p className="rw-muted" role="status">Checking the review workspace…</p>
-      : !available ? <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} <RouteLink to="/analysis/overview">Market analysis</RouteLink> and <RouteLink to="/contract-awards">award history</RouteLink> keep working.</p>
+      : !available ? <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} <RouteLink to="/analysis/overview">Market</RouteLink> and <RouteLink to="/contract-awards">Awards</RouteLink> keep working.</p>
       : <div className="rw-insights-grid">
         {active !== null ? <>
           <FitMatrix scope={scope} filter={filter} profile={profileVersionId} />
           <RequirementGaps scope={scope} filter={filter} profile={profileVersionId} />
-        </> : <div className="rw-panel rw-insights-prompt"><ChooseProfile /></div>}
+        </> : <div className="rw-insights-prompt"><ProfilePrompt picker={false} /></div>}
         <ReviewCoverage scope={scope} filter={filter} />
         <Bottlenecks source={source} profile={profileVersionId} asOf={asOf} />
         <StaleDecisions scope={scope} filter={filter} profile={profileVersionId} />
-        <Panel title="Award history" note="Historical awards are context, not the current buyer's budget or a chance of winning."><p className="rw-muted"><RouteLink to="/contract-awards">Award history</RouteLink> and <RouteLink to="/analysis/overview">market analysis</RouteLink> show their own source coverage and exclusions.</p></Panel>
       </div>}
   </div>;
 }
