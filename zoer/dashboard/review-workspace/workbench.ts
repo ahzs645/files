@@ -29,7 +29,7 @@ export const WORKBENCH_STAGES: WorkbenchStage[] = [
     purpose: 'Record which files were discovered, downloaded and readable before any model runs.', inputScope: 'Attachment discovery, downloads and extracted text', output: 'Coverage manifest (discovered, downloaded, usable text, missing, limitations). Source completeness stays unknown.' },
   { key: 'triage', name: 'Triage', execution: 'ai', method: 'Bounded AI classification', templateId: 'procurement.triage', testStage: 'triage', schema: TRIAGE_SCHEMA,
     purpose: 'Classify the notice against stated preferences. Never decides eligibility.', inputScope: 'Based on the saved notice only', output: 'Potentially relevant / outside stated preferences / insufficient information, with reasons and missing information.' },
-  { key: 'extract', name: 'Extract', execution: 'ai', method: 'AI with deterministic validation', templateId: 'procurement.extract', testStage: 'extract', schema: EXTRACT_SCHEMA,
+  { key: 'extract', name: 'Extract', execution: 'ai', method: 'AI, validated against the schema', templateId: 'procurement.extract', testStage: 'extract', schema: EXTRACT_SCHEMA,
     purpose: 'Extract every atomic requirement and typed fact, each with an exact quote that is aligned to the source.', inputScope: 'Every chunk of the notice view and each readable document (every chunk is visited)', output: 'Requirements and facts; quotes that cannot be aligned are kept as ungrounded, never approved.' },
   { key: 'consolidate', name: 'Consolidate', execution: 'deterministic', method: 'Deterministic merge in this release', templateId: 'procurement.consolidate', testStage: null, schema: null,
     purpose: 'Merge exact duplicates (same text, strength, actor and lot) and keep different qualifiers separate.', inputScope: 'All extracted candidates for the notice', output: 'The full requirement ledger with merged spans; nothing is summarized away.' },
@@ -89,3 +89,9 @@ export function gradeItems(items: { grounding: string }[], approvedIds = 0) {
 
 /** `issues` may be strings or objects; show each as one readable line. */
 export const issueText = (issue: unknown) => typeof issue === 'string' ? issue : issue && typeof issue === 'object' ? [(issue as any).path, (issue as any).message ?? (issue as any).code].filter(Boolean).join(': ') || JSON.stringify(issue) : String(issue);
+
+/** "Execution" line: the method alone when it already names how it runs, otherwise "AI · method" (never "AI · AI …"). */
+export function executionText(stage: Pick<WorkbenchStage, 'execution' | 'method'>): string {
+  const kind = stage.execution === 'ai' ? 'AI' : 'Deterministic';
+  return new RegExp(`\\b${kind}\\b`, 'i').test(stage.method) ? stage.method : `${kind} · ${stage.method}`;
+}

@@ -85,7 +85,19 @@ export async function readVersionInstructions(query: Query, promptId: string, ve
   return typeof rows[0]?.instructions === 'string' ? rows[0].instructions : undefined;
 }
 
-/** Open opportunities per source, using the same status/deadline rules as closingSoon and the dashboard. */
+/**
+ * Open opportunities with a current categorizing review, over the canonical "open opportunities" population Home
+ * counts (pass `openWork(asOf, source)` from home-data.ts: each notice once, hidden notices left out), so the
+ * denominator here and Home's "Open opportunities" are the same number.
+ */
+export async function readOpenReviewed(query: Query, open: { sql: string; parameters: (string | number)[] }) {
+  const { rows } = await completeQuery(query, { parameters: open.parameters, statement: `SELECT count(*) AS open, sum(CASE WHEN EXISTS (SELECT 1 FROM reviews r WHERE r.record_id=records.id AND ${CATEGORIZING}
+      AND NOT EXISTS (SELECT 1 FROM reviews n WHERE n.record_id=r.record_id AND n.prompt_id=r.prompt_id AND CASE WHEN n.created_at>r.created_at OR n.created_at=r.created_at AND n.id>r.id THEN 1 ELSE 0 END=1)) THEN 1 ELSE 0 END) AS reviewed
+    FROM records WHERE ${open.sql}` });
+  return { open: Number(rows[0]?.open ?? 0), reviewed: Number(rows[0]?.reviewed ?? 0) };
+}
+
+/** Open opportunities per source (each source keeps its own copies of cross-posted notices; hidden notices included), using the same status/deadline rules as closingSoon. */
 export async function readCoverage(query: Query, asOf = Date.now()) {
   const coverage = new Map<string, { source: string; open: number; reviewed: number; reviewFailed: number }>();
   let after = '';

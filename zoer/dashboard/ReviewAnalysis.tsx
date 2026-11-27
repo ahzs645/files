@@ -3,13 +3,19 @@ import { Select } from '@zoer/plugin-ui/database';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { host } from './bridge';
 import { patchPluginQuery, usePluginQuery } from './navigation';
+
+/** In-plugin link with a real href (new tabs work) and host navigation for plain clicks. */
+const Go = ({ to, children }: { to: string; children: string }) => <a href={pluginHref(to)} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); navigatePlugin(to); } }}>{children}</a>;
 import { SOURCES } from './procurement/catalog';
-import { ago } from './procurement/ai';
 import { sourceName } from './procurement/display';
 import { CLOSING_TODAY_TEXT } from './procurement/deadline';
 import { useProcurementClock } from './procurement/clock';
-import { closingSoon, labelCounts, readAnalysisRows, readCoverage, readPromptVersions, readUnreviewed, readVersionInstructions, scoreField, summarize, type AnalysisRow, type Bucket, type FieldSummary, type PromptVersionCount } from './review-analysis';
+import { closingSoon, labelCounts, readAnalysisRows, readCoverage, readOpenReviewed, readPromptVersions, readUnreviewed, readVersionInstructions, scoreField, summarize, type AnalysisRow, type Bucket, type FieldSummary, type PromptVersionCount } from './review-analysis';
 import { fieldValue, formatTyped } from './review-fields';
+import { openWork } from './review-workspace/home-data';
+import { count, deadline, plural, when } from './format';
+import { navigatePlugin, pluginHref } from './navigation';
+import './review-workspace/review.css';
 
 type Focus = { title: string; recordIds: string[] };
 type PromptBucket = Bucket & { id: string };
@@ -19,10 +25,10 @@ function Bars({ buckets, onPick, empty = 'No values yet.' }: { buckets: Bucket[]
   const max = Math.max(1, ...buckets.map(b => b.count));
   if (!buckets.some(b => b.count)) return <p className="research-note">{empty}</p>;
   return <ul className="ai-bars">{buckets.map(b => <li key={b.label}>
-    <button type="button" disabled={!b.count} onClick={() => onPick(b)} aria-label={`${b.label}: ${b.count} record${b.count === 1 ? '' : 's'}`}>
+    <button type="button" disabled={!b.count} onClick={() => onPick(b)} aria-label={`${b.label}: ${plural(b.count, 'notice')}`}>
       <span className="ai-bar-label">{b.label}</span>
       <span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${(b.count / max) * 100}%` }} /></span>
-      <span className="ai-bar-count">{b.count.toLocaleString()}</span>
+      <span className="ai-bar-count">{count(b.count)}</span>
     </button>
   </li>)}</ul>;
 }
@@ -32,18 +38,18 @@ const Stats = ({ stats }: { stats: { min: string; median: string; mean: string; 
 
 function FieldCard({ summary, pick }: { summary: FieldSummary; pick: (title: string, bucket: Bucket) => void }) {
   const on = (bucket: Bucket) => pick(`${summary.label}: ${bucket.label}`, bucket);
-  const notStated = summary.notStated ? <p className="research-note">{summary.notStated.toLocaleString()} not stated in the evidence</p> : null;
+  const notStated = summary.notStated ? <p className="research-note">{count(summary.notStated)} not stated in the evidence</p> : null;
   return <section className="ai-card" aria-label={summary.label}>
     <h3>{summary.label}</h3>
     {summary.kind === 'numbers' && <Stats stats={summary.stats} />}
     {summary.kind === 'money' ? <>{!summary.partitions.length && <p className="research-note">No values yet.</p>}
       {summary.partitions.length > 1 && <p className="research-note">{summary.partitions.length} currency and basis groups; amounts are not combined across groups.</p>}
       {summary.partitions.map(p => <div key={`${p.currency}|${p.basis}`} className="ai-money-group" role="group" aria-label={`${p.currency}, ${p.basis}`}>
-        <h4 className="research-note"><strong>{p.currency} · {p.basis}</strong> · {p.stats.count.toLocaleString()} value{p.stats.count === 1 ? '' : 's'}</h4>
+        <h4 className="research-note"><strong>{p.currency} · {p.basis}</strong> · {plural(p.stats.count, 'value')}</h4>
         <Stats stats={p.stats} /><Bars buckets={p.buckets} onPick={b => on({ ...b, label: `${p.currency} ${p.basis} ${b.label}` })} />
       </div>)}{notStated}</>
-      : summary.kind === 'text' ? <p className="research-note">{summary.stated.toLocaleString()} stated · {summary.notStated.toLocaleString()} not stated. Answers are too varied to chart; see Results.</p>
-      : <><Bars buckets={summary.buckets} onPick={on} />{notStated}{summary.kind === 'items' && summary.none > 0 && <p className="research-note">{summary.none.toLocaleString()} with none found</p>}</>}
+      : summary.kind === 'text' ? <p className="research-note">{count(summary.stated)} stated · {count(summary.notStated)} not stated. Answers are too varied to chart; see Results.</p>
+      : <><Bars buckets={summary.buckets} onPick={on} />{notStated}{summary.kind === 'items' && summary.none > 0 && <p className="research-note">{count(summary.none)} with none found</p>}</>}
   </section>;
 }
 
@@ -62,7 +68,10 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
   const focusRef = useRef<HTMLElement>(null);
   const deadlines = rows?.map(row => row.deadline) ?? [];
   const asOf = useProcurementClock(deadlines);
+  const [openReviewed, setOpenReviewed] = useState<{ open: number; reviewed: number } | null>(null);
   useEffect(() => { let active = true; void readCoverage(host, asOf).then(value => { if (active) setCoverage(value); }, error => { if (active) setError(error.message); }); return () => { active = false; }; }, [asOf]);
+  // The headline uses Home's population (each notice once, hidden ones left out); the per-source list below does not.
+  useEffect(() => { let active = true; setOpenReviewed(null); void readOpenReviewed(host, openWork(asOf, source)).then(value => { if (active) setOpenReviewed(value); }, error => { if (active) setError(error.message); }); return () => { active = false; }; }, [asOf, source]);
   useEffect(() => {
     let active = true;
     setRows(null); setFocus(null); setVersions(null); setInstructions(undefined);
@@ -89,7 +98,6 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
   const score = prompt ? scoreField(instructions) : undefined;
   const soon = closingSoon(all, asOf);
   const open = coverage.filter(c => !source || c.source === source);
-  const reviewedOpen = open.reduce((n, c) => n + c.reviewed, 0), openTotal = open.reduce((n, c) => n + c.open, 0);
   const latest = all.reduce((t, r) => r.reviewedAt > t ? r.reviewedAt : t, '');
   const selectUnreviewed = async (id: string) => {
     setBusy(id); setError('');
@@ -104,7 +112,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
         <option value="">All prompts</option>{prompts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </Select></label>
       {prompt && versions && versions.versions.length > 0 && <label className="research-label"><span>Prompt version</span><Select aria-label="Analysis prompt version" presentation="dropdown" searchable={false} value={String(version ?? '')} onChange={e => setVersionParam(e.target.value === String(current) ? '' : e.target.value)}>
-        {[...new Set([current, ...versions.versions.map(v => v.version)].filter((v): v is number => v !== undefined))].sort((a, b) => b - a).map(v => <option key={v} value={v}>{`Version ${v}${v === current ? ' (current)' : ''} · ${(versions.versions.find(x => x.version === v)?.records ?? 0).toLocaleString()} records`}</option>)}
+        {[...new Set([current, ...versions.versions.map(v => v.version)].filter((v): v is number => v !== undefined))].sort((a, b) => b - a).map(v => <option key={v} value={v}>{`Version ${v}${v === current ? ' (current)' : ''} · ${plural(versions.versions.find(x => x.version === v)?.records ?? 0, 'notice')}`}</option>)}
       </Select></label>}
       <label className="research-label"><span>Source</span><Select aria-label="Analysis source" presentation="dropdown" searchable={false} value={source} onChange={e => setSource(e.target.value)}>
         <option value="">All sources</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}</option>)}
@@ -113,63 +121,63 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
     {error && <p role="alert">{error}</p>}
     {!rows ? <p className="research-note">Loading saved results…</p> : <>
       <dl className="research-metrics">
-        <div><dt>Records reviewed</dt><dd>{records.size.toLocaleString()}</dd></div>
-        <div><dt>Open opportunities reviewed</dt><dd>{openTotal ? `${reviewedOpen.toLocaleString()} of ${openTotal.toLocaleString()}` : '—'}</dd></div>
-        <div><dt>Closing in 14 days</dt><dd>{soon.length.toLocaleString()}</dd></div>
-        <div><dt>Last review</dt><dd>{latest ? ago(latest) : '—'}</dd></div>
+        <div><dt>Notices reviewed</dt><dd>{count(records.size)}</dd></div>
+        <div><dt>{source ? `Open ${sourceName(source)} opportunities reviewed` : 'Open opportunities reviewed (all sources)'}</dt><dd>{openReviewed ? `${count(openReviewed.reviewed)} of ${count(openReviewed.open)}` : '—'}</dd></div>
+        <div><dt>Reviewed, closing in 14 days</dt><dd>{count(soon.length)}</dd></div>
+        <div><dt>Last review</dt><dd>{latest ? when(latest) : '—'}</dd></div>
       </dl>
       {truncated && <p className="research-note">The current result projection is incomplete. Reload before relying on these totals.</p>}
       {prompt && version !== undefined && <p className="research-note" role="status">{version === current ? `Showing results from the current version ${version} only.` : `Showing results from older version ${version} only; its fields may differ from the current version.`}
-        {versions && version === current && versions.olderOnly > 0 && ` ${versions.olderOnly.toLocaleString()} record${versions.olderOnly === 1 ? ' has' : 's have'} results only from older versions and ${versions.olderOnly === 1 ? 'is' : 'are'} excluded, because field definitions can change between versions. Choose a version above to view them separately.`}</p>}
+        {versions && version === current && versions.olderOnly > 0 && ` ${plural(versions.olderOnly, 'notice')}${versions.olderOnly === 1 ? ' has' : ' have'} results only from older versions and ${versions.olderOnly === 1 ? 'is' : 'are'} excluded, because field definitions can change between versions. Choose a version above to view them separately.`}</p>}
 
-      {focus && <section ref={focusRef} className="zoer-history ai-focus" aria-label="Selected records">
-        <div className="research-toolbar review-results-head"><h2>{focus.title} · {focus.recordIds.length.toLocaleString()}</h2>
+      {focus && <section ref={focusRef} className="zoer-history ai-focus" aria-label="Selected notices">
+        <div className="research-toolbar review-results-head"><h2>{focus.title} · {count(focus.recordIds.length)}</h2>
           <div className="research-toolbar-end">{onSelect && <Button variant="ghost" onClick={() => onSelect(focus.recordIds.slice(0, 50))}>Select for review</Button>}<Button variant="ghost" onClick={() => setFocus(null)}>Close</Button></div></div>
         <ul className="ai-record-list">{focus.recordIds.map(id => { const r = records.get(id); return <li key={id}>
           <button type="button" className="research-link" onClick={() => onOpen(id)}>{r?.title ?? id}</button>
-          <small><span className="research-source-tag">{sourceName(r?.source ?? 'bc-bid')}</span>{[r?.buyer, r?.deadline && `Closes ${r.deadline}`].filter(Boolean).join(' · ')}</small>
+          <small><span className="research-source-tag">{sourceName(r?.source ?? 'bc-bid')}</span>{[r?.buyer, r?.deadline && deadline(r.deadline, asOf).text].filter(Boolean).join(' · ')}</small>
         </li>; })}</ul>
       </section>}
 
       <div className="ai-grid">
         <section className="zoer-history" aria-label="Review coverage">
-          <h2>Coverage of open opportunities</h2>
+          <h2>Coverage by source</h2>
           {!open.length ? <p className="research-note">No open opportunities are saved.</p> : <ul className="ai-coverage">{open.map(c => <li key={c.source}>
-            <div><strong>{sourceName(c.source)}</strong><span className="research-count">{c.reviewed.toLocaleString()} of {c.open.toLocaleString()} reviewed{c.reviewFailed ? ` · ${c.reviewFailed.toLocaleString()} with a failed current review` : ''}</span></div>
+            <div><strong>{sourceName(c.source)}</strong><span className="research-count">{count(c.reviewed)} of {count(c.open)} reviewed{c.reviewFailed ? ` · ${count(c.reviewFailed)} with a failed current review` : ''}</span></div>
             <span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${c.open ? (c.reviewed / c.open) * 100 : 0}%` }} /></span>
             {onSelect && c.open > c.reviewed && <Button variant="ghost" disabled={!!busy} onClick={() => void selectUnreviewed(c.source)}>{busy === c.source ? 'Selecting…' : `Select ${Math.min(50, c.open - c.reviewed)} unreviewed`}</Button>}
           </li>)}</ul>}
-          <p className="research-note">Open requires an accepting source status and no passed deadline. Same-day dates without a timezone remain time unverified. A newer failed review excludes an older successful result. Unreviewed notices are selected soonest-closing first.</p>
+          <p className="research-note">Each source counts its own copy of a notice posted on several sources, and includes notices you hid, so these add up to more than the open opportunities above. A newer failed review excludes an older successful result. Unreviewed notices are selected soonest-closing first.</p>
         </section>
 
         <section className="zoer-history" aria-label="Closing soon">
           <h2>Reviewed and closing in 14 days</h2>
           {!soon.length ? <p className="research-note">No reviewed opportunity closes in the next 14 days.</p> : <ul className="ai-record-list">{soon.slice(0, 12).map(r => <li key={r.recordId}>
             <button type="button" className="research-link" onClick={() => onOpen(r.recordId)}>{r.title}</button>
-            <small><span className="research-source-tag">{sourceName(r.source)}</span>{new Date(r.time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{r.state === 'closing_today_time_unverified' ? ` · ${CLOSING_TODAY_TEXT}` : ''}{r.buyer ? ` · ${r.buyer}` : ''}
+            <small><span className="research-source-tag">{sourceName(r.source)}</span>{deadline(r.deadline, asOf).text}{r.state === 'closing_today_time_unverified' ? ` · ${CLOSING_TODAY_TEXT}` : ''}{r.buyer ? ` · ${r.buyer}` : ''}
               {score && r.promptId === prompt?.id && <> · <strong>{score.label}: {String(formatTyped(score, fieldValue(r.fields, score.key)))}</strong></>}</small>
           </li>)}</ul>}
         </section>
       </div>
 
-      {!rows.length ? <p className="research-note">No saved AI results{prompt ? ` for ${prompt.name}` : ''}{source ? ` from ${sourceName(source)}` : ''} yet. Run a review from the Run reviews tab.</p> : <>
+      {!rows.length ? <p className="research-note">No saved AI results{prompt ? ` for ${prompt.name}` : ''}{source ? ` from ${sourceName(source)}` : ''} yet. Start one in <Go to="/ai-review">Operations › AI reviews</Go>.</p> : <>
         {!prompt && <section className="zoer-history" aria-label="Results by prompt">
           <h2>Results by prompt</h2>
           <p className="research-note">Choose a prompt to break down its output fields.</p>
           <ul className="ai-bars">{byPrompt.map(b => <li key={b.id}><button type="button" onClick={() => setPromptId(b.id)}>
-            <span className="ai-bar-label">{b.label}</span><span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${(b.count / Math.max(1, byPrompt[0].count)) * 100}%` }} /></span><span className="ai-bar-count">{b.count}</span>
+            <span className="ai-bar-label">{b.label}</span><span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${(b.count / Math.max(1, byPrompt[0].count)) * 100}%` }} /></span><span className="ai-bar-count">{count(b.count)}</span>
           </button></li>)}</ul>
         </section>}
 
-        <section className="zoer-history" aria-label="AI labels">
-          <div className="research-toolbar review-results-head"><h2>AI labels</h2></div>
-          <Bars buckets={labels} onPick={b => pick(`Label: ${b.label}`, b)} empty="No labels returned yet." />
-          {labels.length > 0 && <p className="research-note">To search every notice with a label, use Search → Filters → AI categories.</p>}
+        <section className="zoer-history" aria-label="AI tags">
+          <div className="research-toolbar review-results-head"><h2>AI tags</h2></div>
+          <Bars buckets={labels} onPick={b => pick(`Tag: ${b.label}`, b)} empty="No tags returned yet." />
+          {labels.length > 0 && <p className="research-note">To list every opportunity with a tag, filter by AI category in <Go to="/procurement">Opportunities</Go>.</p>}
         </section>
 
         {prompt && <section className="zoer-history" aria-label="Output fields">
           <h2>{prompt.name} · output fields</h2>
-          <p className="research-note">Latest result per record from version {version ?? '?'}{source ? ` from ${sourceName(source)}` : ''}. Money is grouped by currency and basis and never combined across groups. Choose a bar to list its notices. Values that don’t match their type are left out; Results flags them.</p>
+          <p className="research-note">Latest result per notice from version {version ?? '?'}{source ? ` from ${sourceName(source)}` : ''}. Money is grouped by currency and basis and never combined across groups. Choose a bar to list its notices. Values that don’t match their type are left out; Results flags them.</p>
           <div className="ai-cards">{summaries.map(s => <FieldCard key={s.key} summary={s} pick={pick} />)}</div>
         </section>}
       </>}

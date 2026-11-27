@@ -7,12 +7,15 @@ import { BatchHistory, useCatalogState } from './BatchHistory';
 import { RecordPicker } from './RecordPicker';
 import { useWorkspace } from './backend';
 import { host } from './bridge';
-import { usePluginQuery } from './navigation';
+import { navigatePlugin, pluginHref, usePluginQuery } from './navigation';
+import { onlyOption } from './review-prompt';
 import { useCapabilities } from './capabilities';
 import { NoticeView } from './procurement/NoticeView';
 import { PromptEditor, type ReviewRunner } from './PromptEditor';
 import { ReviewResults, RunResults } from './ReviewResults';
 import { ReviewAnalysis } from './ReviewAnalysis';
+
+const RUNS = '/runs?kind=reviews';
 
 function Choice({ label, value, options, onChange }: { label: string; value: string; options: { id: string; name: string }[]; onChange: (v: string) => void }) {
   return <label className="research-label"><span>{label}</span><Select searchable aria-label={label} value={value} onChange={e => onChange(e.target.value)}><option value="">Choose…</option>{options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</Select></label>;
@@ -35,9 +38,12 @@ export function AiReview() {
     return () => { active = false; };
   }, []);
   const [promptId, setPromptId] = useState(''), [editing, setEditing] = useState<'' | 'new' | 'edit'>('');
+  // A select with exactly one choice starts on it (the host's computer picker keeps its own state).
+  useEffect(() => { const only = onlyOption(state.prompts, promptId); if (only !== promptId) setPromptId(only); }, [state.prompts, promptId]);
+  useEffect(() => { const only = onlyOption(legacyModels, modelId); if (only !== modelId) setReviewModel({ modelProfileId: only, computerId: only.slice(only.indexOf(':') + 1) }); }, [legacyModels, modelId]);
   const [view, setView] = usePluginQuery('view');
   // From Analysis: load chosen notices into the record picker, ready to review.
-  const selectFromAnalysis = (ids: string[]) => { setSelection(new Set(ids.slice(0, 50))); setView(''); setMessage(`Selected ${Math.min(50, ids.length)} notices from Analysis. Choose a prompt and model, then review.`); };
+  const selectFromAnalysis = (ids: string[]) => { setSelection(new Set(ids.slice(0, 50))); setView(''); setMessage(`Selected ${Math.min(50, ids.length)} opportunities from AI results. Choose a prompt and model, then review.`); };
   const [documents, setDocuments] = useState(true), [force, setForce] = useState(false);
   const run = async (fn: () => Promise<void>) => { setBusy(true); setError(''); setMessage(''); try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const cli = /^(codex|opencode|claude):/.test(modelId);
@@ -49,9 +55,9 @@ export function AiReview() {
   });
   const prompt = state.prompts.find((p: any) => p.id === promptId);
   const latest = state.batches[0], revision = `${promptId}:${prompt?.version}:${latest?.id}:${latest?.completed}:${latest?.status}`;
-  const reviewBlocker = busy ? 'Starting review…' : !selection.size ? 'Select at least one record to review.' : !promptId ? 'Choose a saved review prompt above, or use New to create one.' : !modelId ? 'Choose a computer and an available review model.' : '';
+  const reviewBlocker = busy ? 'Starting review…' : !selection.size ? 'Select at least one opportunity to review.' : !promptId ? (state.prompts.length ? 'Choose a review prompt above.' : 'Create a review prompt with New.') : !modelId ? 'Choose a computer and an available review model.' : '';
   return <section className="research">
-    {/* The section tabs name this page (Run reviews · Analysis · Pipeline stages), so it has no heading of its own. */}
+    {/* The section tabs name this page (Operations › AI reviews), so it has no heading of its own. */}
     <BatchProgress batches={state.batches} tasks={state.tasks} />
     {view === 'analysis' ? <ReviewAnalysis prompts={state.prompts} onOpen={setRecordId} onSelect={writes ? selectFromAnalysis : undefined} /> : <>
     <div className="research-grid">
@@ -64,14 +70,15 @@ export function AiReview() {
           <p className="research-note">Update Zoer to choose computers and models with the shared chat selector.</p>
         </>}
         <label className="research-check"><input type="checkbox" checked={documents} onChange={e => setDocuments(e.target.checked)} />Include downloaded documents</label>
-        <label className="research-check"><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />Re-run unchanged records</label>
-        <div className="research-toolbar"><Button aria-describedby={reviewBlocker ? "review-requirements" : undefined} disabled={!!reviewBlocker} onClick={() => void review()}>Review {selection.size || ''} selected</Button></div>
+        <label className="research-check"><input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />Re-run unchanged opportunities</label>
+        <div className="research-toolbar"><Button variant={reviewBlocker ? 'ghost' : 'primary'} aria-describedby={reviewBlocker ? "review-requirements" : undefined} disabled={!!reviewBlocker} onClick={() => void review()}>Review {selection.size || ''} selected</Button></div>
         {reviewBlocker && <p id="review-requirements" role="status" className="research-note">{reviewBlocker}</p>}
       </section>
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    <BatchHistory title="Review history" kind="review" batches={state.batches} tasks={state.tasks} modelId={modelId} onChanged={refresh} onError={setError}
+    {state.batches.some((batch: any) => batch.kind === 'review') ? <BatchHistory title="Review history" kind="review" batches={state.batches} tasks={state.tasks} modelId={modelId} onChanged={refresh} onError={setError}
       details={batch => <RunResults batch={batch} prompts={state.prompts} onOpen={setRecordId} />} />
+      : <p className="research-note">No AI reviews run yet. Past runs are listed in <a href={pluginHref(RUNS)} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); navigatePlugin(RUNS); } }}>Operations › Runs</a>.</p>}
     {prompt && <ReviewResults prompt={prompt} revision={revision} onOpen={setRecordId} />}
     </>}
     {writes && editing && <PromptEditor key={editing === 'new' ? 'new' : promptId} prompt={editing === 'new' ? null : prompt} testIds={[...selection]} runner={runner} includeDocuments={documents}

@@ -13,7 +13,7 @@ import { QUEUES, acquireParts, and, assessmentScope, deadlineWindowSql, fitBucke
 const r = recordColumns();
 const num = (value: unknown) => Number(value ?? 0);
 /** Open work for Home: open opportunities not hidden as "not relevant"; the Opportunities list leaves them out by default too. */
-const openWork = (asOf: number, source: string): Fragment => and(sourceSql(source), openSql(asOf, '', { crossSource: 'exclude', source }), { sql: `${r.id} NOT IN (${HIDDEN_IDS_SQL})`, parameters: [] });
+export const openWork = (asOf: number, source: string): Fragment => and(sourceSql(source), openSql(asOf, '', { crossSource: 'exclude', source }), { sql: `${r.id} NOT IN (${HIDDEN_IDS_SQL})`, parameters: [] });
 
 /**
  * Keep each scan within Zoer's catalog reader deadline. The kind index can
