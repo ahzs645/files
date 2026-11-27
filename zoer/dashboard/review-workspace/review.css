@@ -496,3 +496,21 @@
   .rw-stats dd a,.rw-item-title{display:inline-flex;align-items:center;min-height:44px}
   .rw-lane-link{min-height:44px;display:inline-flex;align-items:center}
 }
+/* Home: the one operations line (one line at every width), quiet empty rails, profile-free tiles. */
+.rw-ops-line{font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rw-ops-line .rw-ops-link{color:var(--status-warning);font-weight:600}
+.rw-ops-line .rw-ops-link:hover{text-decoration:underline}
+.rw-quiet-line{font-size:12.5px;padding:0 .25rem}
+.rw-tiles[data-count="1"]{grid-template-columns:minmax(0,1fr)}
+@media(min-width:640px){.rw-tiles[data-count="1"]{grid-template-columns:minmax(0,18rem)}}
+.rw-panel[aria-label^="Closing in "]{--rw-c:var(--rw-warn)}
+.rw-panel[aria-label="Pipeline coverage"]{--rw-c:var(--rw-teal)}
+.rw-today-alert-badge{text-decoration:none}
+.rw-home-kpis{display:flex;flex-direction:column;gap:.75rem}
+@media(min-width:640px){.rw-home-kpis[data-prompt]{display:grid;grid-template-columns:minmax(0,18rem) minmax(0,1fr);align-items:stretch}.rw-home-kpis[data-prompt] .rw-tiles[data-count="1"]{grid-template-columns:minmax(0,1fr)}}
+.rw-profile-prompt{flex-direction:row;align-items:center;flex-wrap:wrap;gap:.75rem 1rem}
+.rw-profile-prompt>svg{flex:none;color:var(--text-secondary)}
+.rw-profile-prompt>div:first-of-type{flex:1;min-width:12rem}
+.rw-profile-prompt h2{font-size:14.5px;font-weight:650;color:var(--text-primary)}
+.rw-profile-prompt h2::before{display:none}
+.rw-profile-prompt>.rw-drill,.rw-profile-prompt>.rw-choose-profile{margin:0;align-self:center}
