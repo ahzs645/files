@@ -98,10 +98,12 @@ function RankedList({ rows, currency, dimension, inspect, limit = 8 }: { rows: O
   const maximum = Math.max(1, ...rows.map(r => Math.max(0, r.value)));
   return <div className="market-rank-list">{rows.slice(0, limit).map(row => <button type="button" key={row.name} onClick={() => inspect({ [dimension]: row.name }, row.name)}><span className="market-rank-line"><span>{row.name}</span><span>{money(row.value, currency, true)} · {counted(row.count, 'award')}</span></span><span className="market-bar" style={{ width: `${Math.max(0, row.value) / maximum * 100}%` }} /></button>)}</div>;
 }
-function OverviewView({ data, currency, inspect }: { data: OverviewSummary; currency: string; inspect: Inspect }) {
+/** What the Overview figures count, so its "Awards counted" tile cannot be read against the header's total of every saved award. */
+export const overviewScopeText = (currency: string, f: { includePlaceholders?: boolean; includeFuture?: boolean }) => [`${currency} amounts only`, !f.includePlaceholders && 'no placeholder suppliers', !f.includeFuture && 'no future award dates'].filter(Boolean).join(', ');
+function OverviewView({ data, currency, inspect, scope }: { data: OverviewSummary; currency: string; inspect: Inspect; scope: string }) {
   return <div className="market-stack"><Metrics items={[
     { label: 'Award value', value: money(data.value, currency, true), detail: `${counted(data.valuedCount, 'award')} with a value` },
-    { label: 'Awards', value: count(data.count) },
+    { label: 'Awards counted', value: count(data.count), detail: scope.replace(/^./, c => c.toUpperCase()) },
     { label: 'Median award', value: money(data.median, currency) },
     { label: 'Buyers', value: count(data.buyerCount) }, { label: 'Suppliers', value: count(data.supplierCount) },
     { label: 'Top 10 supplier share', value: data.positiveTotal > 0 ? percent(data.top10Share) : '—', detail: 'Positive value only' },
@@ -297,7 +299,7 @@ export function MarketAnalysis() {
         <div className="market-skeleton" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <span key={i} />)}<span className="market-skeleton-wide" /></div>
       </>}
       {data && <>
-        {view === 'overview' && <OverviewView data={data as OverviewSummary} currency={filters.currency} inspect={inspect} />}
+        {view === 'overview' && <OverviewView data={data as OverviewSummary} currency={filters.currency} inspect={inspect} scope={overviewScopeText(filters.currency, filters)} />}
         {(view === 'buyers' || view === 'suppliers') && <EntityView key={view} exclude={exclude} filters={filters} data={data as Overview} kind={view === 'buyers' ? 'buyer' : 'supplier'} currency={filters.currency} inspect={inspect} focus={name => focus(view === 'buyers' ? 'buyer' : 'supplier', name)} explore={view === 'buyers' ? explore : undefined} />}
         {view === 'trends' && meta.data && <TrendsView exclude={exclude} focus={focus} data={data as Trends} currency={filters.currency} options={options} change={setOptions} meta={meta.data} inspect={inspect} />}
         {view === 'sizes' && <SizesView data={data as Distribution} currency={filters.currency} inspect={inspect} />}
