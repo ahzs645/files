@@ -20,8 +20,8 @@ describe('connector collection state (CONNECTORS.md §4)', () => {
     expect(connectorStatus(null)).toEqual({ tone: 'idle', text: 'Not collected yet' });
     const read = (extra: Record<string, unknown>) => readConnectorCollection(state({}, extra), 'bidsandtenders');
     expect(connectorStatus(read({ status: 'running', leaseUntil: '2026-10-03T20:00:00Z' }), now).text).toBe('Collecting');
-    expect(connectorStatus(read({ status: 'running', leaseUntil: '2026-10-03T18:00:00Z' }), now)).toEqual({ tone: 'warn', text: 'Stopped unexpectedly' });
-    expect(connectorStatus(read({ status: 'incomplete' }), now).text).toBe('Some portals failed');
+    expect(connectorStatus(read({ status: 'running', leaseUntil: '2026-10-03T18:00:00Z' }), now)).toEqual({ tone: 'warn', text: 'Interrupted; the next run continues' });
+    expect(connectorStatus(read({ status: 'incomplete' }), now).text).toBe('Needs attention');
     expect(connectorStatus(read({ status: 'complete' }), now).tone).toBe('good');
   });
 });
@@ -104,7 +104,7 @@ describe('bids&tenders collector additions (CONNECTORS.md changes)', () => {
     const parsed = readConnectorCollection(state({ richmond: { status: 'incomplete', retrievedAt: '2026-10-03T12:00:00Z', recordCount: 40, totalReported: 43, error: { code: 'records_excluded', message: '3 notices over 250 kB' } } }, { error: { code: 'time_budget', message: '1 of 25 portal(s).' } }), 'bidsandtenders');
     const row = portalRows(BIDSANDTENDERS_PORTALS, parsed).find(item => item.id === 'richmond')!;
     expect(row).toMatchObject({ status: 'incomplete', statusText: 'Partly collected', problem: true, counts: '40 listed · portal reports 43', lastSuccessAt: '2026-10-03T12:00:00Z', error: 'records_excluded: 3 notices over 250 kB' });
-    expect(connectorStatus(parsed, now).text).toBe('Stopped at the time limit; next run continues');
+    expect(connectorStatus(parsed, now).text).toBe('Part-way · the next run continues');
     expect(portalSummaryText(portalRows(BIDSANDTENDERS_PORTALS, parsed))).toMatch(/^1 of 33 portals collected in the last run · 1 partly · 32 not collected yet$/);
   });
 });

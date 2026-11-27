@@ -28,6 +28,21 @@ function portalProblems(message: string): string | null {
   return `${sentence}. The other portals were saved; see the list below.`;
 }
 
+/** A `HH:MM–HH:MM UTC` window in the reader's own time ("1:00 AM–4:00 AM"). */
+export function utcWindowText(from: [number, number], to: [number, number], at = new Date()): string {
+  const time = ([h, m]: [number, number]) => new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), h, m)).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return `${time(from)}–${time(to)}`;
+}
+/**
+ * The visiting-hours skip without the saved hint's raw ISO time or URL (the hint goes stale; the page computes the next
+ * window from the site's own `visitTimeUtc` where it knows the site).
+ */
+function outsideWindowText(message: string): string {
+  const match = /between (\d{2}):(\d{2})–(\d{2}):(\d{2}) UTC/.exec(message);
+  const window = match ? ` (${utcWindowText([Number(match[1]), Number(match[2])], [Number(match[3]), Number(match[4])])} your time)` : '';
+  return `Outside the hours this site allows automated visits${window}. Nothing was loaded; a run inside that window collects it.`;
+}
+
 const TEXT: Record<string, (message: string) => string> = {
   source_http_error: message => `The site did not respond normally${status(message) ? ` (HTTP ${status(message)})` : ''}. Notices saved earlier are kept; try again later.`,
   source_forbidden: () => 'The site refused the request (HTTP 403); it may block automated access. Notices saved earlier are kept.',
@@ -55,7 +70,7 @@ const TEXT: Record<string, (message: string) => string> = {
   portals_incomplete: message => portalProblems(message) ?? 'Some portals were only partly collected. See the list below.',
   waiting_for_user: () => 'Some sites showed a browser check and are waiting for you. Complete the check in the Zoer browser, then collect those sites again. The other sites were saved.',
   portals_skipped: () => 'Some sites were skipped on purpose (outside the hours their robots.txt allows). The other sites were saved.',
-  outside_visit_window: message => message || 'Outside the hours this site allows automated visits. Nothing was loaded; collect it inside that window.',
+  outside_visit_window: message => outsideWindowText(message),
   // Zoer's crawl policy (0.34+): robots.txt, pacing and Retry-After are applied by Zoer itself.
   robots_disallowed: message => portalProblems(message) ?? 'robots.txt disallows collection: this site asks automated visitors (including AI crawlers) not to load this page, so Procurement does not collect it. Notices saved earlier are kept; open the site to check it yourself.',
   robots_unreadable: () => 'The site’s robots.txt could not be read, so what it allows is unknown and nothing was collected. Zoer reads it again within the hour; saved notices are kept.',

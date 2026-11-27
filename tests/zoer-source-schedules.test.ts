@@ -112,7 +112,7 @@ describe('collection runs in plain words (runs.recent, S1)', () => {
     expect(liveRunFor(runs, 'canadabuys')?.runId).toBe('r2');
     expect(liveRunFor(runs, 'browser-sites')).toBeUndefined();
     const stale = readConnectorCollection({ version: 1, status: 'running', leaseUntil: '2026-10-04T09:00:00Z', portals: {} }, 'bidsandtenders');
-    expect(connectorStatus(stale, Date.parse('2026-10-04T10:00:00Z')).text).toBe('Stopped unexpectedly');
+    expect(connectorStatus(stale, Date.parse('2026-10-04T10:00:00Z')).text).toBe('Interrupted; the next run continues');
     expect(connectorStatus(stale, Date.parse('2026-10-04T10:00:00Z'), runs[1]).text).toBe('Paused');
   });
 });
@@ -127,7 +127,7 @@ describe('robots.txt disallows collection: an honest state, not a failure (S4)',
     expect(rows.find(item => item.id === 'nanaimo')).toMatchObject({ status: 'disallowed', statusText: 'robots.txt disallows collection', problem: false, counts: '7 listed earlier' });
     expect(rows.find(item => item.id === 'nanaimo')!.errorText).toMatch(/robots\.txt disallows collection/);
     expect(portalSummaryText(rows)).toBe('1 of 2 portals collected in the last run · 1 disallowed by robots.txt');
-    expect(connectorStatus(state).text).toBe('Some portals disallow collection (robots.txt)');
+    expect(connectorStatus(state).text).toBe('Collected · 1 portal disallowed by robots.txt');
     expect(sourceErrorText(state!.error)!.text).toBe('1 of 2 portals was not collected because its robots.txt disallows it. The other portals were saved; see the list below.');
   });
   it('browser sites: disallowed (0.34 not-run, or failed as older versions saved it) is its own status', () => {

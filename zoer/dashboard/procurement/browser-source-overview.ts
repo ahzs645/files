@@ -1,6 +1,7 @@
 import { BROWSER_SITES, type BrowserSite } from './browser-sites';
 import type { ConnectorCollection, Tone } from './source-overview';
 import { sourceErrorText } from './source-errors';
+import { when } from '../format';
 
 /**
  * Rows for the "Collect in your browser" card, from `procurement:source:browser-sites:collection` (read with
@@ -24,7 +25,7 @@ export interface BrowserSiteRow {
   message?: string; detail?: string;
 }
 
-export function browserSiteRows(state: ConnectorCollection | null | undefined, saved?: Map<string, number>): BrowserSiteRow[] {
+export function browserSiteRows(state: ConnectorCollection | null | undefined, saved?: Map<string, number>, now = Date.now()): BrowserSiteRow[] {
   return BROWSER_SITES.map(site => {
     const entry = state?.portals[site.id];
     const base = { site, saved: saved ? saved.get(site.id) ?? 0 : null, lastSuccessAt: entry?.lastSuccessAt ?? (entry?.status === 'complete' || entry?.status === 'incomplete' ? entry.retrievedAt : undefined) };
@@ -40,7 +41,10 @@ export function browserSiteRows(state: ConnectorCollection | null | undefined, s
     // Disallowed by robots.txt: older versions saved it as `failed`, 0.34+ as `not-run` (deliberately not loaded).
     if (entry.error?.code === 'robots_disallowed') return make('disallowed');
     if (entry.status === 'failed') return make('failed');
-    return make(entry.error?.code === 'outside_visit_window' ? 'outside-hours' : 'not-run');
+    if (entry.error?.code !== 'outside_visit_window') return make('not-run');
+    // The saved hint names a window that has passed by now; the next one is computed from the site's own hours.
+    const window = site.visitTimeUtc ? localVisitWindow(site.visitTimeUtc, new Date(now)) : null, next = site.visitTimeUtc ? nextVisitWindow(site.visitTimeUtc, now) : null;
+    return make('outside-hours', window ? { message: `Visits only ${window} your time${next ? `; next window opens ${when(next, now)}` : ''}.` } : {});
   });
 }
 
@@ -57,6 +61,14 @@ export function localVisitWindow(window: string, at = new Date()): string | null
   if (!match) return null;
   const time = (h: string, m: string) => new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), Number(h), Number(m))).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   return `${time(match[1], match[2])}–${time(match[3], match[4])}`;
+}
+
+/** Start of the next `HHMM-HHMM` UTC window after `now` (today's if it has not opened yet, else tomorrow's); null if unreadable. */
+export function nextVisitWindow(window: string, now = Date.now()): Date | null {
+  const match = /^(\d{2})(\d{2})-(\d{2})(\d{2})$/.exec(window);
+  if (!match) return null;
+  const at = new Date(now), start = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), Number(match[1]), Number(match[2]));
+  return new Date(start > now ? start : start + 86_400_000);
 }
 
 /** Saved opportunities per browser site (read-only, bridge-safe). */

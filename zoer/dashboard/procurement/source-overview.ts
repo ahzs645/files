@@ -26,11 +26,13 @@ export const CONNECTOR_SOURCES: readonly ConnectorSource[] = [
 
 /** `incomplete`: records saved, but fewer than the portal reported or some too large to save. `waiting`: a person must act first (browser check). */
 export type PortalStatus = 'complete' | 'incomplete' | 'failed' | 'not-run' | 'waiting';
-export interface PortalState { status: PortalStatus; retrievedAt?: string; recordCount?: number; totalReported?: number; lastSuccessAt?: string; error?: { code?: string; message?: string } }
+export interface PortalState { status: PortalStatus; retrievedAt?: string; recordCount?: number; totalReported?: number; lastSuccessAt?: string; error?: { code?: string; message?: string }; attemptStartedAt?: string }
 export interface ConnectorCollection {
   sourceId: string; status: 'running' | 'complete' | 'incomplete' | 'failed' | 'paused';
   leaseUntil?: string | null; lastAttemptedAt?: string; lastSuccessAt?: string;
   error?: { code?: string; message?: string; at?: string } | null; portals: Record<string, PortalState>;
+  /** The run that wrote this state last, and the attempt it belongs to (its start and the portals it covers). */
+  ownerRunId?: string; attempt?: { startedAt?: string; portals?: string[] };
 }
 
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -48,31 +50,62 @@ export function readConnectorCollection(value: unknown, sourceId: string): Conne
   for (const [id, raw] of Object.entries(object(value.portals) ? value.portals : {})) {
     if (!object(raw)) continue;
     portals[id] = { status: ['complete', 'incomplete', 'failed', 'not-run', 'waiting'].includes(raw.status) ? raw.status : 'not-run', retrievedAt: time(raw.retrievedAt), recordCount: count(raw.recordCount),
-      totalReported: count(raw.totalReported), lastSuccessAt: time(raw.lastSuccessAt), error: object(raw.error) ? { code: raw.error.code, message: raw.error.message } : undefined };
+      totalReported: count(raw.totalReported), lastSuccessAt: time(raw.lastSuccessAt), error: object(raw.error) ? { code: raw.error.code, message: raw.error.message } : undefined,
+      ...(time(raw.attemptStartedAt) ? { attemptStartedAt: time(raw.attemptStartedAt) } : {}) };
   }
+  const attempt = object(value.attempt) ? { startedAt: time(value.attempt.startedAt), portals: Array.isArray(value.attempt.portals) ? value.attempt.portals.filter((id: unknown) => typeof id === 'string') : undefined } : undefined;
   return { sourceId, status: value.status, leaseUntil: value.leaseUntil ?? null, lastAttemptedAt: time(value.lastAttemptedAt), lastSuccessAt: time(value.lastSuccessAt),
-    error: object(value.error) ? { code: value.error.code, message: value.error.message, at: time(value.error.at) } : null, portals };
+    error: object(value.error) ? { code: value.error.code, message: value.error.message, at: time(value.error.at) } : null, portals,
+    ...(typeof value.ownerRunId === 'string' ? { ownerRunId: value.ownerRunId } : {}), ...(attempt ? { attempt } : {}) };
 }
 
 export type Tone = 'good' | 'busy' | 'warn' | 'idle';
+const many = (n: number, one: string) => `${n.toLocaleString()} ${one}${n === 1 ? '' : 's'}`;
+/** Portals of the last attempt that were skipped on purpose (outside visiting hours, robots.txt), not failures. */
+const skippedPortals = (state: ConnectorCollection, code?: string) => Object.values(state.portals).filter(portal => portal.status === 'not-run' && !!portal.error?.code && (code ? portal.error.code === code : portal.error.code !== 'robots_disallowed')).length;
 /**
- * Source-level status for the overview. A live run of this source (`runs.recent`, S1/S6) says what it is doing now:
- * collecting, waiting to retry, paused, resume needed. Without one, a running lease that expired is a stopped run.
+ * Source-level status for the overview, in the shared source words (Collected, Collecting, Part-way, Needs attention,
+ * Waiting for you, Not collected). A live run of this source (`runs.recent`, S1/S6) says what it is doing now. Without
+ * one, a running lease that expired is an interrupted run. Sites skipped on purpose are counted, not called a problem.
  */
 export function connectorStatus(state: ConnectorCollection | null | undefined, now = Date.now(), run?: RecentRun): { tone: Tone; text: string } {
   const live = run && isLive(run) ? runState(run) : null;
   if (live) return { tone: live.tone, text: live.text };
   if (state === undefined) return { tone: 'idle', text: 'Status unknown' };
   if (state === null) return { tone: 'idle', text: 'Not collected yet' };
+  const noun = state.sourceId === 'browser-sites' ? 'site' : 'portal';
   switch (state.status) {
-    case 'running': return state.leaseUntil && Date.parse(state.leaseUntil) < now ? { tone: 'warn', text: 'Stopped unexpectedly' } : { tone: 'busy', text: 'Collecting' };
+    case 'running': return state.leaseUntil && Date.parse(state.leaseUntil) < now ? { tone: 'warn', text: 'Interrupted; the next run continues' } : { tone: 'busy', text: 'Collecting' };
     case 'complete': return { tone: 'good', text: 'Collected' };
-    case 'incomplete': return { tone: 'warn', text: state.error?.code === 'time_budget' ? 'Stopped at the time limit; next run continues' : state.error?.code === 'portals_incomplete' ? 'Some portals partly collected'
-      : state.error?.code === 'waiting_for_user' ? 'Waiting for you' : state.error?.code === 'portals_skipped' ? 'Some sites skipped'
-      : state.error?.code === 'robots_disallowed' ? 'Some portals disallow collection (robots.txt)' : 'Some portals failed' };
-    case 'failed': return { tone: 'warn', text: 'Last collection failed' };
-    case 'paused': return { tone: 'idle', text: state.error?.code === 'cancelled' ? 'Cancelled; the next run continues' : 'Paused; resumes on next run' };
+    case 'incomplete': {
+      const code = state.error?.code;
+      if (code === 'waiting_for_user') return { tone: 'warn', text: 'Waiting for you' };
+      if (code === 'portals_skipped') { const n = skippedPortals(state); return { tone: 'good', text: n ? `Collected · ${many(n, noun)} skipped` : 'Collected' }; }
+      if (code === 'robots_disallowed') { const n = skippedPortals(state, 'robots_disallowed'); return { tone: 'good', text: n ? `Collected · ${many(n, noun)} disallowed by robots.txt` : 'Collected' }; }
+      if (code === 'time_budget') return { tone: 'warn', text: 'Part-way · the next run continues' };
+      if (code === 'portals_incomplete') { const n = Object.values(state.portals).filter(portal => portal.status === 'incomplete').length; return { tone: 'warn', text: n ? `Part-way · ${many(n, noun)} partly collected` : 'Part-way' }; }
+      const failed = Object.values(state.portals).filter(portal => portal.status === 'failed').length;
+      return { tone: 'warn', text: failed ? `Needs attention · ${many(failed, noun)} failed` : 'Needs attention' };
+    }
+    case 'failed': return { tone: 'warn', text: 'Needs attention · last collection failed' };
+    case 'paused': return { tone: 'idle', text: state.error?.code === 'cancelled' ? 'Stopped; the next run continues' : 'Interrupted; the next run continues' };
   }
+}
+
+/**
+ * When a source last saved opportunities: the newest success of the whole source or of any one portal (a source whose
+ * last run skipped a site keeps an older whole-source date, which alone would look stale), with how many portals that
+ * last attempt collected. `allAt` is the last time every portal was collected in one run, when that is older.
+ */
+export function lastCollected(state: ConnectorCollection | null | undefined): { at: string | null; known: boolean; collected: number | null; total: number; allAt: string | null } {
+  if (state === undefined) return { at: null, known: false, collected: null, total: 0, allAt: null };
+  if (state === null) return { at: null, known: true, collected: null, total: 0, allAt: null };
+  const portals = Object.values(state.portals), stamps = [state.lastSuccessAt, ...portals.map(portal => portal.lastSuccessAt)].filter((value): value is string => !!value);
+  const at = stamps.sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+  const started = state.attempt?.startedAt, ids = state.attempt?.portals ?? Object.keys(state.portals);
+  const collected = started ? ids.filter(id => state.portals[id]?.attemptStartedAt === started && ['complete', 'incomplete'].includes(state.portals[id].status)).length : null;
+  const newer = !!at && !!state.lastSuccessAt && Date.parse(at) - Date.parse(state.lastSuccessAt) > 60 * 60_000;
+  return { at, known: true, collected: collected !== null && collected < ids.length ? collected : null, total: ids.length, allAt: newer ? state.lastSuccessAt! : null };
 }
 
 export interface PortalRow {
