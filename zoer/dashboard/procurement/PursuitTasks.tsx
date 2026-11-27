@@ -9,6 +9,7 @@ import { useCapabilities } from '../capabilities';
 import { DEADLINE_PASSED_HINT, deadlinePassed, dueClusters, dueText, type DueItem } from './pursuit-tasks';
 import { ACTIVE_PURSUIT_STAGES, type PursuitStage } from './state-contract';
 import { readTasks, type TaskRow } from './pursuit-task-queries';
+import { count, plural } from '../format';
 import '../review-workspace/review.css';
 
 export type { TaskRow } from './pursuit-task-queries';
@@ -39,20 +40,20 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
   const taskItems: DueItem[] = tasks.map(task => ({ id: task.id, recordId: task.recordId, label: `${task.title} (${task.recordTitle ?? task.recordId})`, due: task.dueAt, kind: 'task', owner: task.owner }));
   const deadlineHints = dueClusters([...closings, ...taskItems.filter(item => active.some(p => p.recordId === item.recordId))], 3);
   const ownerHints = dueClusters(taskItems, 3, true).filter(cluster => cluster.owner);
-  if (!enabled) return null;
+  // With no pursuits and no open tasks there is nothing to list or add: the board's empty state says how to start.
+  if (!enabled || (!pursuits.length && open.isSuccess && !tasks.length && !showClosed)) return null;
   return <section className="rw-panel rw-tasks" aria-labelledby="pursuit-tasks-title">
-    <div className="rw-panel-head"><h2 id="pursuit-tasks-title">Tasks</h2><div className="rw-actions"><label className="rw-check"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />Show completed and cancelled</label>{writes && <Btn size="sm" variant="secondary" disabled={!pursuits.length} onClick={() => setAdding(true)}>Add task</Btn>}</div></div>
-    <p className="rw-note">{COMPLETION_COPY}</p>
+    <div className="rw-panel-head"><h2 id="pursuit-tasks-title">Tasks</h2><div className="rw-actions"><label className="rw-check"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} />Show completed and cancelled</label>{writes && pursuits.length > 0 && <Btn size="sm" variant="secondary" onClick={() => setAdding(true)}>Add task</Btn>}</div></div>
     {open.error && <p role="alert">{open.data ? 'Could not refresh tasks. Showing the last complete task list.' : 'Could not load tasks. Task counts and task-related overlaps are unavailable.'} {(open.error as Error).message}</p>}
     {(deadlineHints.length > 0 || ownerHints.length > 0) && <div className="rw-warnings" role="note" aria-label="Deadline and capacity overlaps">
       <strong>Overlapping due dates</strong>
       <ul>
-        {deadlineHints.map((cluster, i) => <li key={`d${i}`}>{cluster.records} pursuits have closings or tasks between {cluster.from} and {cluster.to}: {cluster.items.map(item => item.label).join('; ')}.</li>)}
+        {deadlineHints.map((cluster, i) => <li key={`d${i}`}>{count(cluster.records)} pursuits have closings or tasks between {cluster.from} and {cluster.to}: {cluster.items.map(item => item.label).join('; ')}.</li>)}
         {ownerHints.map((cluster, i) => <li key={`o${i}`}>{cluster.owner} has {cluster.items.length} tasks across {cluster.records} notices between {cluster.from} and {cluster.to}.</li>)}
       </ul>
       <p className="rw-note">Each notice’s own delivery or response label does not account for these overlaps. Check proposal capacity before committing.</p>
     </div>}
-    {open.isPending ? <p role="status">Loading tasks…</p> : open.data && (!tasks.length ? <p className="rw-note">{writes ? 'No open tasks. Tasks are created from a notice’s requirements, gaps or changes, or with Add task.' : 'No open tasks.'}</p> : <><p className="rw-note">{tasks.length.toLocaleString()} open task{tasks.length === 1 ? '' : 's'}</p><TaskTable tasks={tasks} passed={passed} onEdit={writes ? setEditing : undefined} /></>)}
+    {open.isPending ? <p role="status">Loading tasks…</p> : open.data && (!tasks.length ? <p className="rw-note">No open tasks.</p> : <><p className="rw-note">{plural(tasks.length, 'open task')}</p><TaskTable tasks={tasks} passed={passed} onEdit={writes ? setEditing : undefined} /></>)}
     {showClosed && <><h3>Completed and cancelled</h3>
       {closed.error && <p role="alert">{closed.data ? 'Could not refresh closed tasks. Showing the last complete task list.' : 'Could not load completed and cancelled tasks.'} {(closed.error as Error).message}</p>}
       {closed.isPending ? <p role="status">Loading closed tasks…</p> : closed.data && (closed.data.length ? <TaskTable tasks={closed.data} onEdit={writes ? setEditing : undefined} /> : <p className="rw-note">No completed or cancelled tasks.</p>)}
@@ -115,7 +116,8 @@ function TaskCreator({ pursuits, onClose, onSaved }: { pursuits: PursuitDue[]; o
       <label className="rw-field"><span>Kind</span><Select aria-label="Task kind" presentation="dropdown" searchable={false} value={kind} disabled={busy} onChange={e => setKind(e.target.value)}>{TASK_KINDS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</Select></label>
       <label className="rw-field"><span>Owner</span><input value={owner} maxLength={120} disabled={busy} onChange={e => setOwner(e.target.value)} /></label>
       <label className="rw-field"><span>Due</span><input type="date" value={due} disabled={busy} onChange={e => setDue(e.target.value)} /></label>
-      <p className="rw-note">To link a task to a specific requirement, create it from the notice’s Requirements tab. {label('mandatory')} requirements stay unresolved until evidence is reviewed.</p>
+      <p className="rw-note" role="note">{COMPLETION_COPY}</p>
+      <p className="rw-note">To link a task to a specific requirement, create it from the opportunity’s Requirements tab. {label('mandatory')} requirements stay unresolved until evidence is reviewed.</p>
       {error && <p role="alert" className="rw-error">{error}</p>}
     </div>
   </Modal>;
