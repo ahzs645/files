@@ -1,22 +1,19 @@
-import { Hint } from '../host-ui';
+import { Hint, StatusBadge } from '../host-ui';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { plainError } from '../error-text';
-import { RunLinks, SettingsLink } from './Status';
-import { BROWSER_COLLECT_ACTION } from './browser-sites';
-import { intervalText, scheduleLabel, stopReason, type ScheduleRow } from './schedule-state';
-import { SCHEDULES_KEY } from './ScheduleControl';
-import {
-  COLLECT_ACTION, isLive, legacyAllSchedule, migrateAllSchedule, reenableStopped, reenableable, runState, stoppedSchedules,
-  type Preset, type RecentRun,
-} from './source-schedules';
-import { sourceName } from './display';
+import { count, when } from '../format';
+import { BROWSER_SOURCE_ID } from './browser-sites';
+import { COLLECT_ACTION, isLive, type Preset, type RecentRun } from './source-schedules';
+import { CONNECTOR_SOURCES, lastCollected, readConnectorCollection } from './source-overview';
+import { connectorCollectionKey } from './source-adapters';
+import { COLLECT_ACTIONS, collectionRunRow, emptyRunsText, runSourceId } from './collection-run-rows';
+import { BADGE_TONE } from './source-cards';
 
 export const RUNS_KEY = ['catalog', 'procurement-recent-runs'] as const;
 export const PRESETS_KEY = ['catalog', 'procurement-presets'] as const;
-const COLLECT_ACTIONS = [COLLECT_ACTION, BROWSER_COLLECT_ACTION];
 
 /** Recent runs of this plugin from Zoer's run store (`runs.recent`, S6), every 5 s. Older Zoer answers with an error. */
 export function useRecentRuns(enabled = true) {
@@ -44,78 +41,51 @@ export function usePresets() {
   return useQuery({ queryKey: PRESETS_KEY, queryFn: async () => ((await host('presets.list', { actionId: COLLECT_ACTION }))?.presets ?? []) as Preset[], refetchInterval: 30_000, retry: false });
 }
 
-const when = (value: string | undefined) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
-const runSource = (run: RecentRun) => {
-  const id = typeof run.input?.sourceId === 'string' ? run.input.sourceId : '';
-  const what = id === 'all' ? 'All sources' : id ? sourceName(id) : 'Collection';
-  return Array.isArray(run.input?.portals) ? `${what} · ${run.input.portals.length} portal${run.input.portals.length === 1 ? '' : 's'}` : Array.isArray(run.input?.sites) ? `${what} · ${run.input.sites.length} site${run.input.sites.length === 1 ? '' : 's'}` : what;
-};
+const SOURCE_IDS = ['canadabuys', ...CONNECTOR_SOURCES.map(source => source.id), BROWSER_SOURCE_ID];
+const STATES_KEY = ['catalog', 'procurement-collection-states'] as const;
+const readState = (value: unknown, sourceId: string) => { try { return readConnectorCollection(value, sourceId); } catch { return undefined; } };
+const SHOWN = 10;
 
 /**
- * Collection runs: what each recent run did or is doing (portal n of m, waiting to retry, paused for an update,
- * resume needed), with Pause, Resume and Cancel for live runs. Runs are resumable (S1): a paused run continues from
- * the portal it stopped at.
+ * Collection runs (Operations › Runs): one line per run in the shared run words, saying what it collected (source,
+ * portals done of total, opportunities saved) and when, with details on expand and Pause, Resume and Stop for live runs.
+ * It reads collection runs by action itself (`useCollectionRuns`), so a caller's newest-30 list of every action cannot
+ * leave it empty; `runs` passed in are merged in (older Zoer without the action filter).
  */
-export function CollectionRuns({ runs, error, loading }: { runs?: RecentRun[]; error?: Error | null; loading: boolean }) {
-  const client = useQueryClient(), [busy, setBusy] = useState(''), [failure, setFailure] = useState('');
-  const shown = (runs ?? []).filter(run => COLLECT_ACTIONS.includes(run.actionId)).slice(0, 8);
+export function CollectionRuns({ runs }: { runs?: RecentRun[]; error?: Error | null; loading?: boolean } = {}) {
+  const client = useQueryClient(), own = useCollectionRuns();
+  const [busy, setBusy] = useState(''), [failure, setFailure] = useState(''), [all, setAll] = useState(false);
+  const states = useQuery({ queryKey: STATES_KEY, queryFn: () => host('catalog.workspace', { keys: SOURCE_IDS.map(connectorCollectionKey) }), refetchInterval: 15_000 });
+  const merged = [...new Map([...(own.data ?? []), ...(runs ?? [])].filter(run => COLLECT_ACTIONS.includes(run.actionId)).map(run => [run.runId, run])).values()]
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const stateOf = new Map(SOURCE_IDS.map(id => [id, states.data ? readState(states.data.entries?.find((entry: any) => entry.key === connectorCollectionKey(id))?.value, id) : undefined]));
   const act = async (run: RecentRun, method: 'run.pause' | 'run.resume' | 'cancel') => {
     setBusy(`${method}:${run.runId}`); setFailure('');
     try { await host(method, { id: run.runId }); await client.invalidateQueries({ queryKey: RUNS_KEY }); await client.invalidateQueries({ queryKey: COLLECTION_RUNS_KEY }); }
     catch (e) { setFailure(plainError((e as Error).message)); } finally { setBusy(''); }
   };
+  const lastAt = [...stateOf.values()].map(state => lastCollected(state).at).filter((at): at is string => !!at).sort().at(-1) ?? null;
+  const pending = own.isPending && !merged.length, unavailable = !!own.error && !merged.length;
+  const shown = all ? merged : merged.slice(0, SHOWN);
   return <section className="rw-panel pc-runs" aria-labelledby="pc-runs-title">
-    <header className="rw-panel-head"><h2 id="pc-runs-title">Collection runs</h2><span className="rw-muted">Each run saves portal by portal; a paused or interrupted run continues where it stopped.</span></header>
-    <RunLinks compact except="/sources" />
-    {error ? <p className="rw-muted">Collection run history is not available from this Zoer version.</p> : loading ? <p role="status">Loading runs…</p> : !shown.length ? <p className="rw-muted">No collection run in Zoer’s run history.</p> :
-    <ul className="pc-run-list">{shown.map(run => {
-      const state = runState(run)!;
+    <header className="rw-panel-head"><h2 id="pc-runs-title">Collection runs</h2><span className="rw-muted">Each run saves portal by portal; a stopped or interrupted run continues where it stopped.</span></header>
+    {unavailable ? <p className="rw-muted">Collection run history is not available from this Zoer version.{lastAt ? ` Last collection ${when(lastAt)}.` : ''}</p>
+      : pending ? <p role="status">Loading runs…</p> : !merged.length ? <p className="rw-muted">{emptyRunsText(lastAt)}</p> :
+    <ul className="pc-run-list pc-run-lines">{shown.map(run => {
+      const row = collectionRunRow(run, { state: stateOf.get(runSourceId(run)) });
       return <li key={run.runId} data-live={isLive(run) || undefined}>
-        <div className="pc-run-main"><strong>{runSource(run)}</strong><small>{when(run.createdAt)}{run.finishedAt ? ` → ${when(run.finishedAt)}` : ''}</small></div>
-        <div className="pc-run-state"><span className="pc-status" data-tone={state.tone}>{state.text}</span>{state.detail && <Hint content={state.detail}><small className="pc-wrap">{plainError(state.detail)}</small></Hint>}</div>
-        {(state.canPause || state.canResume || state.canCancel) && <div className="pc-run-actions">
-          {state.canPause && <Btn size="sm" variant="secondary" disabled={!!busy} onClick={() => void act(run, 'run.pause')}>{busy === `run.pause:${run.runId}` ? 'Pausing…' : 'Pause'}</Btn>}
-          {state.canResume && <Btn size="sm" variant="primary" disabled={!!busy} onClick={() => void act(run, 'run.resume')}>{busy === `run.resume:${run.runId}` ? 'Resuming…' : 'Resume'}</Btn>}
-          {state.canCancel && <Btn size="sm" variant="ghost" disabled={!!busy} onClick={() => void act(run, 'cancel')}>{busy === `cancel:${run.runId}` ? 'Cancelling…' : 'Cancel'}</Btn>}
+        <details>
+          <summary data-zoer-disclosure=""><span className="pc-run-what"><StatusBadge tone={BADGE_TONE[row.tone]}>{row.word}</StatusBadge><strong>{row.title}</strong>{row.parts.length > 0 && <span className="pc-run-parts">{row.parts.join(' · ')}</span>}</span><time dateTime={run.createdAt}>{row.when}</time></summary>
+          <ul className="pc-run-details">{row.details.map(line => <li key={line}>{line}</li>)}{row.error && <li><Hint content={row.error}><span className="pc-wrap">{plainError(row.error)}</span></Hint></li>}</ul>
+        </details>
+        {(row.canPause || row.canResume || row.canCancel) && <div className="pc-run-actions">
+          {row.canPause && <Btn size="sm" variant="ghost" disabled={!!busy} onClick={() => void act(run, 'run.pause')}>{busy === `run.pause:${run.runId}` ? 'Pausing…' : 'Pause'}</Btn>}
+          {row.canResume && <Btn size="sm" variant="ghost" disabled={!!busy} onClick={() => void act(run, 'run.resume')}>{busy === `run.resume:${run.runId}` ? 'Resuming…' : 'Resume'}</Btn>}
+          {row.canCancel && <Btn size="sm" variant="ghost" disabled={!!busy} onClick={() => void act(run, 'cancel')}>{busy === `cancel:${run.runId}` ? 'Stopping…' : 'Stop'}</Btn>}
         </div>}
       </li>;
     })}</ul>}
+    {merged.length > SHOWN && <Btn size="sm" variant="ghost" onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show ${count(merged.length - SHOWN)} older`}</Btn>}
     {failure && <p role="alert">{failure}</p>}
   </section>;
-}
-
-/**
- * Schedules Zoer stopped, counted the same way as Status, Home and the Sources header (every row Zoer lists). Ones this
- * page can turn back on get one button; browser schedules and restored ones open Zoer's Settings › Schedules. Also
- * offers to replace the 0.33 "all sources" schedule with one schedule per source at the same interval.
- */
-export function ScheduleNotice({ rows, presets, labels }: { rows?: ScheduleRow[]; presets?: Preset[]; labels: Record<string, string> }) {
-  const client = useQueryClient(), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
-  const legacy = legacyAllSchedule(rows), stopped = stoppedSchedules(rows), here = reenableable(rows);
-  const elsewhere = stopped.filter(row => !here.includes(row) && row !== legacy);
-  if (!legacy && !stopped.length && !message) return null;
-  const run = async (task: () => Promise<string>) => {
-    setBusy(true); setError(''); setMessage('');
-    try { setMessage(await task()); await client.invalidateQueries({ queryKey: SCHEDULES_KEY }); await client.invalidateQueries({ queryKey: PRESETS_KEY }); }
-    catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(false); }
-  };
-  const name = (row: ScheduleRow) => scheduleLabel(row, presets, id => labels[id] ?? sourceName(id));
-  return <div className="pc-schedule-notice" role="status">
-    {legacy && <div>
-      <p><strong>Collection is now scheduled per source.</strong> Your earlier schedule collected every source {intervalText(legacy.intervalHours).toLowerCase()}{!legacy.enabled ? ' and is currently off' : ''}. Each source now runs on its own, step by step, and continues after a Zoer restart.</p>
-      <Btn variant="primary" disabled={busy} onClick={() => void run(async () => { await migrateAllSchedule(host, legacy, labels); return `CanadaBuys, bids&tenders and the local government websites are now each scheduled ${intervalText(legacy.intervalHours).toLowerCase()}.`; })}>{busy ? 'Saving…' : `Schedule each source ${intervalText(legacy.intervalHours).toLowerCase()}`}</Btn>
-    </div>}
-    {stopped.length > 0 && <div className="pc-schedule-stopped-list">
-      <p><strong>{stopped.length === 1 ? '1 schedule is paused and needs your review' : `${stopped.length} schedules are paused and need your review`}</strong> ({stopped.length} of {(rows ?? []).length}). They do not run until they are on again.</p>
-      <details><summary data-zoer-disclosure="">{`Why each one stopped (${stopped.map(name).join(', ')})`}</summary>
-        <ul className="pc-schedule-reasons">{stopped.map((row, i) => <li key={`${row.actionId}:${row.presetId ?? i}`}><strong>{name(row)}</strong> <Hint content={row.error}><span className="pc-wrap">{stopReason(row.error ?? '')}</span></Hint></li>)}</ul>
-      </details>
-      <div className="procurement-actions">
-        {here.length > 0 && <Btn variant="primary" disabled={busy} onClick={() => void run(async () => { const count = await reenableStopped(host, rows ?? []); return `${count} schedule${count === 1 ? '' : 's'} turned on again.`; })}>{busy ? 'Saving…' : here.length === 1 ? `Turn ${name(here[0])} on again` : `Turn ${here.length} on again`}</Btn>}
-        {elsewhere.length > 0 && <SettingsLink section="schedules">{`Turn on ${elsewhere.length === 1 ? name(elsewhere[0]) : `the other ${elsewhere.length}`} in Settings › Schedules`}</SettingsLink>}
-      </div>
-      {elsewhere.length > 0 && <p className="rw-muted">BC Bid scrapes and browser sites need their browser, so they are turned on in Zoer’s Settings.</p>}
-    </div>}
-    {message && <p>{message}</p>}{error && <p role="alert">{error}</p>}
-  </div>;
 }
