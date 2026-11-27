@@ -8,6 +8,7 @@ import { canonicalNoticeSql } from './procurement/canonical';
 import { collapseAwardDuplicates } from './procurement/award-duplicates';
 import { OPEN_FIRST_ORDER, closingSql, deadlineTimeSql } from './procurement/catalog';
 import { implausibleAwardOrder } from './award-dates';
+import { AWARD_BASE, marketSummary, summarizeOverview, unmarkedDuplicates, type OverviewSummary, type Run } from './market/sql-summary';
 const isBcBid = (row: any) => !row.sourceId || row.sourceId === 'bc-bid';
 const field = (name: string) => `json_extract(data, '$.${name}')`;
 // A record's home source. Records saved before multi-source support carry no sourceId.
@@ -79,59 +80,126 @@ async function buyerSources(kind: 'award' | 'opportunity', revision: number, sou
   void promise.catch(() => { if (buyerInventories.get(key)?.promise === promise) buyerInventories.delete(key); });
   return promise;
 }
-// Keep one revision in memory. Overview, drilldowns and search share both the
-// pending snapshot and a bounded set of calculated results; failures are evicted.
-let analysis: { revision: number; promise: Promise<any[]>; results: Map<string, Promise<any>> } | undefined;
+// Shared reads: every caller of one key shares one promise. A caller that passes a signal stops waiting when it aborts,
+// and the read itself stops once no caller waits for it (the user left the page). Failures and aborts are evicted.
+type Shared<T> = { promise: Promise<T>; controller: AbortController; waiting: number; pinned: boolean; settled: boolean };
+function share<T>(cache: Map<string, Shared<T>>, key: string, start: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  let entry = cache.get(key);
+  if (!entry) {
+    const created: Shared<T> = { promise: undefined as unknown as Promise<T>, controller: new AbortController(), waiting: 0, pinned: false, settled: false };
+    created.promise = start(created.controller.signal);
+    created.promise.then(() => { created.settled = true; }, () => { created.settled = true; if (cache.get(key) === created) cache.delete(key); });
+    cache.set(key, created); entry = created;
+  }
+  const e = entry;
+  if (!signal) { e.pinned = true; return e.promise; }
+  if (signal.aborted) return Promise.reject(signal.reason);
+  e.waiting++;
+  return new Promise<T>((resolve, reject) => {
+    const done = () => { signal.removeEventListener('abort', abort); e.waiting--; };
+    const abort = () => {
+      done();
+      if (!e.waiting && !e.pinned && !e.settled) { e.controller.abort(signal.reason); if (cache.get(key) === e) cache.delete(key); }
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    e.promise.then(value => { if (signal.aborted) return; done(); resolve(value); }, error => { if (signal.aborted) return; done(); reject(error); });
+  });
+}
+// One award snapshot per catalog revision: Overview's SQL figures, drilldowns and the other market views share it.
+const snapshots = new Map<string, Shared<any[]>>();
+let snapshotResults: { revision: number; results: Map<string, Promise<any>> } = { revision: -1, results: new Map() };
+const summaries = new Map<string, Shared<any>>();
+/** Rows read so far by the award snapshot the page is waiting for. */
+let progress: { revision: number; read: number; total: number } | undefined;
+const progressListeners = new Set<() => void>();
+const emitProgress = () => { for (const listener of progressListeners) listener(); };
+export function analysisProgress() { return progress; }
+export function subscribeAnalysisProgress(listener: () => void) { progressListeners.add(listener); return () => { progressListeners.delete(listener); }; }
 const analysisFields = ['duplicateOf','sourceId','importKey','opportunityId','opportunityDescription','opportunityType','issuingOrganization','issuingLocation','contractNumber','contactEmail','contractValue','contractValueText','currency','successfulSupplier','supplierAddress','awardDate','justification','starred','createdAt','updatedAt','sourceFileName','sourceUrl'];
-async function readAnalysis(revision: number) {
+/** Every BC Bid award, 200 at a time by rowid (keyset on SQLite's own key, so each page costs the same), reporting progress. */
+async function readAnalysis(revision: number, signal: AbortSignal) {
   await host('catalog.read', { ids: [], revision });
   const total = Number((await sql("SELECT count(*) AS total FROM records WHERE kind='award'"))[0].total);
-  const pages: any[][] = [];
-  const pageSize = 200;
-  let nextOffset = 0;
-  let failed = false;
-  // Four bounded readers, within the bridge budget. SQL projects only the fields
-  // used by the original analysis helpers, omitting redundant search/raw data.
-  await Promise.all(Array.from({ length: Math.min(4, Math.ceil(total / pageSize)) }, async () => {
-    while (!failed && nextOffset < total) {
-      const offset = nextOffset;
-      nextOffset += pageSize;
-      try {
-        const page = await sql(`SELECT id AS "recordId", ${analysisFields.map(key => `${field(key)} AS "${key}"`).join(', ')} FROM records WHERE kind='award' ORDER BY id LIMIT ? OFFSET ?`, [pageSize, offset]);
-        if (page.length !== Math.min(pageSize, total - offset)) throw new Error('Catalog changed; reload the snapshot.');
-        for (const row of page) row.starred = row.starred === 1 || row.starred === true;
-        pages[offset / pageSize] = page;
-      } catch (error) { failed = true; throw error; }
-    }
-  }));
+  const rows: any[] = []; let after = 0;
+  progress = { revision, read: 0, total }; emitProgress();
+  // SQL projects only the fields used by the analysis helpers, omitting redundant search/raw data.
+  const statement = `SELECT rowid AS "rowKey", id AS "recordId", ${analysisFields.map(key => `${field(key)} AS "${key}"`).join(', ')} FROM records WHERE kind='award' AND rowid>? ORDER BY rowid LIMIT 200`;
+  while (true) {
+    signal.throwIfAborted();
+    const page = await sql(statement, [after]);
+    for (const row of page) { row.starred = row.starred === 1 || row.starred === true; rows.push(row); }
+    if (progress?.revision === revision) { progress = { revision, read: rows.length, total: Math.max(total, rows.length) }; emitProgress(); }
+    if (page.length < 200) break;
+    const next = Number(page.at(-1).rowKey);
+    if (!Number.isFinite(next) || next <= after) throw new Error('Award read did not advance; reload the analysis.');
+    after = next;
+  }
+  for (const row of rows) delete row.rowKey;
   // Never publish mixed revisions, even if a scrape/import changes an earlier page.
   await host('catalog.read', { ids: [], revision });
+  if (rows.length !== total) throw new Error('Catalog changed; reload the snapshot.');
   // One row per award (award-duplicates.ts): a repeated listing never doubles a total, marked or not yet marked.
-  return collapseAwardDuplicates(pages.flat(), row => String(row.recordId));
+  return collapseAwardDuplicates(rows, row => String(row.recordId));
 }
 function analysisKey(name: string, args: any) {
   return JSON.stringify([BUYER_MAPPING_VERSION, name, new Date().toISOString().slice(0, 10), args], (_key, value) =>
     value && typeof value === 'object' && !Array.isArray(value)
       ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value);
 }
-export async function queryCatalog(name: string, args: any, model: Model, revision: number): Promise<any> {
+function readSnapshot(revision: number, signal?: AbortSignal) {
+  for (const key of snapshots.keys()) if (key !== String(revision)) { const old = snapshots.get(key)!; if (!old.settled) old.controller.abort(); snapshots.delete(key); }
+  return share(snapshots, String(revision), inner => readAnalysis(revision, inner), signal);
+}
+/** Unmarked repeats (market/sql-summary.ts `unmarkedDuplicates`) for one revision. Null: read every award instead. */
+function repeats(revision: number, signal?: AbortSignal): Promise<string[] | null> {
+  for (const key of summaries.keys()) if (!key.startsWith(revision + '|')) summaries.delete(key);
+  return share(summaries, revision + '|repeats', inner => unmarkedDuplicates(unscopedSql, inner), signal);
+}
+/** Market › Overview from aggregate SQL (market/sql-summary.ts); the full snapshot only when SQL cannot be exact. */
+async function overviewSummary(args: any, model: Model, revision: number, signal?: AbortSignal): Promise<OverviewSummary> {
+  const today = new Date().toISOString().slice(0, 10);
+  const run: Run = async (statement, parameters) => unscopedSql(statement, parameters);
+  const compute = async (inner: AbortSignal) => {
+    await host('catalog.read', { ids: [], revision });
+    const exclude = await repeats(revision, inner);
+    const summary = exclude && await marketSummary(run, args.filters ?? {}, today, { signal: inner, exclude });
+    await host('catalog.read', { ids: [], revision });
+    if (summary) return summary;
+    const awards = await readSnapshot(revision, inner);
+    return summarizeOverview(queryModel({ ...model, awards }, 'contractAwardsAnalysis.market', { ...args, view: 'overview' }));
+  };
+  for (const key of summaries.keys()) if (!key.startsWith(revision + '|')) summaries.delete(key);
+  return share(summaries, revision + '|' + analysisKey('summary', args.filters ?? {}), compute, signal);
+}
+export interface CatalogOptions { signal?: AbortSignal }
+export async function queryCatalog(name: string, args: any, model: Model, revision: number, options: CatalogOptions = {}): Promise<any> {
+  if (name === 'contractAwardsAnalysis.market' && args?.view === 'overview') return overviewSummary(args, model, revision, options.signal);
+  if (name === 'contractAwardsAnalysis.market' && args?.view === 'count') {
+    for (const key of summaries.keys()) if (!key.startsWith(revision + '|')) summaries.delete(key);
+    // Each award once, as in every Market figure: marked repeats are left out, and so are unmarked ones when known.
+    return share(summaries, revision + '|count', async inner => {
+      const exclude = await repeats(revision, inner), lookup = JSON.stringify(Object.fromEntries((exclude ?? []).map(id => [id, 1])));
+      if (!exclude || lookup.length > 80_000 || exclude.some(id => /["\\\u0000-\u001f]/.test(id))) { const rows = await readSnapshot(revision, inner); return { total: rows.length, repeats: null }; }
+      return { total: Number((await unscopedSql(`SELECT count(*) AS total FROM records WHERE ${AWARD_BASE} AND json_extract(?, '$."' || id || '"') IS NULL`, [lookup]))[0].total), repeats: exclude.length };
+    }, options.signal);
+  }
   if (name.startsWith('contractAwardsAnalysis.')) {
-    if (!analysis || analysis.revision !== revision) {
-      const promise = readAnalysis(revision);
-      analysis = { revision, promise, results: new Map() };
-      void promise.catch(() => { if (analysis?.promise === promise) analysis = undefined; });
-    }
-    const entry = analysis;
+    const awards = readSnapshot(revision, options.signal);
+    if (snapshotResults.revision !== revision) snapshotResults = { revision, results: new Map() };
+    const entry = snapshotResults;
     const key = analysisKey(name, args);
-    const cached = entry.results.get(key);
-    if (cached) return cached;
-    const result = entry.promise.then(awards => {
-      for (const row of awards) model.stars.set('award:' + row.importKey, row.starred === true);
-      return queryModel({ ...model, awards }, name, args);
-    });
-    entry.results.set(key, result);
-    if (entry.results.size > 32) entry.results.delete(entry.results.keys().next().value!);
-    void result.catch(() => { if (entry.results.get(key) === result) entry.results.delete(key); });
+    let result = entry.results.get(key);
+    if (!result) {
+      const computed = awards.then(rows => {
+        for (const row of rows) model.stars.set('award:' + row.importKey, row.starred === true);
+        return queryModel({ ...model, awards: rows }, name, args);
+      });
+      entry.results.set(key, computed);
+      if (entry.results.size > 32) entry.results.delete(entry.results.keys().next().value!);
+      void computed.catch(() => { if (entry.results.get(key) === computed) entry.results.delete(key); });
+      result = computed;
+    }
     return result;
   }
   if(name === 'catalog.facets') {
@@ -275,4 +343,8 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
   return queryModel(model, name, args);
 }
 
-export function resetCatalogCache() { buyerInventories.clear(); analysis = undefined; }
+export function resetCatalogCache() {
+  buyerInventories.clear();
+  for (const entry of [...snapshots.values(), ...summaries.values()]) if (!entry.settled) entry.controller.abort();
+  snapshots.clear(); summaries.clear(); snapshotResults = { revision: -1, results: new Map() }; progress = undefined; emitProgress();
+}

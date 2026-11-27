@@ -60,7 +60,9 @@ describe('award history table', () => {
     expect(gridTable('award', { writes: false, surface: 'societyer' }).table.columns.some(column => column.name === 'starred')).toBe(false);
     // The other columns stay in the table for the column picker.
     expect(gridTable('award', { writes: false, surface: 'societyer' }).table.columns.map(column => column.name)).toContain('contractNumber');
-    expect(names('award', { writes: true, surface: 'zoer' })).toEqual(expect.arrayContaining(['starred', 'contractNumber', 'currency', 'sourceUrl']));
+    // Zoer adds Source (several sources) and the Shortlist toggle; the other columns wait in the picker.
+    expect(names('award', { writes: true, surface: 'zoer' })).toEqual(['starred', 'awardDate', 'opportunityDescription', 'sourceId', 'buyer', 'successfulSupplier', 'contractValue']);
+    expect(gridTable('award', { writes: true, surface: 'zoer' }).table.columns.map(column => column.name)).toEqual(expect.arrayContaining(['contractNumber', 'currency', 'sourceUrl']));
     expect(names('opportunity', { writes: false, surface: 'zoer' })[0]).toBe('opportunityId');
   });
 });
