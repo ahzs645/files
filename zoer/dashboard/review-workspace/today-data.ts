@@ -1,5 +1,5 @@
 import { sql } from '../procurement/display';
-import { ACTIVE_PURSUIT_STAGES, type Pursuit } from '../procurement/state-contract';
+import { ACTIVE_PURSUIT_STAGES, HIDDEN_IDS_SQL, type Pursuit } from '../procurement/state-contract';
 import { and, deadlineWindowSql, openSql, recordColumns, sourceSql } from './queue';
 
 /**
@@ -18,9 +18,10 @@ const MAX_PURSUED = 150;
 /** Actions that save opportunity records and their `record_history` rows. */
 export const COLLECT_ACTIONS = ['scrape.full', 'scrape.sample', 'listing.capture', 'detail.capture', 'procurement.collect', 'opportunities.import'];
 
-/** Open notices closing today through `days` days ahead: pursued first, then shortlisted, then soonest. */
+/** Open notices (all sources unless one is chosen) closing today through `days` days ahead: pursued first, then shortlisted, then soonest. */
 export async function readClosingSoon(source: string, asOf: number, pursued: string[], days = SOON_DAYS) {
-  const scope = and(sourceSql(source), openSql(asOf, '', { crossSource: 'exclude', source }), deadlineWindowSql(days, asOf)), ids = pursued.slice(0, MAX_PURSUED);
+  // Same open population as Home's tiles and "Closing later" (hidden "not relevant" notices left out).
+  const scope = and(sourceSql(source), openSql(asOf, '', { crossSource: 'exclude', source }), { sql: `${r.id} NOT IN (${HIDDEN_IDS_SQL})`, parameters: [] }, deadlineWindowSql(days, asOf)), ids = pursued.slice(0, MAX_PURSUED);
   const rank = ids.length ? `CASE WHEN id IN (${ids.map(() => '?').join(',')}) THEN 1 ELSE 0 END` : '0';
   const [rows, [total]] = await Promise.all([
     sql(`SELECT id, ${r.title} AS title, ${r.buyer} AS buyer, ${r.closing} AS closing, ${r.source} AS sourceId, ${rank} AS pursued, CASE WHEN ${r.field('starred')}=1 THEN 1 ELSE 0 END AS shortlisted FROM records WHERE ${scope.sql} ORDER BY pursued DESC, shortlisted DESC, ${r.closing}, id LIMIT 8`, [...ids, ...scope.parameters]),

@@ -51,7 +51,7 @@ describe('source health', () => {
       { id: '2', kind: 'download', status: 'waiting_for_user', completed: 1, failed: 0, total: 9, error: 'Complete browser verification', updated_at: '2026-09-26T00:00:00Z' },
       { id: '3', kind: 'download', status: 'partial', completed: 3, failed: 2, total: 5, error: 'x', updated_at: '2026-09-22T00:00:00Z' },
     ]);
-    expect(row.attempt).toMatchObject({ id: '2', statusText: 'Waiting for you (browser check)', outcome: '1 of 9 records completed', problem: true });
+    expect(row.attempt).toMatchObject({ id: '2', statusText: 'Waiting for you (browser check)', outcome: '1 of 9 items done', problem: true });
     expect(row.success?.id).toBe('1');
     expect(row.problems).toBe(2);
   });
@@ -66,7 +66,7 @@ describe('source health', () => {
   });
   it('uses the required attachment discovery copy', () => {
     const states = attachmentStates({ notChecked: 3, checkedNoLinks: '2', withLinks: 4, withFiles: 1, noText: 1 });
-    expect(states.map(s => s.text)).toEqual(['Attachment discovery not checked', 'No public attachment links found in this check', 'Attachment links saved', 'Files downloaded', 'Saved; no usable text extracted']);
+    expect(states.map(s => s.text)).toEqual(['Attachment discovery not checked', 'Notices with no attachment links saved', 'Notices with links', 'Notices with saved files', 'Notices with saved files but no usable text']);
     expect(states[1].count).toBe(2);
   });
 });

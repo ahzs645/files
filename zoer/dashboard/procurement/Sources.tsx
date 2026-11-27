@@ -8,22 +8,22 @@ import { useWorkspace } from '../backend';
 import { navigatePlugin, pluginHref } from '../navigation';
 import { useNarrowScreen } from '../mobile';
 import { SettingsLink, useDocumentGap } from './Status';
-import { bcLastCollection, lastCollectionText } from './status-data';
+import { bcLastCollection, lastCollectionText, paged } from './status-data';
 import { PROCUREMENT_SOURCE_ADAPTERS, COLLECTION_KEY } from './source-adapters';
-import { BATCH_KIND_TEXT, CAPABILITY_TEXT, attachmentStates, batchHealth, bcCheckpointHealth, bcSourceHealth, capabilityMatrix, groupFailures, type BatchRow, type FailureTask } from './source-health';
+import { ATTACHMENT_SQL, BATCH_KIND_TEXT, BATCH_SQL, CAPABILITY_TEXT, FAILED_FILES_SQL, FAILED_TASKS_SQL, attachmentStates, batchHealth, bcCheckpointHealth, bcSourceHealth, capabilityMatrix, failedFiles, failureSummary, groupFailures, type BatchRow, type FailureTask } from './source-health';
 import { CONNECTOR_SOURCES, COLLECT_ACTION, PORTAL_COUNT_SQL, collectionKey, connectorStatus, filterPortals, portalRows, portalSummary, portalSummaryText, readConnectorCollection, type ConnectorCollection, type ConnectorSource, type Tone } from './source-overview';
 import { findSchedule, scheduleState, scheduleSummary, type ScheduleRow } from './schedule-state';
 import { SCHEDULES_KEY, ScheduleBadge, ScheduleControl, useSchedules } from './ScheduleControl';
 import { SCHEDULED_SOURCES, liveRunFor, runRetryPreset, saveSourceSchedule, sourceSchedule, type RecentRun } from './source-schedules';
-import { CollectionRuns, PRESETS_KEY, RUNS_KEY, ScheduleNotice, usePresets, useRecentRuns } from './CollectionRuns';
+import { COLLECTION_RUNS_KEY, CollectionRuns, PRESETS_KEY, RUNS_KEY, ScheduleNotice, useCollectionRuns, usePresets, useRecentRuns, useWorkflowRuns } from './CollectionRuns';
 import { LINK_SOURCES } from './link-sources';
 import { CanadaBuysImport } from './CanadaBuysImport';
 import { BrowserSourcesCard } from './BrowserSourcesCard';
 import { INVENTORY_SQL, sourceName, sql } from './display';
-import { canonicalNoticeSql } from './canonical';
 import { useDocumentBrowsers } from '../use-document-browsers';
+import { count, isActiveRun, plural } from '../format';
+import { BROWSER_COLLECT_ACTION, BROWSER_SOURCE_ID } from './browser-sites';
 import { assertDocumentBrowserIdle } from '../document-run';
-import { NO_TEXT_SQL } from '../document-processing';
 import { plainError, shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
 import { PublisherReviewQueue } from './PublisherReviewQueue';
@@ -53,7 +53,7 @@ type OverviewRow = { id: string; name: string; region: string; tone: Tone; statu
 /** One row per source: phone shows stacked cards, desktop a table (CSS only; same markup). */
 function Overview({ rows, schedule }: { rows: OverviewRow[]; schedule?: ReactNode }) {
   return <section className="rw-panel pc-overview" aria-labelledby="pc-overview-title">
-    <header className="rw-panel-head"><h2 id="pc-overview-title">Sources</h2><span className="rw-muted">{rows.length} sources · saved counts are notices in Zoer, not portal totals</span>{schedule}</header>
+    <header className="rw-panel-head"><h2 id="pc-overview-title">Sources</h2><span className="rw-muted">{rows.length} sources · saved notices in Zoer per source (a source keeps its copies of BC Bid notices), not portal totals</span>{schedule}</header>
     <table className="pc-rtable">
       <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Saved notices</th><th scope="col">Last successful collection</th><th scope="col">Next scheduled run</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.id}>
@@ -68,15 +68,27 @@ function Overview({ rows, schedule }: { rows: OverviewRow[]; schedule?: ReactNod
   </section>;
 }
 
+/** The overview row of BC sites (your browser); its card further down has the per-site list and the Collect buttons. */
+function browserSitesRow(value: unknown, read: boolean, pending: boolean, run: RecentRun | undefined, saved: string, next: ReactNode): OverviewRow {
+  let state: ConnectorCollection | null | undefined;
+  try { state = read ? readConnectorCollection(value, BROWSER_SOURCE_ID) : undefined; } catch { state = undefined; }
+  const status = connectorStatus(state, Date.now(), run);
+  return { id: BROWSER_SOURCE_ID, name: sourceName(BROWSER_SOURCE_ID), region: 'British Columbia · your Zoer browser', tone: status.tone, status: pending && !run ? 'Loading…' : status.text,
+    saved, lastSuccess: pending ? 'Loading…' : lastCollectionText({ known: state !== undefined, at: state?.lastSuccessAt ?? null, scope: null }), next,
+    action: <Btn size="sm" variant="ghost" onClick={() => scrollTo(`pc-src-${BROWSER_SOURCE_ID}`)}>Show sites</Btn> };
+}
+
 /** Where saved notices come from, how fresh they are, when they are collected next, and how to collect more. */
 export function Sources() {
   const { model } = useWorkspace(), client = useQueryClient();
   const { collection: canCollect } = useCapabilities();
   const inventory = useQuery({ queryKey: ['catalog', 'procurement-inventory'], enabled: !!model, queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60000 });
-  const keys = [COLLECTION_KEY, ...BC_CHECKPOINTS.map(([key]) => key), ...CONNECTOR_SOURCES.map(source => collectionKey(source.id))];
+  const keys = [COLLECTION_KEY, ...BC_CHECKPOINTS.map(([key]) => key), ...CONNECTOR_SOURCES.map(source => collectionKey(source.id)), collectionKey(BROWSER_SOURCE_ID)];
   const health = useQuery({ queryKey: ['catalog', 'procurement-health', keys], queryFn: () => host('catalog.workspace', { keys }), refetchInterval: 5000 });
-  const schedules = useSchedules(), presets = usePresets(), recent = useRecentRuns();
+  const schedules = useSchedules(), presets = usePresets(), recent = useRecentRuns(), collectionRuns = useCollectionRuns();
   const runs: RecentRun[] | undefined = recent.data;
+  // Collection runs come from their own by-action list; the shared newest-30 list is mostly download runs.
+  const sourceRuns: RecentRun[] | undefined = collectionRuns.data || runs ? [...new Map([...(collectionRuns.data ?? []), ...(runs ?? [])].map(run => [run.runId, run])).values()] : undefined;
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState(''), [batches, setBatches] = useState('5'), [importOpen, setImportOpen] = useState(false);
   const [scheduleFor, setScheduleFor] = useState(''), [failuresOpen, setFailuresOpen] = useState(false);
   const saved = (source: string, kind = 'opportunity') => inventory.error ? 'Unknown' : !inventory.data ? 'Loading…' : (inventory.data ?? []).filter(row => row.sourceId === source && row.kind === kind).reduce((sum, row) => sum + Number(row.count), 0).toLocaleString();
@@ -108,12 +120,12 @@ export function Sources() {
   /** Starts a run and returns at once: collection is a resumable job; its progress shows on the source and under Collection runs. */
   const start = async (key: string, begin: () => Promise<unknown>, done: string) => {
     setBusy(key); setError(''); setMessage('');
-    try { await begin(); setMessage(done); await client.invalidateQueries({ queryKey: RUNS_KEY }); }
+    try { await begin(); setMessage(done); await client.invalidateQueries({ queryKey: RUNS_KEY }); await client.invalidateQueries({ queryKey: COLLECTION_RUNS_KEY }); }
     catch (e) { setError((e as Error).message); await health.refetch(); } finally { setBusy(''); }
   };
   const collect = (key: string, input: Record<string, unknown>, what: string) => start(key, () => host('action', { actionId: COLLECT_ACTION, input }), `${what} collection started. Progress shows below; you can leave this page.`);
   const collectCanadaBuys = (mode: 'resume' | 'restart') => collect('canadabuys', { sourceId: 'canadabuys', mode, maxBatches: Number(batches) }, 'CanadaBuys');
-  const live = (sourceId: string) => liveRunFor(runs, sourceId);
+  const live = (sourceId: string) => liveRunFor(sourceRuns, sourceId);
   const canadaBuysRun = live('canadabuys');
 
   // A run that stopped part-way through the day's file (batch limit or time share) is not "Collected" yet.
@@ -139,6 +151,8 @@ export function Sources() {
         saved: saved(source.id), lastSuccess: health.isPending ? 'Loading…' : lastCollectionText({ known: state !== undefined, at: state?.lastSuccessAt ?? null, scope: null }), next: nextRun(source.id),
         action: <Btn size="sm" variant="secondary" disabled={!!busy || !!run} onClick={() => void collect(source.id, { sourceId: source.id }, source.label)}>{starting ? 'Starting…' : 'Collect'}</Btn> };
     }),
+    browserSitesRow(entry(collectionKey(BROWSER_SOURCE_ID)), !!health.data, health.isPending, live(BROWSER_SOURCE_ID), saved(BROWSER_SOURCE_ID),
+      schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : findSchedule(schedules.data, BROWSER_COLLECT_ACTION) ? <ScheduleBadge row={findSchedule(schedules.data, BROWSER_COLLECT_ACTION)} /> : 'Not scheduled'),
     // Saved notices from a source this version has no card for still get a row, so nothing saved goes unseen.
     ...[...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))].filter(id => id !== 'bc-bid' && id !== 'canadabuys' && id !== 'browser-sites' && !CONNECTOR_SOURCES.some(source => source.id === id)).map((id): OverviewRow => ({
       id, name: sourceName(id), region: 'No collection details in this version', tone: 'idle', status: 'Saved notices only', saved: saved(id), lastSuccess: 'Not recorded', next: 'Not scheduled', action: null })),
@@ -183,7 +197,7 @@ export function Sources() {
       <BrowserSourcesCard run={live('browser-sites')} phone={phone} />
       {LINK_SOURCES.length > 0 && <LinkSources />}
     </div>
-    <CollectionRuns runs={runs} error={recent.error as Error | null} loading={recent.isPending} />
+    <CollectionRuns runs={collectionRuns.data} error={collectionRuns.error as Error | null} loading={collectionRuns.isPending} />
     <SourceHealth inventory={inventory.data} canadaBuysTotal={collection?.receipt?.totalSourceRecords} enabled={!!model} failuresOpen={failuresOpen} onFailuresOpen={setFailuresOpen} />
     {scheduleFor && <Modal fit title={`Schedule ${label(scheduleFor)}`} mobileSheet onClose={() => setScheduleFor('')}><div className="pc-schedule-sheet">
       <ScheduleControl actionId={COLLECT_ACTION} title={`Collect ${label(scheduleFor)}`} row={scheduleOf(scheduleFor) ?? null}
@@ -272,21 +286,15 @@ function LinkSources() {
   </article>;
 }
 
-const SOURCE_SQL = "CASE WHEN json_extract(r.data,'$.sourceId') IS NULL OR json_extract(r.data,'$.sourceId')='' THEN 'bc-bid' ELSE json_extract(r.data,'$.sourceId') END";
-// One row per notice (canonical.ts). Discovery is judged from what the saved notice holds: attachment links, or captured detail fields without links.
-const ATTACHMENT_SQL = `SELECT ${SOURCE_SQL} AS sourceId, count(*) AS total,
-  sum(json_extract(r.data,'$.attachments[0]') IS NULL AND json_extract(r.data,'$.detailFields[0]') IS NULL) AS notChecked,
-  sum(json_extract(r.data,'$.attachments[0]') IS NULL AND json_extract(r.data,'$.detailFields[0]') IS NOT NULL) AS checkedNoLinks,
-  sum(json_extract(r.data,'$.attachments[0]') IS NOT NULL) AS withLinks,
-  sum((SELECT count(*) FROM documents d WHERE d.record_id=r.id AND d.status='downloaded')>0) AS withFiles,
-  sum((SELECT count(*) FROM documents d WHERE d.record_id=r.id AND ${NO_TEXT_SQL})>0) AS noText
-  FROM records r WHERE r.kind='opportunity' AND ${canonicalNoticeSql('r', { crossSource: 'include' })} GROUP BY sourceId`;
-const BATCH_SQL = 'SELECT id, kind, status, completed, failed, total, error, updated_at FROM batches ORDER BY updated_at DESC LIMIT 200';
-const FAILURE_SQL = "SELECT t.record_id, r.title, t.kind, t.status, t.error, t.updated_at, json_extract(t.result,'$.name') AS name, json_extract(t.result,'$.phase') AS phase FROM research_tasks t LEFT JOIN records r ON r.id=t.record_id WHERE t.status IN ('failed','waiting_for_user') ORDER BY t.updated_at DESC LIMIT 200";
 const KIND_TEXT = BATCH_KIND_TEXT;
-/** Failed and waiting research tasks (downloads, reviews); one cached read for the summary and the queue. */
+/**
+ * The failure queue from current state: files whose latest attempt failed and that are not saved under another
+ * spelling (any source, open or closed), and notices whose latest non-download task failed. Read in pages, never a
+ * window of the task log. One cached read for the summary line and the queue.
+ */
 function useFailures(enabled: boolean) {
-  return useQuery({ queryKey: ['catalog', 'procurement-source-failures'], enabled, queryFn: () => sql(FAILURE_SQL) as Promise<FailureTask[]>, refetchInterval: 15_000 });
+  return useQuery({ queryKey: ['catalog', 'procurement-source-failures'], enabled, refetchInterval: 60_000,
+    queryFn: async () => [...failedFiles(await paged(FAILED_FILES_SQL, [])), ...await paged(FAILED_TASKS_SQL, []) as FailureTask[]] });
 }
 
 /**
@@ -295,12 +303,12 @@ function useFailures(enabled: boolean) {
  */
 function AttentionSummary({ onFailures }: { onFailures: () => void }) {
   const { model } = useWorkspace(), gap = useDocumentGap(!!model), failures = useFailures(!!model);
-  const queue = groupFailures(failures.data ?? []), waiting = queue.filter(group => group.waiting).length;
-  if (!gap.data && !queue.length) return null;
+  const counts = failureSummary(failures.data ?? []);
+  if (!gap.data && !counts.fileNotices && !counts.otherNotices) return null;
   const missing = gap.data ? gap.data.links - gap.data.saved : 0;
   return <section className="pc-source-attention" aria-label="Needs attention">
-    {gap.data && <p><strong>{gap.data.fullySaved.toLocaleString()} of {gap.data.withLinks.toLocaleString()}</strong> open BC Bid notices have every file saved{missing ? `; ${missing.toLocaleString()} files are missing` : ''}. <PluginStatusLink /></p>}
-    {queue.length > 0 && <p><strong>{queue.length.toLocaleString()}</strong> notice{queue.length === 1 ? '' : 's'} in the failure queue{waiting ? ` (${waiting.toLocaleString()} waiting for a browser check)` : ''}. <button type="button" className="pc-link-button" onClick={onFailures}>Show the failure queue</button></p>}
+    {gap.data && <p><strong>{count(gap.data.fullySaved)} of {count(gap.data.withLinks)}</strong> open BC Bid notices with attachment links have every file saved{missing ? `; ${plural(missing, 'linked file is', 'linked files are')} missing` : ''}. <PluginStatusLink /></p>}
+    {(counts.fileNotices > 0 || counts.otherNotices > 0) && <p>{counts.fileNotices > 0 && <><strong>{plural(counts.files, 'file')}</strong> on {plural(counts.fileNotices, 'notice')} not saved after a download attempt{counts.waitingFiles ? ` (${plural(counts.waitingFiles, 'file waits', 'files wait')} for a browser check)` : ''}; all sources, open and closed. </>}{counts.otherNotices > 0 && <>{plural(counts.otherNotices, 'notice')} with a failed AI review step. </>}<button type="button" className="pc-link-button" onClick={onFailures}>Show the failure queue</button></p>}
   </section>;
 }
 const PluginStatusLink = () => <a className="procurement-link" href={pluginHref('/status')} onClick={event => { if (!event.metaKey && !event.ctrlKey) { event.preventDefault(); navigatePlugin('/status'); } }}>Open Status</a>;
@@ -311,16 +319,18 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled, failuresOpen, onFai
   const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   const attachments = useQuery({ queryKey: ['catalog', 'procurement-source-attachments'], enabled, queryFn: () => sql(ATTACHMENT_SQL), refetchInterval: 120_000 });
   const batches = useQuery({ queryKey: ['catalog', 'procurement-source-batches'], enabled, queryFn: () => sql(BATCH_SQL) as Promise<BatchRow[]>, refetchInterval: 15_000 });
+  const workflowRuns = useWorkflowRuns(enabled);
   const failures = useFailures(enabled);
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState(''), [allFailures, setAllFailures] = useState(false);
   const saved = (source: string) => (inventory ?? []).filter(row => row.sourceId === source && row.kind === 'opportunity').reduce((sum, row) => sum + Number(row.count), 0);
   // Only a total the source itself reported counts as known; anything else stays "unknown", never zero.
   const reported = typeof canadaBuysTotal === 'number' || (typeof canadaBuysTotal === 'string' && canadaBuysTotal.trim() !== '') ? Number(canadaBuysTotal) : NaN;
   const total = (source: string) => source === 'canadabuys' && Number.isFinite(reported) ? `${reported.toLocaleString()} (last snapshot)` : 'Unknown';
-  const health = batchHealth(batches.data ?? []);
+  const health = batchHealth(batches.data ?? [], workflowRuns.data);
   const queue = groupFailures(failures.data ?? []);
   const retryable = queue.filter(group => group.retryable && !group.waiting).map(group => group.recordId);
-  const running = (batches.data ?? []).some(row => row.status === 'running');
+  // Only a batch whose workflow run is still active blocks a retry (Zoer can leave stopped runs' batches marked running).
+  const running = (batches.data ?? []).some(row => row.status === 'running' && (!workflowRuns.data || workflowRuns.data.some(run => run.id === row.id && isActiveRun(run.status))));
   const retry = async (recordIds: string[], key: string) => {
     setBusy(key); setError(''); setMessage('');
     try { await assertDocumentBrowserIdle(host); await host('action', { actionId: 'documents.download', input: { recordIds: recordIds.slice(0, 50), force: false } }); setMessage(`Download retry started for ${Math.min(50, recordIds.length)} notice${recordIds.length === 1 ? '' : 's'}. Successful files are not downloaded again.`); await client.invalidateQueries({ queryKey: ['catalog', 'procurement-source-batches'] }); }
@@ -344,23 +354,23 @@ function SourceHealth({ inventory, canadaBuysTotal, enabled, failuresOpen, onFai
         <thead><tr><th scope="col">Source</th>{attachmentStates({}).map(state => <th key={state.key} scope="col">{state.text}</th>)}</tr></thead>
         <tbody>{(attachments.data ?? []).map(row => <tr key={row.sourceId}><th scope="row">{PROCUREMENT_SOURCE_ADAPTERS.find(a => a.id === row.sourceId)?.label ?? row.sourceId}</th>{attachmentStates(row).map(state => <td key={state.key}>{state.count.toLocaleString()}</td>)}</tr>)}</tbody>
       </table></div>}
-    <p className="rw-note">“No links found” reflects the last detail capture only.</p>
+    <p className="rw-note">Counts are notices (each source keeps its copies of BC Bid notices), open and closed. “Not checked”: no attachment list saved and no file downloaded, the same rule as the Acquire evidence queue.</p>
 
-    <h3>Downloads and reviews</h3>
-    {batches.error ? <p role="alert">Run history could not be read: {(batches.error as Error).message}</p> : batches.isPending ? <p role="status">Loading run history…</p> : !health.length ? <p className="rw-note">No download or review runs yet.</p> :
+    <h3>Download, text extraction and AI review runs</h3>
+    {batches.error ? <p role="alert">Run history could not be read: {(batches.error as Error).message}</p> : batches.isPending ? <p role="status">Loading run history…</p> : !health.length ? <p className="rw-note">No download, text extraction or AI review runs recorded.</p> :
       <div className="rw-table-wrap"><table className="rw-table rw-text">
         <thead><tr><th scope="col">Run type</th><th scope="col">Last attempted</th><th scope="col">Outcome</th><th scope="col">Last successful</th></tr></thead>
         <tbody>{health.map(row => <tr key={row.kind}>
           <th scope="row">{KIND_TEXT[row.kind] ?? row.kind}</th>
           <td>{when(row.attempt.updated_at)}</td>
           <td><span className="rw-cap" data-status={row.attempt.problem ? 'partial' : 'available'}>{row.attempt.statusText}</span> {row.attempt.outcome}{row.attempt.error && <Hint content={row.attempt.error}><small className="rw-error pc-wrap">{shortError(row.attempt.error)}</small></Hint>}{row.problems > 1 && <small className="rw-note">{row.problems} recent runs incomplete</small>}</td>
-          <td>{row.success ? `${when(row.success.updated_at)} · ${Number(row.success.completed).toLocaleString()} of ${Number(row.success.total).toLocaleString()}` : 'No successful run recorded'}</td>
+          <td>{row.success ? `${when(row.success.updated_at)} · ${count(row.success.completed)} of ${count(row.success.total)}${row.success.queueScope ? ' notices complete' : ''}` : 'No successful run recorded'}</td>
         </tr>)}</tbody>
       </table></div>}
 
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    {failures.error ? <p role="alert">Failures could not be read: {(failures.error as Error).message}</p> : failures.isPending ? <p role="status">Loading failures…</p> : !queue.length ? <><h3>Failure queue</h3><p className="rw-note">Nothing failed.</p></> :
-    <details id="source-health-failures" className="rw-failure-queue" open={failuresOpen} onToggle={event => onFailuresOpen((event.currentTarget as HTMLDetailsElement).open)}><summary data-zoer-disclosure=""><h3>Failure queue · {queue.length.toLocaleString()} notice{queue.length === 1 ? '' : 's'}</h3></summary>
+    {failures.error ? <p role="alert">Failures could not be read: {(failures.error as Error).message}</p> : failures.isPending ? <p role="status">Loading failures…</p> : !queue.length ? <><h3>Failure queue</h3><p className="rw-note">No unsaved file has a failed attempt, and no AI review step failed.</p></> :
+    <details id="source-health-failures" className="rw-failure-queue" open={failuresOpen} onToggle={event => onFailuresOpen((event.currentTarget as HTMLDetailsElement).open)}><summary data-zoer-disclosure=""><h3>Failure queue · {plural(queue.length, 'notice')}</h3></summary>
       <div className="rw-actions"><Btn size="sm" variant="secondary" disabled={!!busy || running || browserBusy || !retryable.length} onClick={() => void retry(retryable, 'all')}>{busy === 'all' ? 'Starting…' : `Retry downloads for ${Math.min(50, retryable.length)} notice${retryable.length === 1 ? '' : 's'}`}</Btn>{(running || browserBusy) && <span className="rw-note">Wait for active or paused browser work to finish.</span>}</div>
       {queue.some(group => group.waiting) && <p className="rw-note">Items marked “Needs you” need the BC Bid browser check completed in Zoer before retrying.</p>}
       <ul className="rw-failures">{(allFailures ? queue : queue.slice(0, 5)).map(group => <li key={group.recordId}>

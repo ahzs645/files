@@ -242,7 +242,7 @@ describe('"Text pending" wording outside Documents', () => {
     const sources = (dir: string): string[] => readdirSync(dir).flatMap(name => { const path = join(dir, name); return statSync(path).isDirectory() ? sources(path) : /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : []; });
     const literal = /coalesce\(length\((?:d\.)?text\),0\)=0/;
     expect(sources(dashboard).filter(path => literal.test(readFileSync(path, 'utf8'))).map(path => path.slice(dashboard.length + 1))).toEqual([]);
-    for (const [file, name] of [['review-workspace/home-data.ts', 'noTextSql('], ['review-workspace/queue.ts', 'NO_TEXT_SQL'], ['procurement/Sources.tsx', 'NO_TEXT_SQL']])
+    for (const [file, name] of [['review-workspace/home-data.ts', 'noTextSql('], ['review-workspace/queue.ts', 'NO_TEXT_SQL'], ['procurement/source-health.ts', 'NO_TEXT_SQL']])
       expect(readFileSync(join(dashboard, file), 'utf8'), file).toContain(name);
   });
 });
