@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { awardSummary, closingCell, formatAwardValue, opportunitySummary, sourceReference } from '../zoer/dashboard/bid-summaries';
+import { awardSummary, closingCell, opportunitySummary, sourceReference } from '../zoer/dashboard/bid-summaries';
+import { awardMoney } from '../zoer/dashboard/bid-columns';
 
 describe('phone list row summaries', () => {
   it('describes an opportunity with fallbacks for missing fields', () => {
@@ -23,14 +24,12 @@ describe('phone list row summaries', () => {
     expect(closingCell({ closingDate: 'Upon award' })).toBe('Upon award');
     expect(closingCell({ closingDate: '' })).toBe('');
   });
-  it('formats award values in their own currency and tolerates unknown codes', () => {
-    expect(formatAwardValue(102075, 'CAD')).toMatch(/102,075/);
-    expect(formatAwardValue(102075, 'CAD')).not.toMatch(/\.\d/);
-    expect(formatAwardValue('2500', 'usd')).toMatch(/2,500/);
-    expect(formatAwardValue(10, 'Dollars')).toBe('10 Dollars');
-    expect(formatAwardValue(10, '')).toBe('10');
-    expect(formatAwardValue(null, 'CAD')).toBe('');
-    expect(formatAwardValue('n/a', 'CAD')).toBe('');
+  it('shows award money exactly as the awards table does (awardMoney)', () => {
+    for (const [value, currency] of [[102075, 'CAD'], ['2500', 'usd'], [136000, 'USD'], [3000000, null], [369603.4, 'CAD'], [10, 'Dollars']] as const)
+      expect(awardSummary({ importKey: 'm', contractValue: value, currency }).valueText).toBe(awardMoney(value, currency));
+    expect(awardSummary({ importKey: 'm', contractValue: 3000000, currency: 'CAD' }).valueText).toBe('$3,000,000');
+    expect(awardSummary({ importKey: 'm', contractValue: 136000, currency: 'USD' }).valueText).toBe('US$136,000');
+    expect(awardSummary({ importKey: 'm', contractValue: 'null', contractValueText: 'null' }).valueText).toBe('Value not stated');
   });
   it('describes an award, keeping the original text only when a numeric value was formatted', () => {
     const award = awardSummary({ importKey: 'a1', opportunityDescription: 'Fire suppression', successfulSupplier: 'Acme', awardDate: '2026-01-02', contractValue: 102075, currency: 'CAD', contractValueText: '$102,075.00', contractNumber: 'C-1', sourceUrl: 'https://bcbid.gov.bc.ca/award/1' });

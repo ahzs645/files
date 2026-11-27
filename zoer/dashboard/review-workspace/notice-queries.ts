@@ -1,6 +1,7 @@
 import { codePointLength, codePointToUtf16, HEADLINE_MONEY_KINDS, MONEY_BASIS_LABELS, partitionMoney, summarizeMoney, validateSpan, type Money, type MoneyKind } from '@bcbid/procurement-core';
 import { sql } from '../procurement/display';
 import { json, label, type AssessmentRow, type DecisionRow } from './queries';
+import { plural, when as formatWhen } from '../format';
 
 /**
  * Notice detail reads (CONTRACT §2 tables through the SELECT-only bridge) and the pure rules the notice tabs
@@ -19,9 +20,9 @@ export async function readPages(statement: string, parameters: (string | number)
   }
 }
 
-export const when = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'date not recorded';
+/** Event times in the shared format (format.ts `when`: "Today 1:57 PM", "Nov 14, 2026, 6:58 PM"). */
+export const when = (value: unknown) => typeof value === 'string' ? formatWhen(value, Date.now(), 'date not recorded') : 'date not recorded';
 export const friendly = (e: unknown) => { const message = (e as Error)?.message ?? String(e); return /^Conflict:/i.test(message) ? 'Someone else changed this; reload and review it.' : message; };
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
 // ---- Tabs ----
 export const NOTICE_TABS = ['decision', 'requirements', 'evidence', 'changes', 'activity', 'ai'] as const;

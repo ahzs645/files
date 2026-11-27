@@ -22,18 +22,22 @@ describe('opportunity cards', () => {
   });
   it('reads as one meta line: when · source · status, with the type only when it is not an opportunity', () => {
     const text = card(false).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-    expect(text).toContain('Closes Nov 1 · BC Bid · Open');
+    expect(text).toContain('Closes Sun, Nov 1 · 14 days left · BC Bid · Open');
     expect(text).not.toContain('Opportunity');
     expect(text).not.toContain('date only');
-    expect(card(false, { ...row, kind: 'award', deadline: '2026-09-03', status: null }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).toContain('Awarded Sep 3 · BC Bid · Award');
+    expect(card(false, { ...row, kind: 'award', deadline: '2026-09-03', status: null }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).toContain('Awarded Sep 3 · BC Bid · Awarded');
   });
-  it('names the place once when it is the buyer, and does not call a notice the source closed early "Closes …"', () => {
+  it('names the place once when it is the buyer, shows one status chip on every row, and does not call a notice the source closed early "Closes …"', () => {
     const text = (data: ResultRowData) => card(false, data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
     expect(text({ ...row, buyer: 'Capital Regional District', region: 'Capital Regional District' })).not.toContain('Capital Regional District · Capital Regional District');
     expect(text({ ...row, region: 'Prince George' })).toContain('City of Prince George · Prince George');
-    expect(text({ ...row, status: 'Closed' })).toContain('Closing date Nov 1 · BC Bid · Closed');
-    expect(text({ ...row, status: 'Closed', deadline: '2026-10-13' })).toContain('Closed Oct 13 · BC Bid ');
-    expect(text({ ...row, status: 'Closed', deadline: '2026-10-13' })).not.toContain('BC Bid · Closed');
+    expect(text({ ...row, status: 'Closed' })).toContain('Closing date Sun, Nov 1 · 14 days left · BC Bid · Closed');
+    expect(text({ ...row, status: 'Closed', deadline: '2026-10-13' })).toContain('Closed Oct 13 · BC Bid · Closed');
+    // A source that still says "Open" after the deadline, an award status and a blank status each get one chip too.
+    expect(text({ ...row, status: 'Open', deadline: '2026-10-13' })).toContain('Closed Oct 13 · BC Bid · Closed');
+    expect(text({ ...row, status: 'Awarded', deadline: '2026-10-13' })).toContain('BC Bid · Awarded');
+    expect(text({ ...row, status: null, deadline: '2026-10-13' })).toContain('BC Bid · Closed');
+    for (const status of ['Open', 'Closed', 'Awarded', 'Cancelled', null]) expect(card(false, { ...row, status }).match(/pc-row-status/g)).toHaveLength(1);
   });
 });
 

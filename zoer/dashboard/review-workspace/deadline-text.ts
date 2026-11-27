@@ -1,5 +1,6 @@
 import { calendarDateInZone, deadlineState, isValidTimeZone, parseDeadline } from '@bcbid/procurement-core';
 import type { DeadlineState } from '@bcbid/procurement-core';
+import { NO_FIXED_DATE_FROM, NO_FIXED_DATE_TEXT } from '../procurement/deadline';
 
 /**
  * A deadline as people read it: "Tue, Oct 20 · 2 days left", "Today, 2:00 PM", "Tomorrow". Precision caveats
@@ -59,8 +60,9 @@ export function friendlyDeadline(raw: unknown, asOf: number): DeadlineDisplay {
 const monthDay = (date: string, today: string) => new Date(noonUtc(date)).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', ...(date.slice(0, 4) !== today.slice(0, 4) ? { year: 'numeric' } : {}) });
 
 /**
- * The date part of a result card's meta line: "Closes Nov 1", "Closes today", "Closes tomorrow, 2:00 PM",
- * "Closed Oct 12", "Awarded Sep 3". The friendly line and every caveat go in `detail` for the tooltip.
+ * The date part of a result row's meta line, in the one deadline format: "Closes Tue, Dec 1 · 4 days left",
+ * "Closes today, 2:00 PM", "Closes tomorrow", "Closed Oct 2" (the year only when it is not this year), "Awarded Sep 3".
+ * Precision caveats and the source's text go in `detail` for the tooltip.
  */
 export function cardDeadline(raw: unknown, kind: string, asOf: number): DeadlineDisplay {
   const source = typeof raw === 'string' ? raw.trim() : '';
@@ -69,9 +71,10 @@ export function cardDeadline(raw: unknown, kind: string, asOf: number): Deadline
     const today = calendarDateInZone(asOf, localZone());
     return { text: !source ? 'Award date not given' : date ? `Awarded ${monthDay(date, today)}` : `Awarded ${source}`, detail: source, state: 'unknown', tone: '' };
   }
-  const p = deadlineParts(raw, asOf), friendly = friendlyDeadline(raw, asOf);
+  const p = deadlineParts(raw, asOf);
   if (!p.known) return { text: p.source ? `Closes ${p.source}` : 'No closing date', detail: p.detail, state: p.state, tone: p.tone };
-  const near = p.days === 0 ? 'today' : p.days === 1 ? 'tomorrow' : '';
-  const text = p.state === 'closed' ? `Closed ${monthDay(p.date, p.today)}` : near ? `Closes ${near}${p.time ? `, ${p.time}` : ''}` : `Closes ${monthDay(p.date, p.today)}`;
-  return { text, detail: `${friendly.text} — ${p.detail}`, state: p.state, tone: p.tone };
+  if (p.date >= NO_FIXED_DATE_FROM) return { text: NO_FIXED_DATE_TEXT, detail: p.detail, state: p.state, tone: '' };
+  if (p.state === 'closed') return { text: `Closed ${monthDay(p.date, p.today)}`, detail: p.detail, state: p.state, tone: p.tone };
+  const friendly = friendlyDeadline(raw, asOf).text;
+  return { text: `Closes ${p.days <= 1 ? friendly[0].toLowerCase() + friendly.slice(1) : friendly}`, detail: p.detail, state: p.state, tone: p.tone };
 }

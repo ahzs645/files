@@ -427,3 +427,7 @@ p.pc-source-crumb{margin-bottom:.75rem}
   .pc-run-lines details>summary{min-height:44px}
   .pc-run-lines details>summary time{margin-left:0}
 }
+/* Browse cleanup (2026-11-27): one status chip per row (StatusBadge carries the tone), the compare back row, the table's Columns picker. */
+.pc-row-meta .pc-row-status[data-status]{color:inherit;font-weight:inherit;display:inline-flex}
+.pc-back-row{display:flex;align-items:center;margin:0 0 .5rem}
+.bid-columns-picker{display:grid;gap:.5rem;border:0;margin:0;padding:0}
