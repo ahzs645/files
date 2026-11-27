@@ -56,20 +56,33 @@ Plugin behaviour (`zoer/dashboard/capabilities.ts`):
 - When `writes` is false the bridge refuses, before sending, every method outside
   §2 (and `models` unless `ai`), with the read-only message below. Collection runs
   are writes, so this covers them too.
-- Without `collection`: no Sources section or BC Bid scraper pages, no Documents
-  Download/History views (Documents opens on Files), no award-history or JSON
-  import controls, no "collect from Sources" prompts, no attachment/retry buttons.
-- Without `writes`: no Profiles section, AI workbench keeps only its Analysis view,
-  and stars, hide/show, pursuit stages and notes, tasks, decisions, judgements,
-  requirement matches, review accept/correct, change acknowledgement, tags, saved
-  search edits, alerts, classification labels, place tagging, zip bundles and AI
-  runs are hidden. Gated routes redirect (sections to `/home`, views to the
-  section's first remaining view).
-- Without `ai`: no model selectors, no `models` request, no AI workbench section and no Ask AI tab on a notice.
-- Review mode (`writes` and `collection` both false): sections are Home · Opportunities · Pursuits · Documents ·
-  Insights (full labels; the strip scrolls with a fade edge on phones). Taxonomy (an import page) is hidden without
-  `collection`. Evidence is the last Insights view (Decision insights · Market analysis · Award history · Evidence) and
-  `/evidence` links keep resolving there. Home drops "New since your last visit" and the alert-schedule footer (both
+- Navigation is six sections, Home · Opportunities · Pursuits · Insights · Operations · Setup, each with its views
+  (`zoer/dashboard/review-workspace/nav.ts`):
+  - Opportunities: Browse `/procurement` · Fit matrix · Compare · Evidence `/evidence` · Files `/files`
+  - Insights: Decisions `/insights` · Awards `/contract-awards` · Market `/analysis/overview` · AI results
+    `/ai-review?view=analysis` (needs `ai`)
+  - Operations: Overview `/status` · Sources `/sources` (BC Bid's page `/scraper`) · Documents `/documents` · Runs
+    `/runs` (all need `collection`) · AI reviews `/ai-review` (needs `writes` and `ai`)
+  - Setup: Profiles `/profiles` (needs `writes`) · AI pipeline `/workbench` (needs `writes` and `ai`) · Taxonomy
+    `/taxonomy` · Import & export `/settings` (both need `collection`)
+
+  A section exists when at least one of its views survives. Gated routes redirect: a hidden section to `/home`, a
+  hidden view to the section's first remaining view. Retired routes redirect and keep their other query keys:
+  `/documents?tab=files` → `/files`, `/documents?tab=history` → `/runs?kind=downloads`, `/documents?tab=processing` →
+  `/documents?focus=extraction`, `/bc-bid-dashboard` → `/scraper`. A host that maps plugin locations onto its own
+  routes (`hrefBase`) must accept `/files` and `/runs` too.
+- Without `collection`: no Operations views except AI reviews, no Taxonomy or Import & export, no award-history or
+  JSON import controls, no "collect from Sources" prompts, no attachment/retry buttons. Opportunities › Files stays
+  (read-only: no Retry or Re-extract).
+- Without `writes`: no Profiles, AI reviews or AI pipeline, and stars, hide/show, pursuit stages and notes, tasks,
+  decisions, judgements, requirement matches, review accept/correct, change acknowledgement, tags, saved search edits,
+  alerts, classification labels, place tagging, zip bundles and AI runs are hidden.
+- Without `ai`: no model selectors, no `models` request, no AI results, AI reviews or AI pipeline views and no Ask AI
+  tab on a notice.
+- Review mode (`writes` and `collection` both false): sections are exactly Home · Opportunities · Pursuits · Insights
+  (full labels; the strip scrolls with a fade edge on phones, and there is no More menu). Evidence and Files are
+  Opportunities views on every host, so `/evidence` and `/files` links resolve the same way in Zoer and in review mode.
+  With `ai`, Insights adds AI results. Home drops "New since your last visit" and the alert-schedule footer (both
   describe collection runs), opportunity rows have no selection checkboxes or bulk bar, and a shortlisted row shows a
   read-only star.
 - `surface: "societyer"`: in-page Refresh buttons are hidden (the host page owns refresh) and Award history opens on

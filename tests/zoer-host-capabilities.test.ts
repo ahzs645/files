@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bindNativeHost, host } from '../zoer/dashboard/bridge';
 import { READ_ONLY_MESSAGE, ZOER_CAPABILITIES, allowsMethod, capabilities, loadCapabilities, readCapabilities, resetCapabilities } from '../zoer/dashboard/capabilities';
-import { CONFIGURE_SECTIONS, PRIMARY_SECTIONS, gatedRedirectOf, sectionOf, sectionViews, viewHref, viewOf, visibleSections, phoneSections } from '../zoer/dashboard/review-workspace/nav';
+import { OPERATE_SECTIONS, PRIMARY_SECTIONS, gatedRedirectOf, sectionOf, sectionViews, viewOf, visibleSections, phoneSections, type Section, type SectionTab } from '../zoer/dashboard/review-workspace/nav';
 
 afterEach(() => { resetCapabilities(); vi.restoreAllMocks(); });
 const REVIEW = { version: 1, surface: 'societyer', collection: false, writes: false, ai: false } as const;
@@ -44,60 +44,95 @@ describe('host capabilities', () => {
 });
 
 describe('capability-gated navigation', () => {
-  const ids = (caps: typeof FULL) => [...visibleSections(PRIMARY_SECTIONS, caps), ...visibleSections(CONFIGURE_SECTIONS, caps)].map(([id]) => id);
-  it('keeps every section and default route inside Zoer', () => {
+  type Caps = typeof FULL;
+  const ALL = [...PRIMARY_SECTIONS, ...OPERATE_SECTIONS];
+  const visible = (caps: Caps) => visibleSections(ALL, caps);
+  const ids = (caps: Caps) => visible(caps).map(([id]) => id);
+  const views = (section: Section, caps: Caps) => sectionViews(section, caps)?.map(([id]) => id);
+  const COLLECTION_ONLY = { collection: true, writes: false, ai: false };
+  const WRITES_AI = { collection: false, writes: true, ai: true };
+  it('keeps every section, view and default route inside Zoer', () => {
     expect(visibleSections(PRIMARY_SECTIONS, FULL)).toEqual(PRIMARY_SECTIONS);
-    expect(visibleSections(CONFIGURE_SECTIONS, FULL)).toEqual(CONFIGURE_SECTIONS);
-    for (const route of ['/sources', '/scraper', '/scraper/history', '/bc-bid-dashboard', '/settings', '/profiles', '/ai-review', '/workbench', '/documents', '/documents?tab=history']) expect(gatedRedirectOf(route, FULL)).toBeNull();
+    expect(visibleSections(OPERATE_SECTIONS, FULL)).toEqual(OPERATE_SECTIONS);
+    expect(ids(FULL)).toEqual(['home', 'opportunities', 'pursuits', 'insights', 'operations', 'setup']);
+    expect(views('opportunities', FULL)).toEqual(['table', 'matrix', 'compare', 'evidence', 'files']);
+    expect(views('insights', FULL)).toEqual(['decisions', 'awards', 'market', 'ai']);
+    expect(views('operations', FULL)).toEqual(['overview', 'sources', 'documents', 'reviews', 'runs']);
+    expect(views('setup', FULL)).toEqual(['profiles', 'pipeline', 'taxonomy', 'data']);
+    for (const route of ['/sources', '/scraper', '/scraper/history', '/settings', '/profiles', '/ai-review', '/ai-review?view=analysis', '/workbench', '/documents', '/documents?focus=extraction', '/runs', '/runs?kind=bc-bid', '/files', '/taxonomy', '/status', '/unknown'])
+      expect([route, gatedRedirectOf(route, FULL)]).toEqual([route, null]);
   });
-  it('drops collection, write and AI sections and views on a review-only host', () => {
-    expect(ids(READ_ONLY)).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'insights']);
-    // Taxonomy is an import page (collection); the AI workbench needs AI; Evidence becomes an Insights view.
-    expect(ids({ ...READ_ONLY, ai: true })).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'insights', 'workbench']);
-    expect(ids({ collection: true, writes: false, ai: false })).toEqual(['home', 'opportunities', 'pursuits', 'documents', 'evidence', 'insights', 'status', 'sources', 'taxonomy']);
-    expect(sectionViews('documents', READ_ONLY)?.map(([id]) => id)).toEqual(['files']);
-    expect(sectionViews('insights', READ_ONLY)?.map(([, label]) => label)).toEqual(['Decision insights', 'Market analysis', 'Award history', 'Evidence']);
-    expect(sectionViews('insights', FULL)?.map(([id]) => id)).toEqual(['decisions', 'market', 'awards']);
-    expect(sectionViews('workbench', { ...READ_ONLY, ai: true })?.map(([id]) => id)).toEqual(['analysis']);
-    // Sections whose first view is gated open on the first remaining one.
-    const routes = Object.fromEntries(visibleSections([...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS], { ...READ_ONLY, ai: true }).map(([id, , to]) => [id, to]));
-    expect(routes.documents).toBe('/documents?tab=files');
-    expect(routes.workbench).toBe('/ai-review?view=analysis');
-    expect(ids({ collection: false, writes: true, ai: true })).toContain('profiles');
-    expect(ids({ collection: true, writes: false, ai: false })).toContain('sources');
+  it('leaves a review-only host exactly Home, Opportunities, Pursuits and Insights', () => {
+    expect(ids(READ_ONLY)).toEqual(['home', 'opportunities', 'pursuits', 'insights']);
+    expect(visible(READ_ONLY)).toEqual(PRIMARY_SECTIONS);
+    // Evidence and Files are Opportunities views on every host; AI results needs AI.
+    expect(views('opportunities', READ_ONLY)).toEqual(['table', 'matrix', 'compare', 'evidence', 'files']);
+    expect(sectionViews('insights', READ_ONLY)?.map(([, label]) => label)).toEqual(['Decisions', 'Awards', 'Market']);
+    expect(views('operations', READ_ONLY)).toEqual([]);
+    expect(views('setup', READ_ONLY)).toEqual([]);
   });
-  it('keeps evidence links working as an Insights view in review mode', () => {
-    expect(sectionOf('/evidence', READ_ONLY)).toBe('insights');
-    expect(viewOf('/evidence?problem=conflict', READ_ONLY)).toBe('evidence');
-    expect(gatedRedirectOf('/evidence?problem=conflict&field=budget', READ_ONLY)).toBeNull();
-    expect(viewHref('insights', 'evidence', '/insights')).toBe('/evidence');
-    // Zoer keeps Evidence as its own section.
-    expect(sectionOf('/evidence', FULL)).toBe('evidence');
-    expect(sectionOf('/evidence')).toBe('evidence');
+  it('adds Insights › AI results on a review host with AI', () => {
+    const withAi = { ...READ_ONLY, ai: true };
+    expect(ids(withAi)).toEqual(['home', 'opportunities', 'pursuits', 'insights']);
+    expect(views('insights', withAi)).toEqual(['decisions', 'awards', 'market', 'ai']);
   });
-  it('keeps five or fewer sections in the phone strip and folds the rest behind More', () => {
-    const tabs = [...visibleSections(PRIMARY_SECTIONS, READ_ONLY), ...visibleSections(CONFIGURE_SECTIONS, READ_ONLY)];
-    expect(phoneSections(tabs, 'documents')).toEqual({ tabs, more: [] });
-    const all = [...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS], ids = (list: typeof all) => list.map(([id]) => id);
-    const { tabs: strip, more } = phoneSections(all, 'home');
-    expect(ids(strip)).toEqual(['home', 'opportunities', 'pursuits', 'insights']);
-    expect(ids(more)).toEqual(['documents', 'evidence', 'status', 'workbench', 'profiles', 'sources', 'taxonomy']);
+  it('gives a collection-only host Operations without AI reviews and Setup without the editors', () => {
+    expect(ids(COLLECTION_ONLY)).toEqual(['home', 'opportunities', 'pursuits', 'insights', 'operations', 'setup']);
+    expect(views('operations', COLLECTION_ONLY)).toEqual(['overview', 'sources', 'documents', 'runs']);
+    expect(views('setup', COLLECTION_ONLY)).toEqual(['taxonomy', 'data']);
+    expect(views('insights', COLLECTION_ONLY)).toEqual(['decisions', 'awards', 'market']);
+    // A section whose first view is gated opens on the first remaining one.
+    expect(Object.fromEntries(visible(COLLECTION_ONLY).map(([id, , to]) => [id, to]))).toMatchObject({ operations: '/status', setup: '/taxonomy' });
+  });
+  it('gives a writes-and-AI host without collection only AI reviews and the editors', () => {
+    expect(ids(WRITES_AI)).toEqual(['home', 'opportunities', 'pursuits', 'insights', 'operations', 'setup']);
+    expect(views('operations', WRITES_AI)).toEqual(['reviews']);
+    expect(views('setup', WRITES_AI)).toEqual(['profiles', 'pipeline']);
+    expect(Object.fromEntries(visible(WRITES_AI).map(([id, , to]) => [id, to]))).toMatchObject({ operations: '/ai-review', setup: '/profiles' });
+    // Writes alone keep the profile editor only.
+    expect(ids({ collection: false, writes: true, ai: false })).toEqual(['home', 'opportunities', 'pursuits', 'insights', 'setup']);
+  });
+  it('places Evidence and Files in Opportunities whatever the host', () => {
+    for (const caps of [FULL, READ_ONLY, COLLECTION_ONLY, WRITES_AI]) {
+      expect(sectionOf('/evidence', caps)).toBe('opportunities');
+      expect(viewOf('/evidence?problem=conflict', caps)).toBe('evidence');
+      expect(sectionOf('/files?fileStatus=failed', caps)).toBe('opportunities');
+      expect(gatedRedirectOf('/evidence?problem=conflict&field=budget', caps)).toBeNull();
+      expect(gatedRedirectOf('/files?fileStatus=failed&record=r1', caps)).toBeNull();
+    }
+  });
+  it('folds Operations and Setup behind More on a phone, and drops More when only the daily sections remain', () => {
+    const name = (list: SectionTab[]) => list.map(([id]) => id);
+    const home = phoneSections(visible(FULL), 'home');
+    expect(name(home.tabs)).toEqual(['home', 'opportunities', 'pursuits', 'insights']);
+    expect(name(home.more)).toEqual(['operations', 'setup']);
+    for (const caps of [READ_ONLY, { ...READ_ONLY, ai: true }]) expect(phoneSections(visible(caps), 'home')).toEqual({ tabs: visible(caps), more: [] });
+    expect(name(phoneSections(visible(COLLECTION_ONLY), 'home').more)).toEqual(['operations', 'setup']);
+    expect(name(phoneSections(visible(WRITES_AI), 'insights').more)).toEqual(['operations', 'setup']);
   });
   it('keeps the selected section in the phone strip, so its panel always has a tab', () => {
-    const all = [...PRIMARY_SECTIONS, ...CONFIGURE_SECTIONS];
-    const { tabs, more } = phoneSections(all, 'sources');
-    expect(tabs.map(([id]) => id)).toContain('sources');
-    expect(more.map(([id]) => id)).not.toContain('sources');
-    expect(tabs.length + more.length).toBe(all.length);
+    for (const selected of ['operations', 'setup'] as const) {
+      const { tabs, more } = phoneSections(visible(FULL), selected);
+      expect(tabs.map(([id]) => id)).toEqual(['home', 'opportunities', 'pursuits', 'insights', selected]);
+      expect(more.map(([id]) => id)).toEqual(['operations', 'setup'].filter(id => id !== selected));
+    }
   });
   it('sends gated locations to Home or to the section’s remaining view', () => {
-    for (const route of ['/sources', '/scraper', '/scraper/history', '/bc-bid-dashboard', '/settings', '/profiles', '/unknown', '/taxonomy', '/ai-review', '/workbench']) expect([route, gatedRedirectOf(route, READ_ONLY)]).toEqual([route, '/home']);
-    expect(gatedRedirectOf('/documents', READ_ONLY)).toBe('/documents?tab=files');
-    expect(gatedRedirectOf('/documents?tab=history&record=r1', READ_ONLY)).toBe('/documents?record=r1&tab=files');
+    for (const route of ['/status', '/sources', '/scraper', '/scraper/history', '/bc-bid-dashboard', '/documents', '/documents?focus=extraction', '/runs', '/runs?kind=downloads', '/settings', '/profiles', '/unknown', '/taxonomy', '/ai-review', '/workbench'])
+      expect([route, gatedRedirectOf(route, READ_ONLY)]).toEqual([route, '/home']);
+    // AI results without AI opens the first Insights view.
+    expect(gatedRedirectOf('/ai-review?view=analysis', READ_ONLY)).toBe('/insights');
+    for (const route of ['/home', '/procurement?view=matrix', '/opportunities', '/pursuits', '/files', '/evidence', '/insights', '/contract-awards', '/analysis/overview'])
+      expect([route, gatedRedirectOf(route, READ_ONLY)]).toEqual([route, null]);
     const withAi = { ...READ_ONLY, ai: true };
-    expect(gatedRedirectOf('/ai-review', withAi)).toBe('/ai-review?view=analysis');
-    expect(gatedRedirectOf('/workbench', withAi)).toBe('/ai-review?view=analysis');
-    for (const route of ['/home', '/procurement?view=matrix', '/opportunities', '/pursuits', '/documents?tab=files', '/evidence', '/insights', '/contract-awards']) expect([route, gatedRedirectOf(route, READ_ONLY)]).toEqual([route, null]);
     expect(gatedRedirectOf('/ai-review?view=analysis', withAi)).toBeNull();
+    expect(gatedRedirectOf('/ai-review', withAi)).toBe('/home');
+    expect(gatedRedirectOf('/workbench', withAi)).toBe('/home');
+    expect(gatedRedirectOf('/ai-review', COLLECTION_ONLY)).toBe('/status');
+    expect(gatedRedirectOf('/profiles', COLLECTION_ONLY)).toBe('/taxonomy');
+    expect(gatedRedirectOf('/workbench', COLLECTION_ONLY)).toBe('/taxonomy');
+    for (const route of ['/status', '/scraper', '/runs?kind=collection', '/documents']) expect([route, gatedRedirectOf(route, WRITES_AI)]).toEqual([route, '/ai-review']);
+    expect(gatedRedirectOf('/settings', WRITES_AI)).toBe('/profiles');
+    expect(gatedRedirectOf('/taxonomy?code=1', WRITES_AI)).toBe('/profiles');
   });
 });

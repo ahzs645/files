@@ -17,7 +17,7 @@ import { DocumentFiles } from '../zoer/dashboard/DocumentInventory';
 import { EXTRACTION_FAILED, FILE_FILTERS, PENDING_EXTRACTION, fileFilterSql, fileState, fileWarning, processingRetry, splitDocumentBatches, workbenchExclusions } from '../zoer/dashboard/document-processing';
 import { askScopeText, documentCounts, documentSummary, noTextMessage, textState, textStateDetail } from '../zoer/dashboard/procurement/ai';
 import { NoText } from '../zoer/dashboard/procurement/NoText';
-import { SECTION_VIEWS } from '../zoer/dashboard/review-workspace/nav';
+import { SECTION_VIEWS, redirectOf } from '../zoer/dashboard/review-workspace/nav';
 import { preflightScopeText, summarizePreflight } from '../zoer/dashboard/review-workspace/selection';
 
 const root = process.cwd();
@@ -84,8 +84,10 @@ describe('Processing tab', () => {
   const pendingRows = (files: number, notices: number, failed = 0, failedNotices = 0) => (statement: string) =>
     !statement.includes('count(DISTINCT record_id)') ? undefined : statement.includes(EXTRACTION_FAILED) ? [{ files: failed, notices: failedNotices }] : [{ files, notices }];
   const props = { supported: true, collection: true, batches: [] as any[], tasks: [], onChanged: async () => {}, onError: () => {} };
-  it('AC-013: lists Download, Processing, Files, History in the section navigation', () => {
-    expect(SECTION_VIEWS.documents!.map(([id, label, route]) => [id, label, route])).toEqual([['download', 'Download', '/documents'], ['processing', 'Processing', '/documents?tab=processing'], ['files', 'Files', '/documents?tab=files'], ['history', 'History', '/documents?tab=history']]);
+  it('AC-013: places Documents, Files and Runs in the section navigation, and redirects the old Documents tabs', () => {
+    expect(SECTION_VIEWS.operations!.filter(([id]) => id === 'documents' || id === 'runs')).toEqual([['documents', 'Documents', '/documents'], ['runs', 'Runs', '/runs']]);
+    expect(SECTION_VIEWS.opportunities!.find(([id]) => id === 'files')).toEqual(['files', 'Files', '/files']);
+    expect(['processing', 'files', 'history'].map(tab => redirectOf(`/documents?tab=${tab}`))).toEqual(['/documents?focus=extraction', '/files', '/runs?kind=downloads']);
   });
   it('AC-013: shows the pending count and starts documents.extract.pending', async () => {
     hostWith(pendingRows(7, 3));
