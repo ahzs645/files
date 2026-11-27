@@ -39,6 +39,7 @@ export async function catalogTransaction(host: Host, key: string, build: (state:
     try {
       const state = await host('catalog.workspace', { keys: [key] });
       const value = await build(state.entries.find((entry: any) => entry.key === key)?.value ?? {}, state.revision);
+      if (value.unchanged) return value.entries[0].value;
       const result = await host('catalog.commit', { revision: state.revision, ...value });
       if (!result.conflict) return value.entries[0].value;
     } catch (error) {

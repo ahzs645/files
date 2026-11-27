@@ -1,0 +1,40 @@
+# Publisher reconciliation on November 26, 2026
+
+| Opportunity | BC Bid observation | Publisher observation |
+| --- | --- | --- |
+| Nanaimo RFI 4354 | BC Bid `232944` publishes a direct link and a September 8 closing date. The notice lists zero BC Bid documents. | The [Nanaimo notice](https://nanaimo.bidsandtenders.ca/Module/Tenders/en/Tender/Detail/d417320d-5c2a-421e-9401-9e24cf224c08) shows a November 2 closing date, an October 26 question deadline, two documents and five addenda. The public bulk download button goes to vendor sign-in. Zoer already has a separate publisher copy and currently lists it under Possible duplicates. |
+| Nanaimo RFB 4351 CON | Zoer’s saved copy of [BC Bid `233080`](https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/233080) links to the Nanaimo portal homepage. | The targeted publisher search resolved [Nanaimo bid 4351](https://nanaimo.bidsandtenders.ca/Module/Tenders/en/Tender/Detail/88408a58-e5f4-425e-825c-636097862e62) using the numeric reference and title. It is marked Awarded and lists six documents and three addenda. |
+| Abbotsford RFP 1220-2026-4240 | [BC Bid `233053`](https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/233053) links to the buyer’s homepage, gives a September 8 closing date and an August 27 question deadline. | The [Abbotsford notice](https://abbotsford.bidsandtenders.ca/Module/Tenders/en/Tender/Detail/187afa6c-ef82-4a81-b0dd-3caf0ced7a9b) has the same buyer and opportunity number, a September 10 closing date and the same question deadline. The public parser read 14 document rows and two addendum rows. |
+| PHSA ITQ 19923 | [BC Bid `235048`](https://bcbid.gov.bc.ca/page.aspx/en/bpm/process_manage_extranet/235048) links directly to Bonfire opportunity `112504`. The buyer is PHSA, acting for Interior Health. | The [Bonfire link](https://phsa.bonfirehub.ca/opportunities/112504) presented Cloudflare verification, followed by `Invalid data`. The portal’s public listing URL also returned `Invalid data`. Publisher fields and file access could not be verified. |
+
+For direct links, the URL identifies the specific publisher notice even when dates disagree. For a homepage link, search the buyer’s own portal and confirm a unique procurement number. The 4351 CON case also requires matching title words to corroborate the shorter number. The publisher’s own posting is the place to check its current deadline and addenda. Retain both source values and their capture times. A protected-file import should retain the original notice and file URL and use the existing catalog document storage, versioning and checksum read-back.
+
+The hosted Zoer entry displayed **Open access** with password authentication off. Enable and verify Zoer authentication before storing vendor passwords on that instance. Use the existing password bank with exact website origins. The protected browser is scoped to a person and does not hand its cookies or credentials to a plugin worker. The signed-in Chrome session below verified the bids&tenders preview workflow. Qualification in a Zoer protected browser and on an active Bonfire notice is still pending. Bonfire is currently a handoff link in Procurement because the existing crawler policy blocks its automated collection.
+
+## Reproduce the signed-in Nanaimo download
+
+1. Open [RFI 4354 in Zoer](https://zoer.k8s.overtheedgepaper.ca/#/plugins/bc-bid-monitor/procurement?notice=opportunity%3A232944&source=bc-bid), then follow **Open on BC Bid**. On the BC Bid **Overview** tab, the buyer’s link appears in **Delivery of Submissions** and **Summary Details**.
+2. Open the [City of Nanaimo bids&tenders notice](https://nanaimo.bidsandtenders.ca/Module/Tenders/en/Tender/Detail/d417320d-5c2a-421e-9401-9e24cf224c08). Confirm **Bid Number 4354**, **Closed**, the publisher’s closing date, and the **Documents** and **Addenda** sections.
+3. Choose **Download Bid Documents**. While signed out, this went to the Nanaimo vendor login. The account holder signed in and reached the **My Bids** dashboard. The portal did not return automatically to the original notice.
+4. Reopen the same tender link in the same signed-in browser. The page shows **Logout** and the **Download** controls alongside the documents and addenda.
+5. Choose **Download Bid Documents** again to obtain `4354_PreviewBidDocuments.zip`. For a single file, choose its row’s **Download** button. **Addendum 5 → Download** delivered `Addendum 5.pdf`. This workflow uses the download controls and leaves **Register for this Bid** untouched.
+6. Open the ZIP’s `FileSummary.pdf` to check coverage. The test ZIP contains two opportunity document PDFs, five addendum PDFs and one generated file-summary PDF. The standalone Addendum 5 is byte-for-byte equal to the ZIP member. The summary identifies the files as previews, and Addendum 5 visibly carries a preview watermark. The RFI says a registered plan taker can obtain the unwatermarked RFI and receive addenda email notifications.
+
+The downloads establish the deadline history. The original RFI cover gives September 8 at 3 p.m. Pacific, BC Bid lists September 8 at 4 p.m. Pacific, Addendum 1 extends the date to October 2, and Addendum 5 extends it to November 2. The publisher’s current listing gives November 2 at 3 p.m. (YST), consistent with the latest addendum’s date. Preserve the original source timestamps and record which addendum supports the current deadline.
+
+For Zoer’s future capture flow, verify the sign-in result, revisit the original notice after a dashboard redirect, and distinguish preview access from registered-plan-taker access. Verify the downloaded bytes before creating a document record, label previews accordingly, and retain the publisher URL and capture time. Use the catalog’s original-file storage and checksum read-back. This test downloaded to Chrome’s local Downloads folder. The Zoer catalog did not receive these files during this check.
+
+| Download | SHA-256 |
+| --- | --- |
+| `4354_PreviewBidDocuments.zip` | `dc6e16deb1526193b89bc8dc5a5000506b6faf45d7e256925dfd12e88937ff5a` |
+| `Addendum 5.pdf` | `8eaf1c0753b8b49712e3247f65f823397ee07af6cd1c6438adb243fef1415357` |
+
+## Plugin update and qualification
+
+1. Build the plugin from the repository root with `bun run zoer:build`. Validate and pack the build with the Zoer host checkout’s exported plugin CLI. The older checked-in CLI predates the Procurement workspace icon.
+2. Stage the package in **Extensions**, review the new **Refresh linked publisher notices** action, and enable the update through the normal plugin upgrade flow. The catalog and existing download controls are reused. Use the native workspace to attach vendor files.
+3. On BC Bid **Evidence**, run **Get attachments** with RFI 4354. Confirm the publisher links and its saved dates, two listed documents and five listed addenda. No BC Bid attachment request is required here because the source lists no files. Confirm the publisher record is searchable by number.
+4. Repeat with Abbotsford 1220-2026-4240 and Nanaimo 4351 CON to exercise the homepage path. Confirm the known publisher records, the Abbotsford September 10 closing, and the Nanaimo award status. Confirm PHSA 19923 shows the Bonfire handoff.
+5. Download one preview using the signed-in workflow above and add it through **Add bids&tenders files**. Mark the preview, confirm it appears in the BC Bid evidence inventory, and retry the same file to verify hash-based reuse. For Bonfire, exercise the same import with a file obtained from an accessible, active opportunity.
+
+The local candidate was exercised against the public bids&tenders pages and a fixture-backed native workspace. No new live Zoer data or deployment was created. The public metadata lookup only uses configured buyers. The crawl paths observed on Nanaimo and Abbotsford disallow automated requests beginning with `/Module/Tenders/en/Tender/Download`. The vendor import path covers bytes obtained through ordinary portal interactions. Vendor-approved API discovery, unattended protected downloads, and scheduled publisher refresh remain follow-on work.

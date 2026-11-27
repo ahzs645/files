@@ -128,3 +128,7 @@ button.pc-label[aria-pressed=true]{outline:2px solid currentColor;outline-offset
 .pc-notice-file-list>li{display:flex;flex-direction:column;gap:.125rem;min-width:0}
 .pc-notice-file-list small{color:var(--text-secondary)}
 .pc-notice-file-list .pc-status{margin-right:.25rem}
+
+.pc-participation-scroll{overflow-x:auto;max-width:100%;margin-block:.4rem}
+.pc-participation-table{border-collapse:collapse;width:100%;min-width:max-content;text-align:left}
+.pc-participation-table th,.pc-participation-table td{padding:.4rem .65rem;border-bottom:1px solid var(--border-default);max-width:18rem;overflow-wrap:anywhere;vertical-align:top}

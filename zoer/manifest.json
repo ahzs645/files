@@ -1,7 +1,7 @@
 {
   "id": "bc-bid-monitor",
   "name": "Procurement",
-  "version": "0.44.7",
+  "version": "0.44.18",
   "description": "Multi-source procurement catalog: BC Bid, CanadaBuys, bids&tenders (25 BC public buyers) and 12 BC local-government websites, each collected on its own schedule as a resumable job under Zoer's crawl policy (robots.txt, AI-crawler rules, pacing), plus 7 BC sites that block automated requests, collected in your Zoer browser, with BC place tags, saved searches and alerts (place, exclude words, hidden notices), pursuits and source-aware analysis.",
   "type": "integration",
   "integration": {
@@ -1707,6 +1707,75 @@
         }
       },
       {
+        "id": "procurement.publisher.refresh",
+        "title": "Refresh linked publisher notices",
+        "description": "Find public bids&tenders details from links in one saved BC Bid opportunity. Save the publisher notice, its dates, and its document and addendum inventory. Bonfire and vendor files use a manual handoff.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": { "kind": "isolated-process", "handler": "worker/worker.js" },
+        "requiredCapabilities": ["artifact-store", "network-egress"],
+        "resourceLimits": { "timeoutMs": 120000, "maxMemoryMb": 512, "maxOutputBytes": 1048576, "maxNetworkRequests": 20, "maxNetworkResponseBytes": 4194304 },
+        "networkSession": { "cookies": "run", "formPost": true },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "recordId": { "type": "string", "pattern": "^opportunity:[a-zA-Z0-9:._-]{1,115}$" } },
+          "required": ["recordId"]
+        }
+      },
+      {
+        "id": "procurement.publisher.sweep",
+        "title": "Reconcile linked publishers on saved BC Bid notices",
+        "description": "Identify Bonfire and bids&tenders project links and match saved records by buyer, bid number and intake or lot. Send uncertain matches to review.",
+        "effect": "local_write",
+        "approval": "when_configured",
+        "execution": {
+          "kind": "isolated-process",
+          "handler": "worker/worker.js"
+        },
+        "requiredCapabilities": [
+          "artifact-store",
+          "network-egress"
+        ],
+        "resourceLimits": {
+          "timeoutMs": 300000,
+          "maxMemoryMb": 512,
+          "maxOutputBytes": 1048576,
+          "maxNetworkRequests": 48,
+          "maxNetworkResponseBytes": 4194304
+        },
+        "networkSession": {
+          "cookies": "run",
+          "formPost": true
+        },
+        "idempotent": true,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "catalogOnly": { "type": "boolean", "description": "Use links already saved in Procurement without requesting publisher websites." },
+            "recordIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^opportunity:[a-zA-Z0-9:._-]{1,115}$"
+              }
+            }
+          }
+        },
+        "resumable": {
+          "stepTimeoutMs": 300000,
+          "maxSteps": 2000,
+          "maxRunHours": 24,
+          "retry": { "delaysMs": [5000, 30000], "maxConsecutive": 2 },
+          "autoResume": "after-restart"
+        }
+      },
+      {
         "id": "procurement.collect",
         "title": "Collect public procurement sources",
         "description": "Fetch the official CanadaBuys open-tender CSV, or the open-notice listings and public notice pages of 25 BC public buyers on bids&tenders and 12 BC local-government websites, and merge them into the existing catalog. Runs as a resumable job: one portal (or one CanadaBuys import pass) per step, so a Zoer restart, update or pause continues where it stopped; a site that asks to slow down is retried later in the same run. Zoer's crawl policy reads each site's robots.txt (including rules for AI crawlers) and spaces requests; a portal whose robots.txt disallows collection is reported, not collected. sourceId \"all\" collects every source in one run; schedules use one saved preset per source. Saved notices are never deleted. bids&tenders search needs a per-run cookie session and form POST.",
@@ -2867,7 +2936,40 @@
         },
         "bcbid.gov.bc.ca": {
           "minDelaySeconds": 10
-        }
+        },
+        "abbotsford.bidsandtenders.ca": { "robots": "respect-ai" },
+        "burnaby.bidsandtenders.ca": { "robots": "respect-ai" },
+        "campbellriver.bidsandtenders.ca": { "robots": "respect-ai" },
+        "comoxvalleyrd.bidsandtenders.ca": { "robots": "respect-ai" },
+        "coquitlam.bidsandtenders.ca": { "robots": "respect-ai" },
+        "dnv.bidsandtenders.ca": { "robots": "respect-ai" },
+        "fortstjohn.bidsandtenders.ca": { "robots": "respect-ai" },
+        "islandhealthfdc.bidsandtenders.ca": { "robots": "respect-ai" },
+        "lakecountry.bidsandtenders.ca": { "robots": "respect-ai" },
+        "mapleridge.bidsandtenders.ca": { "robots": "respect-ai" },
+        "metrovancouver.bidsandtenders.ca": { "robots": "respect-ai" },
+        "nanaimo.bidsandtenders.ca": { "robots": "respect-ai" },
+        "oakbay.bidsandtenders.ca": { "robots": "respect-ai" },
+        "portmoody.bidsandtenders.ca": { "robots": "respect-ai" },
+        "princegeorge.bidsandtenders.ca": { "robots": "respect-ai" },
+        "rdco.bidsandtenders.ca": { "robots": "respect-ai" },
+        "richmond.bidsandtenders.ca": { "robots": "respect-ai" },
+        "salmonarm.bidsandtenders.ca": { "robots": "respect-ai" },
+        "sd72.bidsandtenders.ca": { "robots": "respect-ai" },
+        "sechelt.bidsandtenders.ca": { "robots": "respect-ai" },
+        "sidney.bidsandtenders.ca": { "robots": "respect-ai" },
+        "squamish.bidsandtenders.ca": { "robots": "respect-ai" },
+        "surrey.bidsandtenders.ca": { "robots": "respect-ai" },
+        "vernon.bidsandtenders.ca": { "robots": "respect-ai" },
+        "westkelowna.bidsandtenders.ca": { "robots": "respect-ai" },
+        "portcoquitlam.bidsandtenders.ca": { "robots": "respect-ai" },
+        "newwestcity.bidsandtenders.ca": { "robots": "respect-ai" },
+        "sd43.bidsandtenders.ca": { "robots": "respect-ai" },
+        "tol.bidsandtenders.ca": { "robots": "respect-ai" },
+        "fraserhealth.bidsandtenders.ca": { "robots": "respect-ai" },
+        "interiorhealth.bidsandtenders.ca": { "robots": "respect-ai" },
+        "northernhealth.bidsandtenders.ca": { "robots": "respect-ai" },
+        "bctransit.bidsandtenders.ca": { "robots": "respect-ai" }
       }
     }
   },

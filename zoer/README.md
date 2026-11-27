@@ -70,6 +70,20 @@ bun run plugin pack /absolute/path/to/files/dist/zoer-bcbid --output /absolute/p
 
 Stage the ZIP in Extensions, review/install or upgrade, enable, then Open BC Bid. Keep this Git repository separate. Future dashboard releases are plugin package upgrades; only changes to generic host capabilities require a Zoer release.
 
+## Publisher links on BC Bid notices
+
+**Sources → BC Bid → Linked publisher checks** runs a resumable scan of saved opportunities. The schedule supports a catalog-only input that discovers new and historical referrals without visiting the publisher. It checks description text, delivery instructions, other detail fields, captured tabs, attachment and addendum links, and hyperlink destinations saved by new BC Bid captures. It also recognizes fixed portal paths joined to a known label in older captures. When a capture only contains a hyperlink label, recapture its BC Bid details to recover the destination. A brand name without a recognizable URL does not establish a tender match.
+
+The **Decision** and **Evidence** tabs detect direct notices and buyer listing links on bids&tenders and Bonfire in saved BC Bid captures. **Get attachments** and **Check publishers for files** also refresh public publisher metadata for the selected notice. A direct bids&tenders link uses its exact tender ID and verifies the publisher’s tender number when BC Bid provides one. A buyer listing is searched across open, closed and awarded notices. Procurement requires one matching bid number and verifies it on the detail page. A shortened numeric reference also needs matching title words. Conflicts and ambiguous listings are visible on the BC Bid notice.
+
+The publisher notice is saved separately in Opportunity Search, including its own status, deadline, question deadline, and document and addendum listing. An explicit **Open saved bids&tenders record** link connects the two records, including when closing dates disagree. The existing BC Bid download runs separately when BC Bid has file links.
+
+Under **Sources → BC Bid → Linked publisher checks**, the review queue lists notices whose latest check found vendor-only files or a Bonfire link to inspect. Each notice retains one result per publisher URL. **Review notice** opens the affected BC Bid record. **Retry publisher check** runs another public check for that record, and **Mark reviewed** clears that queue item. A change in the verified bids&tenders file list or deadline creates a new review. Bonfire requires manual review for later addenda because the sweep has no Bonfire feed.
+
+Under **Evidence → Publisher notices**, choose **Open Zoer Passwords** to find, approve or save an account for the exact sign-in host. The shared `credentials.open` bridge opens Passwords at that website. Bonfire uses the Euna account host. Download the files through the publisher portal, then use **Evidence → Publisher notices → Add publisher files** in the native Procurement workspace. Mark previews before adding them. The import attaches the bytes to the selected BC Bid notice, checks their SHA-256, and skips files already present with the same hash. A ZIP is stored as a bundle. Add its individual files when their contents are needed for review.
+
+Scheduled bids&tenders metadata checks respect the buyer portal’s crawler rules. The tested buyers exclude automated requests to sign-in and download paths. When a publisher needs attention, the sweep records the review and proceeds with other notices. The Passwords bridge leaves sign-in with the user. In **Evidence → Publisher notices → Record Bonfire deadline**, enter the closing date and source from the publisher and select the saved addendum if available. Decision and Evidence show the recorded publisher date alongside the saved BC Bid date. An unattended protected-file connector requires a publisher-approved channel and a host-side authorization flow. See the [cross-portal observations and qualification steps](../docs/reviews/publisher-reconciliation-2026-11-26.md).
+
 ## Local development
 
 Iterate on the dashboard against a live Zoer without rebuilding or reinstalling the package:

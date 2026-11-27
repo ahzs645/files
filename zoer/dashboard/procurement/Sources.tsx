@@ -1,4 +1,5 @@
 import { Hint } from '../host-ui';
+import { useCapabilities } from '../capabilities';
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
@@ -25,7 +26,9 @@ import { assertDocumentBrowserIdle } from '../document-run';
 import { NO_TEXT_SQL } from '../document-processing';
 import { plainError, shortError } from '../error-text';
 import { sourceErrorText, type CollectionError } from './source-errors';
+import { PublisherReviewQueue } from './PublisherReviewQueue';
 
+const PUBLISHER_SWEEP = 'procurement.publisher.sweep';
 const BC_CHECKPOINTS = [['checkpoint:full', 'Current opportunities'], ['checkpoint:awards', 'Historical awards'], ['checkpoint:awards:recent', 'Recent awards']] as const;
 const when = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : typeof value === 'number' ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
 const label = (id: string | null) => id === 'all' ? 'all sources' : id === 'canadabuys' ? 'CanadaBuys' : id ? CONNECTOR_SOURCES.find(source => source.id === id)?.label ?? sourceName(id) : 'an unknown source';
@@ -68,6 +71,7 @@ function Overview({ rows, schedule }: { rows: OverviewRow[]; schedule?: ReactNod
 /** Where saved notices come from, how fresh they are, when they are collected next, and how to collect more. */
 export function Sources() {
   const { model } = useWorkspace(), client = useQueryClient();
+  const { collection: canCollect } = useCapabilities();
   const inventory = useQuery({ queryKey: ['catalog', 'procurement-inventory'], enabled: !!model, queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60000 });
   const keys = [COLLECTION_KEY, ...BC_CHECKPOINTS.map(([key]) => key), ...CONNECTOR_SOURCES.map(source => collectionKey(source.id))];
   const health = useQuery({ queryKey: ['catalog', 'procurement-health', keys], queryFn: () => host('catalog.workspace', { keys }), refetchInterval: 5000 });
@@ -153,6 +157,13 @@ export function Sources() {
         <p className="procurement-coverage">{bcHealth.scope && <>Latest collection scope: {bcHealth.scope}. </>}Collection times describe saved snapshots.</p>
         <details open={bcIssue && !phone}><summary data-zoer-disclosure>Saved progress</summary><ul className="pc-checkpoints">{checkpoints.map(item => <li key={item.key}><div><strong>{item.label}</strong><span>{item.status}</span></div><p>{item.scope}{item.range ? ` · ${item.range}` : ''} · saved {item.checkpointTime === 'Not recorded' ? 'at an unrecorded time' : when(item.checkpointTime)}</p>{item.error && <Hint content={item.error}><p role="alert" className="pc-wrap">{plainError(item.error)}</p></Hint>}{item.undated && <p>Undated awards are not verified.</p>}</li>)}</ul></details>
         <BcBidSchedules rows={schedules.data} error={schedules.error as Error | null} />
+        {canCollect && <details>
+          <summary data-zoer-disclosure>Linked publisher checks</summary>
+          <p className="procurement-coverage">Scheduled checks match saved publisher records by buyer, bid number and intake or lot. Uncertain results appear below.</p>
+          <div className="procurement-actions"><Btn variant="secondary" disabled={!!busy || runs?.some(run => run.actionId === PUBLISHER_SWEEP && ['queued', 'running', 'waiting_for_user'].includes(run.status))} onClick={() => void start('publisher-sweep', () => host('action', { actionId: PUBLISHER_SWEEP, input: { catalogOnly: true } }), 'Publisher reconciliation started. Progress shows in Extensions run history.')}>Match publisher notices</Btn></div>
+          <ScheduleControl actionId={PUBLISHER_SWEEP} title="Publisher check schedule" input={{ catalogOnly: true }} />
+          <PublisherReviewQueue />
+        </details>}
         <Capabilities id="bc-bid" />
       </Card>
       <Card id="canadabuys" name="CanadaBuys" region="Canada · official dataset" tone={overview[1].tone} status={overview[1].status}

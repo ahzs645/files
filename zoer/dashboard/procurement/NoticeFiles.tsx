@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { fileSize } from '../file-size';
-import { host } from '../bridge';
 import { useCapabilities } from '../capabilities';
 import { useDocumentBrowsers } from '../use-document-browsers';
-import { assertDocumentBrowserIdle } from '../document-run';
 import { plainError } from '../error-text';
-import { runProcurementAction } from './state-client';
+import { downloadNoticeFiles } from './publisher-downloads';
 import { noticeFileRows, STATE_TEXT } from './notice-files';
 import type { LinkState } from './status-data';
 
@@ -14,7 +12,7 @@ import type { LinkState } from './status-data';
  * Which of a notice's files are missing and why ("11 of 35 files saved" used to stop there): never tried, failed with
  * its reason, or waiting for a browser check. BC Bid notices can fetch the missing ones from here.
  */
-export function NoticeFiles({ id, source, attachments, documents, onRefresh }: { id: string; source: string; attachments: unknown; documents: any[]; onRefresh(): void }) {
+export function NoticeFiles({ id, source, attachments, documents, checkPublishers, onRefresh }: { id: string; source: string; attachments: unknown; documents: any[]; checkPublishers?: boolean; onRefresh(): void }) {
   const { collection } = useCapabilities();
   const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   const [all, setAll] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
@@ -26,8 +24,12 @@ export function NoticeFiles({ id, source, attachments, documents, onRefresh }: {
   const shown = all ? missing : missing.slice(0, 8);
   const fetchMissing = async () => {
     setBusy(true); setError(''); setMessage('');
-    try { await assertDocumentBrowserIdle(host); await runProcurementAction('documents.download', { recordIds: [id] }); setMessage('Missing files downloaded where BC Bid allowed it. Saved files were not downloaded again.'); onRefresh(); }
-    catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(false); }
+    try {
+      const publisherError = await downloadNoticeFiles(id, { publishers: !!checkPublishers, bcBid: true });
+      setMessage(checkPublishers ? 'BC Bid download finished. See Publisher notices for separate publisher files.' : 'BC Bid download finished.');
+      if (publisherError) setError(plainError(publisherError.message));
+    } catch (e) { setError(plainError((e as Error).message)); }
+    finally { onRefresh(); setBusy(false); }
   };
   return <section className="pc-card pc-notice-files" aria-label="Attachment files">
     <header><h3>{saved} of {rows.length} currently linked files saved</h3></header>

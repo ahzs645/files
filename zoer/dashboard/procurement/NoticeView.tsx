@@ -6,10 +6,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ChevronLeft, Download, FileText, FileWarning, RefreshCw, Star, X } from 'lucide-react';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import * as Controls from '@zoer/plugin-ui/controls';
-import { host } from '../bridge';
+import { hasNativeHost, host } from '../bridge';
 import { setStar, useWorkspace } from '../backend';
 import { useDocumentBrowsers } from '../use-document-browsers';
-import { assertDocumentBrowserIdle } from '../document-run';
+import { downloadNoticeFiles, openPublisherDownload, readPublisherReceipt } from './publisher-downloads';
 import { downloadDocumentBundle, sizeText } from '../document-bundle';
 import { patchPluginQuery, usePluginLocation } from '../navigation';
 import { deadlineLabel, safeSourceUrl, sourceId } from './catalog';
@@ -35,6 +35,9 @@ import './notice.css';
 import { NoticeTaxonomy } from './Taxonomy';
 import { NoticeHistorical } from './Historical';
 import { NoticeFiles } from './NoticeFiles';
+import { PublisherNotices } from './PublisherNotices';
+import { ParticipationCard } from './ParticipationCard';
+import { resolvedPublisherLinks, type PublisherLink } from './publisher-links';
 
 /** Route values: `decision|requirements|evidence|changes|activity|ai`; old `overview`/`documents` still open their tab. */
 export type NoticeTab = NoticeTabId | 'overview' | 'documents';
@@ -65,6 +68,15 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
   const changes = useQuery({ queryKey: noticeKey(id, 'changes'), enabled: available, queryFn: () => readChanges(id) });
   const record = detail.data?.record, data = record?.data ?? {};
   const source = sourceId(data), award = record?.kind === 'award';
+  const publisherReceipt = useQuery({
+    queryKey: ['catalog', 'publisher-receipt', id],
+    queryFn: () => readPublisherReceipt(id).then(receipt => receipt ?? null),
+    enabled: !!record && source === 'bc-bid' && !award,
+  });
+  const publisherLinks = source === 'bc-bid' && !award ? resolvedPublisherLinks(data, publisherReceipt.data) : [];
+  const publisherNotices = publisherLinks.filter(link => link.kind === 'notice');
+  const hasPublisherLinks = publisherLinks.length > 0;
+  const hasBcBidFiles = Array.isArray(data.attachments) && data.attachments.some((file: { url?: string; access?: string }) => file?.url && file.access !== 'login');
   const documents: any[] = detail.data?.documents ?? [], reviews: any[] = detail.data?.reviews ?? [];
   const pursuit = state.data?.pursuits.find(item => item.recordId === id);
   const url = safeSourceUrl(data.detailUrl || data.sourceUrl);
@@ -102,6 +114,7 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
     {detail.error && <p role="alert">{detail.error.message}</p>}
     {error && <p role="alert">{error}</p>}
     {record && source === 'bc-bid' && !award && <SourceCapture detail={data} />}
+    {record && source === 'bc-bid' && !award && (tab === 'decision' || tab === 'evidence') && <PublisherNotices key={id} id={id} data={data} receipt={publisherReceipt.data} documents={documents} evidence={tab === "evidence"} />}
     {record && tab === 'decision' && <div className="pc-notice-section">
       <NoticeFacts id={id} record={record} reviews={reviews} documents={documents} workspace={available} />
       {available ? <DecisionHeader recordId={id} pursuitStage={pursuit?.stage ?? null} onTab={setTab} /> : !workspace.isPending && <p className="rw-upgrade" role="note">{workspace.data?.reason ?? 'Update Zoer to use the review workspace. Existing search, pursuits, documents and AI review keep working.'} Requirements, changes and decisions appear here once it is available.</p>}
@@ -111,10 +124,16 @@ export function NoticeView({ id, layout, onClose, initialTab = 'decision', backL
       <NoticeHistorical data={data} />
     </div>}
     {record && tab === 'requirements' && <RequirementMatrix recordId={id} />}
+    {record && !award && tab === 'evidence' && <ParticipationCard key={`supplier-participation:${id}`} recordId={id}
+      sourceUrls={[...publisherNotices.map(link => link.url),
+        ...(source !== 'bc-bid' && url?.startsWith('https://') ? [url] : [])]}
+      reference={data.externalId && data.externalId !== data.processId ? data.externalId :
+        data.opportunityId !== data.processId ? data.opportunityId : undefined} />}
     {record && tab === 'evidence' && <div className="pc-notice-section">
       {available && <EvidenceInventory id={id} documents={documents} attachments={data.attachments} onShowDocument={documentId => setCite({ documentId, quote: '' })} />}
-      <NoticeFiles id={id} source={source} attachments={data.attachments} documents={documents} onRefresh={refresh} />
-      <Documents id={id} source={source} documents={documents} cite={cite} onRefresh={refresh} />
+      <NoticeFiles id={id} source={source} attachments={data.attachments} documents={documents} checkPublishers={hasPublisherLinks} onRefresh={refresh} />
+      <Documents id={id} source={source} documents={documents} cite={cite} hasBcBidFiles={hasBcBidFiles} hasPublisherLinks={hasPublisherLinks}
+        publisherDownload={hasNativeHost() && !hasBcBidFiles && publisherNotices.length === 1 ? publisherNotices[0] : undefined} onRefresh={refresh} />
     </div>}
     {record && tab === 'changes' && <ChangesPanel recordId={id} onTab={setTab} />}
     {record && tab === 'activity' && <ReviewActivity recordId={id} documents={documents} />}
@@ -240,7 +259,7 @@ const size = (bytes: number) => bytes > 1048576 ? `${(bytes / 1048576).toFixed(1
 const HostPdfPreview = (Controls as Record<string, unknown>).PdfPreview as ComponentType<{ url: string; label: string; className?: string; onError?(error: Error): void }> | undefined;
 const coarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
-function Documents({ id, source, documents, cite, onRefresh }: { id: string; source: string; documents: any[]; cite?: Cite; onRefresh(): void }) {
+function Documents({ id, source, documents, cite, hasBcBidFiles, hasPublisherLinks, publisherDownload, onRefresh }: { id: string; source: string; documents: any[]; cite?: Cite; hasBcBidFiles: boolean; hasPublisherLinks: boolean; publisherDownload?: PublisherLink; onRefresh(): void }) {
   const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   const readable = documents.filter(hasUsableText), saved = documents.filter(doc => doc.status === 'downloaded');
   const [selected, setSelected] = useState<string>(cite?.documentId ?? readable[0]?.id ?? saved[0]?.id ?? documents[0]?.id ?? '');
@@ -258,11 +277,19 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
   };
   const getAttachments = async () => {
     setBusy(true); setError(''); setMessage('');
-    try { await assertDocumentBrowserIdle(host); await runProcurementAction('documents.download', { recordIds: [id] }); setMessage('Attachments downloaded.'); onRefresh(); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try {
+      if (publisherDownload) {
+        await openPublisherDownload(id, publisherDownload);
+        return;
+      }
+      const publisherError = await downloadNoticeFiles(id, { publishers: hasPublisherLinks, bcBid: hasBcBidFiles || !hasPublisherLinks });
+      if (publisherError) setError(publisherError.message);
+      else setMessage(hasPublisherLinks ? 'File check finished. See Publisher notices for the results.' : 'BC Bid download finished.');
+    } catch (e) { setError((e as Error).message); }
+    finally { if (!publisherDownload) onRefresh(); setBusy(false); }
   };
   if (!documents.length) return <div className="pc-notice-section"><div className="pc-card pc-card-empty"><header><h3>No documents yet</h3></header>
-    {!collection ? <p>No documents were saved for this notice.</p> : source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || browserBusy} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
+    {!collection ? <p>No documents were saved for this notice.</p> : source === 'bc-bid' ? <><p>Download this notice’s attachments to read them here and include them in AI reviews.</p><Btn size="sm" disabled={busy || (browserBusy && (hasBcBidFiles || !hasPublisherLinks))} onClick={() => void getAttachments()}>{busy ? 'Downloading…' : 'Get attachments'}</Btn></> : <p>Document download is only available for BC Bid notices. Open the notice on {sourceName(source)} to read its files.</p>}
     {error && <p role="alert">{error}</p>}
 {message && <p role="status">{message}</p>}</div></div>;
   const detail = (item: any) => item.status === 'downloaded' ? `${size(item.bytes ?? 0)}${textStateDetail(item)}` : 'Couldn’t download this file';
@@ -277,7 +304,7 @@ function Documents({ id, source, documents, cite, onRefresh }: { id: string; sou
       <span className="pc-doc-tools">
         {doc?.status === 'downloaded' && <Btn size="sm" variant="ghost" aria-label={`Download ${doc.name}`} tooltip="Download" icon={<Download aria-hidden="true" className="h-4 w-4" />} onClick={() => void host('catalog.download', { id: doc.id, name: doc.name }).catch(e => setError(e.message))}><span className="sr-only">Download</span></Btn>}
         {writes && saved.length > 1 && <Btn size="sm" variant="ghost" aria-label={`Download all ${saved.length} documents as one zip`} tooltip="Download all documents (zip)" disabled={busy} icon={<Archive aria-hidden="true" className="h-4 w-4" />} onClick={() => void downloadAll()}><span className="sr-only">Download all documents</span></Btn>}
-        {collection && source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy || browserBusy} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
+        {collection && source === 'bc-bid' && <Btn size="sm" variant="ghost" aria-label="Get attachments again" tooltip="Get attachments again" disabled={busy || (!publisherDownload && browserBusy)} icon={<RefreshCw aria-hidden="true" className={`h-4 w-4${busy ? ' animate-spin' : ''}`} />} onClick={() => void getAttachments()}><span className="sr-only">Get attachments again</span></Btn>}
       </span>
     </div>
     {error && <p role="alert">{error}</p>}

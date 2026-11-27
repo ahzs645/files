@@ -1,3 +1,5 @@
+import { load } from 'cheerio';
+import { publisherLink } from '../dashboard/procurement/publisher-links';
 import { parseListingPage, parseDetailPage, parseBrowserCheckPage } from '../../packages/shared/src/parsers/index';
 
 export interface PageCapture { url: string; title: string; html: string; capturedAt: string; pagination?: { currentPage: number; hasNext: boolean; visiblePages: number[] }; tabCoverage?: {mode: string; available: string[]; visited: string[]; failures: {label: string; message: string}[]; complete: boolean}; sourceTabs?: {label: string; text: string; truncated: boolean}[] }
@@ -28,6 +30,7 @@ export function parseCapture(page: PageCapture, kind: 'listing' | 'detail', pars
   if (!/\/(?:rfp|bpm)\/process_manage_extranet\/\d+(?:\/|$)/.test(url.pathname)) throw new Error('Open a BC Bid public opportunity detail page before capturing details.');
   const record = { ...parseDetailPage(page.html, BASE_URL, page.url), sourceCapturedAt: page.capturedAt, ...(page.tabCoverage ? {tabCoverage: page.tabCoverage, sourceTabs: page.sourceTabs ?? []} : {}) };
   if (!record.processId || (!record.detailFields.length && !record.descriptionText)) throw new Error('Opportunity details are not loaded yet.');
+  const detail = { ...record, sourcePublisherUrls: capturePublisherUrls(page.html) };
   const fields = [
     ...(record.descriptionText ? [{ label: 'Description', value: record.descriptionText }] : []),
     ...record.detailFields,
@@ -36,6 +39,18 @@ export function parseCapture(page: PageCapture, kind: 'listing' | 'detail', pars
   ];
   return {
     rows: fields.slice(0, 200).map(field => ({ field: text(field.label), value: text(field.value) })),
-    document: { version: 1, kind, sourceUrl: page.url, capturedAt: page.capturedAt, scope: 'current-page', record },
+    document: { version: 1, kind, sourceUrl: page.url, capturedAt: page.capturedAt, scope: 'current-page', record: detail },
   };
+}
+
+export function capturePublisherUrls(html: string) {
+  const $ = load(html);
+  const sourcePublisherUrls = new Set<string>();
+  for (const anchor of $('a[href]').toArray()) {
+    if ($(anchor).closest('[hidden], [aria-hidden="true"], .hidden, nav, header, footer').length) continue;
+    const link = publisherLink($(anchor).attr('href') ?? '');
+    if (link) sourcePublisherUrls.add(link.url);
+    if (sourcePublisherUrls.size === 12) break;
+  }
+  return [...sourcePublisherUrls];
 }

@@ -39,8 +39,8 @@ export function readSearchForm(html: string): { nodeId: string; token: string } 
   return { nodeId, token };
 }
 
-export const searchUrl = (portal: ConnectorPortal, nodeId: string, start: number) =>
-  `https://${portal.host}/Module/Tenders/en/Tender/Search/${nodeId}?status=Open&limit=${PAGE_SIZE}&start=${start}&dir=ASC&from=&to=&sort=DateClosing%20ASC,Id`;
+export const searchUrl = (portal: ConnectorPortal, nodeId: string, start: number, status = 'Open', limit = PAGE_SIZE) =>
+  `https://${portal.host}/Module/Tenders/en/Tender/Search/${nodeId}?status=${status}&limit=${limit}&start=${start}&dir=ASC&from=&to=&sort=DateClosing%20ASC,Id`;
 export const detailUrl = (portal: ConnectorPortal, id: string) => `https://${portal.host}/Module/Tenders/en/Tender/Detail/${id}`;
 
 export interface ListingRow { Id: string; Title: string; [key: string]: unknown }
@@ -106,7 +106,7 @@ export function noticeNumber(title: string, bidNumber?: string): string | undefi
 /** Notice page rows (`<th>Label:</th><td>…</td>`) shown on records; boilerplate and duplicated listing values are skipped. */
 const SKIP_DETAIL = new Set(['Bid Name', 'Bid Status', 'Bid Number', 'Description', 'Bid Document Access', 'Bid Closing Date', 'Published Date']);
 export interface NoticeDocument { id: string; name: string; created?: string; kind: 'document' | 'addendum' }
-export interface NoticePage { bidNumber?: string; type?: string; classification?: string; published?: string; fields: Array<{ label: string; value: string }>; documents: NoticeDocument[] }
+export interface NoticePage { bidNumber?: string; bidName?: string; status?: string; description?: string; closing?: string; type?: string; classification?: string; published?: string; fields: Array<{ label: string; value: string }>; documents: NoticeDocument[]; fileLists?: { documents: boolean; addenda: boolean } }
 
 /** The JSON array starting at `start` (a `[`), found by matching brackets outside strings; undefined if unbalanced. */
 function jsonArrayAt(text: string, start: number): unknown[] | undefined {
@@ -122,20 +122,20 @@ function jsonArrayAt(text: string, start: number): unknown[] | undefined {
   }
   return undefined;
 }
-/**
- * Files listed in the notice page's Ext.NET grids: the `Documents` and `Addendums` stores carry their rows inline
- * (`proxyId:"Documents" … PagingMemoryProxy([{"Id":"<guid>","Created":"…","DisplayName":"…","Pages":0}], false)`).
- * A page without the grids (the notice has none, or the portal hides them) lists nothing.
- */
+/** Return undefined when the page doesn't expose this grid or its rows could not be decoded. */
+function noticeFileRows(html: string, store: 'Documents' | 'Addendums'): unknown[] | undefined {
+  const at = html.indexOf(`proxyId:"${store}"`);
+  if (at < 0) return;
+  const proxy = html.indexOf('PagingMemoryProxy(', at);
+  if (proxy < 0 || html.slice(at + 1, proxy).includes('proxyId:"')) return;
+  return jsonArrayAt(html, proxy + 'PagingMemoryProxy('.length);
+}
+
+/** Public document metadata from the two Ext.NET grids. */
 export function parseNoticeDocuments(html: string): NoticeDocument[] {
   const documents: NoticeDocument[] = [], seen = new Set<string>();
   for (const [store, kind] of [['Documents', 'document'], ['Addendums', 'addendum']] as const) {
-    const at = html.indexOf(`proxyId:"${store}"`);
-    if (at < 0) continue;
-    const proxy = html.indexOf('PagingMemoryProxy(', at);
-    // The rows belong to this store only if no other store starts before them.
-    if (proxy < 0 || html.slice(at + 1, proxy).includes('proxyId:"')) continue;
-    for (const row of jsonArrayAt(html, proxy + 'PagingMemoryProxy('.length) ?? []) {
+    for (const row of noticeFileRows(html, store) ?? []) {
       const id = typeof (row as any)?.Id === 'string' ? (row as any).Id.toLowerCase() : '', name = typeof (row as any)?.DisplayName === 'string' ? decodeEntities((row as any).DisplayName).trim() : '';
       if (!GUID.test(id) || !name || seen.has(id)) continue;
       seen.add(id);
@@ -160,8 +160,9 @@ export function parseNoticePage(html: string): NoticePage | undefined {
   }
   // A page without its Bid Number row is an error or login page, not a notice.
   if (!rows.has('Bid Number')) return undefined;
-  return { bidNumber: rows.get('Bid Number'), type: rows.get('Bid Type'), classification: rows.get('Bid Classification'), published: rows.get('Published Date'),
-    fields: [...rows].filter(([label]) => !SKIP_DETAIL.has(label)).map(([label, value]) => ({ label, value })), documents: parseNoticeDocuments(html) };
+  return { bidNumber: rows.get('Bid Number'), bidName: rows.get('Bid Name'), status: rows.get('Bid Status'), description: rows.get('Description'), closing: rows.get('Bid Closing Date'), type: rows.get('Bid Type'), classification: rows.get('Bid Classification'), published: rows.get('Published Date'),
+    fields: [...rows].filter(([label]) => !SKIP_DETAIL.has(label)).map(([label, value]) => ({ label, value })), documents: parseNoticeDocuments(html),
+    fileLists: { documents: !!noticeFileRows(html, 'Documents'), addenda: !!noticeFileRows(html, 'Addendums') } };
 }
 
 const count = (value: unknown) => Number.isInteger(value) && (value as number) >= 0 ? value as number : undefined;
@@ -171,7 +172,7 @@ const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 export function listingRecord(row: ListingRow, portal: ConnectorPortal, retrievedAt: string, page?: NoticePage) {
   const id = row.Id.toLowerCase(), key = `${SOURCE_ID}:${portal.id}:${id}`, title = row.Title.trim();
   const externalId = noticeNumber(title, page?.bidNumber) ?? id;
-  const descriptionText = htmlToText(text(row.Description));
+  const descriptionText = htmlToText(text(row.Description)) || page?.description || '';
   const closingDisplay = text(row.DateClosingDisplay), zoneLabel = typeof row.TimeZoneLabel === 'string' ? row.TimeZoneLabel : '';
   const closingDate = closingDisplay ? `${closingDisplay}${zoneLabel.replace(/\s+$/, '')}` : '';
   const closingAt = bidsAndTendersInstant(closingDisplay, zoneLabel);
@@ -208,6 +209,20 @@ export function listingRecord(row: ListingRow, portal: ConnectorPortal, retrieve
   };
 }
 
+
+/** A detail page reached from BC Bid can be old enough to be absent from the open listing. */
+export function detailRecord(id: string, portal: ConnectorPortal, retrievedAt: string, page: NoticePage) {
+  const closing = splitZoned(page.closing ?? '');
+  return listingRecord({
+    Id: id,
+    Title: [page.bidNumber, page.bidName].filter(Boolean).join(' - '),
+    Status: page.status,
+    DateClosingDisplay: closing.display,
+    TimeZoneLabel: closing.label,
+    Documents: page.fileLists?.documents ? page.documents.filter(file => file.kind === 'document').length : undefined,
+    Addendums: page.fileLists?.addenda ? page.documents.filter(file => file.kind === 'addendum').length : undefined,
+  }, portal, retrievedAt, page);
+}
 
 export async function collectBidsAndTendersPortal(fetch: NetFetch, portal: ConnectorPortal, context: { now: () => string }): Promise<PortalResult> {
   const retrievedAt = context.now(), warnings: string[] = [];

@@ -17,6 +17,8 @@ import { createRequestPacing, requestDelaySeconds } from './request-pacing';
 import { captureMissingDetails } from './missing-details';
 import { historicalSlice } from './historical-scrape';
 import { BC_BID_DETAIL_TABS } from './detail-policy';
+import { refreshPublishers } from './publisher-refresh';
+import { sweepPublishers } from './publisher-sweep';
 
 // Zoer runner protocol v1. The distributable has no runtime SDK dependency.
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -75,6 +77,14 @@ try {
     // Zoer runs collection as a resumable action (one portal or CanadaBuys pass per slice); a host without that runs it whole.
     const output = request.resumable ? await collectionSlice(collectCall, request.action.id, request.input ?? {}, runId, request.resumable)
       : await runCollection(collectCall, request.action.id, request.input ?? {}, runId);
+    write({ protocolVersion: '1', runId, ok: true, output });
+  } else if (['procurement.publisher.refresh', 'procurement.publisher.sweep'].includes(request.action.id)) {
+    if (!catalogTicket || !networkTicket) throw new Error('Publisher refresh needs catalog and network grants.');
+    const publisherCall = (method: string, input: any) => method === 'network.fetch'
+      ? call(method, { ...input, ticket: networkTicket }) : catalogCall(method, input);
+    const output = request.action.id === 'procurement.publisher.refresh'
+      ? await refreshPublishers(publisherCall, request.input.recordId, runId)
+      : await sweepPublishers(publisherCall, request.input ?? {}, runId, request.resumable);
     write({ protocolVersion: '1', runId, ok: true, output });
   } else if (request.action.id === 'procurement.collect.browser') {
     if (!browserTicket) throw new Error('Select a saved Zoer browser profile and allow agents to use it. Zoer starts a stopped profile when this action needs it.');

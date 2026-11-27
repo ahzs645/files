@@ -8,6 +8,7 @@ export type NativeHost = {
   subscribe(listener: (event: string, result: any) => void): () => void;
 };
 let nativeHost: NativeHost | undefined;
+export const hasNativeHost = () => !!nativeHost;
 export function bindNativeHost(value: NativeHost) {
   nativeHost = value;
   return () => { if (nativeHost === value) nativeHost = undefined; };
