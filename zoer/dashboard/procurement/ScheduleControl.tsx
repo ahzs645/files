@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { host } from '../bridge';
 import { plainError } from '../error-text';
-import { SCHEDULE_PRESETS, findSchedule, intervalText, parseInterval, scheduleState, type ScheduleBrowsers, type ScheduleRow } from './schedule-state';
+import { SCHEDULE_PRESETS, findSchedule, intervalText, parseInterval, scheduleState, stopDiffers, stopMessage, type ScheduleBrowsers, type ScheduleRow } from './schedule-state';
 
 export const SCHEDULES_KEY = ['catalog', 'procurement-schedules'] as const;
 type ScheduleRead = { schedules: ScheduleRow[]; browsers?: ScheduleBrowsers };
@@ -25,7 +25,7 @@ export function ScheduleBadge({ row, label }: { row: ScheduleRow | undefined; la
 
 /**
  * Interval schedule for one action with a fixed input: presets (6 h, 12 h, daily, weekly) or custom whole hours,
- * turn on, pause, next run, last result and, when Zoer stopped it, why in plain words. Without `row`/`onSave` it
+ * turn on, turn off, next run, last result and, when Zoer stopped it, why in plain words. Without `row`/`onSave` it
  * edits the action's own schedule (one per action: when that runs a different input, `matches` false, saving here
  * replaces it). With them it edits one preset-backed schedule (S6), e.g. one source's collection: `row` is that
  * schedule (null when none is saved) and `onSave` saves it.
@@ -51,7 +51,7 @@ export function ScheduleControl({ actionId, input = {}, title, defaultHours = 24
       const intervalHours = enabled ? hours! : mine?.intervalHours ?? defaultHours;
       if (onSave) await onSave(enabled, intervalHours); else await host('schedules.save', { actionId, enabled, intervalHours, input });
       await client.invalidateQueries({ queryKey: SCHEDULES_KEY });
-      setMessage(enabled ? `${title}: ${intervalText(hours!).toLowerCase()}.` : `${title} paused.`); setChoice(null); setCustom('');
+      setMessage(enabled ? `${title}: ${intervalText(hours!).toLowerCase()}.` : `${title} turned off.`); setChoice(null); setCustom('');
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   const id = `pc-schedule-${actionId.replace(/\W/g, '-')}-${String(input.sourceId ?? mine?.presetId ?? 'own')}`;
@@ -64,7 +64,7 @@ export function ScheduleControl({ actionId, input = {}, title, defaultHours = 24
     {(state.next || state.last) && <p className="pc-schedule-meta">{[state.next, state.last].filter(Boolean).join(' · ')}</p>}
     {other && <p className="pc-schedule-note">Zoer keeps one schedule per action. It is set to {describe ? describe(other) : 'a different input'} · {scheduleState(other).status}. Turning this on replaces that schedule.</p>}
     {state.retrying && <p className="pc-schedule-note">{state.retrying}{state.error ? ` ${plainError(state.error)}` : ''}</p>}
-    {state.stopped && <div className="pc-schedule-stopped" role="alert"><p>{state.stopped}</p><details><summary data-zoer-disclosure="">Zoer’s message</summary><p>{state.error}</p></details></div>}
+    {state.stopped && <div className="pc-schedule-stopped" role="alert"><p>{state.stopped}</p>{stopDiffers(state.error) && <p className="pc-schedule-meta">Zoer’s message: “{stopMessage(state.error)}”</p>}</div>}
     <fieldset className="pc-presets" disabled={busy}>
       <legend>Repeat</legend>
       {SCHEDULE_PRESETS.map(([value, text]) => <button key={value} type="button" aria-pressed={selected === value} onClick={() => setChoice(value)}>{text}</button>)}
@@ -74,7 +74,7 @@ export function ScheduleControl({ actionId, input = {}, title, defaultHours = 24
     {selected === 'custom' && hours === null && <p className="pc-schedule-note" role="alert">Use whole hours from 1 to 720 (30 days).</p>}
     <div className="procurement-actions">
       <Btn size="sm" variant="primary" disabled={busy || schedules.isPending || !!schedules.error || hours === null || !changed} onClick={() => void save(true)}>{busy ? 'Saving…' : mine?.enabled ? 'Save interval' : state.stopped ? 'Turn on again' : 'Turn on'}</Btn>
-      {mine?.enabled && <Btn size="sm" variant="secondary" disabled={busy} onClick={() => void save(false)}>Pause</Btn>}
+      {mine?.enabled && <Btn size="sm" variant="secondary" disabled={busy} onClick={() => void save(false)}>Turn off</Btn>}
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-schedule-meta">{message}</p>}
   </div>;
