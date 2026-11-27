@@ -6,6 +6,8 @@ import { readConnectorCollection } from './source-overview';
 import { bcCheckpointHealth, bcSourceHealth, type BcBidCollectionRun } from './source-health';
 import type { RecentRun } from './source-schedules';
 import { DETAIL_CAPTURE_VERSION } from '../../src/detail-policy';
+import { distinctFiles, documentFileKey, matchDocuments } from './document-identity';
+import type { DocumentQueueCoverage } from '../document-queue';
 
 /**
  * Data for the Status page and Home's status card: the document gap of open BC Bid notices and the last successful
@@ -45,7 +47,7 @@ const WAITING_FILES_SQL = `SELECT DISTINCT t.record_id AS recordId, d.url ${BROW
   AND t.status='waiting_for_user' AND t.updated_at>? ORDER BY recordId, d.url`;
 const GAP_LINKS_SQL = (scope: string) => `SELECT id, ${r.title} AS title, ${r.closing} AS closing, ${r.field('attachments')} AS links FROM records WHERE ${scope} AND ${r.field('attachments[0]')} IS NOT NULL ORDER BY id`;
 
-async function paged(statement: string, parameters: (string | number)[]) {
+export async function paged(statement: string, parameters: (string | number)[]) {
   const rows: any[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const batch = await sql(`${statement} LIMIT ${PAGE} OFFSET ?`, [...parameters, page * PAGE]);
@@ -56,70 +58,89 @@ async function paged(statement: string, parameters: (string | number)[]) {
 }
 
 export type LinkState = 'saved' | 'failed' | 'waiting' | 'never';
-export interface GapLink { url: string; name: string; state: LinkState; error: string | null }
+export interface GapLink { url: string; name: string; key?: string; state: LinkState; error: string | null }
 export interface GapNotice { id: string; title: string; closing: string | null; links: GapLink[] }
 export interface DocumentGap {
   /** Notices due for detail capture, split by whether any links are already saved. */
   open: number; withLinks: number; noLinks: number; detailsWithLinks: number; noFiles: number; waitingNotices: number;
   /** When the download browser stopped at a browser check it has not got past since (any notice, open or closed). */
   checkPendingSince?: string | null;
+  /** Linked files (one per file identity, see document-identity.ts) and their states. */
   links: number; saved: number; failed: number; waiting: number; never: number;
   fullySaved: number; missingNotices: number;
+  /** The host downloader's own buckets when this Zoer reports them (Documents › Download shows the same); else null. */
+  queue: DocumentQueueCoverage | null;
   /** Failed files grouped by their plain reason, most common first. */
   reasons: { text: string; count: number }[];
   /** Notices with missing files, soonest closing first (unknown closing last). */
   notices: GapNotice[];
 }
 
-const fileKey = (recordId: string, url: string) => `${recordId}\u0000${url}`;
-export function linkState(docs: { status: string; error: string | null }[], waiting?: boolean): Pick<GapLink, 'state' | 'error'> {
+const BROWSER_CHECK_REASON = plainError('Manual browser verification required.');
+const fileKey = (recordId: string, url: string, key?: unknown) => `${recordId}\u0000${documentFileKey(url, key)}`;
+export function linkState(docs: { status: string; error?: string | null }[], waiting?: boolean): Pick<GapLink, 'state' | 'error'> {
   if (docs.some(doc => doc.status === 'downloaded')) return { state: 'saved', error: null };
   const failed = docs.find(doc => doc.status === 'failed');
   if (waiting ?? /browser verification|browser check|complete (?:the|any required) (?:browser )?check/i.test(failed?.error ?? ''))
     return { state: 'waiting', error: failed?.error ?? 'BC Bid requires a browser check.' };
-  return failed ? { state: 'failed', error: failed.error } : { state: 'never', error: null };
+  return failed ? { state: 'failed', error: failed.error ?? null } : { state: 'never', error: null };
 }
-const parseLinks = (value: unknown): { url: string; name: string }[] => {
+const parseLinks = (value: unknown): { url: string; name: string; key?: string }[] => {
   let list: unknown = value;
   if (typeof value === 'string') { try { list = JSON.parse(value); } catch { return []; } }
-  return Array.isArray(list) ? list.filter((item: any) => item && typeof item.url === 'string').map((item: any) => ({ url: item.url, name: typeof item.name === 'string' && item.name ? item.name : item.url })) : [];
+  return Array.isArray(list) ? list.filter((item: any) => item && typeof item.url === 'string').map((item: any) => ({ url: item.url, name: typeof item.name === 'string' && item.name ? item.name : item.url, ...(typeof item.key === 'string' ? { key: item.key } : {}) })) : [];
 };
 
-/** Counts and per-file states from the three result sets (pure, for tests). */
-export function computeDocumentGap(counts: any, linkRows: any[], documentRows: any[], waitingRows: { recordId: string; url: string }[] = []): DocumentGap {
+/**
+ * Counts and per-file states from the three result sets (pure, for tests). Files are matched to saved rows with the
+ * downloader's own identity (document-identity.ts: BC Bid file GUID or `bcbid:file:` key first, URL as fallback), so
+ * "complete", "missing" and "never tried" equal Documents › Download. With the host's `queue` coverage, the file
+ * counts and the missing-file buckets are the host's own; the per-notice list below stays local.
+ */
+export function computeDocumentGap(counts: any, linkRows: any[], documentRows: any[], waitingRows: { recordId: string; url: string }[] = [], queue: DocumentQueueCoverage | null = null): DocumentGap {
   const waiting = new Set(waitingRows.map(row => fileKey(row.recordId, row.url)));
-  const docs = new Map<string, { status: string; error: string | null }[]>();
+  const docs = new Map<string, { url: string; status: string; error: string | null; updated_at?: string | null }[]>();
   for (const row of documentRows) {
-    const key = fileKey(row.recordId, row.url);
-    docs.set(key, [...(docs.get(key) ?? []), { status: String(row.status), error: row.error ?? null }]);
+    const id = String(row.recordId);
+    docs.set(id, [...(docs.get(id) ?? []), { url: String(row.url), status: String(row.status), error: row.error ?? null, updated_at: row.updatedAt ?? row.updated_at ?? null }]);
   }
-  const notices: GapNotice[] = linkRows.map(row => ({ id: String(row.id), title: String(row.title || row.id), closing: row.closing ?? null,
-    links: [...new Map(parseLinks(row.links).map(link => [link.url, link])).values()].map(link => {
-      const key = fileKey(row.id, link.url);
-      return { ...link, ...linkState(docs.get(key) ?? [], waiting.has(key)) };
-    }) }));
+  const notices: GapNotice[] = linkRows.map(row => {
+    const id = String(row.id), links = distinctFiles(parseLinks(row.links)), matches = matchDocuments(links, docs.get(id) ?? []);
+    return { id, title: String(row.title || row.id), closing: row.closing ?? null, links: links.map(link => {
+      const match = matches.get(link.url)?.document;
+      return { ...link, ...linkState(match ? [match] : [], waiting.has(fileKey(id, link.url, link.key))) };
+    }) };
+  });
   const all = notices.flatMap(notice => notice.links), count = (state: LinkState) => all.filter(link => link.state === state).length;
   const reasons = new Map<string, number>();
-  for (const link of all) if (link.state === 'failed' || link.state === 'waiting') { const text = plainError(link.error) || 'No reason recorded.'; reasons.set(text, (reasons.get(text) ?? 0) + 1); }
+  // Waiting files keep their last error text ("did not finish"); they are listed under the browser check that holds them.
+  for (const link of all) if (link.state === 'failed' || link.state === 'waiting') { const text = link.state === 'waiting' ? BROWSER_CHECK_REASON : plainError(link.error) || 'No reason recorded.'; reasons.set(text, (reasons.get(text) ?? 0) + 1); }
   const missing = notices.filter(notice => notice.links.some(link => link.state !== 'saved'));
   const n = (value: unknown) => Number(value ?? 0) || 0;
+  const local = { links: all.length, saved: count('saved'), failed: count('failed'), waiting: count('waiting'), never: count('never'), fullySaved: notices.length - missing.length, missingNotices: missing.length };
+  const host = queue ? { links: queue.files, saved: queue.saved, never: queue.neverTried, waiting: queue.waitingForBrowser,
+    failed: Math.max(0, queue.files - queue.saved - queue.neverTried - queue.waitingForBrowser), fullySaved: queue.fullySaved, missingNotices: Math.max(0, queue.withLinks - queue.fullySaved) } : null;
   return {
-    open: n(counts?.open), withLinks: n(counts?.withLinks), noLinks: n(counts?.noLinks), detailsWithLinks: n(counts?.detailsWithLinks), noFiles: n(counts?.noFiles),
+    open: n(counts?.open), withLinks: queue ? queue.withLinks : n(counts?.withLinks), noLinks: n(counts?.noLinks), detailsWithLinks: n(counts?.detailsWithLinks), noFiles: n(counts?.noFiles),
     waitingNotices: notices.filter(notice => notice.links.some(link => link.state === 'waiting')).length,
-    links: all.length, saved: count('saved'), failed: count('failed'), waiting: count('waiting'), never: count('never'),
-    fullySaved: notices.length - missing.length, missingNotices: missing.length,
+    ...(host ?? local), queue,
     reasons: [...reasons].map(([text, count]) => ({ text, count })).sort((a, b) => b.count - a.count),
     notices: missing.sort((a, b) => (a.closing ?? '9999').localeCompare(b.closing ?? '9999') || a.id.localeCompare(b.id)),
   };
 }
 
-/** The document gap of open BC Bid notices: per attachment link, saved / failed / waiting for you / never tried. */
-export async function readDocumentGap(asOf = Date.now(), browserId = ''): Promise<DocumentGap> {
+/**
+ * The document gap of open BC Bid notices: per attachment file, saved / failed / waiting for you / never tried.
+ * `readQueue` reads the host downloader's plan (`readDocumentQueue` in document-queue.ts); it resolves null when this
+ * Zoer cannot answer, and the plugin's own count (same matching rule) stands in.
+ */
+export async function readDocumentGap(asOf = Date.now(), browserId = '', readQueue: () => Promise<DocumentQueueCoverage | null> = async () => null): Promise<DocumentGap> {
   const scope = openBcBidScope(asOf);
-  const [[counts], [check], links] = await Promise.all([
+  const [[counts], [check], links, queue] = await Promise.all([
     sql(GAP_COUNTS_SQL(scope.sql), scope.parameters),
     sql(BROWSER_CHECK_SQL, [browserId, browserId]),
     paged(GAP_LINKS_SQL(scope.sql), scope.parameters),
+    readQueue().catch(() => null),
   ]);
   const lastSuccess = typeof check?.lastSuccess === 'string' ? check.lastSuccess : '';
   const checkPendingSince = typeof check?.lastCheck === 'string' && check.lastCheck > lastSuccess ? check.lastCheck : null;
@@ -129,10 +150,10 @@ export async function readDocumentGap(asOf = Date.now(), browserId = ''): Promis
     // Reuse the selected notices and leave one parameter for the page offset.
     const ids = links.slice(start, start + PAGE - 1).map(row => String(row.id));
     const placeholders = ids.map(() => '?').join(',');
-    const statement = `SELECT record_id AS recordId, url, status, error FROM documents WHERE record_id IN (${placeholders}) ORDER BY record_id, url`;
+    const statement = `SELECT record_id AS recordId, url, status, error, updated_at AS updatedAt FROM documents WHERE record_id IN (${placeholders}) ORDER BY record_id, url`;
     documents.push(...await paged(statement, ids));
   }
-  return { ...computeDocumentGap(counts, links, documents, waiting), checkPendingSince };
+  return { ...computeDocumentGap(counts, links, documents, waiting, queue), checkPendingSince };
 }
 export const DOCUMENT_GAP_KEY = ['catalog', 'procurement-status', 'document-gap'] as const;
 

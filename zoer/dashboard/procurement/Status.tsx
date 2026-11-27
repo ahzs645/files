@@ -13,7 +13,8 @@ import { browserText, findSchedule, scheduleLabel, scheduleState, type ScheduleR
 import { useScheduleBrowsers, useSchedules } from './ScheduleControl';
 import { RUNS_KEY, usePresets, useRecentRuns } from './CollectionRuns';
 import { DOCUMENT_GAP_KEY, LAST_COLLECTION_KEYS, lastCollectionText, lastCollections, readDocumentGap, type DocumentGap } from './status-data';
-import { setupChecklist, type SetupStep, type StepAction } from './status-checklist';
+import { missingFileParts, setupChecklist, type SetupStep, type StepAction } from './status-checklist';
+import { readDocumentQueue } from '../document-queue';
 import { friendlyDeadline } from '../review-workspace/deadline-text';
 import './status.css';
 
@@ -38,7 +39,7 @@ export function useDocumentGap(enabled = true) {
     ?? (browsers?.downloadsUseCollection ? browsers.collection?.id : browsers?.downloads?.id ?? browsers?.collection?.id)
     ?? '';
   return useQuery({ queryKey: [...DOCUMENT_GAP_KEY, browserId], enabled: enabled && !schedules.isPending,
-    queryFn: () => readDocumentGap(Date.now(), browserId), staleTime: 60_000, refetchInterval: 120_000 });
+    queryFn: () => readDocumentGap(Date.now(), browserId, () => readDocumentQueue('open')), staleTime: 60_000, refetchInterval: 120_000 });
 }
 /** Last successful collection per source (the same helper Sources uses). */
 export function useLastCollections() {
@@ -150,16 +151,18 @@ export function RunLinks({ compact = false, except }: { compact?: boolean; excep
 
 function DocumentGapPanel({ gap, error, phone }: { gap?: DocumentGap; error: Error | null; phone: boolean }) {
   const [all, setAll] = useState(false);
+  // Missing files split as Documents › Download splits them (the host's buckets when reported).
   const cells: [string, number | undefined, string][] = [
-    ['Open notices', gap?.open, ''], ['With attachment links', gap?.withLinks, ''], ['Every file saved', gap?.fullySaved, 'good'],
-    ['Files never tried', gap?.never, 'warn'], ['Files failed', gap?.failed, 'warn'], ['Files waiting for a browser check', gap?.waiting, 'warn'], ['No links yet (needs details)', gap?.noLinks, ''], ['Links saved, details still needed', gap?.detailsWithLinks, 'warn'], ['No public files on BC Bid', gap?.noFiles, ''],
+    ['Open notices', gap?.open, ''], ['With attachment links', gap?.withLinks, ''], ['Every linked file saved', gap?.fullySaved, 'good'],
+    ...(gap ? missingFileParts(gap).map(([count, text]): [string, number, string] => [`Files ${text}`, count, 'warn']) : []),
+    ['No links yet (needs details)', gap?.noLinks, ''], ['Links saved, details still needed', gap?.detailsWithLinks, 'warn'], ['No public files on BC Bid (details captured)', gap?.noFiles, ''],
   ];
   const shown = all ? gap?.notices ?? [] : (gap?.notices ?? []).slice(0, phone ? 4 : 8);
   return <section className="rw-panel" aria-labelledby="pc-status-gap">
     <header className="rw-panel-head"><h2 id="pc-status-gap">Documents of open BC Bid notices</h2><PluginLink to="/documents?tab=history">Download history</PluginLink></header>
     {error ? <p role="alert">The document gap could not be read: {plainError(error.message)}</p> : !gap ? <p role="status" className="rw-muted">Counting saved files…</p> : <>
       <dl className="pc-gap-grid">{cells.map(([label, value, tone]) => <div key={label} data-tone={tone && value ? tone : undefined}><dt>{label}</dt><dd>{value === undefined ? '–' : n(value)}</dd></div>)}</dl>
-      <p className="rw-muted pc-wrap">{n(gap.saved)} of {n(gap.links)} attachment files saved. Counts are files linked from open notices; a notice is complete when every linked file is saved.</p>
+      <p className="rw-muted pc-wrap">{n(gap.saved)} of {n(gap.links)} linked files saved. Counts are files linked from open BC Bid notices, each file once (BC Bid file ID, not the link’s spelling), as Documents › Download counts them; a notice is complete when every linked file is saved.</p>
       {gap.reasons.length > 0 && <><h3>Why files are missing</h3><ul className="pc-gap-reasons">{gap.reasons.slice(0, 6).map(reason => <li key={reason.text}><strong>{n(reason.count)}</strong><span className="pc-wrap">{reason.text}</span></li>)}</ul></>}
       {gap.notices.length > 0 && <><h3>Closing soonest with missing files</h3>
         <ul className="pc-gap-notices">{shown.map(notice => { const missing = notice.links.filter(link => link.state !== 'saved'); return <li key={notice.id}>

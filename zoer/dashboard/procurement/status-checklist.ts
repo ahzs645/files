@@ -1,5 +1,6 @@
 import { browserText, isNativeBrowser, scheduleSummary, type ScheduleBrowsers, type ScheduleRow } from './schedule-state';
 import type { DocumentGap } from './status-data';
+import { count as n, plural } from '../format';
 
 /**
  * The Status page's setup checklist, as pure data: one step per thing that must be true for BC Bid to keep itself
@@ -10,8 +11,6 @@ export type StepTone = 'good' | 'warn' | 'idle' | 'busy';
 export type StepAction = 'settings-browsers' | 'settings-schedules' | 'keep-documents' | 'capture-details' | 'open-browser';
 export interface SetupStep { id: string; title: string; tone: StepTone; status: string; detail: string; actions: StepAction[] }
 
-const n = (value: number) => value.toLocaleString();
-const plural = (count: number, one: string, many = one + 's') => `${n(count)} ${count === 1 ? one : many}`;
 
 export function collectionBrowserStep(browsers: ScheduleBrowsers | undefined, rows: ScheduleRow[] | undefined): SetupStep {
   const base = { id: 'collection-browser', title: 'Browser for collection', actions: ['settings-browsers'] as StepAction[] };
@@ -50,14 +49,26 @@ export function schedulesStep(rows: ScheduleRow[] | undefined, now = Date.now())
   return { ...base, tone, status: s.text, detail: parts.length ? `${parts.join(', ')}. Each schedule below says why.` : 'Every schedule is on.' };
 }
 
+/**
+ * Why linked files are missing, in Documents › Download's words: the host downloader's buckets when this Zoer reports
+ * them, else the plugin's own split (never tried / tried, not saved / waiting for a browser check).
+ */
+export function missingFileParts(gap: DocumentGap): [number, string][] {
+  const q = gap.queue;
+  const parts: [number, string][] = q ? [[q.neverTried, 'never tried'], [q.retryDue, 'ready to retry'], [q.retryScheduled, 'scheduled for retry'],
+    [q.waitingForBrowser, 'waiting for a browser check'], [q.skipped, 'skipped'], [q.unavailable, 'unavailable'], [q.exhausted, 'retry limit reached']]
+    : [[gap.never, 'never tried'], [gap.failed, 'tried, not saved'], [gap.waiting, 'waiting for a browser check']];
+  return parts.filter(([count]) => count > 0);
+}
+
 export function documentsStep(gap: DocumentGap | undefined): SetupStep {
   const base = { id: 'documents', title: 'Documents for open BC Bid notices', actions: ['keep-documents'] as StepAction[] };
   if (!gap) return { ...base, tone: 'idle', status: 'Loading…', detail: '' };
   if (!gap.withLinks) return { ...base, tone: 'idle', status: 'No links yet', detail: 'No open BC Bid notice has attachment links saved yet.' };
   if (!gap.missingNotices) return { ...base, tone: 'good', status: 'All saved', detail: `Every file of the ${plural(gap.withLinks, 'open notice')} with attachment links is saved.` };
   const missing = gap.links - gap.saved;
-  const parts = [gap.never && `${n(gap.never)} never tried`, gap.failed && `${n(gap.failed)} failed`, gap.waiting && `${n(gap.waiting)} waiting for a browser check`].filter(Boolean);
-  return { ...base, tone: 'warn', status: `${n(gap.fullySaved)} of ${n(gap.withLinks)} complete`, detail: `${plural(missing, 'file')} missing on ${plural(gap.missingNotices, 'notice')}: ${parts.join(', ')}. “Keep documents current” downloads them, soonest closing first, and retries failures later.` };
+  const parts = missingFileParts(gap).map(([count, text]) => `${n(count)} ${text}`);
+  return { ...base, tone: 'warn', status: `${n(gap.fullySaved)} of ${n(gap.withLinks)} notices complete`, detail: `${plural(missing, 'linked file')} missing on ${plural(gap.missingNotices, 'notice')}: ${parts.join(', ')}. “Keep documents current” downloads them, soonest closing first, and retries failures later.` };
 }
 
 export function detailsStep(gap: DocumentGap | undefined): SetupStep {
@@ -75,10 +86,11 @@ export function detailsStep(gap: DocumentGap | undefined): SetupStep {
 
 export function browserCheckStep(gap: DocumentGap | undefined): SetupStep | null {
   if (!gap || (!gap.waiting && !gap.waitingNotices && !gap.checkPendingSince)) return null;
-  const count = Math.max(gap.waitingNotices, 0);
   const since = gap.checkPendingSince ? ` at ${new Date(gap.checkPendingSince).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : '';
+  // Files, the unit Documents and Sources use too.
+  const files = gap.waiting ? `; ${plural(gap.waiting, 'file of an open notice waits', 'files of open notices wait')} for it` : '';
   return { id: 'browser-check', title: 'Browser check', tone: 'warn', status: 'Waiting for you', actions: ['open-browser'],
-    detail: `BC Bid asked for a browser check${since}${count ? ` on ${plural(count, 'open notice')}` : ''}. Open the download browser in Zoer, complete the check, then hand control back; waiting downloads continue from where they stopped.` };
+    detail: `BC Bid asked for a browser check${since}${files}. Open the download browser in Zoer, complete the check, then hand control back; the next download run continues with the waiting files.` };
 }
 
 /** The whole checklist plus a one-line verdict for Home. */
