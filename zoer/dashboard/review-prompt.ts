@@ -12,3 +12,6 @@ Use these fields:
 - nextSteps: concrete actions to prepare a response, with unresolved questions for the buyer.
 - missingInformation: budgets, mandatory credentials, equipment details, unavailable documents, external portals, and other gaps that prevent a reliable decision.
 Cite exact supplied passages for all affirmative funding, credential and equipment findings. Absence in a partial document/chunk means not found in that evidence, never proof of absence across the procurement. When combining chunk reviews, preserve affirmative findings from every chunk and disclose conflicts or missing sources.`;
+
+/** The choice a select should start on: the current one, or the only option when there is exactly one (never a guess among several). */
+export const onlyOption = (options: readonly { id: string }[], current: string) => current || options.length !== 1 ? current : options[0].id;

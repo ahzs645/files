@@ -127,7 +127,7 @@ export function PromptEditor({ prompt, testIds, runner, includeDocuments, onSave
   return <><Modal mobileSheet size="wide" title={current ? 'Edit review prompt' : 'New review prompt'} onClose={close} footer={<>
     <span className="research-note review-editor-dirty" role="status">{problems.length && name.trim() && instructions.trim()
       ? <button type="button" className="research-link" onClick={showProblems}>Fix {problems.length} field problem{problems.length === 1 ? '' : 's'} to save</button> : saveStatus}</span>
-    <Button disabled={!!busy || !canSave || !dirty} onClick={() => void act('save', async () => { await save(); })}>{busy === 'save' ? 'Saving…' : 'Save prompt'}</Button>
+    <Button variant={!busy && canSave && dirty ? 'primary' : 'ghost'} disabled={!!busy || !canSave || !dirty} onClick={() => void act('save', async () => { await save(); })}>{busy === 'save' ? 'Saving…' : 'Save prompt'}</Button>
     <Button variant="ghost" onClick={close}>Done</Button>
   </>}><div className="research review-editor">
     <div className="research-toolbar">
@@ -139,7 +139,7 @@ export function PromptEditor({ prompt, testIds, runner, includeDocuments, onSave
     <p className="research-note">Describe how to judge the evidence. Define the values you want back as output fields below, not in the instructions, so every result has the same keys and types.</p>
 
     <h3>Output fields</h3>
-    {!fields.length && <p className="research-note">No typed fields. The AI chooses field names from the instructions, so results may differ between records and can’t be checked. Add fields to get consistent columns.</p>}
+    {!fields.length && <p className="research-note">No typed fields. The AI chooses field names from the instructions, so results may differ between opportunities and can’t be checked. Add fields to get consistent columns.</p>}
     {fields.map((field, index) => <FieldEditor key={field.id} field={field} index={index} count={fields.length} taken={fields.filter((_, i) => i !== index).map(f => f.key)}
       onChange={next => update(index, next)} onMove={by => move(index, by)} onRemove={() => setFields(fields.filter((_, i) => i !== index))} />)}
     <div className="research-toolbar"><Button variant="ghost" disabled={fields.length >= MAX_FIELDS} onClick={add}>Add field</Button><span className="research-count">{fields.length}/{MAX_FIELDS} fields</span></div>
@@ -152,11 +152,11 @@ export function PromptEditor({ prompt, testIds, runner, includeDocuments, onSave
     </details>
 
     <h3>Test output</h3>
-    <p className="research-note">Runs this prompt on one record{includeDocuments ? ' and its downloaded documents' : ''} and checks each field against its type. Testing saves unsaved changes as a new version first.</p>
+    <p className="research-note">Runs this prompt on one opportunity{includeDocuments ? ' and its downloaded documents' : ''} and checks each field against its type. Testing saves unsaved changes as a new version first.</p>
     {testIds.length ? <div className="research-toolbar research-fill">
-      <label className="research-label"><span>Test record</span><Select aria-label="Test record" presentation="dropdown" searchable={false} value={testId} onChange={e => setTestId(e.target.value)}>{testIds.map(id => <option key={id} value={id}>{titles[id] ?? id}</option>)}</Select></label>
+      <label className="research-label"><span>Test opportunity</span><Select aria-label="Test opportunity" presentation="dropdown" searchable={false} value={testId} onChange={e => setTestId(e.target.value)}>{testIds.map(id => <option key={id} value={id}>{titles[id] ?? id}</option>)}</Select></label>
       <Button disabled={!!busy || !canSave || !testId || !runner} onClick={() => void test()}>{busy === 'test' ? 'Testing…' : dirty ? 'Save and test' : 'Test'}</Button>
-    </div> : <p className="research-note">Tick a record in the Records list, then reopen this editor to test with it.</p>}
+    </div> : <p className="research-note">Select an opportunity in the list, then reopen this editor to test with it.</p>}
     {!runner && testIds.length > 0 && <p className="research-note">Choose a computer and review model on the page to enable testing.</p>}
     {busy === 'test' && <p role="status" className="research-note">Reviewing on the server. Long documents can take several minutes; the result is also saved under Results.</p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}

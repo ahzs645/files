@@ -9,7 +9,10 @@ import { navigatePlugin, pluginHref, usePluginQuery } from '../navigation';
 import { sql } from '../procurement/display';
 import { REVIEW_KEY, startPipeline, useReviewWorkspace } from './actions';
 import { json, label } from './queries';
-import { WORKBENCH_STAGES, compareRequirements, gradeItems, issueText, preflightLines, type WorkbenchStage } from './workbench';
+import { recordColumns } from './queue';
+import { when as whenTime } from '../format';
+import { cardDeadline } from './deadline-text';
+import { WORKBENCH_STAGES, executionText, compareRequirements, gradeItems, issueText, preflightLines, type WorkbenchStage } from './workbench';
 import './review.css';
 
 // Built-in prompt bodies, bundled read-only. The host embeds its own synced copy; editing here is not supported.
@@ -17,7 +20,8 @@ const PROMPTS = import.meta.glob('../../../prompts/procurement/*/v1.md', { query
 const promptFor = (path: string | undefined) => path ? Object.entries(PROMPTS).find(([key]) => key.endsWith('/' + path))?.[1] ?? null : null;
 const templateFor = (id: string | null) => id ? TEMPLATES.find(t => t.id === id) ?? null : null;
 const SHARED = TEMPLATES.find(t => t.stage === 'shared');
-const when = (value: string | null | undefined) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const when = (value: string | null | undefined) => whenTime(value, new Date(), '—');
+const c = recordColumns();
 const CLI = /^(codex|opencode|claude):/;
 
 type StageRun = { id: string; runId: string; stage: string; templateId: string; templateVersion: number; model: string | null; status: string; quality: string | null; isCurrent: number; summary: string | null; output: string | null; usage: string | null; issues: string; error: string | null; startedAt: string; finishedAt: string | null };
@@ -31,8 +35,8 @@ export function PipelineWorkbench() {
   const stage = WORKBENCH_STAGES.find(item => item.key === stageKey) ?? WORKBENCH_STAGES[3];
   const template = templateFor(stage.templateId), prompt = promptFor(template?.path);
   return <section className="rw-page" aria-labelledby="workbench-title">
-    <header className="rw-page-head"><div><h1 id="workbench-title">AI workbench · pipeline stages</h1><p className="rw-note">Inspect each stage and test it on one saved notice before running it on many. Test runs never replace current results.</p></div>
-      <Btn variant="ghost" onClick={() => navigatePlugin('/ai-review')}>Custom review prompts</Btn></header>
+    <header className="rw-page-head"><div><h1 id="workbench-title">AI pipeline</h1><p className="rw-note">Inspect each stage and test it on one saved notice before running it on many. Test runs never replace current results.</p></div>
+      <Btn variant="ghost" onClick={() => navigatePlugin('/ai-review')}>Review prompts</Btn></header>
     <div className="rw-workbench">
       <nav className="rw-stage-rail" aria-label="Pipeline stages">
         {WORKBENCH_STAGES.map(item => { const t = templateFor(item.templateId); return <button key={item.key} type="button" aria-current={item.key === stage.key ? 'step' : undefined} onClick={() => setStageKey(item.key)}>
@@ -56,18 +60,19 @@ function StageDetails({ stage, templateText, prompt }: { stage: WorkbenchStage; 
   return <article className="rw-panel rw-stage" aria-label={`${stage.name} stage`}>
     <h2>{stage.name}</h2>
     <dl className="rw-summary">
-      <div><dt>Execution</dt><dd>{stage.execution === 'ai' ? 'AI' : 'Deterministic'} · {stage.method}</dd></div>
+      <div><dt>Execution</dt><dd>{executionText(stage)}</dd></div>
       <div><dt>Template</dt><dd>{templateText ?? 'None: this stage has no prompt'}</dd></div>
       <div><dt>Purpose</dt><dd>{stage.purpose}</dd></div>
       <div><dt>Input scope</dt><dd>{stage.inputScope}</dd></div>
       <div><dt>Output</dt><dd>{stage.output}</dd></div>
     </dl>
-    {stage.schema && <><h3>Output schema</h3><pre className="rw-pre">{stage.schema}</pre><p className="rw-note">Every response is parsed and checked against this schema, then every quote is aligned to the source text. Schema-invalid output gets one repair attempt and is otherwise kept aside, never promoted.</p></>}
+    {stage.schema && <details className="rw-disclosure"><summary data-zoer-disclosure="">Output schema</summary><p className="rw-note">Every response is parsed and checked against this schema, then every quote is aligned to the source text. Schema-invalid output gets one repair attempt and is otherwise kept aside, never promoted.</p><pre className="rw-pre">{stage.schema}</pre></details>}
     {templateText && <>
-      <h3>Prompt</h3>
-      <p className="rw-note">Built-in stage prompts are read-only in this release; editing and publishing them is not supported. Custom prompts stay in the <a href={pluginHref('/ai-review')} onClick={event => { event.preventDefault(); navigatePlugin('/ai-review'); }}>AI review prompt editor</a>.</p>
-      {prompt ? <pre className="rw-pre rw-prompt">{prompt}</pre> : <p className="rw-note">Prompt text is not bundled with this build.</p>}
-      {shared && <details><summary data-zoer-disclosure="">Shared policy prepended to every stage ({SHARED!.id} v{SHARED!.version})</summary><pre className="rw-pre rw-prompt">{shared}</pre></details>}
+      <details className="rw-disclosure"><summary data-zoer-disclosure="">Prompt</summary>
+        <p className="rw-note">Built-in stage prompts are read-only in this release. Your own prompts are in <a href={pluginHref('/ai-review')} onClick={event => { event.preventDefault(); navigatePlugin('/ai-review'); }}>Review prompts</a>.</p>
+        {prompt ? <pre className="rw-pre rw-prompt">{prompt}</pre> : <p className="rw-note">Prompt text is not bundled with this build.</p>}
+      </details>
+      {shared && <details className="rw-disclosure"><summary data-zoer-disclosure="">Shared policy prepended to every stage ({SHARED!.id} v{SHARED!.version})</summary><pre className="rw-pre rw-prompt">{shared}</pre></details>}
     </>}
   </article>;
 }
@@ -92,8 +97,8 @@ function TestPanel({ stage, testStage }: { stage: WorkbenchStage; testStage: 'tr
   const [recordId, setRecordId] = usePluginQuery('record');
   const [search, setSearch] = useState(''), [model, setModel] = useState<any>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [launched, setLaunched] = useState<{ id: string; recordId: string; stage: string } | null>(null), [runId, setRunId] = useState('');
-  const matches = useQuery({ queryKey: [...REVIEW_KEY, 'workbench-search', search], queryFn: () => sql("SELECT id, title FROM records WHERE kind='opportunity' AND title LIKE ? OR kind='opportunity' AND id LIKE ? ORDER BY updated_at DESC LIMIT 20", [`%${search}%`, `%${search}%`]) });
-  const record = useQuery({ queryKey: [...REVIEW_KEY, 'workbench-record', recordId], enabled: !!recordId, queryFn: async () => (await sql('SELECT id, title FROM records WHERE id=?', [recordId]))[0] ?? null });
+  const matches = useQuery({ queryKey: [...REVIEW_KEY, 'workbench-search', search], queryFn: () => sql(`SELECT id, ${c.title} AS title, ${c.buyer} AS buyer, coalesce(${c.field('closingAt')},${c.field('closingDate')}) AS closing FROM records WHERE kind='opportunity' AND title LIKE ? OR kind='opportunity' AND id LIKE ? ORDER BY updated_at DESC LIMIT 20`, [`%${search}%`, `%${search}%`]) });
+  const record = useQuery({ queryKey: [...REVIEW_KEY, 'workbench-record', recordId], enabled: !!recordId, queryFn: async () => (await sql(`SELECT id, ${c.title} AS title FROM records WHERE id=?`, [recordId]))[0] ?? null });
   const scope = useQuery({ queryKey: [...REVIEW_KEY, 'workbench-scope', recordId], enabled: !!recordId, queryFn: () => readScope(recordId) });
   const mine = launched && launched.recordId === recordId && launched.stage === testStage ? launched.id : '';
   // The host run is polled only to surface a failure before its stage run row exists.
@@ -121,7 +126,7 @@ function TestPanel({ stage, testStage }: { stage: WorkbenchStage; testStage: 'tr
       : [...workbenchExclusions(docs), ...(docs.length ? [] : ['No downloaded files for this notice'])],
     lengths: [noticeKnown ? scope.data.noticeCp! : 1, ...readable.map(d => d.cp)],
   }) : [];
-  const blocker = busy ? 'Starting…' : !recordId ? 'Choose a saved notice.' : !modelId ? 'Choose a computer and model.' : scope.isPending ? 'Checking evidence scope…' : '';
+  const blocker = busy ? 'Starting…' : !recordId ? 'Choose a saved opportunity.' : !modelId ? 'Choose a computer and model.' : scope.isPending ? 'Checking evidence scope…' : '';
   const launch = async () => {
     setBusy(true); setError('');
     try {
@@ -132,11 +137,11 @@ function TestPanel({ stage, testStage }: { stage: WorkbenchStage; testStage: 'tr
   };
   const hostFailed = mine && ['failed', 'cancelled', 'outcome_unknown'].includes(hostRun.data?.status) ? hostRun.data : null;
   return <div className="rw-form">
-    <label className="rw-field"><span>Find a saved notice</span><input value={search} maxLength={200} placeholder="Title or notice ID" onChange={e => setSearch(e.target.value)} /></label>
-    <div className="rw-picks" role="listbox" aria-label="Matching notices">{(matches.data ?? []).map(row => <button key={row.id} type="button" role="option" aria-selected={row.id === recordId} onClick={() => { setRecordId(row.id); setRunId(''); }}>{row.title}<small className="rw-note">{String(row.id).replace(/^opportunity:/, '')}</small></button>)}{matches.data && !matches.data.length && <p className="rw-note">No saved opportunities match.</p>}</div>
+    <label className="rw-field"><span>Find a saved opportunity</span><input value={search} maxLength={200} placeholder="Title or notice number" onChange={e => setSearch(e.target.value)} /></label>
+    <div className="rw-picks" role="listbox" aria-label="Matching notices">{(matches.data ?? []).map(row => <button key={row.id} type="button" role="option" aria-selected={row.id === recordId} onClick={() => { setRecordId(row.id); setRunId(''); }}><span>{row.title || 'Untitled opportunity'}</span><small className="rw-note">{[row.buyer || 'Buyer not provided', row.closing ? cardDeadline(row.closing, 'opportunity', Date.now()).text : ''].filter(Boolean).join(' · ')}</small></button>)}{matches.data && !matches.data.length && <p className="rw-note">No saved opportunities match.</p>}</div>
     {ReviewModelSelector ? <ReviewModelSelector request={host} onChange={setModel} disabled={busy} /> : <p className="rw-note">Update Zoer to choose computers and models.</p>}
     {lines.length > 0 && <div className="rw-preflight" aria-label="Preflight"><strong>Before you run</strong><ul>{lines.map((line, i) => <li key={i}>{line}</li>)}</ul></div>}
-    <div className="rw-actions"><Btn variant="primary" disabled={!!blocker} loading={busy} aria-describedby="test-blocker" onClick={() => void launch()}>Test sample</Btn>{blocker && <span id="test-blocker" role="status" className="rw-note">{blocker}</span>}</div>
+    <div className="rw-actions"><Btn variant={blocker && !busy ? 'secondary' : 'primary'} disabled={!!blocker} loading={busy} aria-describedby="test-blocker" onClick={() => void launch()}>Test sample</Btn>{blocker && <span id="test-blocker" role="status" className="rw-note">{blocker}</span>}</div>
     <p className="rw-note">A test run is stored with its own record and is never promoted: it does not change current results, mark anything stale, create change events or rerun assessments.</p>
     {error && <p role="alert" className="rw-error">{error}</p>}
     {hostFailed && <p role="alert" className="rw-error">The test run {hostFailed.status === 'cancelled' ? 'was cancelled' : 'failed'}{hostFailed.error ? `: ${hostFailed.error}` : '.'} Current results are unchanged.</p>}

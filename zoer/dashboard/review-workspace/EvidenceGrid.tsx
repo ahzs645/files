@@ -8,10 +8,11 @@ import { sql } from '../procurement/display';
 import { REVIEW_KEY, useReviewWorkspace } from './actions';
 import { useCapabilities } from '../capabilities';
 import { EvidenceInspector } from './EvidenceInspector';
-import { CELL_TEXT, CELL_TONE, EVIDENCE_EXPORT_LIMIT, FIELD_TEXT, GRID_FIELDS, GRID_PAGE, PROBLEMS, PROBLEM_TEXT, evidenceExportHeader, evidenceExportRow, isGridField, isProblem, problemCountsSql, readGridPage, type GridRow, type GridScope } from './evidence-queries';
+import { CELL_TEXT, CELL_TONE, EVIDENCE_EXPORT_LIMIT, FIELD_TEXT, GRID_FIELDS, PROBLEMS, PROBLEM_TEXT, evidenceExportHeader, evidenceExportRow, isGridField, isProblem, problemCountsSql, readGridPage, type GridRow, type GridScope } from './evidence-queries';
+import { count as n, plural, when } from '../format';
 import './review.css';
 
-const COLUMNS = ['Notice', ...GRID_FIELDS.map(field => FIELD_TEXT[field]), 'Mandatory requirements'];
+const COLUMNS = ['Opportunity', ...GRID_FIELDS.map(field => FIELD_TEXT[field]), 'Mandatory requirements'];
 const noticeHref = (id: string, tab?: string) => `/procurement?notice=${encodeURIComponent(id)}${tab ? `&tab=${tab}` : ''}`;
 
 /**
@@ -36,7 +37,7 @@ export function EvidenceGrid() {
   const count = (key: string) => Number(counts.data?.[key] ?? 0);
 
   if (workspace.isPending) return <p role="status" className="rw-o-muted">Checking the review workspace…</p>;
-  if (!available) return <div className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved files are under Evidence · Files.</div>;
+  if (!available) return <div className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved files are under Opportunities › Files.</div>;
 
   const rows = page.data?.rows ?? [];
   const activate = (row: GridRow, col: number) => {
@@ -73,59 +74,61 @@ export function EvidenceGrid() {
 
   return <section className="rw-eg-page" aria-labelledby="rw-eg-title">
     <header className="rw-eg-head">
-      <div><h1 id="rw-eg-title">Extracted evidence</h1><p className="rw-o-muted">{writes ? 'Review and correct extracted values one at a time.' : 'Extracted values and the passages they came from.'}</p></div>
+      <div><h1 id="rw-eg-title">Extracted facts</h1><p className="rw-o-muted">Dates, amounts and conditions the AI read from each opportunity’s notice and documents, one row per opportunity. The files themselves are in <a href={pluginHref('/files')} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); navigatePlugin('/files'); } }}>Files</a>.</p></div>
       {!catalogEmpty && !counts.isPending && <div className="procurement-actions">
         <label className="rw-eg-field"><span>Field</span><Select aria-label="Field for problem filters" presentation="dropdown" searchable={false} value={field ?? ''} onChange={event => filter({ field: event.target.value })}><option value="">All fields</option>{GRID_FIELDS.map(key => <option key={key} value={key}>{FIELD_TEXT[key]}</option>)}</Select></label>
         <Btn size="sm" variant="secondary" disabled={exporting || !rows.length} onClick={() => void exportScope()}>{exporting ? 'Exporting…' : 'Export CSV'}</Btn>
       </div>}
     </header>
     {counts.isPending ? <p role="status" className="rw-o-muted">Loading evidence…</p> : catalogEmpty ? <div className="procurement-empty">
-      <h2>No extracted evidence yet</h2>
-      <p>{writes ? 'Select notices in Opportunities and choose Extract requirements.' : 'Requirements have not been extracted for any notice in this copy.'}</p>
+      <h2>No extracted facts yet</h2>
+      <p>{writes ? 'Select opportunities in Browse and choose Extract requirements.' : 'Requirements have not been extracted for any opportunity in this copy.'}</p>
       <div className="procurement-actions"><Btn variant="secondary" onClick={() => navigatePlugin('/procurement')}>Open Opportunities</Btn></div>
     </div> : <>
-      <div className="rw-eg-filters" role="group" aria-label="Field problem filters (counts cover every extracted notice)">
-        <button type="button" className="pc-chip" aria-pressed={!problem} onClick={() => filter({ problem: '' })}>All extracted · {count('total').toLocaleString()}</button>
-        {PROBLEMS.filter(key => count(key) > 0).map(key => <Hint key={key} content={PROBLEM_TEXT[key].description} action><button type="button" className="pc-chip" aria-pressed={problem === key} onClick={() => filter({ problem: problem === key ? '' : key })}>{PROBLEM_TEXT[key].title} · {count(key).toLocaleString()}</button></Hint>)}
+      <div className="rw-eg-filters" role="group" aria-label="Field problem filters (counts cover every opportunity with extracted facts)">
+        <button type="button" className="pc-chip" aria-pressed={!problem} onClick={() => filter({ problem: '' })}>All extracted · {n(count('total'))}</button>
+        {PROBLEMS.filter(key => count(key) > 0).map(key => <Hint key={key} content={PROBLEM_TEXT[key].description} action><button type="button" className="pc-chip" aria-pressed={problem === key} onClick={() => filter({ problem: problem === key ? '' : key })}>{PROBLEM_TEXT[key].title} · {n(count(key))}</button></Hint>)}
       </div>
       {counts.isError && <p role="alert" className="rw-error">Could not count field problems: {counts.error.message}. Counts are not shown as zero.</p>}
-      <p className="rw-o-muted" role="status">Counts are notices across the whole catalog{field ? `, for ${FIELD_TEXT[field]} only` : ''}.{note ? ` ${note}` : ''}</p>
+      {note && <p className="rw-o-muted" role="status">{note}</p>}
       {error && <p role="alert" className="rw-error">{error}</p>}
       {page.isError && <p role="alert" className="rw-error">Could not load the evidence grid: {page.error.message} <button type="button" onClick={() => void page.refetch()}>Retry</button></p>}
       {page.isPending ? <p role="status" className="rw-o-muted">Loading evidence…</p> : !page.isError && !rows.length ? <div className="procurement-empty">
-        <h2>No notices match this filter</h2>
-        <p>No extracted notice has a {problem ? PROBLEM_TEXT[problem].title.toLowerCase() : ''} value{field ? ` in ${FIELD_TEXT[field]}` : ''}.</p>
-        <div className="procurement-actions">{(problem || field) && <Btn variant="secondary" onClick={() => filter({ problem: '', field: '' })}>Clear filters</Btn>}<Btn variant="secondary" onClick={() => navigatePlugin('/procurement')}>Open Opportunities</Btn></div>
+        <h2>No opportunities match this filter</h2>
+        <p>No opportunity with extracted facts has a {problem ? PROBLEM_TEXT[problem].title.toLowerCase() : ''} value{field ? ` in ${FIELD_TEXT[field]}` : ''}.</p>
+        <div className="procurement-actions">{(problem || field) && <Btn variant="secondary" onClick={() => filter({ problem: '', field: '' })}>Clear filters</Btn>}<Btn variant="secondary" onClick={() => navigatePlugin('/procurement')}>Open Browse</Btn></div>
       </div> : !page.isError && <>
-      <div className="rw-o-scroll" role="region" aria-label="Evidence grid, scrolls horizontally" tabIndex={-1}>
-        <table ref={grid} role="grid" className="rw-eg" aria-label="Extracted values by notice" aria-rowcount={total + 1} onKeyDown={onKey}>
+      <div className="rw-o-scroll" role="region" aria-label="Extracted facts, scrolls horizontally" tabIndex={-1}>
+        <table ref={grid} role="grid" className="rw-eg" aria-label="Extracted facts by opportunity" aria-rowcount={total + 1} onKeyDown={onKey}>
           <thead><tr role="row">{COLUMNS.map((name, c) => <th key={name} role="columnheader" scope="col" data-active={field && GRID_FIELDS[c - 1] === field || undefined}>{name}</th>)}</tr></thead>
           <tbody>{rows.map((row, r) => <tr key={row.id} role="row">
             {COLUMNS.map((_, c) => {
               const tab = focus[0] === r && focus[1] === c ? 0 : -1, key = `${r}:${c}`, focusHere = () => setFocus([r, c]);
               if (c === 0) return <th key={c} role="rowheader" scope="row" tabIndex={tab} data-cell={key} onFocus={focusHere} onClick={() => activate(row, c)}>
-                <a href={pluginHref(noticeHref(row.id))} tabIndex={-1} onClick={event => { event.preventDefault(); }}>{row.title || 'Untitled notice'}</a>
-                <small>{row.buyer || 'Buyer not provided'}{row.extractedAt ? ` · extracted ${row.extractedAt.slice(0, 10)}` : ''}</small>
+                <a href={pluginHref(noticeHref(row.id))} tabIndex={-1} onClick={event => { event.preventDefault(); }}>{row.title || 'Untitled opportunity'}</a>
+                <small>{row.buyer || 'Buyer not provided'}{row.extractedAt ? ` · extracted ${when(row.extractedAt)}` : ''}</small>
               </th>;
               if (c === COLUMNS.length - 1) return <td key={c} role="gridcell" data-label={COLUMNS[c]} tabIndex={tab} data-cell={key} onFocus={focusHere} onClick={() => activate(row, c)} aria-label={`${row.title}: ${row.mandatory} mandatory requirements, ${row.unreviewed} not reviewed. Open requirements.`}>
-                <span className="rw-eg-value">{row.mandatory.toLocaleString()} mandatory</span>
-                <small>{row.mandatory ? `${row.unreviewed.toLocaleString()} not reviewed${row.ungrounded ? ` · ${row.ungrounded.toLocaleString()} ungrounded` : ''}` : 'None extracted · not proof there are none'}</small>
+                <span className="rw-eg-value">{n(row.mandatory)} mandatory</span>
+                <small>{row.mandatory ? `${n(row.unreviewed)} not reviewed${row.ungrounded ? ` · ${n(row.ungrounded)} ungrounded` : ''}` : 'None extracted · not proof there are none'}</small>
               </td>;
               const cell = row.cells[c - 1], extra = problem && cell.problems.has(problem) && cell.state !== problem ? PROBLEM_TEXT[problem].title : '';
               return <td key={c} role="gridcell" data-label={COLUMNS[c]} tabIndex={tab} data-cell={key} data-match={(problem && cell.problems.has(problem)) || undefined} onFocus={focusHere} onClick={() => activate(row, c)}
                 aria-label={`${FIELD_TEXT[cell.field]}: ${cell.value}. ${CELL_TEXT[cell.state]}${extra ? `; ${extra}` : ''}. ${cell.factId ? 'Open evidence inspector.' : 'Open the notice evidence.'}`}>
-                <span className="rw-eg-value">{cell.value}</span>
-                <span className="rw-eg-badges">{cell.value !== CELL_TEXT[cell.state] && <span className="rw-chip" data-tone={CELL_TONE[cell.state]}><b>{CELL_TEXT[cell.state]}</b></span>}{extra && <span className="rw-chip" data-tone="needs_information"><b>{extra}</b></span>}{cell.lots > 1 && <small>{cell.lots} lots</small>}</span>
+                {cell.state === 'not_found' && !cell.factId || cell.display.text === CELL_TEXT.not_found ? <Hint content={PROBLEM_TEXT.not_found.description}><span className="rw-eg-value rw-eg-quiet">Not found</span></Hint>
+                  : <Hint content={cell.display.raw && cell.display.raw !== cell.display.text ? `Source text: ${cell.display.raw}` : undefined}><span className="rw-eg-value">{cell.display.text}</span></Hint>}
+                {cell.display.detail && <small className="rw-eg-detail">{cell.display.detail}</small>}
+                <span className="rw-eg-badges">{cell.display.text !== CELL_TEXT[cell.state] && cell.display.text !== CELL_TEXT.not_found && <span className="rw-chip" data-tone={CELL_TONE[cell.state]}><b>{CELL_TEXT[cell.state]}</b></span>}{extra && <span className="rw-chip" data-tone="needs_information"><b>{extra}</b></span>}{cell.lots > 1 && <small>{cell.lots} lots</small>}</span>
               </td>;
             })}
           </tr>)}</tbody>
         </table>
       </div>
-      <nav className="pc-pager" aria-label="Evidence pages">
+      {(page.data?.hasPrevious || page.data?.hasNext) && <nav className="pc-pager" aria-label="Extracted facts pages">
         <Btn size="sm" variant="secondary" disabled={!page.data?.hasPrevious || page.isFetching} onClick={() => { setFocus([0, 0]); patchPluginQuery({ before: rows[0]?.id ?? '', after: '' }, 'push'); }}>Previous</Btn>
-        <span>{rows.length.toLocaleString()} of {counts.data ? total.toLocaleString() : '…'} notices · {GRID_PAGE} per page, ordered by record id</span>
+        <span>{n(rows.length)} of {counts.data ? plural(total, 'opportunity', 'opportunities') : '…'}</span>
         <Btn size="sm" variant="secondary" disabled={!page.data?.hasNext || page.isFetching} onClick={() => { setFocus([0, 0]); patchPluginQuery({ after: rows.at(-1)?.id ?? '', before: '' }, 'push'); }}>Next</Btn>
-      </nav>
+      </nav>}
     </>}
     </>}
     {inspect && <EvidenceInspector recordId={inspect.recordId} target={{ type: 'fact', id: inspect.factId }} onClose={() => { setInspect(null); void client.invalidateQueries({ queryKey: [...REVIEW_KEY, 'evidence-grid'] }); }} />}

@@ -2,6 +2,7 @@ import { MONEY_BASIS_LABELS, MONEY_KIND_LABELS, type MoneyBasis, type MoneyKind 
 import { sql } from '../procurement/display';
 import { json, placeholders } from './queries';
 import { recordColumns, type Fragment } from './queue';
+import { money, when } from '../format';
 
 /**
  * Evidence cell grid (INTERFACE-SPEC §2 Evidence): rows are notices with a current extraction, columns are named fact
@@ -43,7 +44,9 @@ export const PROBLEM_TEXT: Record<Problem, { title: string; description: string 
 };
 
 export interface FactRow { id: string; recordId: string; lotId: string | null; fieldKey: string; semanticType: string; status: string; value: unknown; grounding: string; reviewState: string | null; reviewValue: unknown }
-export interface Cell { field: GridField; state: CellState; value: string; factId: string | null; problems: Set<Problem>; lots: number; count: number }
+/** `value` is the full one-line text (export, screen readers); `display` is what the grid shows: a readable value with its caveats as secondary text and the source's own wording in `raw`. */
+export interface CellDisplay { text: string; detail: string; raw?: string }
+export interface Cell { field: GridField; state: CellState; value: string; display: CellDisplay; factId: string | null; problems: Set<Problem>; lots: number; count: number }
 
 const CLAIMS = new Set(['stated', 'explicitly_absent']);
 const sqlText = (value: unknown) => value === null || value === undefined ? '' : String(value);
@@ -90,13 +93,48 @@ export function formatFactValue(semanticType: string, value: unknown): string {
   return String(v);
 }
 
+const OWN_KINDS = ['buyer_budget', 'buyer_estimated_value', 'insurance_limit', 'bid_security'];
+const amount = (value: number, currency: string | null) => currency && currency !== 'CAD' ? `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}` : money(value);
+const dayText = (raw: string): string | null => {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  const date = iso ? new Date(Date.UTC(+iso[1], +iso[2] - 1, +iso[3], 12)) : new Date(raw);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', ...(iso ? { timeZone: 'UTC' } : {}) }) : null;
+};
+/**
+ * Grid text for a fact value: "$6,000,000" with "Currency and basis not stated" as secondary text, never
+ * "Currency not stated 6,000,000 · basis not stated". A missing currency is shown with the plugin's default "$" only
+ * together with that caveat; another stated currency keeps its code. Dates read in the app's format, the source's own
+ * wording kept in `raw`. Nothing is converted or merged.
+ */
+export function factDisplay(semanticType: string, value: unknown): CellDisplay {
+  const v: any = value;
+  if (semanticType.startsWith('money:') && v && typeof v === 'object') {
+    const lower = typeof v.lower === 'number' && Number.isFinite(v.lower) ? v.lower : null, upper = typeof v.upper === 'number' && Number.isFinite(v.upper) ? v.upper : null;
+    if (lower === null && upper === null) return { text: v.raw ? String(v.raw) : 'Amount not stated', detail: '' };
+    const currency = v.currency ? String(v.currency).toUpperCase() : null, kind = semanticType.slice(6);
+    const text = lower !== null && upper !== null && lower !== upper ? `${amount(lower, currency)}–${amount(upper, currency)}` : amount((lower ?? upper)!, currency);
+    const basis = v.basis && v.basis !== 'unknown' ? MONEY_BASIS_LABELS[v.basis as MoneyBasis] : null;
+    const missing = [!currency && 'currency', !basis && 'basis'].filter(Boolean) as string[];
+    const detail = [missing.length ? `${missing.join(' and ').replace(/^./, c => c.toUpperCase())} not stated` : '', basis === MONEY_BASIS_LABELS.total_contract ? 'Total contract' : '',
+      !OWN_KINDS.includes(kind) && MONEY_KIND_LABELS[kind as MoneyKind] ? MONEY_KIND_LABELS[kind as MoneyKind] : ''].filter(Boolean).join(' · ');
+    return { text: basis && basis !== MONEY_BASIS_LABELS.total_contract ? `${text} ${basis}` : text, detail, ...(v.raw ? { raw: String(v.raw) } : {}) };
+  }
+  if (v && typeof v === 'object' && !Array.isArray(v) && typeof v.raw === 'string' && v.raw) {
+    const raw = v.raw;
+    if (v.precision === 'date') { const day = dayText(raw); return day ? { text: day, detail: '', raw } : { text: raw, detail: 'Date only', raw }; }
+    if (v.precision === 'instant') { const at = when(raw, new Date(), ''); return at ? { text: at, detail: '', raw } : { text: raw, detail: '', raw }; }
+    if (v.precision === 'unknown') return { text: raw, detail: 'Not a recognized date', raw };
+  }
+  return { text: formatFactValue(semanticType, value), detail: '' };
+}
+
 /** One cell: a primary state plus every problem, the representative fact the inspector opens, and never a blank value. */
 export function deriveCell(field: GridField, facts: FactRow[], runStale: boolean): Cell {
   const problems = cellProblems(facts, runStale), lots = new Set(facts.map(f => f.lotId ?? '')).size;
   const rank = (f: FactRow) => (f.reviewState === 'rejected' ? 4 : 0) + (f.reviewState === 'accepted' || f.reviewState === 'corrected' ? 0 : 1) + (f.lotId ? 2 : 0);
   const rep = [...facts].sort((a, b) => rank(a) - rank(b))[0] ?? null;
   const base = { field, problems, lots, count: facts.length, factId: rep?.id ?? null };
-  if (!rep) return { ...base, state: runStale ? 'outdated' : 'not_found', value: CELL_TEXT.not_found };
+  if (!rep) return { ...base, state: runStale ? 'outdated' : 'not_found', value: CELL_TEXT.not_found, display: { text: CELL_TEXT.not_found, detail: '' } };
   // A correction may be a `{value, status?}` patch (write-actions.ts `review.append`, as EvidenceInspector.tsx
   // sends it) or the bare replacement value itself; effectiveFact() in notice-queries.ts accepts either shape
   // and so must this, or a patch-shaped correction shows as raw JSON instead of its formatted value.
@@ -106,13 +144,17 @@ export function deriveCell(field: GridField, facts: FactRow[], runStale: boolean
   const status = rep.reviewState === 'corrected' && isPatch && reviewValue.status !== undefined ? reviewValue.status : rep.status;
   const value = status === 'not_found_in_reviewed_material' ? CELL_TEXT.not_found : status === 'not_reviewed' ? CELL_TEXT.not_reviewed : status === 'not_applicable' ? CELL_TEXT.not_applicable
     : status === 'explicitly_absent' && rep.reviewState !== 'corrected' ? `Stated as none${shown && typeof shown === 'object' && (shown as any).raw ? `: ${(shown as any).raw}` : ''}`
-    : status === 'conflicting' ? 'Conflicting values in source' : formatFactValue(rep.semanticType, shown);
+    : status === 'conflicting' ? 'Conflicting values in source' : null;
+  const display = value === null ? factDisplay(rep.semanticType, shown) : { text: value, detail: '' };
+  const full = value ?? formatFactValue(rep.semanticType, shown);
   const conflictText = problems.has('conflicting') ? `${new Set(facts.filter(f => f.status === 'stated' && f.reviewState !== 'rejected').map(f => valueKey(f.semanticType, f.value))).size || 'Several'} different values` : '';
   const state: CellState = problems.has('outdated') ? 'outdated' : problems.has('conflicting') ? 'conflicting'
     : rep.reviewState === 'accepted' || rep.reviewState === 'corrected' || rep.reviewState === 'rejected' || rep.reviewState === 'needs_clarification' ? rep.reviewState
     : rep.status === 'not_applicable' ? 'not_applicable' : rep.status === 'not_found_in_reviewed_material' ? 'not_found' : rep.status === 'not_reviewed' ? 'not_reviewed'
     : rep.grounding === 'unverified' ? 'ungrounded' : 'proposed';
-  return { ...base, state, value: conflictText && state === 'conflicting' ? `${conflictText} · e.g. ${value}` : value };
+  const conflicting = !!conflictText && state === 'conflicting', distinct = conflictText.split(' ')[0];
+  return { ...base, state, value: conflicting ? `${conflictText} · e.g. ${full}` : full,
+    display: conflicting ? { ...display, text: `${distinct} values, e.g. ${display.text}` } : display };
 }
 
 // ---- SQL ---------------------------------------------------------------------------------------------------------
