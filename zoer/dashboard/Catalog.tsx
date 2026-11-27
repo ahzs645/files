@@ -1,10 +1,11 @@
 import { Hint } from './host-ui';
+import { Btn } from '@zoer/plugin-ui/database';
 import { awardProgress } from './award-progress';
 import { plainError } from './error-text';
 import { annotateBuyerRecord } from './market/buyers';
 import { useContext, useState } from 'react';
 import { BidPreferences } from '../../apps/dashboard/src/components/preferences/BidPreferences';
-import { BidGrid, BidFilters, LayoutToggle, useBidFilters, type BidFilterValues, type BidLayout } from './BidGrid';
+import { BidGrid, BidFilters, useBidFilters, type BidFilterValues, type BidLayout } from './BidGrid';
 import { useNarrowScreen } from './mobile';
 import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { parseContractAwardsJson, normalizeContractAwardImportRecord } from '../../packages/shared/src/contractAwards';
@@ -118,17 +119,20 @@ export function AwardRunList({ limit = 5 }: { limit?: number }) {
     <h2 className="text-[15px] font-semibold text-text-primary">Opportunity scrape runs</h2>
   </section>;
 }
+/** Insights › Awards. One control set at every width: search, buyer, the filter panel and a Shortlisted toggle; phones read
+ *  the same rows as a list, wider screens as a table whose column picker holds the remaining fields. */
 export function AwardsBrowser() {
   const { onlyStarred, setOnlyStarred } = useContext(BidPreferences);
   const [filters,setFilters]=useBidFilters('award');
   const count = useQuery('catalog.count', { kind: 'award', sources: filters.sources });
-  const narrow = useNarrowScreen(); const [layout, setLayout] = useState<BidLayout>('list');
+  const narrow = useNarrowScreen();
   const [filtersOpen, setFiltersOpen] = useState(false), [columnFilters, setColumnFilters] = useState(0);
-  const inlinePanel = narrow && layout === 'list';
+  const layout: BidLayout = narrow ? 'list' : 'table';
+  const noun = (n: number) => `${onlyStarred ? 'shortlisted ' : ''}${n === 1 ? 'award' : 'awards'}`;
   return <div className="bid-opportunities-page zoer-awards">
-    <header className="bid-page-header"><div><h1>Contract awards</h1><p>{count ? `${count.total.toLocaleString()} ${onlyStarred ? 'starred' : 'saved'} ${count.total === 1 ? 'award' : 'awards'}` : 'Loading…'}</p></div>{narrow && <LayoutToggle value={layout} onChange={setLayout} />}</header>
-    <div className="bid-scope-bar"><button type="button" aria-pressed={!onlyStarred} onClick={()=>setOnlyStarred?.(false)}>All awards</button><button type="button" aria-pressed={!!onlyStarred} onClick={()=>setOnlyStarred?.(true)}>Starred</button></div>
-    <BidFilters kind="award" values={filters} onChange={setFilters} open={filtersOpen} onOpenChange={setFiltersOpen} inlinePanel={inlinePanel} columnFilters={inlinePanel ? 0 : columnFilters}/>
+    <header className="bid-page-header"><div><h1>Awards</h1><p>{count ? `${count.total.toLocaleString()} ${noun(count.total)}` : 'Counting awards…'}</p></div>
+      {setOnlyStarred && <Btn size="sm" variant={onlyStarred ? 'secondary' : 'ghost'} aria-pressed={!!onlyStarred} onClick={() => setOnlyStarred(!onlyStarred)}>{onlyStarred ? 'Shortlisted only' : 'Show shortlisted only'}</Btn>}</header>
+    <BidFilters kind="award" values={filters} onChange={setFilters} open={filtersOpen} onOpenChange={setFiltersOpen} inlinePanel={narrow} columnFilters={narrow ? 0 : columnFilters}/>
     <BidGrid kind="award" filters={filters} onFiltersChange={setFilters} layout={layout} filtersOpen={filtersOpen} onFiltersOpenChange={setFiltersOpen} onColumnFiltersChange={setColumnFilters}/>
   </div>;
 }

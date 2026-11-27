@@ -14,9 +14,10 @@ import { useNarrowScreen } from './mobile';
 import { BidList } from './BidList';
 import { RecordSheet } from './RecordSheet';
 import { closingCell, sourceReference, type BidRow } from './bid-summaries';
-import { gridTable, labels, tables } from './bid-columns';
+import { awardMoney, gridTable, labels, missingText, tables } from './bid-columns';
 import { useCapabilities } from './capabilities';
-import { awardDateText, plausibleAwardDate } from './award-dates';
+import { awardDateCell } from './award-dates';
+import { StatusBadge } from './host-ui';
 export type BidFilterValues={buyerLevel:BuyerLevel;search:string;organization:string;status:string[];type:string[];sources:string[]};
 const list=(value:string|null)=>(value??'').split('|').filter(Boolean);
 const sourceLabel=(id:unknown)=>PROCUREMENT_SOURCE_ADAPTERS.find(adapter=>adapter.id===id)?.label??String(id??'');
@@ -71,9 +72,18 @@ function BidTable({kind,filters,onOpen,scope,selection,onTotal,...grid}:{kind:'o
   if(!model)return <p role="status">Loading catalog…</p>;
   return <section className="db-workspace bid-database-grid" data-kind={kind} data-select={selection?'':undefined} aria-label={`${tables[kind].name} table`}>
     <ResourceDataGrid key={kind} {...grid} showSearchBar={false} columnSizes={{starred:selection?92:48,opportunityId:135,status:90,closingDate:125,sourceId:110}} resetPageKey={JSON.stringify([buyerLevel,search,organization,status,type,sources,onlyStarred,scopeKey])} filtered={!!scope||!!search.trim()||!!organization||status.length>0||type.length>0||sources.length>0||!!onlyStarred} resourceKey={'bcbid:'+kind} table={table} hiddenColumns={hidden} columnLabels={labels[kind]} loadPage={loadPage} revision={revision}
-      renderCell={(column,row)=>column==='starred'?starCell(row):column==='sourceId'?sourceLabel(row.sourceId):kind==='opportunity'&&column==='opportunityId'?sourceReference(row):kind==='opportunity'&&column==='closingDate'?closingCell(row):kind==='award'&&column==='awardDate'&&!plausibleAwardDate(row.awardDate)?awardDateText(row.awardDate):undefined}
+      renderCell={(column,row)=>column==='starred'?starCell(row):column==='sourceId'?sourceLabel(row.sourceId):kind==='opportunity'&&column==='opportunityId'?sourceReference(row):kind==='opportunity'&&column==='closingDate'?closingCell(row):kind==='award'?awardCell(column,row):undefined}
       onOpenRow={onOpen}/>
   </section>;
+}
+const httpsUrl=(value:unknown)=>{try{const url=new URL(String(value??''));return url.protocol==='https:'?url.href:'';}catch{return '';}};
+/** Award cells read as values, never raw source text: money, dates (future ones flagged), "—" for missing, a source link. */
+function awardCell(column:string,row:Record<string,unknown>){
+  if(column==='contractValue')return awardMoney(row.contractValue,row.currency);
+  if(column==='awardDate'){const date=awardDateCell(row.awardDate);return date.future?<span className="bid-award-date" title={date.title}>{date.text} <StatusBadge tone="warning">After today</StatusBadge></span>:<span title={date.title}>{date.text}</span>;}
+  if(column==='sourceUrl'){const url=httpsUrl(row.sourceUrl);return url?<a href={url} target="_blank" rel="noopener noreferrer" onClick={event=>event.stopPropagation()}>Open ↗</a>:'—';}
+  if(column==='starred'||column==='buyer'||column.startsWith('buyer'))return undefined;
+  return missingText(row[column])?'—':undefined;
 }
 export type BidLayout='list'|'table';
 type FilterTrigger={filtersOpen:boolean;onFiltersOpenChange:(open:boolean)=>void;onColumnFiltersChange:(count:number)=>void};

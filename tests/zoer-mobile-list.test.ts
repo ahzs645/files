@@ -34,7 +34,7 @@ describe('phone list row summaries', () => {
   });
   it('describes an award, keeping the original text only when a numeric value was formatted', () => {
     const award = awardSummary({ importKey: 'a1', opportunityDescription: 'Fire suppression', successfulSupplier: 'Acme', awardDate: '2026-01-02', contractValue: 102075, currency: 'CAD', contractValueText: '$102,075.00', contractNumber: 'C-1', sourceUrl: 'https://bcbid.gov.bc.ca/award/1' });
-    expect(award).toMatchObject({ key: 'a1', title: 'Fire suppression', supplier: 'Acme', awardDate: '2026-01-02', originalValueText: '$102,075.00', contractNumber: 'C-1', sourceUrl: 'https://bcbid.gov.bc.ca/award/1' });
+    expect(award).toMatchObject({ key: 'a1', title: 'Fire suppression', supplier: 'Acme', awardDate: 'Jan 2, 2026', originalValueText: '$102,075.00', contractNumber: 'C-1', sourceUrl: 'https://bcbid.gov.bc.ca/award/1' });
     expect(award.valueText).toMatch(/102,075/);
     expect(awardSummary({ importKey: 'a2', contractValueText: 'Not disclosed', sourceUrl: 'http://insecure.example' })).toMatchObject({ title: 'Untitled award', supplier: 'Supplier not stated', awardDate: 'Undated', valueText: 'Not disclosed', originalValueText: '', sourceUrl: '' });
     expect(awardSummary({ importKey: 'a3' }).valueText).toBe('Value not stated');
