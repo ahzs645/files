@@ -2,7 +2,7 @@ import { Fragment, useState, type ReactNode } from 'react';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { Btn } from '@zoer/plugin-ui/controls';
 import { BatchHistory, VerificationHistory, useCatalogState } from './BatchHistory';
-import { CollectionRuns, useRecentRuns } from './procurement/CollectionRuns';
+import { CollectionRuns, useCollectionRuns, useRecentRuns } from './procurement/CollectionRuns';
 import { PluginLink } from './procurement/Status';
 import { NoticeView } from './procurement/NoticeView';
 import { RunResults } from './ReviewResults';
@@ -35,7 +35,7 @@ function KindFilter({ kinds, value, onChange }: { kinds: RunKind[]; value: RunKi
 /**
  * Operations › Runs (`/runs?kind=…`): every run list in one place, composed from the lists that used to live on Sources,
  * Documents › History, Documents › Processing and AI review. BC Bid runs keep their own page (`/scraper/history`) until
- * that list moves here. `kind=all` stacks the lists this host has.
+ * that list moves here. `kind=all` stacks the lists this host has; `?kind=` keeps the filter in the URL.
  */
 export function RunsPage() {
   const caps = useCapabilities(), kinds = runKinds(caps);
@@ -44,13 +44,17 @@ export function RunsPage() {
   const [error, setError] = useState('');
   const [recordId, setRecordId] = usePluginQuery('record');
   const [state, refresh] = useCatalogState(setError);
-  const recent = useRecentRuns(shows('collection'));
+  // Collection runs read by action: the shared recent-runs list is mostly download and extraction runs, so collection runs
+  // fall out of it ("No collection run" while runs exist). Older Zoer without the action filter answers with an error;
+  // the shared list is the fallback there.
+  const byAction = useCollectionRuns(shows('collection')), recent = useRecentRuns(shows('collection') && !!byAction.error);
+  const collection = byAction.error ? recent : byAction;
   const { downloadBlocked: browserBusy } = useDocumentBrowsers();
   // Downloads and text extraction are separate runs: each list shows only its own batches.
   const { processing } = splitDocumentBatches(state.batches);
   const extraction = new Set(processing.map((batch: any) => batch.id)), downloads = state.batches.filter((batch: any) => !extraction.has(batch.id));
   const lists: [RunKind, ReactNode][] = [
-    ['collection', <CollectionRuns key="collection" runs={recent.data} error={recent.error as Error | null} loading={recent.isPending} />],
+    ['collection', <CollectionRuns key="collection" runs={collection.data} error={collection.error as Error | null} loading={collection.isPending} />],
     ['bc-bid', <section key="bc-bid" className="rw-panel" aria-labelledby="pc-bcbid-runs-title">
       <header className="rw-panel-head"><h2 id="pc-bcbid-runs-title">BC Bid runs</h2></header>
       <p className="rw-muted pc-wrap">Opportunity scrapes, detail passes and award-history runs are still listed on BC Bid’s own page. <PluginLink to="/scraper/history">Open BC Bid runs</PluginLink></p>
