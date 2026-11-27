@@ -42,7 +42,8 @@
 
 .market-buyer-cell{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}.market-buyer-cell>button:first-child{text-align:left;overflow-wrap:anywhere;white-space:normal;min-width:0}.market-buyer-cell>button:last-child{flex-shrink:0}
 /* Phones: one header row (view picker + icon actions), a compact buyer card without the guidance paragraph, tighter tiles. */
-@media(max-width:767px){.market-header{flex-wrap:nowrap;align-items:flex-start;gap:8px}.market-header>div:first-child{flex:1;min-width:0}.market-view-picker{min-width:0;max-width:none}.market-actions{flex-shrink:0;flex-wrap:nowrap;gap:6px}.market-header .market-action-label{display:none}.market-header .market-actions button{width:44px;min-width:44px;padding:0}.market-header .market-actions button svg{width:16px;height:16px}.market-buyer-controls{gap:8px;padding:10px}.market-metrics{gap:8px}.market-metrics>div{padding:12px}}
+/* Phones: the view picker on its own row, then the labelled actions; a compact buyer card; tighter tiles. */
+@media(max-width:767px){.market-scope-label{display:none}.market-header{gap:8px}.market-header>div:first-child{flex:1 1 100%;min-width:0}.market-view-picker{min-width:0;max-width:none}.market-actions{gap:6px}.market-buyer-controls{gap:8px;padding:10px}.market-metrics{gap:8px}.market-metrics>div{padding:12px}}
 
 .market-heatmap .market-heat-heading{display:flex;flex-direction:column;gap:6px;align-items:center;width:100%;min-height:44px;white-space:normal;overflow-wrap:anywhere;text-align:inherit;padding:6px;border-radius:4px}
 .market-heatmap th:first-child .market-heat-heading{align-items:flex-start}
@@ -54,7 +55,10 @@
 .market-exclusion-chips button{height:auto;white-space:normal;overflow-wrap:anywhere;text-align:left;max-width:100%;padding-top:6px;padding-bottom:6px}
 @media(max-width:767px){.market-heatmap td .market-heat-more{width:44px;min-width:44px}}
 
-.market-nav-group{display:block;padding:.75rem .625rem .25rem;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted)}
+.market-nav-group{display:block;padding:.75rem .625rem .25rem;font-size:12px;font-weight:600;color:var(--color-text-tertiary,var(--color-text-secondary))}
+.market-nav-group:first-child{padding-top:.25rem}
+.market-reading{display:grid;gap:6px;font-size:13px;color:var(--color-text-secondary)}
+.market-reading-bar{display:block;height:4px;border-radius:2px;background:var(--color-bg-subtle);overflow:hidden;max-width:420px}.market-reading-bar>span{display:block;height:100%;background:var(--color-accent);transition:width .2s}
 .market-skeleton{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}
 .market-skeleton span{height:6.5rem;border-radius:.75rem;border:1px solid var(--border-default);background:linear-gradient(90deg,var(--surface-primary) 0%,var(--surface-secondary) 50%,var(--surface-primary) 100%);background-size:200% 100%;animation:market-shimmer 1.4s ease-in-out infinite}
 .market-skeleton .market-skeleton-wide{grid-column:1/-1;height:12rem}

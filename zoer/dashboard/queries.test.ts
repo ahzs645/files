@@ -20,6 +20,7 @@ mock.module('./bridge', () => ({ host: async (method: string, input: any) => {
     const rows = input.ids ? input.ids.flatMap((id: string) => db.query('SELECT * FROM records WHERE id=?').all(id)) : db.query('SELECT * FROM records WHERE kind=? AND id>? ORDER BY id LIMIT ?').all(input.kind, input.after ?? '', input.limit ?? 200);
     return { primary: true, revision, records: rows.map((row: any) => ({ ...row, data: JSON.parse(row.data) })), next: !input.ids && rows.length ? (rows.at(-1) as any).id : null };
   }
+  if (method === 'catalog.workspace') return { entries: [{ key: 'catalog:normalize', value: { finishedAt: new Date(0).toISOString() } }] };
   throw Error(method);
 } }));
 const { queryCatalog, readAll } = await import('./queries');
@@ -131,7 +132,7 @@ test('analysis shares bounded reads and calculated results; compact records pres
   calls.length = 0;
   let active = 0, peak = 0;
   queryHook = async input => {
-    if (!input.statement.includes('OFFSET')) return;
+    if (!input.statement.includes('"recordId"')) return;
     active++; peak = Math.max(peak, active);
     await new Promise(resolve => setTimeout(resolve, 5)); active--;
   };
@@ -142,8 +143,13 @@ test('analysis shares bounded reads and calculated results; compact records pres
   ]);
   queryHook = undefined;
   expect(overview).toBe(duplicate);
-  expect(peak).toBe(3);
-  expect(calls.filter(call => call.method === 'catalog.query' && call.input.statement.includes('OFFSET'))).toHaveLength(3);
+  // Keyset pages (id > last id), one at a time: 200 + 200 + 13 awards.
+  expect(peak).toBe(1);
+  const pages = calls.filter(call => call.method === 'catalog.query' && call.input.statement.includes('"recordId"'));
+  expect(pages).toHaveLength(3);
+  expect(pages.every(call => !/OFFSET/i.test(call.input.statement) && /rowid>\?/.test(call.input.statement))).toBe(true);
+  const keys = pages.map(call => call.input.parameters.at(-1));
+  expect(keys[0]).toBe(0); expect(keys[1]).toBeGreaterThan(keys[0]); expect(keys[2]).toBeGreaterThan(keys[1]);
   expect(calls.some(call => call.method === 'catalog.read' && call.input.kind === 'award')).toBe(false);
   expect(overview).toEqual(queryModel({ ...model, awards }, 'contractAwardsAnalysis.overview', args));
   const readCount = calls.length;
@@ -168,7 +174,7 @@ test('analysis shares bounded reads and calculated results; compact records pres
 test('analysis rejects mixed revisions and failed reads, then permits a clean retry', async () => {
   revision++;
   let changed = false;
-  queryHook = input => { if (input.statement.includes('OFFSET') && !changed) { changed = true; revision++; } };
+  queryHook = input => { if (input.statement.includes('"recordId"') && !changed) { changed = true; revision++; } };
   await expect(queryCatalog('contractAwardsAnalysis.overview', {}, model, revision)).rejects.toThrow('Catalog changed');
   queryHook = undefined;
   expect((await queryCatalog('contractAwardsAnalysis.overview', {}, model, revision)).summary.totalAwards).toBeGreaterThan(0);
@@ -186,17 +192,37 @@ test('market views and evidence drilldowns share one snapshot and preserve sourc
   const args = { view: 'overview', filters: {}, options: {} };
   const [first, second] = await Promise.all([queryCatalog('contractAwardsAnalysis.market', args, model, revision), queryCatalog('contractAwardsAnalysis.market', args, model, revision)]);
   expect(first).toBe(second); expect(first.count).toBeGreaterThan(0);
-  const reads = calls.length;
+  // Overview comes from aggregate SQL: no award rows are read for it.
+  expect(calls.some(call => call.method === 'catalog.query' && call.input.statement.includes('"recordId"'))).toBe(false);
+  const again = calls.length;
+  expect(await queryCatalog('contractAwardsAnalysis.market', args, model, revision)).toBe(first);
+  expect(calls.length).toBe(again);
   const buyer = first.buyers[0];
   const records = await queryCatalog('contractAwardsAnalysis.market', { view: 'records', filters: {}, options: { slice: { buyer: buyer.name } } }, model, revision);
   expect(records).toHaveLength(buyer.count);
   const all = await queryCatalog('contractAwardsAnalysis.market', { view: 'records', filters: {}, options: {} }, model, revision);
   expect(all.find((r: any) => r.importKey === '1').sourceUrl).toBe('https://bcbid.gov.bc.ca/example');
+  const reads = calls.length;
   for (const view of ['trends', 'sizes', 'mix', 'relationships', 'quality']) await queryCatalog('contractAwardsAnalysis.market', { view, filters: {}, options: {} }, model, revision);
   expect(calls.length).toBe(reads);
   revision++;
   await queryCatalog('contractAwardsAnalysis.market', args, model, revision);
   expect(calls.length).toBeGreaterThan(reads);
+});
+
+test('leaving the page stops the award read; a caller that stays keeps it', async () => {
+  revision++; calls.length = 0;
+  const controller = new AbortController();
+  let pages = 0;
+  queryHook = input => { if (input.statement.includes('"recordId"') && ++pages === 1) controller.abort(); };
+  await expect(queryCatalog('contractAwardsAnalysis.market', { view: 'trends', filters: {}, options: {} }, model, revision, { signal: controller.signal })).rejects.toThrow();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(calls.filter(call => call.input.statement?.includes('"recordId"'))).toHaveLength(1);
+  queryHook = undefined;
+  const { analysisProgress } = await import('./queries');
+  const trends = await queryCatalog('contractAwardsAnalysis.market', { view: 'trends', filters: {}, options: {} }, model, revision, { signal: new AbortController().signal });
+  expect(trends.series.length).toBeGreaterThan(0);
+  expect(analysisProgress()).toEqual({ revision, read: 413, total: 413 });
 });
 
 

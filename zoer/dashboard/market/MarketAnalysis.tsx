@@ -6,6 +6,7 @@ import { Modal, DatePicker, InMemoryResourceGrid, CountBadge } from '@zoer/plugi
 import { List, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { parseExclusions, addExclusion, removeExclusion, defaultFilters, inspectionFilters, type Award, type MarketFilters, type MarketOptions, type Slice, type Overview, type Metadata, type Trends, type Distribution, type Comparison, type Matrix, type QualityFlag, type MappingOverview } from './model';
 import { useMarket } from './useMarket';
+import type { OverviewSummary } from './sql-summary';
 import { ComparisonPlot, DependencePlot, Heatmap, LinePlot, Metrics, Panel, compact, count, counted, money, percent } from './charts';
 import type { AnalysisAction } from './HeatmapActions';
 import { downloadRecords } from '../export';
@@ -13,15 +14,27 @@ import { ProcurementMarket } from '../procurement/ProcurementMarket';
 import { useCapabilities } from '../capabilities';
 import './market.css';
 
+/** Views in rail order. The page opens on BC Bid awards › Overview, so that group comes first and names its scope. */
 const tabs = [
-  { id: 'sources', label: 'All sources' }, { id: 'overview', label: 'Overview' }, { id: 'trends', label: 'Trends' }, { id: 'buyers', label: 'Buyers' }, { id: 'suppliers', label: 'Suppliers' },
-  { id: 'sizes', label: 'Award sizes' }, { id: 'compare', label: 'Compare' }, { id: 'mix', label: 'Procurement mix' }, { id: 'relationships', label: 'Relationships' }, { id: 'quality', label: 'Data quality' }, { id: 'mapping', label: 'Buyer mapping' },
+  { id: 'overview', label: 'Overview', group: 'BC Bid awards' }, { id: 'trends', label: 'Trends' }, { id: 'buyers', label: 'Buyers' }, { id: 'suppliers', label: 'Suppliers' },
+  { id: 'sizes', label: 'Award sizes' }, { id: 'compare', label: 'Compare periods' }, { id: 'mix', label: 'Procurement mix' }, { id: 'relationships', label: 'Relationships' },
+  { id: 'sources', label: 'Notices and awards by source', group: 'All sources' },
+  { id: 'quality', label: 'Data quality', group: 'Data checks' }, { id: 'mapping', label: 'Buyer mapping' },
 ] as const;
 type View = typeof tabs[number]['id'];
+const groupOf = (view: View) => { let group = ''; for (const tab of tabs) { if ('group' in tab) group = tab.group; if (tab.id === view) return group; } return group; };
 /** Desktop: a vertical list beside the content, as in Chats. Mobile: the page title becomes a picker. */
 function ViewNav({ value, href, onChange }: { value: View; href: (view: View) => string; onChange: (view: View) => void }) {
-  return <aside className="market-nav"><nav aria-label="Market analysis views">{tabs.map(tab => <Fragment key={tab.id}>{tab.id === 'overview' && <span className="market-nav-group">BC Bid awards</span>}<a id={`market-analysis-tab-${tab.id}`} href={href(tab.id)} aria-current={tab.id === value ? 'page' : undefined}
+  return <aside className="market-nav"><nav aria-label="Market views">{tabs.map(tab => <Fragment key={tab.id}>{'group' in tab && <span className="market-nav-group">{tab.group}</span>}<a id={`market-analysis-tab-${tab.id}`} href={href(tab.id)} aria-current={tab.id === value ? 'page' : undefined}
     onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onChange(tab.id); }}>{tab.label}</a></Fragment>)}</nav></aside>;
+}
+/** The phone view picker, grouped like the rail. */
+function ViewPicker({ value, onChange }: { value: View; onChange: (view: View) => void }) {
+  return <div className="market-view-picker"><Select aria-label="Market view" value={value} onChange={e => onChange(e.target.value as View)}>{tabs.map(tab => <option key={tab.id} value={tab.id}>{groupOf(tab.id)} · {tab.label}</option>)}</Select></div>;
+}
+/** While the award snapshot is read: real progress, never a bare spinner. */
+function Reading({ progress, label }: { progress?: { read: number; total: number }; label: string }) {
+  return <div role="status" className="market-reading">{progress ? <><span>Reading awards {count(progress.read)} of {count(progress.total)}…</span><span className="market-reading-bar" aria-hidden="true"><span style={{ width: `${Math.min(100, progress.read / Math.max(1, progress.total) * 100)}%` }} /></span></> : <span>{label}</span>}</div>;
 }
 const qualityLabels: Record<QualityFlag, string> = { currency: 'Currency not stated', future: 'Future-dated awards', undated: 'Missing or invalid dates', placeholder: 'Placeholder suppliers', value: 'Missing or invalid values', negative: 'Negative values', zero: 'Zero values', contract: 'Missing contract number', justification: 'Missing justification' };
 const qualityDetails: Record<QualityFlag, string> = { currency: 'Excluded from CAD totals; choose Unspecified to inspect their values separately.', future: 'Excluded by default. Dates may need source verification.', undated: 'Included in all-time totals but absent from dated trends and comparisons.', placeholder: 'Unknown or migrated supplier names; excluded by default.', value: 'Counted as records; omitted from value statistics.', negative: 'Included in net totals; excluded from positive-value concentration.', zero: 'Included in counts and size statistics.', contract: 'Missing identifier; not proof of a duplicate or an invalid award.', justification: 'Missing descriptive text; not evidence of a procurement violation.' };
@@ -70,9 +83,9 @@ type Inspect = (slice: Slice, title: string, filters?: MarketFilters) => void;
 function AwardRecords({ selection }: { selection: { slice: Slice; title: string; filters: MarketFilters } }) {
   const query = useMarket<Award[]>('records', selection.filters, { slice: selection.slice });
   const data = query.current ? query.data : undefined;
-  return <div className="market-stack">{selection.slice.quality && <p className="market-caption">Uses all saved records regardless of filters.</p>}
-      {query.error && <div role="alert" className="market-error">{query.error}<button onClick={query.retry}>Retry records</button></div>}
-      {!data && !query.error && <p role="status">Loading matching awards…</p>}
+  return <div className="market-stack">{selection.slice.quality && <p className="market-caption">Uses every saved award regardless of filters.</p>}
+      {query.error && <div role="alert" className="market-error">{query.error}<button onClick={query.retry}>Retry</button></div>}
+      {!data && !query.error && <Reading progress={query.progress} label="Loading matching awards…" />}
       {data && <><div className="market-actions"><strong>{counted(data.length, 'matching award')}</strong><Btn size="sm" variant="secondary" disabled={!data.length} onClick={() => downloadRecords(data, 'award', 'csv')}>Download matching CSV</Btn></div>
         <InMemoryResourceGrid resourceKey="bcbid:market:records" table={recordTable} rows={data} columnLabels={recordLabels} className="market-record-grid" renderCell={(column, row) => column === 'value' ? money(row.value, row.currencyCode) : column === 'currencyCode' && row.currencyCode === 'UNSPECIFIED' ? 'Not stated' : undefined} />
       </>}
@@ -81,13 +94,13 @@ function AwardRecords({ selection }: { selection: { slice: Slice; title: string;
 function Records({ selection, close }: { selection: { slice: Slice; title: string; filters: MarketFilters }; close: () => void }) {
   return <Modal mobileSheet title={`Awards · ${selection.title}`} onClose={close} footer={<Btn variant="secondary" onClick={close}>Done</Btn>}><AwardRecords selection={selection}/></Modal>;
 }
-function RankedList({ rows, currency, dimension, inspect, limit = 8 }: { rows: Overview['buyers']; currency: string; dimension: 'buyer' | 'supplier' | 'type'; inspect: Inspect; limit?: number }) {
+function RankedList({ rows, currency, dimension, inspect, limit = 8 }: { rows: OverviewSummary['buyers']; currency: string; dimension: 'buyer' | 'supplier' | 'type'; inspect: Inspect; limit?: number }) {
   const maximum = Math.max(1, ...rows.map(r => Math.max(0, r.value)));
   return <div className="market-rank-list">{rows.slice(0, limit).map(row => <button type="button" key={row.name} onClick={() => inspect({ [dimension]: row.name }, row.name)}><span className="market-rank-line"><span>{row.name}</span><span>{money(row.value, currency, true)} · {counted(row.count, 'award')}</span></span><span className="market-bar" style={{ width: `${Math.max(0, row.value) / maximum * 100}%` }} /></button>)}</div>;
 }
-function OverviewView({ data, currency, inspect }: { data: Overview; currency: string; inspect: Inspect }) {
+function OverviewView({ data, currency, inspect }: { data: OverviewSummary; currency: string; inspect: Inspect }) {
   return <div className="market-stack"><Metrics items={[
-    { label: 'Award value', value: money(data.value, currency, true), detail: `${count(data.valuedCount)} valued records` },
+    { label: 'Award value', value: money(data.value, currency, true), detail: `${counted(data.valuedCount, 'award')} with a value` },
     { label: 'Awards', value: count(data.count) },
     { label: 'Median award', value: money(data.median, currency) },
     { label: 'Buyers', value: count(data.buyerCount) }, { label: 'Suppliers', value: count(data.supplierCount) },
@@ -217,9 +230,13 @@ export function MarketAnalysis() {
     for (const [key, value] of Object.entries(next.options)) if (value !== undefined) query.set(key, String(value));
     navigatePlugin('/analysis/' + next.view + (query.size ? '?' + query : ''), history ?? (next.view === view ? 'replace' : 'push'));
   };
-  const meta = useMarket<Metadata>('meta', { buyerLevel: filters.buyerLevel, buyerTrail: filters.buyerTrail });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Overview and the award count are aggregate SQL. Filter choices and Trends' years need every award, so that read
+  // starts only when they are shown.
+  const total = useMarket<{ total: number; repeats: number | null }>('count', {}, {}, view !== 'sources');
+  const meta = useMarket<Metadata>('meta', { buyerLevel: filters.buyerLevel, buyerTrail: filters.buyerTrail }, {}, filtersOpen || view === 'trends');
   // "All sources" reads the cross-source catalog itself; the BC Bid award worker has no such view.
-  const query = useMarket<Overview | Trends | Distribution | Comparison | Matrix | Metadata | MappingOverview>(view, filters, options, view !== 'sources');
+  const query = useMarket<OverviewSummary | Overview | Trends | Distribution | Comparison | Matrix | Metadata | MappingOverview>(view, filters, options, view !== 'sources');
   const data = query.current ? query.data : undefined;
   const inspect: Inspect = (slice, title, override) => setSelection({ slice, title, filters: override ?? filters });
   const setOptions = (next: MarketOptions) => update({ ...state, options: next });
@@ -240,12 +257,11 @@ export function MarketAnalysis() {
   // The header and filters are shared by every view; start each view from the top so they stay put.
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { root.current?.closest('.zoer-content')?.scrollTo({ top: 0 }); }, [view]);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const active = activeFilters(filters);
   if (view === 'sources') return <div ref={root} className="market-workspace">
     <ViewNav value={view} href={next => pluginHref("/analysis/" + next)} onChange={setView} />
     <div className="market-main">
-      <div className="market-view-picker"><Select aria-label="Analysis view" value={view} onChange={e => setView(e.target.value as View)}>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</Select></div>
+      <ViewPicker value={view} onChange={setView} />
       <ProcurementMarket onOpenCatalog={scope => navigatePlugin('/procurement?' + new URLSearchParams(Object.entries({ source: scope.source, kind: scope.kind === 'all' ? '' : scope.kind, buyer: scope.buyer, supplier: scope.supplier, classification: scope.classification }).filter(([, value]) => value) as [string, string][]))} />
     </div>
   </div>;
@@ -253,14 +269,14 @@ export function MarketAnalysis() {
     <ViewNav value={view} href={next => pluginHref("/analysis/" + next + (params.size ? "?" + params : ""))} onChange={setView} />
     <div className="market-main">
     <header className="market-header"><div>
-      <h1 className="market-title">{label}</h1>
-      <div className="market-view-picker"><Select aria-label="Analysis view" value={view} onChange={e => setView(e.target.value as View)}>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</Select></div>
-      <p>{meta.data ? `${counted(meta.data.count, 'saved award')}` : 'Reading saved awards…'}</p>
+      <h1 className="market-title">Market</h1>
+      <ViewPicker value={view} onChange={setView} />
+      <p><span className="market-scope-label">{groupOf(view)} · {label} · </span>{total.data && total.current ? <>{counted(total.data.total, 'award')}{!!total.data.repeats && <span title="Saved more than once by the source and not yet marked by catalog cleanup; the Awards table still lists every saved row."> ({counted(total.data.repeats, 'repeat listing')} counted once)</span>}</> : 'Counting awards…'}{query.stale ? ' · Updating…' : ''}</p>
     </div><div className="market-actions">
+      {/* Labels stay visible at every width: icon-only squares had no meaning on touch, where tooltips never show. */}
       <Btn variant="secondary" size="sm" className="relative" aria-label={active ? `Filters, ${active} active` : 'Filters'} aria-haspopup="dialog" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Filters</span><CountBadge count={active} /></Btn>
-      {/* Phones collapse these to icons (labels hidden in CSS); the accessible names stay. */}
-      {surface !== 'societyer' && <Btn variant="secondary" size="sm" aria-label="Refresh" tooltip="Refresh" onClick={() => { meta.retry(); query.retry(); }}><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Refresh</span></Btn>}
-      <Btn size="sm" variant="secondary" aria-label="Matching awards" tooltip="Matching awards" onClick={() => inspect({}, 'Current market filters')}><List aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Matching awards</span></Btn></div></header>
+      {surface !== 'societyer' && <Btn variant="secondary" size="sm" onClick={() => { total.retry(); meta.retry(); query.retry(); }}><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Refresh</span></Btn>}
+      <Btn size="sm" variant="secondary" onClick={() => inspect({}, 'Current market filters')}><List aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">List awards</span></Btn></div></header>
     {filtersOpen && <FiltersDialog value={filters} meta={meta.data} apply={next => { update({ ...state, filters: next }); setFiltersOpen(false); }} close={() => setFiltersOpen(false)} />}
     {view !== 'quality' && view !== 'mapping' && <section className="market-buyer-controls" aria-label="Buyer hierarchy">
       <Choice label="Group buyers by" value={filters.buyerLevel} values={[...buyerLevels]} onChange={value => update({ ...state, filters: { ...filters, buyerLevel: value as BuyerLevel, buyer: '' } }, 'push')} />
@@ -274,11 +290,14 @@ export function MarketAnalysis() {
     </section>}
     {actionError && <p role="alert">{actionError}</p>}
     {view === 'compare' && <ComparisonControls options={options} change={setOptions} />}
-    {(query.error || meta.error) && <div role="alert" className="market-error">{query.error ?? meta.error}<button type="button" onClick={() => { meta.retry(); query.retry(); }}>Retry analysis</button></div>}
+    {(query.error || meta.error) && <div role="alert" className="market-error">{query.error ?? meta.error}<button type="button" onClick={() => { meta.retry(); query.retry(); }}>Retry</button></div>}
     <section id="market-analysis-panel" aria-labelledby={`market-analysis-tab-${view}`} className="market-stack">
-      {!data && !query.error && <div role="status" className="market-skeleton" aria-label={`Loading ${label.toLowerCase()}`}>{Array.from({ length: 6 }, (_, i) => <span key={i} />)}<span className="market-skeleton-wide" /></div>}
+      {!data && !query.error && <>
+        <Reading progress={query.progress ?? (view === 'trends' ? meta.progress : undefined)} label={view === 'overview' ? 'Calculating totals…' : `Loading ${label.toLowerCase()}…`} />
+        <div className="market-skeleton" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <span key={i} />)}<span className="market-skeleton-wide" /></div>
+      </>}
       {data && <>
-        {view === 'overview' && <OverviewView data={data as Overview} currency={filters.currency} inspect={inspect} />}
+        {view === 'overview' && <OverviewView data={data as OverviewSummary} currency={filters.currency} inspect={inspect} />}
         {(view === 'buyers' || view === 'suppliers') && <EntityView key={view} exclude={exclude} filters={filters} data={data as Overview} kind={view === 'buyers' ? 'buyer' : 'supplier'} currency={filters.currency} inspect={inspect} focus={name => focus(view === 'buyers' ? 'buyer' : 'supplier', name)} explore={view === 'buyers' ? explore : undefined} />}
         {view === 'trends' && meta.data && <TrendsView exclude={exclude} focus={focus} data={data as Trends} currency={filters.currency} options={options} change={setOptions} meta={meta.data} inspect={inspect} />}
         {view === 'sizes' && <SizesView data={data as Distribution} currency={filters.currency} inspect={inspect} />}
