@@ -86,7 +86,7 @@ describe('shared capture browser guards', () => {
     expect(model.runs).toHaveLength(0);
     expect(model.captureRuns).toEqual([historical]);
     expect(sourceCaptureActive(model.captureRuns)).toBe(true);
-    expect(sourceCaptureProgressPath(model.captureRuns)).toBe('/taxonomy');
+    expect(sourceCaptureProgressPath(model.captureRuns)).toBe('/scraper');
   });
   it('blocks queued, paused and waiting source captures until a terminal outcome', () => {
     for(const status of ['pending','claimed','running','queued','retry_scheduled','waiting_for_approval','waiting_for_user','waiting_for_event','paused']) {

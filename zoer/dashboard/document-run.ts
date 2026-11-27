@@ -7,8 +7,9 @@ export const isSourceCaptureRun = (run: {actionId:string}) => captureActions.has
 export function sourceCaptureActive(runs: {actionId:string;status:string}[] = []) {
   return runs.some(run=>isSourceCaptureRun(run)&&!terminal.has(run.status));
 }
+/** Where an active capture's progress shows: the historical import's card on the BC Bid page, else BC Bid runs. */
 export function sourceCaptureProgressPath(runs: {actionId:string;status:string}[] = []) {
-  return runs.some(run => run.actionId === 'scrape.historical' && !terminal.has(run.status)) ? '/taxonomy' : '/scraper/history';
+  return runs.some(run => run.actionId === 'scrape.historical' && !terminal.has(run.status)) ? '/scraper' : '/scraper/history';
 }
 /** Zoer serializes work on the actual browser bound to each run. Older hosts may omit the browser choices. */
 export function separateDocumentBrowser(browsers?: ScheduleBrowsers) {

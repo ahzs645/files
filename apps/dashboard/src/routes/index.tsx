@@ -14,6 +14,7 @@ import { api } from "@convex/_generated/api";
 import type { ScrapeRun, OpportunityListItem } from "@bcbid/shared";
 import { Card, CardHeader } from "../components/ui/Card";
 import { StatCard } from "../components/dashboard/StatCard";
+import { BcBidSummary } from "../components/dashboard/BcBidSummary";
 import { StatusPill } from "../components/scraper/StatusPill";
 import { ProgressBar } from "../components/scraper/ProgressBar";
 import { Spinner } from "../components/ui/Spinner";
@@ -28,6 +29,24 @@ type RunRecord = ScrapeRun & { _id: string };
 const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 
 function DashboardPage() {
+  // The plugin redirects this page to the BC Bid source page; reached directly, it shows the same summary and a link.
+  if (plugin) return <PluginOverview />;
+  return <StandaloneDashboard />;
+}
+
+function PluginOverview() {
+  return (
+    <div className="space-y-3">
+      <BcBidSummary />
+      <p className="text-sm text-text-secondary">
+        Collection, award history and runs are on the{" "}
+        <Link to="/scraper" className="font-medium text-accent hover:text-accent-strong">BC Bid source page <ArrowRight size={12} className="inline" /></Link>
+      </p>
+    </div>
+  );
+}
+
+function StandaloneDashboard() {
   const summary = useQuery(api.dashboard.summary, {});
   const activeRun = useQuery(api.scrapeRuns.active, {}) as RunRecord | null | undefined;
   const closingSoon = useQuery(api.opportunities.list, {
@@ -65,7 +84,7 @@ function DashboardPage() {
         <StatCard
           accent="#72bfff"
           icon={FileText}
-          label="Tracked"
+          label="Opportunities saved"
           value={summary.total ?? 0}
         />
         <StatCard
@@ -77,13 +96,13 @@ function DashboardPage() {
         <StatCard
           accent="#ff9f66"
           icon={AlertCircle}
-          label="Closing soon"
+          label="Closing within 7 days"
           value={summary.closingSoon ?? 0}
         />
         <StatCard
           accent="#f6d56a"
           icon={Building2}
-          label="Issuing orgs"
+          label="Issuing organisations"
           value={summary.organizations ?? 0}
         />
       </div>

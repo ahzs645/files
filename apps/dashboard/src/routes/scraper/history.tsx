@@ -1,10 +1,9 @@
-import { useContext } from "react";
+import { useContext, type ComponentProps } from "react";
 import { BidPreferences } from "../../components/preferences/BidPreferences";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@convex/_generated/api";
-import type { ScrapeRun } from "@bcbid/shared";
 import { Card } from "../../components/ui/Card";
 import { RunHistoryCard } from "../../components/scraper/RunHistoryCard";
 import { Spinner } from "../../components/ui/Spinner";
@@ -13,13 +12,12 @@ export const Route = createFileRoute("/scraper/history")({
   component: HistoryPage,
 });
 
-type RunRecord = ScrapeRun & { _id: string };
 const plugin = Boolean(import.meta.env.VITE_ZOER_PLUGIN);
 
 function HistoryPage() {
   const { historyExtras } = useContext(BidPreferences);
   const recentRuns = useQuery(api.scrapeRuns.listRecent, { limit: 25 }) as
-    | RunRecord[]
+    | ComponentProps<typeof RunHistoryCard>["run"][]
     | undefined;
 
   return (
@@ -51,7 +49,7 @@ function HistoryPage() {
       ) : recentRuns.length === 0 ? (
         <Card>
           <div className="text-center py-16 text-sm text-text-tertiary">
-            No scrape runs yet.
+            No BC Bid runs yet.
           </div>
         </Card>
       ) : (
