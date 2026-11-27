@@ -5,7 +5,7 @@ import { sql } from '../procurement/display';
 import { REVIEW_KEY } from './actions';
 import { MATRIX_CELLS, MATRIX_COLUMNS, MATRIX_ROWS, matrixCellHref, matrixCountsSql, type MatrixCell } from './opportunity-queries';
 import { READINESS_TEXT, RELEVANCE_TEXT, type Fragment } from './queue';
-import { ChooseProfile } from './ChooseProfile';
+import { count, plural } from '../format';
 import './review.css';
 
 const ROW_TEXT = { ready: 'Ready for human decision', conditions: 'Conditions / gaps', blocker: 'Confirmed blocker' } as const;
@@ -16,7 +16,8 @@ const LANE_TEXT: Record<string, { title: string; note: string }> = {
 };
 
 /**
- * Relevance × readiness as categorical counts for the current filters and one profile version. Every cell is a
+ * Relevance × readiness as categorical counts for the current filters and one profile version (the page shows the
+ * shared profile prompt instead when there is none). Every cell is a
  * button that opens the review table with the same filters plus the cell's relevance/readiness parameters, and each
  * count is computed with exactly that predicate. Human decisions are optional badges and never move a notice.
  */
@@ -35,21 +36,19 @@ export function FitMatrix({ base, profileVersionId, profileText, params, ignored
     if (next) { event.preventDefault(); next.focus(); }
   };
   const button = (cell: MatrixCell, title: string, row: number, col: number, className = 'rw-fit-cell') => {
-    const count = n(cell.key), decided = n(`${cell.key}_decided`);
-    return <a key={cell.key} role="button" className={className} href={pluginHref(matrixCellHref(params, cell))} data-row={row} data-col={col} data-empty={count === 0 || undefined}
-      aria-label={`${title}: ${count.toLocaleString()} notice${count === 1 ? '' : 's'}${decisions ? `, ${decided.toLocaleString()} with a human decision` : ''}. Open in the list.`}
+    const total = n(cell.key), decided = n(`${cell.key}_decided`);
+    return <a key={cell.key} role="button" className={className} href={pluginHref(matrixCellHref(params, cell))} data-row={row} data-col={col} data-empty={total === 0 || undefined}
+      aria-label={`${title}: ${plural(total, 'opportunity', 'opportunities')}${decisions ? `, ${count(decided)} with a human decision` : ''}. Open in the list.`}
       onKeyDown={event => { if (event.key === ' ') { event.preventDefault(); open(cell); } else move(event); }}
       onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); open(cell); } }}>
-      <strong>{counts.isPending ? '–' : count.toLocaleString()}</strong><span>{count === 1 ? 'notice' : 'notices'}</span>
-      {decisions && decided > 0 && <span className="rw-chip" data-tone="neutral"><b>{decided.toLocaleString()} decided</b></span>}
+      <strong>{counts.isPending ? '–' : count(total)}</strong><span>{total === 1 ? 'opportunity' : 'opportunities'}</span>
+      {decisions && decided > 0 && <span className="rw-chip" data-tone="neutral"><b>{count(decided)} decided</b></span>}
     </a>;
   };
-  // Assessments can exist without a profile, so the prompt replaces the matrix only when no fit cell has anything; the unknown lanes alone say nothing about fit.
-  if (!profileVersionId && counts.isSuccess && MATRIX_ROWS.every(row => MATRIX_COLUMNS.every(column => n(`${row}_${column}`) === 0))) return <section className="rw-panel rw-fit-panel" aria-label="Fit matrix"><ChooseProfile picker /></section>;
   return <section className="rw-panel rw-fit-panel" aria-labelledby="rw-fit-title">
     <header>
       <h2 id="rw-fit-title">Relevance × qualification readiness</h2>
-      <p>Categorical states for {profileText}, not a score or a probability of winning. Counts use the current filters{counts.data ? ` (${n('total').toLocaleString()} ${n('total') === 1 ? 'notice' : 'notices'} in scope)` : ''}; a notice assessed per lot can appear in more than one cell.</p>
+      <p>Categorical states for {profileText}, not a score or a probability of winning. Counts use the current filters{counts.data ? ` (${plural(n('total'), 'opportunity', 'opportunities')} in scope)` : ''}; a notice assessed per lot can appear in more than one cell.</p>
       {ignored.length > 0 && <p className="rw-warn">The matrix shows every cell, so these filters are not applied here: {ignored.join(', ')}.</p>}
       <label className="procurement-check"><input type="checkbox" checked={decisions} onChange={event => setDecisions(event.target.checked)} />Show human decisions as badges</label>
     </header>

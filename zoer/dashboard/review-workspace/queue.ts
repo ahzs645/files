@@ -88,7 +88,7 @@ export function readReviewScope(input: URLSearchParams | string): ReviewScope {
 /** True when the scope narrows rows beyond the source filter (the table should show it as an active filter). */
 export const hasReviewFilter = (scope: ReviewScope) => !!(scope.queue || scope.relevance || scope.readiness || scope.assessed || scope.open || scope.reqCategory || scope.match);
 
-/** `/procurement?view=table&…` (or another path) for a scope. */
+/** `/procurement?view=table&…` (or another path) for a scope; without `open` or a queue it lists every status (`status=all`). */
 export function reviewScopeHref(scope: ReviewScope, options: { path?: string; view?: string } = {}): string {
   const params = new URLSearchParams();
   if (options.view) params.set('view', options.view);
@@ -98,6 +98,8 @@ export function reviewScopeHref(scope: ReviewScope, options: { path?: string; vi
   if (scope.readiness) params.set('readiness', scope.readiness);
   if (scope.assessed) params.set('assessed', scope.assessed);
   if (scope.open) params.set('open', '1');
+  // Browse defaults to open opportunities (browse-defaults.ts); a drill-in over every status says so. Queues are open already.
+  else if (!scope.queue && (options.path ?? '/procurement') === '/procurement') params.set('status', 'all');
   if (scope.reqCategory) params.set('reqCategory', scope.reqCategory);
   if (scope.match) params.set('match', scope.match);
   if (scope.profile !== undefined) params.set('profile', scope.profile ?? 'none');

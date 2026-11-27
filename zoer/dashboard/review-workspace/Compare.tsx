@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Btn } from '@zoer/plugin-ui/controls';
+import { Columns3 } from 'lucide-react';
+import { EmptyState } from '../host-ui';
+import { count, plural } from '../format';
 import { navigatePlugin } from '../navigation';
 import { useCapabilities } from '../capabilities';
 import { sourceName, sql } from '../procurement/display';
@@ -12,7 +15,15 @@ import { label, type AssessmentRow } from './queries';
 import { BASIC_SQL } from './selection';
 import './review.css';
 
-export const COMPARE_MIN = 2, COMPARE_MAX = 4;
+import { COMPARE_MAX, COMPARE_MIN, compareReady } from './compare-rule';
+export { COMPARE_MAX, COMPARE_MIN, compareReady };
+
+/** The one empty state for Compare without a usable selection: where to make one. */
+export function CompareEmpty({ selected }: { selected: number }) {
+  return <EmptyState icon={<Columns3 aria-hidden="true" />} title={`Select ${COMPARE_MIN}–${COMPARE_MAX} opportunities in Browse, then Compare`}
+    description={selected ? `${plural(selected, 'opportunity', 'opportunities')} selected.` : undefined}
+    action={<Btn variant="primary" onClick={() => navigatePlugin('/procurement')}>Open Browse</Btn>} />;
+}
 const NOT_ASSESSED = 'Not assessed for this profile';
 
 type Row = { basics: any; review?: RowReview; extras?: CompareExtras };
@@ -27,11 +38,11 @@ async function readCompare(ids: string[], profileVersionId: string | null, works
  * Every assessment shown must belong to the same profile version; otherwise the comparison is refused.
  */
 export function Compare({ ids, profileVersionId, profileText, workspace, onOpen, onEvidence }: { ids: string[]; profileVersionId: string | null; profileText: string; workspace: boolean; onOpen: (id: string) => void; onEvidence: (ids: string[]) => void }) {
-  const valid = ids.length >= COMPARE_MIN && ids.length <= COMPARE_MAX;
+  const valid = compareReady(ids);
   const data = useQuery({ queryKey: [...REVIEW_KEY, 'compare', ids, profileVersionId, workspace], enabled: valid, queryFn: () => readCompare(ids, profileVersionId, workspace) });
   const { writes } = useCapabilities();
   const asOf = Date.now();
-  if (!valid) return <div className="procurement-empty"><h2>Choose {COMPARE_MIN}–{COMPARE_MAX} notices to compare</h2><p>{ids.length ? `${ids.length} selected.` : 'Nothing selected.'} Tick notices in the list, then choose Compare. Every column is assessed against the same company profile.</p><Btn variant="secondary" onClick={() => navigatePlugin('/procurement')}>Open the list</Btn></div>;
+  if (!valid) return <CompareEmpty selected={ids.length} />;
   if (data.isPending) return <p role="status" className="rw-o-muted">Loading comparison…</p>;
   if (data.isError) return <p role="alert" className="rw-error">Could not load the comparison: {data.error.message} <button type="button" onClick={() => void data.refetch()}>Retry</button></p>;
   const rows = data.data;
@@ -47,13 +58,13 @@ export function Compare({ ids, profileVersionId, profileText, workspace, onOpen,
     ['Work fit', dim('relevance')], ['Eligibility', dim('eligibility')], ['Delivery', dim('delivery')], ['Response time', dim('response')], ['Commercial', dim('commercial')],
     ['Next action (AI suggestion)', row => a(row) ? lines([label(a(row)!.suggestedAction), ...(a(row)!.freshness === 'stale' ? ['Evidence changed; reconfirm'] : [])]) : <span className="rw-o-muted">{NOT_ASSESSED}</span>],
     ['Budget (buyer budget or estimate)', row => lines(workspace ? budgetText(row.extras) : ['Needs the review workspace'])],
-    ['Mandatory requirements', row => !workspace ? 'Needs the review workspace' : !row.extras?.extracted ? 'Not extracted yet · not proof there are none' : lines([`${row.extras.mandatory.toLocaleString()} extracted`, row.extras.unresolved === null ? `Unresolved: ${NOT_ASSESSED.toLowerCase()}` : `${row.extras.unresolved.toLocaleString()} not yet supported for this profile`])],
+    ['Mandatory requirements', row => !workspace ? 'Needs the review workspace' : !row.extras?.extracted ? 'Not extracted yet · not proof there are none' : lines([`${count(row.extras.mandatory)} extracted`, row.extras.unresolved === null ? `Unresolved: ${NOT_ASSESSED.toLowerCase()}` : `${count(row.extras.unresolved)} not yet supported for this profile`])],
     ['Evidence scope', row => <EvidenceScopeCell review={row.review} />],
     ['Human decision', row => !workspace ? 'Needs the review workspace' : row.review?.decision ? lines([label(row.review.decision.decision), row.review.decision.createdAt.slice(0, 10), ...(row.review.decision.needsReconfirmation ? ['Evidence changed; reconfirm'] : [])]) : 'No decision recorded'],
   ];
   return <section className="rw-panel" aria-labelledby="rw-cmp-title">
     <header>
-      <h2 id="rw-cmp-title">Compare {rows.length} notices</h2>
+      <h2 id="rw-cmp-title">Compare {plural(rows.length, 'opportunity', 'opportunities')}</h2>
       <p>Every column uses {profileText}. Unknowns stay unknown; missing assessments read “{NOT_ASSESSED}”.</p>
       {writes && <div className="procurement-actions"><Btn size="sm" variant="secondary" onClick={() => onEvidence(rows.map(row => row.basics.id))}>AI comparison (Evidence &amp; AI)</Btn></div>}
     </header>

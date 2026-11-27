@@ -3,16 +3,19 @@ import { MetadataFilters } from './MetadataFilters';
 import { METADATA_FILTER_KEYS } from './metadata-filter';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useQuery as useCachedQuery, useQueryClient } from '@tanstack/react-query';
-import { Bookmark, Search, SlidersHorizontal, Star } from 'lucide-react';
+import { ArrowLeft, Bookmark, Search, SlidersHorizontal, Star } from 'lucide-react';
 import { SUGGESTED_ACTIONS } from '@bcbid/procurement-core';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
-import { LayoutToggle, NoticeTable, TABLE_FILTER_PARAMS } from '../BidGrid';
+import { LayoutToggle, NoticeTable, TABLE_FILTER_PARAMS, TableColumnsButton, useTableColumns } from '../BidGrid';
+import { useNarrowScreen } from '../mobile';
+import { count, plural } from '../format';
 import { host } from '../bridge';
 import { useWorkspace, setStar } from '../backend';
 import { useCapabilities } from '../capabilities';
-import { navigatePlugin, patchPluginQuery, usePluginLocation } from '../navigation';
+import { navigatePlugin, patchPluginQuery, pluginHref, usePluginLocation } from '../navigation';
 import { REVIEW_KEY, useReviewWorkspace } from '../review-workspace/actions';
-import { Compare, COMPARE_MAX, COMPARE_MIN } from '../review-workspace/Compare';
+import { Compare, CompareEmpty, COMPARE_MAX, COMPARE_MIN, compareReady } from '../review-workspace/Compare';
+import { ChooseProfile } from '../review-workspace/ChooseProfile';
 import { FitMatrix } from '../review-workspace/FitMatrix';
 import { ReviewLine, SelectionActions } from '../review-workspace/OpportunityColumns';
 import { DECISION_FILTERS, ELIGIBILITY_FILTERS, EVIDENCE_GAPS, GAP_TEXT, REVIEW_PARAMS, describeFilters, effectiveProfile, filterObject, fitOrderSql, needsWorkspace, opportunityPredicate, readOpportunityFilters, readRowReview, reviewChips } from '../review-workspace/opportunity-queries';
@@ -35,6 +38,7 @@ import { ResultRow } from './ResultRow';
 import { ExcludeWordsField, HiddenNotice, HideButton, ProfileFilterLine, useHideNotices, useProfileFilterHits } from './Triage';
 import { parseExcludeTerms } from './exclude';
 import { type ProcurementFilters } from './state-contract';
+import { ANY_STATUS, browseDefaults, browseLayout, pinDefaultStatus } from './browse-defaults';
 
 const WIDE = '(min-width: 1024px)', PHONE = '(max-width: 640px)';
 const useMedia = (query: string) => useSyncExternalStore(listener => { const media = matchMedia(query); media.addEventListener('change', listener); return () => media.removeEventListener('change', listener); }, () => matchMedia(query).matches);
@@ -62,14 +66,18 @@ function FilterSelect({ name, value, onChange, options, any }: { name: string; v
  * review scope so every Home/Insights count drills into the same rows.
  */
 export function Procurement() {
-  const location = usePluginLocation(), params = new URLSearchParams(location.split('?')[1]);
+  const location = usePluginLocation();
+  // Open opportunities, closing soonest, unless the link says otherwise (browse-defaults.ts); every filter below reads `params`.
+  const browse = browseDefaults(new URLSearchParams(location.split('?')[1])), params = browse.params;
   const view = params.get('view') ?? '';
   const source = params.get('source') ?? '', search = params.get('search') ?? '';
   const region = params.get('region') || '', category = params.get('category') || '', buyer = params.get('buyer') || '', supplier = params.get('supplier') || '', classification = params.get('classification') || '';
   const metadataFilters = Object.fromEntries(METADATA_FILTER_KEYS.map(key => [key, params.get(key) || '']));
   const deadline: 'all' | 'week' = view === 'deadlines' || params.get('deadline') === 'week' ? 'week' : 'all';
   const kind = listKind(params.get('kind'), supplier, deadline === 'week');
-  const table = params.get('layout') === 'table' && view !== 'matrix' && view !== 'compare';
+  // Phones always get the list: a 390 px table shows only the checkbox, star and ID columns.
+  const narrow = useNarrowScreen();
+  const { table, toggle: layoutToggle } = browseLayout(params.get('layout'), narrow, view);
   const [one, many] = kind === 'award' ? ['award', 'awards'] : kind === 'opportunity' ? ['opportunity', 'opportunities'] : ['notice', 'notices'];
   const starred = params.get('shortlist') === '1', page = Math.max(0, Number(params.get('page')) || 0);
   const aiLabel = params.get('aiLabel') ?? '', noticeId = params.get('notice') ?? '', place = params.get('place') ?? '';
@@ -83,9 +91,8 @@ export function Procurement() {
   const profile = effectiveProfile(scope, active);
   const profileLabel = (id: string | null) => id === null ? 'No company profile' : (version => version ? `${version.name} · v${version.version}` : 'an unknown profile version')(versions.find(item => item.id === id));
   const profileText = profileLabel(profile);
-  // Sorts: recently updated by default; a deadline filter starts with the soonest deadline; work fit needs the workspace.
-  const sortParam = params.get('sort');
-  const sort: 'updated' | 'date-asc' | 'fit' = sortParam === 'fit' && available ? 'fit' : sortParam === 'deadline' || (deadline === 'week' && sortParam !== 'updated') ? 'date-asc' : 'updated';
+  // Sorts: closing soonest for opportunities, recently updated for lists with awards (browse-defaults.ts); work fit needs the workspace.
+  const sort: 'updated' | 'date-asc' | 'fit' = browse.sort === 'fit' && available ? 'fit' : browse.sort === 'deadline' || (browse.sort === 'fit' && kind === 'opportunity') ? 'date-asc' : 'updated';
   const [panel, setPanel] = useState<'' | 'filters' | 'saved'>(view === 'saved' || params.has('savedSearch') ? 'saved' : '');
   const [evidenceIds, setEvidenceIds] = useState<string[]>([]);
   const openNotice = (id: string) => patchPluginQuery({ notice: id }, noticeId ? 'replace' : 'push');
@@ -94,7 +101,8 @@ export function Procurement() {
   const backToList = () => { const id = noticeId; closeNotice(); requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' })); };
   const [saving, setSaving] = useState(''), [error, setError] = useState('');
   const [tableTotal, setTableTotal] = useState<number | null>(null);
-  const { collection, writes } = useCapabilities();
+  const tableColumns = useTableColumns(kind === 'award' ? 'award' : 'opportunity');
+  const { collection, writes, ai } = useCapabilities();
   const selected = useSelection(), selectedIds = new Set(selected.map(row => row.id));
   const [snapshot, setSnapshot] = useState<SelectionSnapshot | null>(null), [capturing, setCapturing] = useState(false);
   const [typed, setTyped] = useState(search);
@@ -104,7 +112,7 @@ export function Procurement() {
     else if (view === 'saved') patchPluginQuery({ view: null });
   }, [view]);
   // Filters keep the matrix view (it re-counts the new scope); any other view returns to the table.
-  const filter = (values: Record<string, string>) => patchPluginQuery({ ...values, view: view === 'matrix' ? 'matrix' : '', after: '', page: '', savedSearch: '' });
+  const filter = (values: Record<string, string>) => patchPluginQuery({ ...pinDefaultStatus(values, browse.defaultStatus), view: view === 'matrix' ? 'matrix' : '', after: '', page: '', savedSearch: '' });
   // Typing updates the URL after a short pause instead of on every keystroke.
   useEffect(() => { setTyped(search); }, [search]);
   useEffect(() => { if (typed === search) return; const timer = setTimeout(() => filter({ search: typed }), 300); return () => clearTimeout(timer); }, [typed]);
@@ -148,12 +156,17 @@ export function Procurement() {
     catch (e) { setError((e as Error).message); } finally { setSaving(''); }
   };
   const savedFilters: ProcurementFilters = { ...metadataFilters, source, kind: kind === 'opportunity' || kind === 'award' ? kind : 'all', search, region, category, buyer, supplier, classification, deadline, shortlist: starred, exclude, place };
-  const applySaved = (saved: ProcurementFilters) => { filter({ ...Object.fromEntries(METADATA_FILTER_KEYS.map(key=>[key,saved[key]??''])), ...saved, shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '', place: saved.place ?? '' }); setPanel(''); };
-  const chips = reviewChips(params, profileLabel);
+  // A saved search stores the source status only, so it applies with that status or "Any status", as it always matched.
+  const applySaved = (saved: ProcurementFilters) => { filter({ ...Object.fromEntries(METADATA_FILTER_KEYS.map(key=>[key,saved[key]??''])), ...saved, status: saved.status || ANY_STATUS, open: '', lifecycle: '', shortlist: saved.shortlist ? '1' : '', deadline: saved.deadline === 'week' ? 'week' : '', classification: saved.classification ?? '', exclude: saved.exclude ?? '', place: saved.place ?? '' }); setPanel(''); };
+  // The Status select shows the Open scope, so it is not repeated as a chip.
+  const chips = reviewChips(params, profileLabel).filter(([keys]) => keys[0] !== 'open');
   const reviewCount = chips.filter(([keys]) => keys[0] !== 'profile').length;
-  // Status (source status or the Open scope) sits in the toolbar, notice type in the sheet; "More filters" counts the sheet.
-  const statusActive = !!metadataFilters.status || params.get('open') === '1' || !!lifecycle;
-  const extraCount = [...Object.entries(metadataFilters).filter(([key]) => key !== 'status').map(([, value]) => value), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude', kind !== 'opportunity' && deadline !== 'week'].filter(Boolean).length + reviewCount - (params.get('open') === '1' ? 1 : 0);
+  // "Open" is the review scope and Closed/Awarded/Cancelled/Unknown the effective lifecycle (lifecycle.ts: a notice the
+  // source still calls "Open" after its closing date is Closed); "Source says …" values are the source's own text.
+  const statusParam = params.get('status') ?? '', statusValue = params.get('open') === '1' ? 'open' : lifecycle ? 'e:' + lifecycle : statusParam ? 's:' + statusParam : ANY_STATUS;
+  // Status sits in the toolbar and counts as a filter only when it is not the default Open; "More filters" counts the sheet.
+  const statusActive = statusValue !== 'open';
+  const extraCount = [...Object.entries(metadataFilters).filter(([key]) => key !== 'status').map(([, value]) => value), region, category, buyer, supplier, classification, aiLabel, place, excludeCount > 0, hidden !== 'exclude', kind !== 'opportunity' && deadline !== 'week'].filter(Boolean).length + reviewCount;
   const activeCount = extraCount + [source, statusActive, deadline === 'week', starred].filter(Boolean).length;
   const clearAll = () => { setTyped(''); filter(Object.fromEntries([...BASE_PARAMS, ...REVIEW_PARAMS].map(key => [key, '']))); };
   // Rail filters narrow the table only, so "matching" counts and Select all use the shared list scope.
@@ -170,14 +183,10 @@ export function Procurement() {
   const compare = () => patchPluginQuery({ view: 'compare', ids: selected.map(row => row.id).join(','), notice: '' }, 'push');
 
   const sourceSelect = <Select aria-label="Source" value={source} onChange={event => filter({ source: event.target.value })}><option value="">All sources{inventory.data ? ` · ${inventoryTotal.toLocaleString()}` : ''}</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}{counts.has(id) ? ` · ${counts.get(id)!.toLocaleString()}` : ''}</option>)}</Select>;
-  const typeSelect = <Select aria-label="Notice type" value={kind} onChange={event => filter({ kind: event.target.value, ...(event.target.value !== 'opportunity' ? { deadline: '' } : {}) })}><option value="all">All notices</option><option value="opportunity">Opportunities</option><option value="award">Awards</option></Select>;
   const statuses = useCachedQuery({ queryKey: ['catalog', 'procurement-statuses'], enabled: !!model, queryFn: () => sql(STATUS_SQL), staleTime: 60_000 });
-  // "Open" is the review scope and Closed/Awarded/Cancelled/Unknown the effective lifecycle (lifecycle.ts: a notice the
-  // source still calls "Open" after its closing date is Closed); "Source says …" values are the source's own text.
-  const statusParam = params.get('status') ?? '', statusValue = params.get('open') === '1' ? 'open' : lifecycle ? 'e:' + lifecycle : statusParam ? 's:' + statusParam : '';
   const statusOptions = (statuses.data ?? []).map(row => String(row.value)).filter(value => !OPEN_WORDS.includes(value.toLowerCase()));
   if (statusParam && !statusOptions.includes(statusParam)) statusOptions.unshift(statusParam);
-  const statusSelect = <Select aria-label="Status" value={statusValue} onChange={event => { const value = event.target.value; filter({ open: value === 'open' ? '1' : '', lifecycle: value.startsWith('e:') ? value.slice(2) : '', status: value.startsWith('s:') ? value.slice(2) : '' }); }}><option value="">Any status</option><option value="open">Open</option>{LIFECYCLE_FILTERS.map(value => <option key={value} value={'e:' + value}>{LIFECYCLE_TEXT[value]}</option>)}{statusOptions.map(value => <option key={value} value={'s:' + value}>Source says “{value}”</option>)}</Select>;
+  const statusSelect = <Select aria-label="Status" value={statusValue} onChange={event => { const value = event.target.value; filter({ open: value === 'open' ? '1' : '', lifecycle: value.startsWith('e:') ? value.slice(2) : '', status: value.startsWith('s:') ? value.slice(2) : value === ANY_STATUS ? ANY_STATUS : '' }); }}><option value={ANY_STATUS}>Any status</option><option value="open">Open</option>{LIFECYCLE_FILTERS.map(value => <option key={value} value={'e:' + value}>{LIFECYCLE_TEXT[value]}</option>)}{statusOptions.map(value => <option key={value} value={'s:' + value}>Source says “{value}”</option>)}</Select>;
   const closingChip = <button type="button" className="pc-chip" aria-pressed={deadline === 'week'} onClick={() => filter(deadline === 'week' ? { deadline: '' } : { deadline: 'week', kind: 'opportunity' })}>Closing in 7 days</button>;
   const shortlistChip = <button type="button" className="pc-chip" aria-pressed={starred} onClick={() => filter({ shortlist: starred ? '' : '1' })}><Star aria-hidden="true" className="h-3.5 w-3.5" />Shortlisted</button>;
   const extraFields = <MetadataFilters params={params} filter={filter} />;
@@ -196,9 +205,9 @@ export function Procurement() {
     </div>
   </section>;
 
-  const aiFacets = <section className="pc-facets" aria-label="AI categories"><h3>AI categories</h3>
+  const aiFacets = <section className="pc-facets" aria-label="AI tags"><h3>AI tags</h3>
     {facetsLoading && <p className="procurement-coverage">Reading AI reviews…</p>}
-    {facets && !facets.counts.length && <p className="procurement-coverage">No notices have AI categories yet. Open a notice and choose Summarize &amp; categorize, or review several in Documents &amp; AI.</p>}
+    {facets && !facets.counts.length && <p className="procurement-coverage">No notices have AI tags yet.{writes && ai ? ' Open a notice and choose Summarize & tag, or review several in Operations › AI reviews.' : ''}</p>}
     {facets && LABEL_GROUPS.map(group => { const items = facets.counts.filter(([name]) => labelGroup(name) === group).slice(0, 16); return items.length ? <div key={group}><h4>{group}</h4><div className="pc-labels">{items.map(([name, count]) => <button key={name} type="button" className="pc-label" data-group={group} aria-pressed={aiLabel === name} onClick={() => filter({ aiLabel: aiLabel === name ? '' : name })}>✦ {name} · {count}</button>)}</div></div> : null; })}
     {facets && facets.counts.length > 0 && <p className="procurement-coverage">From the newest AI review of {facets.reviewed.toLocaleString()} notice{facets.reviewed === 1 ? '' : 's'}.</p>}
   </section>;
@@ -214,7 +223,7 @@ export function Procurement() {
         onCheck={checked => toggleSelected({ id: row.id, title: row.title, updatedAt: row.catalogUpdatedAt }, checked)} flags={<DuplicateFlag matches={duplicates.get(row.id)} />}
         side={<>
           <HideButton row={row} hidden={isHidden} busy={hide.busy.includes(row.id)} onToggle={() => void hide.apply([{ id: row.id, title: row.title }], !isHidden)} />
-          {writes && <button type="button" className="pc-star" disabled={!!saving} aria-pressed={!!row.starred} aria-label={`${row.starred ? 'Remove from' : 'Add to'} shortlist: ${row.title}`} onClick={() => void toggleStar(row)}><Star aria-hidden="true" className="h-4 w-4" fill={row.starred ? 'currentColor' : 'none'} /></button>}
+          {writes && <Hint content={row.starred ? 'Shortlisted · remove from shortlist' : 'Shortlist'} action><button type="button" className="pc-star" disabled={!!saving} aria-pressed={!!row.starred} aria-label={`${row.starred ? 'Remove from shortlist' : 'Shortlist'}: ${row.title}`} onClick={() => void toggleStar(row)}><Star aria-hidden="true" className="h-4 w-4" fill={row.starred ? 'currentColor' : 'none'} /></button></Hint>}
         </>}>
         {!!labels.get(row.id)?.length && <div className="pc-row-labels"><LabelChips labels={labels.get(row.id)!} limit={4} /></div>}
         {available && <ReviewLine review={rowReview.data?.get(row.id)} profileText={profileText} />}
@@ -222,7 +231,7 @@ export function Procurement() {
       </ResultRow>;
     })}</div>
     {rowReview.isError && <p role="alert" className="rw-error">Could not load review details: {rowReview.error.message}. <Btn size="sm" variant="secondary" onClick={() => void rowReview.refetch()}>Retry</Btn></p>}
-    {(page > 0 || hasMore) && <div className="pc-pager"><Btn size="sm" variant="secondary" disabled={!page} onClick={() => patchPluginQuery({ page: page > 1 ? String(page - 1) : '' }, 'push')}>Previous</Btn><span>Page {page + 1} of {Math.max(1, Math.ceil(total / PAGE)).toLocaleString()}</span><Btn size="sm" variant="secondary" disabled={!hasMore || list.isFetching} onClick={() => patchPluginQuery({ page: String(page + 1) }, 'push')}>Next</Btn></div>}
+    {(page > 0 || hasMore) && <div className="pc-pager"><Btn size="sm" variant="secondary" disabled={!page} onClick={() => patchPluginQuery({ page: page > 1 ? String(page - 1) : '' }, 'push')}>Previous</Btn><span>Showing {count(page * PAGE + 1)}–{count(page * PAGE + rows.length)} of {count(total)}</span><Btn size="sm" variant="secondary" disabled={!hasMore || list.isFetching} onClick={() => patchPluginQuery({ page: String(page + 1) }, 'push')}>Next</Btn></div>}
   </>;
 
   const selectionKey = selected.map(row => row.id).join('\n'), metaKey = JSON.stringify(snapshotMeta);
@@ -230,6 +239,8 @@ export function Procurement() {
   const snapshotStale = snapshot && snapshot.description.join('|') !== description.join('|');
   const selectAllButton = writes && total > 0 && !railFilters && <Btn size="sm" variant="ghost" disabled={capturing || !list.data} onClick={() => void selectAll()}>{capturing ? 'Capturing…' : `Select all ${total.toLocaleString()} matching`}</Btn>;
   const sortSelect = <Select aria-label="Sort" presentation="dropdown" searchable={false} value={sort === 'date-asc' ? 'deadline' : sort} onChange={event => patchPluginQuery({ sort: event.target.value, page: '' })}><option value="updated">Recently updated</option><option value="deadline">Closing soonest</option>{available && <option value="fit">Work fit</option>}</Select>;
+  // One count line for list and table: "1,568 open opportunities" (the status prefix only for the Open scope).
+  const countText = plural(shown, (kind === 'opportunity' && statusValue === 'open' ? 'open ' : '') + one, (kind === 'opportunity' && statusValue === 'open' ? 'open ' : '') + many);
   let bar: ReactNode;
   if (snapshot) bar = <>
     <span role="status"><strong>{snapshot.ids.length.toLocaleString()}</strong> in a frozen selection · captured {new Date(snapshot.capturedAt).toLocaleTimeString()}{snapshot.note && <span className="rw-warn"> {snapshot.note}</span>}{snapshotStale && <span className="rw-warn"> Filters changed since capture; actions still use the frozen list.</span>}<Btn size="sm" variant="ghost" onClick={() => setSnapshot(null)}>Clear</Btn></span>
@@ -244,8 +255,8 @@ export function Procurement() {
     </div>
   </>;
   else bar = <>
-    <span role="status">{list.isPending && !waitForWorkspace ? 'Loading…' : `${shown.toLocaleString()} ${shown === 1 ? one : many}`}{selectAllButton}{activeCount > 0 && <Btn size="sm" variant="ghost" onClick={clearAll}>Clear filters</Btn>}</span>
-    <span className="pc-resultbar-end">{available && !table && <ProfilePicker />}{!table && <label className="pc-sort"><span className="sr-only">Sort</span>{sortSelect}</label>}</span>
+    <span role="status">{(table ? tableTotal === null : list.isPending && !waitForWorkspace) ? 'Loading…' : countText}{activeCount > 0 && <Btn size="sm" variant="ghost" onClick={clearAll}>Clear filters</Btn>}</span>
+    <span className="pc-resultbar-end">{available && <ProfilePicker />}{table ? <TableColumnsButton columns={tableColumns} /> : <label className="pc-sort"><span className="sr-only">Sort</span>{sortSelect}</label>}</span>
   </>;
 
   // Matrix: the same scope without the matrix's own axes (they become the cells).
@@ -257,46 +268,53 @@ export function Procurement() {
   const tableQuery = table ? buildProcurementQuery({ ...base, asOf: tableAsOf, search: '', where: opportunityPredicate(scope, filters, { profileVersionId: active, asOf: tableAsOf, workspace: available }) }) : null;
   const tableSelection = writes ? { has: (id: string) => selectedIds.has(id), toggle: (row: { id: string; title: string }, on: boolean) => toggleSelected(row, on) } : undefined;
 
+  const compareTargets = compareIds.length ? compareIds : selected.map(row => row.id);
+  // Views that cannot use the filters (Compare, a blocked matrix) show their own state without the filter toolbar.
+  const matrixBlocked = view === 'matrix' && (!available || !profile);
+  const showToolbar = view !== 'compare' && !matrixBlocked;
+  const kindChip = kind !== 'opportunity' && deadline !== 'week' ? kind === 'award' ? 'Awards only' : 'Opportunities and awards' : '';
+
   if (noticeId && phone) return <section className="procurement-workspace" aria-label="Opportunities"><NoticeView id={noticeId} layout="page" backLabel={view === 'compare' ? 'Back to comparison' : view === 'matrix' ? 'Back to matrix' : 'Back to opportunities'} onClose={backToList} /></section>;
   return <section className="procurement-workspace" data-layout={table ? 'table' : undefined} aria-label="Opportunities">
-    <div className="pc-toolbar">
+    {showToolbar && <><div className="pc-toolbar">
       <label className="pc-search"><Search aria-hidden="true" className="h-4 w-4" /><span className="sr-only">Search {many}</span><input type="search" aria-label={`Search ${many}`} placeholder={`Search ${many}`} value={typed} onChange={event => setTyped(event.target.value)} /></label>
       <div className="pc-inline-filters">{sourceSelect}{statusSelect}{closingChip}{shortlistChip}</div>
       <Btn variant="secondary" className="pc-more" aria-haspopup="dialog" aria-label={activeCount ? `Filters, ${activeCount} active` : 'Filters'} onClick={() => setPanel('filters')}><SlidersHorizontal aria-hidden="true" className="h-4 w-4" /><span className="pc-label-wide">More filters</span><span className="pc-label-narrow">Filters</span><span className="pc-count pc-count-wide" hidden={!extraCount}>{extraCount}</span><span className="pc-count pc-count-narrow" hidden={!activeCount}>{activeCount}</span></Btn>
       <Btn variant="secondary" aria-haspopup="dialog" aria-label="Saved searches" tooltip="Saved searches and alerts" onClick={() => setPanel('saved')}><Bookmark aria-hidden="true" className="h-4 w-4" /><span className="pc-label-saved">Saved</span></Btn>
     </div>
     {scope.profile !== undefined && <p className="rw-warn">This link shows {profileText}; your chosen profile is ignored until you remove it.</p>}
-    {(aiLabel || place || chips.length > 0 || excludeCount > 0 || hidden !== 'exclude') && <div className="pc-active-filters">
+    {(aiLabel || place || chips.length > 0 || excludeCount > 0 || hidden !== 'exclude' || kindChip || railFilters) && <div className="pc-active-filters">
+      {kindChip && <Hint content="This page lists opportunities. Contract awards have their own page under Insights › Awards." action><button type="button" className="pc-label" aria-label={`Remove filter: ${kindChip}`} onClick={() => filter({ kind: supplier ? 'opportunity' : '' })}>{kindChip} ×</button></Hint>}
+      {railFilters && <button type="button" className="pc-label" aria-label="Remove table filters from an older link" onClick={() => filter(Object.fromEntries(TABLE_FILTER_PARAMS.map(key => [key, ''])))}>Table filters from an older link ×</button>}
       {place && <button type="button" className="pc-label" aria-label={`Remove place filter: ${place.replace(/^(m|rd):/, '')}`} onClick={() => filter({ place: '' })}>Place: {place.replace(/^(m|rd):/, '')} ×</button>}
       {excludeCount > 0 && <Hint content={parseExcludeTerms(exclude).join(', ')} action><button type="button" className="pc-label" aria-label={`Remove exclude words: ${parseExcludeTerms(exclude).join(', ')}`} onClick={() => filter({ exclude: '' })}>Excluding {excludeCount} word{excludeCount === 1 ? '' : 's'} ×</button></Hint>}
       {hidden !== 'exclude' && <button type="button" className="pc-label" aria-label={`Remove filter: ${HIDDEN_TEXT[hidden]}`} onClick={() => filter({ hidden: '' })}>{HIDDEN_TEXT[hidden]} ×</button>}
-      {aiLabel && <button type="button" className="pc-label" data-group={labelGroup(aiLabel)} aria-label={`Remove AI category filter: ${aiLabel}`} onClick={() => filter({ aiLabel: '' })}>✦ {aiLabel} ×</button>}
+      {aiLabel && <button type="button" className="pc-label" data-group={labelGroup(aiLabel)} aria-label={`Remove AI tag filter: ${aiLabel}`} onClick={() => filter({ aiLabel: '' })}>✦ {aiLabel} ×</button>}
       {chips.map(([keys, text]) => <button key={keys.join()} type="button" className="pc-label" aria-label={`Remove filter: ${text}`} onClick={() => filter(Object.fromEntries(keys.map(key => [key, ''])))}>{text} ×</button>)}
-    </div>}
+    </div>}</>}
 
-    {view === 'compare' ? <Compare ids={compareIds.length ? compareIds : selected.map(row => row.id)} profileVersionId={profile} profileText={profileText} workspace={available} onOpen={openNotice} onEvidence={setEvidenceIds} />
+    {view === 'compare' ? !compareReady(compareTargets) ? <CompareEmpty selected={compareTargets.length} />
+        : <><div className="pc-back-row"><Btn size="sm" variant="ghost" icon={<ArrowLeft aria-hidden="true" className="h-4 w-4" />} onClick={() => patchPluginQuery({ view: '', ids: '' }, 'push')}>Back to Browse</Btn></div><Compare ids={compareTargets} profileVersionId={profile} profileText={profileText} workspace={available} onOpen={openNotice} onEvidence={setEvidenceIds} /></>
       : view === 'matrix' ? !available ? <p className="rw-upgrade">{workspace.isPending ? 'Checking the review workspace…' : workspace.data?.reason ?? 'Update Zoer to use the review workspace.'}</p>
+        : !profile ? <section className="rw-panel rw-fit-panel" aria-label="Fit matrix"><ChooseProfile picker /></section>
         : review.unavailable ? <p className="rw-upgrade">{review.unavailable}</p>
         : <FitMatrix base={{ sql: matrixWhere!.where, parameters: matrixWhere!.countParameters }} profileVersionId={profile} profileText={profileText} params={params} ignored={ignored} />
       : <>
-        <div className="pc-resultbar">{bar}<LayoutToggle value={table ? 'table' : 'list'} onChange={layout => patchPluginQuery({ layout: layout === 'table' ? 'table' : '', page: '', after: '', notice: '' })} /></div>
+        <div className="pc-resultbar">{bar}{layoutToggle && <LayoutToggle value={table ? 'table' : 'list'} onChange={layout => patchPluginQuery({ layout: layout === 'table' ? 'table' : '', page: '', after: '', notice: '', ...(layout === 'table' ? { sort: '' } : {}) })} />}</div>
         {(error || list.error || inventory.error) && <p role="alert">{error || list.error?.message || inventory.error?.message} <Btn size="sm" variant="secondary" onClick={() => void client.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></p>}
         {!table && !list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching {many}</h2>
           <p>{review.unavailable ?? (search.trim() ? `No saved ${one} matches “${search.trim()}”${activeCount ? ' with the filters below' : ''}.${hidden === 'exclude' ? ' Hidden notices are left out of lists.' : ''}` : !collection ? (activeCount ? `No saved ${one} matches every filter below. Remove a filter.` : `This copy has no saved ${many}.`) : source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? `No saved ${one} matches every filter below. Remove a filter, or collect more from Sources.` : `No ${many} are saved yet. Collect them from Sources.`)}</p>
           {activeCount > 0 && <ul className="pc-empty-filters">{description.map(line => <li key={line}>{line}</li>)}</ul>}
           <div className="procurement-actions">{(activeCount > 0 || !!search.trim()) && <Btn variant="secondary" onClick={clearAll}>{activeCount ? 'Clear filters' : 'Clear search'}</Btn>}{collection && <Btn variant="secondary" onClick={() => navigatePlugin('/sources')}>Open Sources</Btn>}</div></div>}
-        {table ? <>
-          {kind === 'all' && <p className="procurement-coverage">The table lists opportunities. Awards are in the list, or in Insights › Award history.</p>}
-          {!waitForWorkspace && !!tableQuery && <NoticeTable kind={kind === 'award' ? 'award' : 'opportunity'} scope={{ sql: tableQuery.where, parameters: tableQuery.countParameters }} search={search} selection={tableSelection} onOpen={row => openNotice(String(row.catalogId))} onTotal={setTableTotal} />}
-        </> : noticeId && wide ? <div className="pc-search-split"><div className="pc-search-list">{results}</div><NoticeView id={noticeId} layout="panel" onClose={closeNotice} /></div> : results}
+        {table ? !waitForWorkspace && !!tableQuery && <NoticeTable kind={kind === 'award' ? 'award' : 'opportunity'} scope={{ sql: tableQuery.where, parameters: tableQuery.countParameters }} search={search} selection={tableSelection} hiddenColumns={tableColumns.hidden} onOpen={row => openNotice(String(row.catalogId))} onTotal={setTableTotal} /> : noticeId && wide ? <div className="pc-search-split"><div className="pc-search-list">{results}</div><NoticeView id={noticeId} layout="panel" onClose={closeNotice} /></div> : results}
       </>}
 
-    {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>{view === 'matrix' ? 'Show matrix' : `Show ${shown.toLocaleString()} ${shown === 1 ? one : many}`}</Btn></>}>
+    {panel === 'filters' && <Modal title="Filters" mobileSheet onClose={() => setPanel('')} footer={<><Btn variant="ghost" disabled={!activeCount} onClick={clearAll}>Clear all</Btn><Btn onClick={() => setPanel('')}>{view === 'matrix' ? 'Show matrix' : `Show ${countText}`}</Btn></>}>
       <div className="pc-filter-sheet">
         <div className="pc-sheet-only"><label><span>Source</span>{sourceSelect}</label><label><span>Status</span>{statusSelect}</label><div className="procurement-actions">{closingChip}{shortlistChip}</div></div>
         {/* Phones keep only search, Filters and Saved in the toolbar; sort and the profile live here. */}
         <div className="pc-sheet-phone">{available && <div className="pc-sheet-field"><span>Assess as</span><ProfilePicker label={false} /></div>}{!table && <label><span>Sort</span>{sortSelect}</label>}</div>
-        <div className="pc-extra-fields"><label><span>Notice type</span>{typeSelect}</label></div>
+        <p className="procurement-coverage">This page lists opportunities. Contract awards are under <a className="procurement-link" href={pluginHref('/contract-awards')} onClick={event => { event.preventDefault(); navigatePlugin('/contract-awards'); }}>Insights › Awards</a>.</p>
         {extraFields}
         {reviewFields}
         {aiFacets}
@@ -305,7 +323,7 @@ export function Procurement() {
         <div className="pc-extra-fields"><FilterSelect name="Hidden notices" value={hidden === 'exclude' ? '' : hidden} onChange={value => filter({ hidden: value })} any="Leave out hidden notices" options={[['include', 'Show hidden notices too'], ['only', 'Only hidden notices']]} /></div>
       </div>
     </Modal>}
-    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || reviewCount > 0) && <p className="procurement-coverage">AI category and review filters aren’t included in saved searches or alerts yet.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
+    {panel === 'saved' && <Modal title="Saved searches" mobileSheet onClose={() => setPanel('')}><div className="pc-saved-sheet">{(aiLabel || reviewCount > 0) && <p className="procurement-coverage">AI tag and review filters aren’t included in saved searches or alerts yet.</p>}{(statusValue === 'open' || !!lifecycle) && <p className="procurement-coverage">Saved searches keep only a source status (“Source says …”), so they list every status; Open, Closed and similar choices aren’t saved.</p>}{hidden !== 'exclude' && <p className="procurement-coverage">Saved searches and alerts always leave out hidden notices.</p>}<SavedSearches filters={savedFilters} onApply={applySaved} initialSearchId={params.get('savedSearch') ?? undefined} /><AlertSettings /></div></Modal>}
     {noticeId && (!wide || view === 'compare' || view === 'matrix' || table) && <NoticeView id={noticeId} layout="dialog" onClose={closeNotice} />}
     {writes && evidenceIds.length > 0 && <EvidencePanel recordIds={evidenceIds} onClose={() => setEvidenceIds([])} />}
   </section>;

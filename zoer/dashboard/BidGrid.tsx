@@ -7,14 +7,15 @@ import { useCallback, useContext, useMemo, useRef, useState, useDeferredValue } 
 import { ResourceDataGrid, Select, Btn, type GridRequest, type ResourceDataGridProps } from '@zoer/plugin-ui/database';
 import { BidPreferences, StarButton } from '../../apps/dashboard/src/components/preferences/BidPreferences';
 import { SearchInput } from '../../apps/dashboard/src/components/ui/SearchInput';
-import { SlidersHorizontal } from 'lucide-react';
+import { Columns3, SlidersHorizontal } from 'lucide-react';
+import { Modal } from '@zoer/plugin-ui/controls';
 import { catalogRevision, queryVisibleCatalog, useWorkspace, useQuery } from './backend';
 import { PROCUREMENT_SOURCE_ADAPTERS } from './procurement/source-adapters';
 import { useNarrowScreen } from './mobile';
 import { BidList } from './BidList';
 import { RecordSheet } from './RecordSheet';
 import { closingCell, sourceReference, type BidRow } from './bid-summaries';
-import { awardMoney, gridTable, labels, missingText, tables } from './bid-columns';
+import { SHORTLIST_TERMS, awardMoney, gridTable, labels, missingText, tables } from './bid-columns';
 import { useCapabilities } from './capabilities';
 import { awardDateCell } from './award-dates';
 import { StatusBadge } from './host-ui';
@@ -51,11 +52,11 @@ function useTableFilters(search: string): [BidFilterValues, (values: BidFilterVa
 type GridExtras=Partial<Pick<ResourceDataGridProps,'defaultMode'|'filterControls'|'hideFilterButton'|'filtersOpen'|'onFiltersOpenChange'|'onColumnFiltersChange'|'hideToolbar'|'hideFooter'|'hideRowNumbers'|'mobileFilterControlsOnly'>>;
 /** A WHERE fragment over `records` that also limits the table: the Opportunities list's shared filters. */
 export type TableScope={sql:string;parameters:(string|number)[]};
-function BidTable({kind,filters,onOpen,scope,selection,onTotal,...grid}:{kind:'opportunity'|'award';filters:BidFilterValues;onOpen:(row:BidRow)=>void;scope?:TableScope;selection?:TableSelection;onTotal?:(total:number)=>void}&GridExtras) {
+function BidTable({kind,filters,onOpen,scope,selection,onTotal,hiddenColumns,...grid}:{kind:'opportunity'|'award';filters:BidFilterValues;onOpen:(row:BidRow)=>void;scope?:TableScope;selection?:TableSelection;onTotal?:(total:number)=>void;hiddenColumns?:string[]}&GridExtras) {
   const {buyerLevel,organization,status,type,sources}=filters;const search=useDeferredValue(filters.search);
   const {model}=useWorkspace(); const revision=catalogRevision();
   const {onlyStarred}=useContext(BidPreferences);
-  const {writes,surface}=useCapabilities(),{table,hidden}=useMemo(()=>gridTable(kind,{writes,surface}),[kind,writes,surface]);
+  const {writes,surface}=useCapabilities(),{table,hidden:defaultHidden}=useMemo(()=>gridTable(kind,{writes,surface}),[kind,writes,surface]),hidden=hiddenColumns??defaultHidden;
   const scopeKey=JSON.stringify(scope??null);
   const loadPage=useCallback(async(request:GridRequest,signal:AbortSignal)=>{
     const start=performance.now();
@@ -66,12 +67,13 @@ function BidTable({kind,filters,onOpen,scope,selection,onTotal,...grid}:{kind:'o
   },[kind,table,buyerLevel,search,organization,status.join('|'),type.join('|'),sources.join('|'),onlyStarred,scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps -- arrays keyed by content
   const starCell=(row:Record<string,unknown>)=>{
     const title=String(kind==='award'?row.opportunityDescription:row.description),id=String(row.catalogId);
-    const star=<StarButton entity={kind} recordKey={String(kind==='award'?row.importKey:row.sourceKey)} label={title} terms={selection?['Add to shortlist:','Remove from shortlist:']:undefined}/>;
+    const star=<StarButton entity={kind} recordKey={String(kind==='award'?row.importKey:row.sourceKey)} label={title} terms={SHORTLIST_TERMS}/>;
     return selection?<span className="pc-table-pick"><label className="pc-check" onClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`Select ${title}`} checked={selection.has(id)} onChange={event=>selection.toggle({id,title},event.target.checked)}/></label>{star}</span>:star;
   };
   if(!model)return <p role="status">Loading catalog…</p>;
   return <section className="db-workspace bid-database-grid" data-kind={kind} data-select={selection?'':undefined} aria-label={`${tables[kind].name} table`}>
-    <ResourceDataGrid key={kind} {...grid} showSearchBar={false} columnSizes={{starred:selection?92:48,opportunityId:135,status:90,closingDate:125,sourceId:110}} resetPageKey={JSON.stringify([buyerLevel,search,organization,status,type,sources,onlyStarred,scopeKey])} filtered={!!scope||!!search.trim()||!!organization||status.length>0||type.length>0||sources.length>0||!!onlyStarred} resourceKey={'bcbid:'+kind} table={table} hiddenColumns={hidden} columnLabels={labels[kind]} loadPage={loadPage} revision={revision}
+    {/* The grid reads hidden columns once, so a change from the Columns menu remounts it (rows come back from the query cache). */}
+    <ResourceDataGrid key={kind+':'+hidden.join(',')} {...grid} showSearchBar={false} columnSizes={{starred:selection?92:48,opportunityId:135,status:90,closingDate:125,sourceId:110}} resetPageKey={JSON.stringify([buyerLevel,search,organization,status,type,sources,onlyStarred,scopeKey])} filtered={!!scope||!!search.trim()||!!organization||status.length>0||type.length>0||sources.length>0||!!onlyStarred} resourceKey={'bcbid:'+kind} table={table} hiddenColumns={hidden} columnLabels={labels[kind]} loadPage={loadPage} revision={revision}
       renderCell={(column,row)=>column==='starred'?starCell(row):column==='sourceId'?sourceLabel(row.sourceId):kind==='opportunity'&&column==='opportunityId'?sourceReference(row):kind==='opportunity'&&column==='closingDate'?closingCell(row):kind==='award'?awardCell(column,row):undefined}
       onOpenRow={onOpen}/>
   </section>;
@@ -99,7 +101,7 @@ export function BidGrid({layout='list',onFiltersChange,filtersOpen,onFiltersOpen
   if(narrow&&layout==='list')return <>{sheet}<BidList {...props} onOpen={open}/></>;
   return <>{sheet}<BidTable {...props} onOpen={open} defaultMode="infinite" hideToolbar hideFooter hideRowNumbers mobileFilterControlsOnly hideFilterButton filterControls={<BidFilterPanel kind={props.kind} values={props.filters} onChange={onFiltersChange}/>} filtersOpen={filtersOpen} onFiltersOpenChange={onFiltersOpenChange} onColumnFiltersChange={onColumnFiltersChange}/></>;
 }
-/** List/Table switch shown in the page header on phones. */
+/** List/Table switch for wide screens; phones always show the list, so callers leave it out there. */
 export function LayoutToggle({value,onChange}:{value:BidLayout;onChange:(value:BidLayout)=>void}) {
   return <div className="bid-layout-toggle" role="group" aria-label="Layout"><button type="button" aria-pressed={value==='list'} onClick={()=>onChange('list')}>List</button><button type="button" aria-pressed={value==='table'} onClick={()=>onChange('table')}>Table</button></div>;
 }
@@ -140,7 +142,36 @@ export type TableSelection={has:(id:string)=>boolean;toggle:(row:{id:string;titl
  * The Opportunities list as a table: same records, shared toolbar filters (`scope`), search and selection, plus sortable
  * and choosable columns, column filters, buyer grouping and multi-value filters in the grid's filter rail.
  */
-export function NoticeTable({kind,scope,search,selection,onOpen,onTotal}:{kind:'opportunity'|'award';scope:TableScope;search:string;selection?:TableSelection;onOpen:(row:BidRow)=>void;onTotal:(total:number)=>void}){
-  const [filters,setFilters]=useTableFilters(search);
-  return <BidTable kind={kind} filters={filters} scope={scope} selection={selection} onOpen={onOpen} onTotal={onTotal} defaultMode="infinite" hideFooter hideRowNumbers mobileFilterControlsOnly filterControls={<BidFilterPanel kind={kind} values={filters} onChange={setFilters} buyers/>}/>;
+export function NoticeTable({kind,scope,search,selection,hiddenColumns,onOpen,onTotal}:{kind:'opportunity'|'award';scope:TableScope;search:string;selection?:TableSelection;hiddenColumns?:string[];onOpen:(row:BidRow)=>void;onTotal:(total:number)=>void}){
+  // Older links may still carry the removed filter rail's values; they keep narrowing the table and the page shows them as one removable chip.
+  const [filters]=useTableFilters(search);
+  return <BidTable kind={kind} filters={filters} scope={scope} selection={selection} hiddenColumns={hiddenColumns} onOpen={onOpen} onTotal={onTotal} defaultMode="infinite" hideToolbar hideFooter hideRowNumbers hideFilterButton/>;
+}
+const COLUMNS_KEY='procurement-table-hidden-columns:';
+const readHidden=(kind:string,fallback:string[])=>{try{const value=JSON.parse(localStorage.getItem(COLUMNS_KEY+kind)??'null');return Array.isArray(value)&&value.every(item=>typeof item==='string')?value as string[]:fallback;}catch{return fallback;}};
+export type TableColumns={kind:'opportunity'|'award';hidden:string[];columns:{name:string;label:string}[];setHidden:(next:string[])=>void;reset:()=>void};
+/** Which table columns are hidden: the per-host defaults (gridTable) until the reader changes them in "Columns"; kept per browser. */
+export function useTableColumns(kind:'opportunity'|'award'):TableColumns{
+  const {writes,surface}=useCapabilities(),{table,hidden:defaults}=useMemo(()=>gridTable(kind,{writes,surface}),[kind,writes,surface]);
+  const [state,setState]=useState(()=>({kind,hidden:readHidden(kind,defaults)}));
+  const hidden=state.kind===kind?state.hidden:readHidden(kind,defaults);
+  const setHidden=(next:string[])=>{setState({kind,hidden:next});try{localStorage.setItem(COLUMNS_KEY+kind,JSON.stringify(next));}catch{/* private mode: this page only */}};
+  const reset=()=>{setState({kind,hidden:defaults});try{localStorage.removeItem(COLUMNS_KEY+kind);}catch{/* private mode */}};
+  // The star/select column carries the selection checkbox, so it is not offered.
+  const columns=table.columns.filter(column=>column.name!=='starred').map(column=>({name:column.name,label:labels[kind][column.name]??column.name}));
+  return {kind,hidden,columns,setHidden,reset};
+}
+/** The table's only control besides the page toolbar: choose which columns show. */
+export function TableColumnsButton({columns}:{columns:TableColumns}){
+  const [open,setOpen]=useState(false);
+  const shown=columns.columns.filter(column=>!columns.hidden.includes(column.name));
+  const toggle=(name:string,on:boolean)=>columns.setHidden(on?columns.hidden.filter(item=>item!==name):[...columns.hidden,name]);
+  return <>
+    <Btn size="sm" variant="ghost" aria-haspopup="dialog" icon={<Columns3 aria-hidden="true" size={14}/>} onClick={()=>setOpen(true)}>Columns</Btn>
+    {open&&<Modal title="Columns" mobileSheet onClose={()=>setOpen(false)} footer={<><Btn variant="ghost" onClick={columns.reset}>Reset</Btn><Btn variant="primary" onClick={()=>setOpen(false)}>Done</Btn></>}>
+      <fieldset className="bid-columns-picker"><legend className="sr-only">Columns to show</legend>
+        {columns.columns.map(column=>{const on=!columns.hidden.includes(column.name);return <label key={column.name} className="procurement-check"><input type="checkbox" checked={on} disabled={on&&shown.length<=1} onChange={event=>toggle(column.name,event.target.checked)}/>{column.label}</label>;})}
+      </fieldset>
+    </Modal>}
+  </>;
 }

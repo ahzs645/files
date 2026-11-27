@@ -164,7 +164,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
         <section className="zoer-history" aria-label="AI labels">
           <div className="research-toolbar review-results-head"><h2>AI labels</h2></div>
           <Bars buckets={labels} onPick={b => pick(`Label: ${b.label}`, b)} empty="No labels returned yet." />
-          {labels.length > 0 && <p className="research-note">To search every notice with a label, use Search → Filters → AI categories.</p>}
+          {labels.length > 0 && <p className="research-note">To list every opportunity with a tag, use Opportunities › Browse › More filters › AI tags.</p>}
         </section>
 
         {prompt && <section className="zoer-history" aria-label="Output fields">
