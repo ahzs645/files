@@ -10,6 +10,7 @@ import { ScrapeControlPanel } from "../../components/scraper/ScrapeControlPanel"
 import { RunHistoryList } from "../../components/scraper/RunHistoryList";
 import { useScrapeOperations } from "../../hooks/useScrapeOperations";
 import { Spinner } from "../../components/ui/Spinner";
+import { BcBidSummary } from "../../components/dashboard/BcBidSummary";
 
 export const Route = createFileRoute("/scraper/")({
   component: ScraperPage,
@@ -24,7 +25,7 @@ function ScraperPage() {
     | RunRecord
     | null
     | undefined;
-  const recentRuns = useQuery(api.scrapeRuns.listRecent, { limit: 8 }) as
+  const recentRuns = useQuery(api.scrapeRuns.listRecent, { limit: plugin ? 3 : 8 }) as
     | RunRecord[]
     | undefined;
   const ops = useScrapeOperations();
@@ -33,6 +34,25 @@ function ScraperPage() {
     return (
       <div className="flex items-center justify-center py-32">
         <Spinner size={24} />
+      </div>
+    );
+  }
+
+  // The plugin's BC Bid source page: summary row, the state-driven cards, then the latest three runs and a link to all.
+  if (plugin) {
+    return (
+      <div className="space-y-3">
+        <BcBidSummary />
+        {scraperSetup}
+        <section className="zoer-history" aria-labelledby="bcbid-recent-runs">
+          <div className="bcbid-runs-head">
+            <h2 id="bcbid-recent-runs">Recent runs</h2>
+            <Link to="/scraper/history">All BC Bid runs</Link>
+          </div>
+          <div className="bcbid-runs">
+            <RunHistoryList runs={(recentRuns ?? []).slice(0, 3)} />
+          </div>
+        </section>
       </div>
     );
   }

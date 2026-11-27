@@ -47,3 +47,8 @@ export function downloadText(content: string, fileName: string, type: string) {
 export function downloadRecords(records: any[], entity: 'award' | 'opportunity', format: 'csv' | 'json') {
   downloadText(exportRecords(records, entity, format), `bc-bid-${entity === 'award' ? 'awards' : 'opportunities'}-${records.length}-${new Date().toISOString().slice(0,10)}.${format}`, format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json');
 }
+/** What one row of each export holds, in plain words (Setup › Import & export). */
+export const EXPORT_CONTENTS: Record<'award' | 'opportunity', string> = {
+  opportunity: 'One row per opportunity: BC Bid IDs, title, status, type, buyer, closing date, BC Bid link, description, detail fields, attachment and addenda links, shortlisted, and buyer grouping when mapped.',
+  award: 'One row per award: opportunity, type, buyer and location, contract number, contact email, value and currency, supplier and address, award date, justification, BC Bid link, shortlisted, and buyer grouping when mapped.',
+};

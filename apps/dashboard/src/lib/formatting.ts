@@ -1,11 +1,24 @@
 import type { ScrapeRunPhase } from "@bcbid/shared";
 
+/**
+ * One date-time format for the BC Bid pages (a copy of the host's `formatWhen`): "Today 1:23 PM",
+ * "Yesterday 7:39 AM", "Nov 18, 3:45 PM" within the year and "Nov 18, 2025" otherwise.
+ */
+export function formatWhen(value: number | null | undefined, now = Date.now()): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "";
+  const date = new Date(value), today = new Date(now);
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(today) - day(date)) / 86_400_000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  if (date.getFullYear() === today.getFullYear()) return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function formatTimestamp(value: number | null | undefined): string {
   if (!value) return "Never";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
+  return formatWhen(value);
 }
 
 export function formatRelativeTime(value: number | null | undefined): string {
@@ -30,13 +43,14 @@ export function formatPhase(phase: ScrapeRunPhase | undefined): string {
 }
 
 export function formatMetric(current: number, total: number | null): string {
-  return total === null ? String(current) : `${current} / ${total}`;
+  return total === null ? current.toLocaleString() : `${current.toLocaleString()} / ${total.toLocaleString()}`;
 }
 
 export function formatRuntime(ms: number): string {
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   const remainingSeconds = seconds % 60;
   return `${minutes}m ${remainingSeconds}s`;
 }

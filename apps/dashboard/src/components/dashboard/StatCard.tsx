@@ -1,28 +1,24 @@
 import type { LucideIcon } from "lucide-react";
 
+/** One metric tile in the host's Stat shape: label above, value with thousands separators, no coloured icon tile. */
 export function StatCard({
   label,
   value,
   icon: Icon,
-  accent,
 }: {
   label: string;
   value: number | string;
-  icon: LucideIcon;
-  accent: string;
+  icon?: LucideIcon;
+  /** Kept for older callers; tiles no longer use accent colours. */
+  accent?: string;
 }) {
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border-subtle bg-bg-subtle p-4">
-      <div
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
-        style={{ color: accent, backgroundColor: `${accent}18` }}
-      >
-        <Icon size={18} />
+    <div className="min-w-0 rounded-lg border border-border-subtle bg-bg-subtle px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-[12px] text-text-secondary">
+        {Icon ? <Icon size={14} aria-hidden="true" className="shrink-0 text-text-tertiary" /> : null}
+        <span>{label}</span>
       </div>
-      <div className="min-w-0">
-        <div className="text-2xl font-bold tracking-tight text-text-primary">{value}</div>
-        <div className="text-[12px] font-medium uppercase tracking-wider text-text-tertiary">{label}</div>
-      </div>
+      <div className="mt-0.5 text-[18px] font-semibold tabular-nums text-text-primary">{typeof value === "number" ? value.toLocaleString() : value}</div>
     </div>
   );
 }

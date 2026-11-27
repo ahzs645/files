@@ -36,34 +36,33 @@ export function ScrapeControlPanel({
     <div className="space-y-4">
       {/* Control buttons */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Button
-          variant="success"
-          loading={startPending}
-          disabled={hasActiveRun}
-          onClick={onStart}
-        >
-          <Play size={15} />
-          <span>{startPending ? "Starting…" : "Start scrape"}</span>
-        </Button>
-        <Button
-          variant="ghost"
-          loading={stopPending}
-          disabled={!hasActiveRun || activeRun?.status === "stopping"}
-          onClick={onStop}
-        >
-          <Square size={15} />
-          <span>
-            {stopPending
-              ? "Stopping..."
-              : activeRun?.status === "stopping"
-                ? "Stopping..."
-                : "Stop active run"}
-          </span>
-        </Button>
+        {/* One action at a time: Start while idle, Stop only while a run is active (never a disabled primary). */}
+        {!hasActiveRun ? (
+          <Button
+            variant="primary"
+            loading={startPending}
+            onClick={onStart}
+          >
+            <Play size={15} />
+            <span>{startPending ? "Starting…" : "Start scrape"}</span>
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            loading={stopPending}
+            disabled={activeRun?.status === "stopping"}
+            onClick={onStop}
+          >
+            <Square size={15} />
+            <span>
+              {stopPending || activeRun?.status === "stopping" ? "Stopping…" : "Stop active run"}
+            </span>
+          </Button>
+        )}
 
-        <div className="ml-auto">
-          <StatusPill status={hasActiveRun ? activeRun!.status : "idle"} paused={hasActiveRun && activeRun?.paused} />
-        </div>
+        {hasActiveRun ? <div className="ml-auto">
+          <StatusPill status={activeRun!.status} paused={activeRun?.paused} />
+        </div> : null}
       </div>
 
       {/* Banners */}

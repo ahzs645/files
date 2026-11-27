@@ -5,8 +5,10 @@ import { host } from '../bridge';
 import { useRecentRuns } from './CollectionRuns';
 import { isLive, runState } from './source-schedules';
 import { useCapabilities } from '../capabilities';
+import { plainError } from '../error-text';
 import reference from '../../data/bc-bid-historical-types.json';
-export function HistoricalReference() {
+/** The historical BC Bid import (a collection job), shown on the BC Bid page next to award history. */
+export function HistoricalImport() {
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
   const { collection } = useCapabilities();
   const recent = useRecentRuns(collection);
@@ -30,21 +32,29 @@ export function HistoricalReference() {
     try { await host(method, { id: currentRun.runId }); await recent.refetch(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
-  const cp = state.data;
-  return <section className="pc-taxonomy-term" aria-label="Historical BC Bid archive"><h2>Historical BC Bid opportunities</h2>
-    <p>April 1, 2015 – December 15, 2022 · original notice types and GSIN commodity codes.</p>
-    <p>{count.isPending ? 'Counting saved records…' : count.error ? count.error.message : `${count.data!.toLocaleString()} historical opportunities saved.`}</p>
-    {state.error && <p role="alert">{state.error.message}</p>}
-    {currentState && <p role="status">{currentState.text}{currentState.detail ? ` · ${currentState.detail}` : ''}</p>}
-    {cp && <p>Saved progress · {cp.listingsCaptured.toLocaleString()} listings captured · {cp.detailsCompleted.toLocaleString()} details · {cp.rangesCompleted} date ranges complete · {cp.ranges.length} remaining{cp.error && (!currentRun || currentRun.runId === cp.runId) && (!currentRun || !isLive(currentRun)) ? ` · ${cp.error}` : ''}</p>}
-    {cp?.complete ? <p>The public dated archive import is complete.</p> : collection && <Btn variant="secondary" disabled={busy || !!currentRun && isLive(currentRun)} onClick={() => void start()}>{busy ? 'Starting…' : cp ? 'Continue historical import' : 'Import all public historical opportunities'}</Btn>}
-    {collection && currentState?.canPause && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.pause')}>Pause historical import</Btn>}
-    {collection && currentState?.canResume && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.resume')}>Resume historical import</Btn>}
-    {collection && currentState?.canCancel && <Btn variant="secondary" disabled={busy} onClick={() => void control('cancel')}>Stop historical import</Btn>}
+  const cp = state.data, live = !!currentRun && isLive(currentRun);
+  return <section className="zoer-history zoer-setup" aria-labelledby="bcbid-historical-title">
+    <div className="zoer-setup-row">
+      <div><h2 id="bcbid-historical-title">Historical BC Bid opportunities</h2>
+        <p>April 1, 2015 – December 15, 2022 · {count.isPending ? 'counting saved opportunities…' : count.error ? count.error.message : `${count.data!.toLocaleString()} saved`}{cp?.complete ? ' · import complete' : ''}</p>
+        {currentState && <p role="status">{currentState.text}{currentState.detail ? ` · ${currentState.detail}` : ''}</p>}
+        {cp && !cp.complete && <p>Saved progress: {Number(cp.listingsCaptured || 0).toLocaleString()} opportunities · {Number(cp.detailsCompleted || 0).toLocaleString()} details · {Number(cp.rangesCompleted || 0).toLocaleString()} date ranges done, {(cp.ranges?.length ?? 0).toLocaleString()} remaining{cp.error && (!currentRun || currentRun.runId === cp.runId) && !live ? ` · ${plainError(cp.error)}` : ''}</p>}
+        {state.error && <p role="alert">{state.error.message}</p>}
+      </div>
+      {collection && <div className="zoer-record-tools zoer-setup-actions">
+        {!cp?.complete && !live && <Btn variant="secondary" disabled={busy} onClick={() => void start()}>{busy ? 'Starting…' : cp ? 'Continue historical import' : 'Import historical opportunities'}</Btn>}
+        {currentState?.canPause && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.pause')}>Pause</Btn>}
+        {currentState?.canResume && <Btn variant="secondary" disabled={busy} onClick={() => void control('run.resume')}>Resume</Btn>}
+        {currentState?.canCancel && <Btn variant="ghost" disabled={busy} onClick={() => void control('cancel')}>Stop</Btn>}
+      </div>}
+    </div>
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
-    <p>The public portal determines availability. Private invitations, supplier responses and restricted files remain outside this import. GSIN labels are stored as separate reference terms; their hierarchy is recorded only if a source provides it.</p>
-    <details><summary data-zoer-disclosure>33 original historical opportunity types</summary><ul className="pc-taxonomy-list">{reference.types.map(t => <li key={t.code}><strong>{t.code}</strong> · {t.title}</li>)}</ul><a href={reference.sourceUrl} target="_blank" rel="noopener noreferrer">BC Bid public source ↗</a><p>Dropdown captured {reference.capturedAt}. These codes retain their original meanings; no automatic mapping to current types is assumed.</p></details>
+    <details><summary data-zoer-disclosure="">About the historical import</summary><p>Saves BC Bid's public archive with the original notice types and GSIN commodity codes. Private invitations, supplier responses and restricted files are not included. GSIN labels are kept as separate reference terms; their hierarchy is recorded only if BC Bid provides it.</p></details>
   </section>;
+}
+/** Reference only (Setup › Taxonomy): the original 2015–2022 opportunity types. */
+export function HistoricalTypes() {
+  return <details className="pc-taxonomy-historical"><summary data-zoer-disclosure>{reference.types.length.toLocaleString()} original historical BC Bid opportunity types (2015–2022)</summary><ul className="pc-taxonomy-list pc-taxonomy-types">{reference.types.map(t => <li key={t.code}><strong>{t.code}</strong><span>{t.title}</span></li>)}</ul><a href={reference.sourceUrl} target="_blank" rel="noopener noreferrer">BC Bid public source ↗</a><p>List captured {reference.capturedAt}. These codes keep their original meanings; they are not mapped to current types.</p></details>;
 }
 export function NoticeHistorical({ data }: { data: any }) {
   const term = useQuery({ queryKey: ['catalog', 'historical', 'type', data.historicalTypeReferenceId], enabled: !!data.historicalTypeReferenceId,

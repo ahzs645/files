@@ -1,0 +1,33 @@
+/* BC Bid source page (/scraper): state card, targeted collection form and recent runs. Loaded by ScraperSetup. */
+.bcbid-page { display: grid; gap: 12px; min-width: 0; }
+.bcbid-page .zoer-history { margin: 0; }
+.bcbid-state-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bcbid-state-head h2 { margin-right: 4px; }
+.bcbid-state .zoer-setup-actions a { text-decoration: none; }
+.bcbid-state .bcbid-state-next { color: var(--color-text-primary); }
+
+/* Targeted collection: collapsed by default; a readable grid instead of eight squeezed columns. */
+.bid-targeted .bid-targeted-details > summary { margin-top: 10px; }
+.bid-targeted .bid-targeted-form { grid-template-columns: minmax(0, 1fr); align-items: end; }
+.bid-targeted .bid-targeted-actions { display: flex; }
+.bid-targeted .bid-targeted-actions > * { width: 100%; }
+@media (min-width: 640px) {
+  .bid-targeted .bid-targeted-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bid-targeted .bid-targeted-keyword { grid-column: 1 / -1; }
+  .bid-targeted .bid-targeted-actions > * { width: auto; }
+}
+@media (min-width: 1024px) {
+  .bid-targeted .bid-targeted-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .bid-targeted .bid-targeted-keyword { grid-column: span 2; }
+  .bid-targeted .bid-targeted-pages { grid-column: auto; }
+  .bid-targeted .bid-targeted-actions { grid-column: 1 / -1; }
+}
+
+.bcbid-runs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.bcbid-runs-head a { font-size: 13px; color: var(--color-accent); }
+.bcbid-runs { display: grid; gap: 8px; margin-top: 10px; }
+
+/* Setup › Import & export (Settings.tsx). */
+.bid-settings .bid-settings-title { font-size: 20px; font-weight: 600; color: var(--color-text-primary); }
+.bid-settings .bid-settings-filter { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; color: var(--color-text-primary); }
+.bid-settings .bid-settings-filter input { width: 18px; height: 18px; }

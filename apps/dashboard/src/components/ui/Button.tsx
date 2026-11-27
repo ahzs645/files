@@ -12,9 +12,13 @@ const variants = {
     "bg-bg-subtle border-border-default hover:bg-bg-hover hover:border-border-strong text-text-primary",
 };
 
+/**
+ * Legacy BC Bid button. The default is the secondary (outlined) style: a page states its one primary action
+ * explicitly with `variant="primary"`, so an unlabelled button never competes with it.
+ */
 export function Button({
   children,
-  variant = "primary",
+  variant = "ghost",
   loading = false,
   disabled = false,
   onClick,

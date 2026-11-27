@@ -1,69 +1,94 @@
-import { useState } from 'react';
-import { Button } from '../../apps/dashboard/src/components/ui/Button';
-import { resumableCheckpoint, resumeFullScrape, testScraperBrowser, useWorkspace } from './backend';
-import { AwardHistoryPanel } from './Catalog';
-import { usePluginQuery } from './navigation';
+import { useState, type ReactNode } from 'react';
+import { Btn } from '@zoer/plugin-ui/controls';
+import { buttonClassName } from '@zoer/plugin-ui/button';
+import { resumableCheckpoint, resumeFullScrape, testScraperBrowser, useAction, useWorkspace } from './backend';
+import { AwardHistoryCard } from './BcBidAwards';
+import { hostHref, hostSettingsHref, usePluginQuery } from './navigation';
 import { TargetedRefreshPanel } from './TargetedRefresh';
 import { plainError } from './error-text';
-import { SettingsLink } from './procurement/Status';
+import { SettingsLink, useDocumentGap } from './procurement/Status';
+import { useScheduleBrowsers } from './procurement/ScheduleControl';
+import { HistoricalImport } from './procurement/Historical';
+import { separateDocumentBrowser } from './document-run';
+import { StatusBadge } from './host-ui';
+import { collectionCopy, collectionState, type CardRun } from './scraper-state';
+import './scraper.css';
 
-/** Compact pre-flight for the Scraper tab: resume a saved checkpoint, or test browser access before a full scrape. */
-export function ScraperSetup() {
+/** One card for BC Bid's opportunity collection, driven by the real state: one primary action at a time. */
+function CollectionCard({ continuing, onDismiss }: { continuing: boolean; onDismiss: () => void }) {
   const { model } = useWorkspace();
-  const [pending, setPending] = useState(false);
-  const [resuming, setResuming] = useState(false);
-  const [runId, setRunId] = useState<string>();
-  const [error, setError] = useState<string>();
-  const active = model?.runs.some(run => ['running', 'stopping'].includes(run.status));
-  // Parked by a Zoer update: it continues on its own, so no Continue button and no failure reason.
-  const paused = model?.runs.some(run => run.status === 'running' && run.paused);
-  const resume = model ? resumableCheckpoint() : null;
-  const result = model?.runs.find(run => run._id === runId);
-  // Opened from the "Continue scrape" notification: put the reason and the one next step first.
-  const [continuing, setContinuing] = usePluginQuery('continue');
-  const stopped = model?.runs.find(run => !['running', 'stopping'].includes(run.status));
-  const browserCheck = /browser check|verification/i.test(stopped?.errorMessage ?? '');
-  const act = async (fn: () => Promise<unknown>, set: (value: boolean) => void) => {
-    set(true); setError(undefined);
-    try { await fn(); } catch (e) { setError(plainError(e instanceof Error ? e.message : String(e))); } finally { set(false); }
+  const browsers = useScheduleBrowsers();
+  // The Status page's pending browser check, when the same Zoer browser collects and downloads.
+  const shared = !!browsers.data && !separateDocumentBrowser(browsers.data);
+  const gap = useDocumentGap(shared);
+  const start = useAction('scrapes.triggerNow'), stop = useAction('scrapes.stopActive');
+  const [busy, setBusy] = useState<string>(), [error, setError] = useState<string>(), [message, setMessage] = useState<string>();
+  if (!model) return null;
+  const state = collectionState(model.runs as CardRun[], resumableCheckpoint(), shared ? gap.data?.checkPendingSince : null);
+  const copy = collectionCopy(state);
+  const browserHref = hostSettingsHref('browsers') ? hostHref('#/browsers') : null;
+  const act = async (name: string, fn: () => Promise<unknown>, done: string) => {
+    setBusy(name); setError(undefined); setMessage(undefined);
+    try { await fn(); setMessage(done); onDismiss(); } catch (e) { setError(plainError(e instanceof Error ? e.message : String(e))); } finally { setBusy(undefined); }
   };
-  return <>
-    {continuing && <section className="zoer-history zoer-setup zoer-continue" role="region" aria-label="Continue stopped scrape">
-      <div className="zoer-setup-row">
-        <div><h2>{paused ? 'Paused for update' : active ? 'Scrape running' : resume ? 'Continue the scrape' : 'Nothing left to continue'}</h2>
-          <p>{paused ? 'Zoer is updating. The scrape continues automatically from its saved progress; no action needed.'
-            : active ? 'The scrape is running again; progress appears in Recent runs.'
-            : resume ? `${resume.pending.length.toLocaleString()} ${resume.pending.length === 1 ? 'opportunity still needs its' : 'opportunities still need their'} details. Saved records are kept.`
-            : 'The last scrape has no saved progress to continue. Start a new scrape below.'}</p>
-          {!active && resume && stopped?.errorMessage && <p className="zoer-continue-reason pc-wrap">Stopped: {plainError(stopped.errorMessage)}</p>}
-          {!active && resume && browserCheck && <p><strong>First:</strong> open the BC Bid browser in Zoer, complete the check, then hand control back.</p>}
-        </div>
-        {!active && resume && <Button loading={resuming} onClick={() => void act(async () => { await resumeFullScrape(); setContinuing(''); }, setResuming)}>{resuming ? 'Continuing…' : 'Continue scrape'}</Button>}
-        {(active || !resume) && <Button variant="ghost" onClick={() => setContinuing('')}>Dismiss</Button>}
+  const button = (kind: 'resume' | 'start' | 'stop', variant: 'primary' | 'secondary'): ReactNode => kind === 'resume'
+    ? <Btn key={kind} variant={variant} loading={busy === kind} disabled={!!busy} onClick={() => void act(kind, resumeFullScrape, 'Collection resumed. Progress appears under Recent runs.')}>Resume collection</Btn>
+    : kind === 'start' ? <Btn key={kind} variant={variant} loading={busy === kind} disabled={!!busy} onClick={() => void act(kind, () => start({}), 'Full collection started. Progress appears under Recent runs.')}>Start full collection</Btn>
+    : <Btn key={kind} variant="secondary" loading={busy === kind} disabled={!!busy} onClick={() => void act(kind, () => stop({}), 'Stopping after the current page.')}>Stop</Btn>;
+  const primary = copy.primary === 'open-browser' ? (browserHref ? <a key="open" className={buttonClassName('primary', 'md')} href={browserHref}>Open the Zoer browser</a> : null)
+    : copy.primary ? button(copy.primary, 'primary') : null;
+  // Without a browser link (a host path prefix), the follow-up action becomes the primary.
+  const secondary = copy.secondary ? button(copy.secondary, primary ? 'secondary' : 'primary') : null;
+  return <section className={`zoer-history zoer-setup bcbid-state${continuing ? ' zoer-continue' : ''}`} aria-labelledby="bcbid-state-title">
+    <div className="zoer-setup-row">
+      <div>
+        <div className="bcbid-state-head"><h2 id="bcbid-state-title">Opportunity collection</h2>{copy.badge && <StatusBadge tone={copy.badge[1]}>{copy.badge[0]}</StatusBadge>}</div>
+        <p className="bcbid-state-next pc-wrap">{copy.text}</p>
+        {copy.detail && <p className="pc-wrap">{copy.detail}</p>}
       </div>
-      {error && <p role="alert">{error}</p>}
-    </section>}
-    {resume && !continuing && <section className="zoer-history zoer-setup" role="region" aria-label="Resume opportunity scrape">
-      <div className="zoer-setup-row">
-        <div><h2>Saved scrape</h2><p>{resume.listingCount.toLocaleString()} listings · {resume.detailsCompleted.toLocaleString()} details · {resume.pending.length.toLocaleString()} remaining. Resuming keeps saved records.</p></div>
-        <Button loading={resuming} disabled={active} onClick={() => void act(resumeFullScrape, setResuming)}>{resuming ? 'Resuming…' : 'Resume saved scrape'}</Button>
-      </div>
-    </section>}
-    <section className="zoer-history zoer-setup" aria-labelledby="scraper-setup-title">
-      <div className="zoer-setup-row">
-        <div><h2 id="scraper-setup-title">Browser check</h2><p>Choose the saved browser BC Bid uses in Zoer’s Settings and allow agents. Zoer starts it when needed. Test one listing and one detail before a full scrape. <SettingsLink section="browsers" /></p></div>
-        <Button variant="ghost" disabled={active} loading={pending} onClick={() => void act(async () => { setRunId(undefined); setRunId(await testScraperBrowser()); }, setPending)}>Test browser</Button>
-      </div>
-      {runId && <p role={result?.status === 'failed' ? 'alert' : 'status'}>{result?.status === 'succeeded'
-        ? `Test passed: ${result.counts.listingCount} listings and ${result.counts.detailCount} detail saved.`
-        : result?.errorCode === 'scrape_interrupted' ? 'Test interrupted before completion was confirmed. Test again once the browser is ready.'
-        : result?.status === 'failed' ? plainError(result.errorMessage) || 'Test failed. Check BC Bid › Runs for details.'
-        : result?.status === 'cancelled' ? 'Test stopped. Saved records are retained.'
-        : 'Test running. Progress appears in Recent runs.'}</p>}
-      {error && !continuing && <p role="alert">{error}</p>}
-      <details><summary data-zoer-disclosure="">What a full scrape includes</summary><p>Every current public opportunity with its detail tabs and attachment links. Progress is saved if you close this page. If BC Bid asks for a browser check, complete it in the selected browser and hand control back before resuming.</p></details>
-    </section>
+      <div className="zoer-record-tools zoer-setup-actions">{primary}{secondary}{continuing && <Btn variant="ghost" onClick={onDismiss}>Dismiss</Btn>}</div>
+    </div>
+    {message && <p role="status">{message}</p>}
+    {error && <p role="alert">{error}</p>}
+    <details><summary data-zoer-disclosure="">What a full collection includes</summary><p>Every current public BC Bid opportunity with its detail tabs and attachment links. Progress is saved as it goes, so a stopped collection can resume. If BC Bid asks for a browser check, complete it in the Zoer browser and hand control back before resuming.</p></details>
+  </section>;
+}
+
+/** The plugin's own browser test (not BC Bid's browser check): one listing page and one opportunity's details. */
+function TestBrowserCard() {
+  const { model } = useWorkspace();
+  const [pending, setPending] = useState(false), [runId, setRunId] = useState<string>(), [error, setError] = useState<string>();
+  if (!model) return null;
+  const active = model.runs.some(run => ['running', 'stopping'].includes(run.status));
+  const result = model.runs.find(run => run._id === runId);
+  const test = async () => {
+    setPending(true); setError(undefined); setRunId(undefined);
+    try { setRunId(await testScraperBrowser()); } catch (e) { setError(plainError(e instanceof Error ? e.message : String(e))); } finally { setPending(false); }
+  };
+  return <section className="zoer-history zoer-setup" aria-labelledby="bcbid-test-title">
+    <div className="zoer-setup-row">
+      <div><h2 id="bcbid-test-title">Test browser</h2><p>Collects one listing page and one opportunity's details with the collection browser. <SettingsLink section="browsers" /></p></div>
+      <div className="zoer-record-tools zoer-setup-actions"><Btn variant="secondary" disabled={active} loading={pending} onClick={() => void test()}>Run test</Btn></div>
+    </div>
+    {runId && <p role={result?.status === 'failed' ? 'alert' : 'status'}>{result?.status === 'succeeded'
+      ? `Test passed: ${result.counts.listingCount.toLocaleString()} ${result.counts.listingCount === 1 ? 'opportunity' : 'opportunities'} and ${result.counts.detailCount.toLocaleString()} ${result.counts.detailCount === 1 ? 'detail' : 'details'} saved.`
+      : result?.errorCode === 'scrape_interrupted' ? 'Test interrupted before it finished. Test again once the browser is ready.'
+      : result?.status === 'failed' ? result.errorMessage || 'Test failed. See Recent runs for details.'
+      : result?.status === 'cancelled' ? 'Test stopped. Saved opportunities are kept.'
+      : 'Test running. Progress appears under Recent runs.'}</p>}
+    {error && <p role="alert">{error}</p>}
+  </section>;
+}
+
+/** The BC Bid source page body (Operations › Sources › BC Bid), below the summary row the route renders. */
+export function ScraperSetup() {
+  // Opened from the "Continue scrape" notification: the collection card is highlighted with the one next step.
+  const [continuing, setContinuing] = usePluginQuery('continue');
+  return <div className="bcbid-page">
+    <CollectionCard continuing={!!continuing} onDismiss={() => { if (continuing) setContinuing(''); }} />
+    <TestBrowserCard />
     <TargetedRefreshPanel />
-    <AwardHistoryPanel />
-  </>;
+    <AwardHistoryCard />
+    <HistoricalImport />
+  </div>;
 }
