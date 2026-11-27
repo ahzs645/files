@@ -36,3 +36,20 @@ export function verificationFileText(file: VerificationTask): string {
   if (file.status === 'interrupted') return 'Stopped';
   return file.error || file.phase || 'Failed';
 }
+
+/** Repeats of one check: the same files with the same outcome, shown once with how often and when last. */
+export interface VerificationGroup { latest: VerificationRun; count: number; runIds: string[] }
+const fileSet = (run: VerificationRun) => JSON.stringify(run.files.map(file => file.source_id || file.name || file.record_id).sort());
+/**
+ * Saved-original checks grouped by file set and outcome, newest first: checking the same two files three times reads
+ * "checked 3 times", not three identical entries. A running check is never merged.
+ */
+export function groupVerificationRuns(runs: readonly VerificationRun[]): VerificationGroup[] {
+  const groups = new Map<string, VerificationGroup>();
+  for (const run of runs) {
+    const key = run.status === 'running' ? `running:${run.runId}` : `${run.status}:${fileSet(run)}`;
+    const group = groups.get(key);
+    if (group) { group.count++; group.runIds.push(run.runId); } else groups.set(key, { latest: run, count: 1, runIds: [run.runId] });
+  }
+  return [...groups.values()];
+}

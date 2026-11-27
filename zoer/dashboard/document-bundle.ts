@@ -1,5 +1,7 @@
 import {attachmentFileName} from './notice-attachments';
 import { exportManifest, exportRecords } from './export';
+import { fileSize } from './file-size';
+import { plural } from './format';
 
 /**
  * "Download all documents" as one zip (host service S2, `archive.create`): the notices' saved files, each under a
@@ -58,7 +60,8 @@ export function planBundle(recordIds: string[], documents: BundleDocument[]): Bu
   const bytes = documents.reduce((sum, document) => sum + document.bytes, 0), withFiles = new Set(documents.map(document => document.recordId)).size;
   return { documents, bytes, withFiles, withoutFiles: recordIds.length - withFiles, tooLarge: bytes > BUNDLE_MAX_BYTES };
 }
-export const sizeText = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+/** The plugin's one file-size format (file-size.ts); kept as a name for callers. */
+export const sizeText = (bytes: number) => fileSize(bytes);
 
 /** Build, download and clean up the bundle. Returns what went into it. */
 export async function downloadDocumentBundle(host: Host, recordIds: string[], options: { scope: string; fileName?: string; now?: Date } = { scope: 'selection' }) {
@@ -78,8 +81,8 @@ export async function downloadDocumentBundle(host: Host, recordIds: string[], op
   const zipName = options.fileName ?? `procurement-documents-${ids.length === 1 ? safeSegment(notices[0]?.sourceKey ?? 'notice') : `${ids.length}-notices`}-${date}.zip`;
   const csv = exportRecords(notices, 'opportunity', 'csv');
   const manifest = exportManifest({ file: 'opportunities.csv', scope: options.scope, filters: { notices: ids.length }, rowsExported: notices.length, totalMatching: ids.length,
-    notes: [`${plan.documents.length} saved document${plan.documents.length === 1 ? '' : 's'} (${sizeText(plan.bytes)}) from ${plan.withFiles} notice${plan.withFiles === 1 ? '' : 's'}, each in a folder named after the notice.`,
-      ...(plan.withoutFiles ? [`${plan.withoutFiles} notice${plan.withoutFiles === 1 ? ' has' : 's have'} no saved documents and appear${plan.withoutFiles === 1 ? 's' : ''} only in the CSV.`] : []),
+    notes: [`${plural(plan.documents.length, 'saved document')} (${sizeText(plan.bytes)}) from ${plural(plan.withFiles, 'notice')}, each in a folder named after the notice.`,
+      ...(plan.withoutFiles ? [`${plural(plan.withoutFiles, 'notice has', 'notices have')} no saved documents and appear${plan.withoutFiles === 1 ? 's' : ''} only in the CSV.`] : []),
       'Zoer verified every file against its saved SHA-256 while building the zip.'] });
   const temporary: string[] = [];
   try {

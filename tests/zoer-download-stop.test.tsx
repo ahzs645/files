@@ -122,7 +122,9 @@ describe('Download history', () => {
     history(batch('paused', RECOVERY));
     expect(screen.getByText('Waiting to retry')).toBeInTheDocument();
     expect(screen.queryByText('Stopped')).toBeNull();
-    expect(screen.getByRole('alert')).toHaveTextContent('Automatic browser recovery is scheduled');
+    // A run list's history is never announced as an alert; the wait reads as a status line.
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('Zoer retries automatically');
     expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
@@ -171,7 +173,9 @@ describe('Download history', () => {
     workspace.model = modelWith(run('failed'));
     history(batch('failed', 'The saved browser closed.'));
     expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
-    expect(screen.getByRole('alert')).toHaveTextContent('The saved browser closed.');
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+    expect(screen.getByText('The saved browser closed.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 

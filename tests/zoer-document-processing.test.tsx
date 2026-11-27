@@ -13,6 +13,7 @@ vi.mock('../zoer/dashboard/bridge', () => ({
 }));
 
 import { DocumentProcessing } from '../zoer/dashboard/DocumentProcessing';
+import { BatchHistory } from '../zoer/dashboard/BatchHistory';
 import { DocumentFiles } from '../zoer/dashboard/DocumentInventory';
 import { EXTRACTION_FAILED, FILE_FILTERS, PENDING_EXTRACTION, fileFilterSql, fileState, fileWarning, processingRetry, splitDocumentBatches, workbenchExclusions } from '../zoer/dashboard/document-processing';
 import { askScopeText, documentCounts, documentSummary, noTextMessage, textState, textStateDetail } from '../zoer/dashboard/procurement/ai';
@@ -94,7 +95,10 @@ describe('Processing tab', () => {
     const changed = vi.fn(async () => {});
     view(<DocumentProcessing {...props} onChanged={changed} />);
     expect(await screen.findByText('7 files')).toBeTruthy();
-    expect(screen.getByText(/from 3 notices are saved and waiting for text/)).toBeTruthy();
+    expect(screen.getByText(/from 3 opportunities are saved and waiting for text/)).toBeTruthy();
+    // One primary while files wait; its history is a link to Operations › Runs.
+    expect(screen.getByRole('button', { name: 'Extract text now' }).className).toContain('from-accent-strong');
+    expect(screen.getByRole('link', { name: 'Text extraction runs' }).getAttribute('href')).toMatch(/\/runs\?kind=extraction$/);
     fireEvent.click(screen.getByRole('button', { name: 'Extract text now' }));
     await waitFor(() => expect(calls('action')).toEqual([{ actionId: 'documents.extract.pending', input: {} }]));
     await waitFor(() => expect(changed).toHaveBeenCalled());
@@ -118,9 +122,9 @@ describe('Processing tab', () => {
   });
   it('a failed extraction is its own state, apart from "No text", with the extractor message as its warning', () => {
     const failed = { status: 'downloaded', chars: 0, error: EXTRACTION_FAILED + 'PDF parser crashed' };
-    expect(fileState(failed)).toEqual(['bad', 'Extraction failed']);
+    expect(fileState(failed)).toEqual(['warn', 'Text failed']);
     expect(fileWarning(failed)).toBe('PDF parser crashed');
-    expect(fileState({ status: 'downloaded', chars: 0, error: 'No text layer; OCR found nothing' })).toEqual(['warn', 'No text']);
+    expect(fileState({ status: 'downloaded', chars: 0, error: 'No text layer; OCR found nothing' })).toEqual(['neutral', 'No text']);
     expect(fileFilterSql('extractFailed')).toContain(`LIKE '${EXTRACTION_FAILED}%'`);
     expect(fileFilterSql('unreadable')).toContain(`NOT LIKE '${EXTRACTION_FAILED}%'`);
     expect(FILE_FILTERS.map(([id]) => id)).toContain('extractFailed');
@@ -128,7 +132,7 @@ describe('Processing tab', () => {
   it('AC-013: shows the running extraction\'s progress', async () => {
     hostWith(pendingRows(2, 1));
     view(<DocumentProcessing {...props} batches={[batch('p1', PENDING_RUN, 'running')]} tasks={[{ id: 't', run_id: 'p1', status: 'running', phase: 'Extracting text', name: 'Scan.pdf' }]} />);
-    expect(await screen.findByText(/Text extraction in progress · 1\/2 records complete/)).toBeTruthy();
+    expect(await screen.findByText(/Text extraction in progress · 1 of 2 done/)).toBeTruthy();
     expect(screen.getByText(/Extracting text · Scan\.pdf/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Extraction running…' })).toBeDisabled();
   });
@@ -154,15 +158,27 @@ describe('Processing tab', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Approval is required.');
     expect(screen.getByRole('button', { name: 'Extract text now' })).toBeEnabled();
   });
-  it('AC-024: Stop cancels a running extraction; Retry of a stopped pending run starts documents.extract.pending', async () => {
+  it('AC-024: the extraction history is under Operations › Runs: Stop cancels a running extraction; Retry of the latest stopped pending run starts documents.extract.pending', async () => {
     hostWith(pendingRows(2, 1));
-    const first = view(<DocumentProcessing {...props} batches={[batch('p1', PENDING_RUN, 'running')]} />);
+    expect(view(<DocumentProcessing {...props} batches={[batch('p1', PENDING_RUN, 'stopped')]} />).container.textContent).not.toContain('Processing history');
+    cleanup();
+    const first = view(<BatchHistory title="Text extraction runs" kind="download" batches={[batch('p1', PENDING_RUN, 'running')]} onChanged={async () => {}} onError={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
     await waitFor(() => expect(calls('cancel')).toEqual([{ id: 'p1' }]));
     first.unmount();
-    view(<DocumentProcessing {...props} batches={[batch('p1', PENDING_RUN, 'stopped')]} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    // Only the newest run of a scope offers Retry; the older stopped one is superseded.
+    view(<BatchHistory title="Text extraction runs" kind="download" batches={[batch('p2', PENDING_RUN, 'stopped'), batch('p1', PENDING_RUN, 'stopped')]} onChanged={async () => {}} onError={() => {}} />);
+    expect(await screen.findAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(calls('action')).toEqual([{ actionId: 'documents.extract.pending', input: {} }]));
+  });
+  it('extraction runs say "Partly failed" and count in correct English', async () => {
+    hostWith(pendingRows(0, 0));
+    view(<BatchHistory title="Text extraction runs" kind="download" batches={[{ ...batch('p1', PENDING_RUN, 'partial'), completed: 0, total: 1, failed: 1, error: '1 text extractions failed. Saved files are retained.' }]} onChanged={async () => {}} onError={() => {}} />);
+    expect(await screen.findByText('Partly failed')).toBeTruthy();
+    expect(screen.getByText('1 text extraction failed. Saved files are retained.')).toBeTruthy();
+    expect(screen.getByText('0 of 1 file read · 1 failed')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 
