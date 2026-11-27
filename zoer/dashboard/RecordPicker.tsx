@@ -9,6 +9,9 @@ import { MoreMenu } from './host-ui';
 import { SOURCES, sourceId } from './procurement/catalog';
 import { INVENTORY_SQL, inventoryTotal, sourceName, sql } from './procurement/display';
 import { sourceReference } from './bid-summaries';
+import { notClosed } from './procurement/deadline';
+import { fileSize } from './file-size';
+import { count, plural } from './format';
 
 export const MAX_SELECTION = 50;
 
@@ -18,6 +21,24 @@ function readableId(data: any): string {
   return id.includes(':') ? '' : id;
 }
 
+type PickerRow = { id: string; title: string; data: any };
+const isOpen = (row: PickerRow) => /open/i.test(String(row.data?.status ?? '')) && notClosed(row.data?.closingAt || row.data?.closingDate);
+/**
+ * Rows of one listing, each opportunity once. BC Bid re-posts an opportunity under a new process id with the same
+ * opportunity number and title (e.g. 235678 closed, 235883 open); the catalog keeps both postings, and the picker listed
+ * them as identical rows. They are shown once: the open posting (else the first listed), counting the others.
+ */
+export function uniquePostings(rows: readonly PickerRow[]): (PickerRow & { postings: number })[] {
+  const groups = new Map<string, PickerRow[]>(), order: string[] = [];
+  for (const row of rows) {
+    const reference = readableId(row.data), key = reference ? `${sourceId(row.data)}\u0000${reference}\u0000${String(row.title ?? '').trim().toLowerCase()}` : `id\u0000${row.id}`;
+    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+    groups.get(key)!.push(row);
+  }
+  return order.map(key => { const list = groups.get(key)!; return { ...(list.find(isOpen) ?? list[0]), postings: list.length }; });
+}
+const SIZES_SQL = (n: number) => `SELECT record_id AS id, count(*) AS files, sum(bytes) AS bytes FROM documents WHERE status='downloaded' AND record_id IN (${Array(n).fill('?').join(',')}) GROUP BY record_id`;
+
 /** Searchable, paged record list shared by the Documents and AI review pages. */
 export function RecordPicker({ selection, setSelection, onDetails, actions, more = [] }: {
   selection: Set<string>; setSelection: (next: Set<string>) => void; onDetails: (id: string) => void; actions?: ReactNode;
@@ -26,7 +47,7 @@ export function RecordPicker({ selection, setSelection, onDetails, actions, more
 }) {
   const [kind, setKind] = usePluginQuery('kind', 'opportunity'), [search, setSearch] = usePluginQuery('search'), [source, setSource] = usePluginQuery('source');
   const [docs, setDocs] = usePluginQuery('docs');
-  const [starred, setStarred] = useState(false), [page, setPage] = useState(0), [filtersOpen, setFiltersOpen] = useState(false);
+  const [starred, setStarred] = useState(false), [page, setPage] = useState(0), [filtersOpen, setFiltersOpen] = useState(false), [showSizes, setShowSizes] = useState(false);
   useEffect(() => { setPage(0); }, [search, kind, starred, source, docs]);
   const scope = { kind, ...(source ? { sources: [source] } : {}) };
   const result = useQuery('catalog.rows', { ...scope, search, starredOnly: starred, ...(docs ? { documents: docs } : {}), limit: 25, cursor: String(page * 25) });
@@ -40,9 +61,13 @@ export function RecordPicker({ selection, setSelection, onDetails, actions, more
   for (const row of inventory.data ?? []) if (row.kind === kind) counts.set(row.sourceId, (counts.get(row.sourceId) ?? 0) + Number(row.count));
   const sources = [...SOURCES.map(item => item.id), ...[...counts.keys()].filter(id => !SOURCES.some(item => item.id === id))];
   const total = inventoryTotal(inventory.data, kind);
-  const visible: { id: string; title: string; data: any }[] = (result?.items ?? []).map((data: any) => ({ id: data.catalogId, title: data.description ?? data.opportunityDescription, data }));
+  const visible = uniquePostings((result?.items ?? []).map((data: any) => ({ id: data.catalogId, title: data.description ?? data.opportunityDescription, data })));
+  // Saved files per listed opportunity, read only when asked for.
+  const sizes = useCachedQuery({ queryKey: ['catalog', 'procurement-picker-sizes', visible.map(row => row.id)], enabled: showSizes && visible.length > 0,
+    queryFn: async () => new Map((await sql(SIZES_SQL(visible.length), visible.map(row => row.id))).map((row: any) => [String(row.id), { files: Number(row.files) || 0, bytes: Number(row.bytes) || 0 }])) });
+  const sizeText = (id: string) => { if (!sizes.data) return 'Counting saved files…'; const item = sizes.data.get(id); return item ? `${plural(item.files, 'file')} saved · ${fileSize(item.bytes)}` : 'No files saved'; };
   const toggle = (id: string, checked: boolean) => { const next = new Set(selection); checked ? next.add(id) : next.delete(id); setSelection(next); };
-  const activeFilters = [source, docs, starred].filter(Boolean).length;
+  const activeFilters = [source, docs, starred, showSizes].filter(Boolean).length;
   return <section className="zoer-history" aria-label="Records">
     {/* Search first; on phones the filters fold behind one button so records start near the top. */}
     <div className="research-toolbar research-search-row">
@@ -64,22 +89,23 @@ export function RecordPicker({ selection, setSelection, onDetails, actions, more
         <option value="pending">Not downloaded yet{tally(toFetch)}</option>
       </Select></label>
       <label className="research-check"><input type="checkbox" checked={starred} onChange={e => setStarred(e.target.checked)} />Shortlisted</label>
+      <label className="research-check"><input type="checkbox" checked={showSizes} onChange={e => setShowSizes(e.target.checked)} />Show saved file sizes</label>
     </div>
     <div className="research-toolbar">
       <Button variant="ghost" disabled={!visible.length} onClick={() => setSelection(new Set([...selection, ...visible.map(r => r.id)].slice(0, MAX_SELECTION)))}>Select page</Button>
       <Button variant="ghost" disabled={!selection.size} onClick={() => setSelection(new Set())}>Clear</Button>
-      <span className="research-count">{selection.size}/{MAX_SELECTION} selected</span>
+      <span className="research-count">{count(selection.size)} selected · up to {MAX_SELECTION}</span>
       {actions && <div className="research-toolbar-end">{actions}</div>}
     </div>
-    {result && !visible.length && <p className="research-note">No {kind === 'award' ? 'awards' : 'opportunities'} match{source ? ` in ${sourceName(source)}` : ''}{docs === 'downloaded' ? ' with downloaded documents' : docs === 'pending' ? ' with documents still to download' : ''}{starred ? ' among starred records' : ''}{search ? ` for “${search}”` : ''}.</p>}
+    {result && !visible.length && <p className="research-note">No {kind === 'award' ? 'awards' : 'opportunities'} match{source ? ` in ${sourceName(source)}` : ''}{docs === 'downloaded' ? ' with downloaded documents' : docs === 'pending' ? ' with documents still to download' : ''}{starred ? ' among shortlisted ones' : ''}{search ? ` for “${search}”` : ''}.</p>}
     <div className="research-records">{visible.map(row => <article key={row.id}>
       <label><input type="checkbox" checked={selection.has(row.id)} disabled={!selection.has(row.id) && selection.size >= MAX_SELECTION} onChange={e => toggle(row.id, e.target.checked)} />
-        <span><strong>{row.title}</strong><BuyerName record={row.data} /><small><span className="research-source-tag">{sourceName(sourceId(row.data))}</span>{readableId(row.data)}</small></span></label>
+        <span><strong>{row.title}</strong><BuyerName record={row.data} /><small><span className="research-source-tag">{sourceName(sourceId(row.data))}</span>{readableId(row.data) && <> · {readableId(row.data)}</>}{row.postings > 1 && <> · re-posted ({row.postings} postings; this is the {isOpen(row) ? 'open' : 'latest listed'} one)</>}{showSizes && <> · {sizeText(row.id)}</>}</small></span></label>
       <Button variant="ghost" onClick={() => onDetails(row.id)}>Details</Button>
     </article>)}</div>
     <div className="research-toolbar research-pager">
       <Button variant="ghost" disabled={!page} onClick={() => setPage(page - 1)}>Previous</Button>
-      <span className="research-count">{result ? result.total.toLocaleString() : 'Loading…'} matches · page {page + 1}</span>
+      <span className="research-count">{!result ? 'Loading…' : result.total ? `${count(page * 25 + 1)}–${count(Math.min(result.total, page * 25 + 25))} of ${count(result.total)}` : 'No matches'}</span>
       <Button variant="ghost" disabled={!result?.nextCursor} onClick={() => setPage(page + 1)}>Next</Button>
     </div>
   </section>;
