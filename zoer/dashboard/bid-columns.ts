@@ -13,6 +13,8 @@ const MAPPING_COLUMNS=['buyerOrganization','buyerGroup','buyerType','buyerMappin
  *  toggle where it can be changed); every other column stays in the column picker. */
 const AWARD_COLUMNS=['awardDate','opportunityDescription','buyer','successfulSupplier','contractValue'];
 const ZOER_AWARD_COLUMNS=['starred',...AWARD_COLUMNS,'sourceId'];
+/** Star buttons read "Shortlist: <title>" / "Remove from shortlist: <title>" on every list and table (BRIEF vocabulary). */
+export const SHORTLIST_TERMS:[string,string]=['Shortlist:','Remove from shortlist:'];
 /** Without writes the Star column could only echo a flag nobody can change here, so it is left out. */
 export function gridTable(kind:'opportunity'|'award',caps:{writes:boolean;surface:string}):{table:IntrospectionTable;hidden:string[]}{
   const table=tables[kind],columns=caps.writes?table.columns:table.columns.filter(column=>column.name!=='starred');

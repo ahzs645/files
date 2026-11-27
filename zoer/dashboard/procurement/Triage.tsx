@@ -55,7 +55,7 @@ export function useHideNotices(onError: (message: string) => void) {
 export function HideButton({ row, hidden, busy, onToggle }: { row: { id: string; title?: string }; hidden: boolean; busy: boolean; onToggle(): void }) {
   if (!useCapabilities().writes) return null;
   const title = row.title || 'untitled notice';
-  return <Hint content={hidden ? 'Show again in lists' : 'Hide: not relevant'} action><button type="button" className="pc-star pc-hide" disabled={busy} aria-pressed={hidden} aria-label={hidden ? `Show again in lists: ${title}` : `Hide, not relevant: ${title}`} onClick={onToggle}>
+  return <Hint content={hidden ? 'Show again' : 'Hide'} action><button type="button" className="pc-star pc-hide" disabled={busy} aria-pressed={hidden} aria-label={hidden ? `Show again: ${title}` : `Hide: ${title}`} onClick={onToggle}>
     {hidden ? <Eye aria-hidden="true" className="h-4 w-4" /> : <EyeOff aria-hidden="true" className="h-4 w-4" />}
   </button></Hint>;
 }

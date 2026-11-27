@@ -380,3 +380,7 @@ p.pc-source-crumb{margin-bottom:.75rem}
 .pc-schedule-reasons{display:flex;flex-direction:column;gap:.25rem;margin:.375rem 0;font-size:13px;line-height:1.45}
 .pc-schedule-notice>div.pc-schedule-stopped-list{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:.5rem}
 .pc-schedule-stopped-list details>summary{font-size:12.5px;color:var(--text-secondary)}
+/* Browse cleanup (2026-11-27): one status chip per row (StatusBadge carries the tone), the compare back row, the table's Columns picker. */
+.pc-row-meta .pc-row-status[data-status]{color:inherit;font-weight:inherit;display:inline-flex}
+.pc-back-row{display:flex;align-items:center;margin:0 0 .5rem}
+.bid-columns-picker{display:grid;gap:.5rem;border:0;margin:0;padding:0}

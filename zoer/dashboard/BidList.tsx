@@ -8,6 +8,7 @@ import { Button } from '../../apps/dashboard/src/components/ui/Button';
 import { getOpportunityStatusTone, OPPORTUNITY_TONE_STYLES } from '../../apps/dashboard/src/lib/constants';
 import { catalogRevision, queryVisibleCatalog, useWorkspace } from './backend';
 import { awardSummary, opportunitySummary, type BidRow } from './bid-summaries';
+import { SHORTLIST_TERMS } from './bid-columns';
 import type { BidFilterValues } from './BidGrid';
 
 const PAGE_SIZE = 25;
@@ -65,7 +66,7 @@ function OpportunityRow({ row, onOpen }: { row: BidRow; onOpen: (row: BidRow) =>
   const item = opportunitySummary(row);
   const tone = getOpportunityStatusTone(item.status);
   return <li className="bid-list-row">
-    <StarButton entity="opportunity" recordKey={item.key} label={item.title} />
+    <StarButton entity="opportunity" recordKey={item.key} label={item.title} terms={SHORTLIST_TERMS} />
     <button type="button" className="bid-list-link" onClick={() => onOpen(row)}>
       <span className="bid-list-meta"><span className={`bid-list-status ${OPPORTUNITY_TONE_STYLES[tone]}`}>{item.status}</span>{item.id && <span>{item.id}</span>}{item.type && <span>{item.type}</span>}</span>
       <strong className="bid-list-title">{item.title}</strong>
@@ -78,7 +79,7 @@ function OpportunityRow({ row, onOpen }: { row: BidRow; onOpen: (row: BidRow) =>
 function AwardRow({ row, onOpen }: { row: BidRow; onOpen: (row: BidRow) => void }) {
   const item = awardSummary(row);
   return <li className="bid-list-row">
-    <StarButton entity="award" recordKey={item.key} label={item.title} />
+    <StarButton entity="award" recordKey={item.key} label={item.title} terms={SHORTLIST_TERMS} />
     <button type="button" className="bid-list-link" onClick={() => onOpen(row)}>
       <span className="bid-list-meta"><span>{item.awardDate}</span>{item.type && <span>{item.type}</span>}</span>
       <strong className="bid-list-title">{item.title}</strong>

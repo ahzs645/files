@@ -44,3 +44,25 @@ export function noticeStatus(status: unknown, deadline: unknown, kind: string, n
     return { text: `${source || 'Open'} · no fixed closing date`, key: 'open', title: 'The source gives a placeholder closing date far in the future (2036 or later): this notice stays open until the buyer closes it.' };
   return source ? { text: source, key: source.toLowerCase() } : null;
 }
+
+export type RowStatusKey = 'open' | 'closed' | 'awarded' | 'cancelled' | 'unknown';
+export type RowStatus = { key: RowStatusKey; text: string; tone: 'success' | 'neutral' | 'info' | 'warning'; title?: string };
+const ROW_STATUS: Record<RowStatusKey, Omit<RowStatus, 'key' | 'title'>> = { open: { text: 'Open', tone: 'success' }, closed: { text: 'Closed', tone: 'neutral' }, awarded: { text: 'Awarded', tone: 'info' }, cancelled: { text: 'Cancelled', tone: 'warning' }, unknown: { text: 'Status unknown', tone: 'neutral' } };
+/**
+ * The one status chip every result row shows, from a single vocabulary: Open, Closed, Awarded, Cancelled, Status unknown.
+ * Opportunities use the effective lifecycle (lifecycle.ts) and the same "listed open" rule as the Open filter, so a
+ * row in an Open list always reads Open; the source's own wording, when it says something else, is in `title`.
+ */
+export function rowStatus(status: unknown, deadline: unknown, kind: string, now = Date.now()): RowStatus {
+  const source = typeof status === 'string' ? status.trim() : '';
+  const make = (key: RowStatusKey, title?: string): RowStatus => ({ key, ...ROW_STATUS[key], ...(title ? { title } : {}) });
+  if (kind === 'award') return make('awarded');
+  if (kind !== 'opportunity') return make('unknown', source ? `Source status: “${source}”` : undefined);
+  const life = effectiveLifecycle({ status: source, deadline }, now), state = deadlineState(deadline, now);
+  const sourceEnded = [...CANCELLED_WORDS, ...AWARDED_WORDS, ...ENDED_WORDS].some(word => source.toLowerCase().includes(word));
+  if (life.status === 'closed' && !sourceEnded) return make('closed', source ? `The source still says “${source}”; its closing date has passed.` : 'The closing date has passed.');
+  if (life.status === 'closed' && (state === 'open' || state === 'closing_today_time_unverified') && !life.noFixedDate) return make('closed', `The source says “${source}” before the closing date; it may have been closed early.`);
+  if (life.listedOpen) return make('open', life.noFixedDate ? 'No fixed closing date: the source gives a placeholder far in the future, so it stays open until the buyer closes it.' : life.status === 'unknown' ? `The source says “${source}”; the closing date could not be read.` : undefined);
+  const key: RowStatusKey = life.status === 'open' ? 'open' : life.status;
+  return make(key, source && source.toLowerCase() !== ROW_STATUS[key].text.toLowerCase() ? `Source status: “${source}”` : !source && key === 'unknown' ? 'The source gives no status.' : undefined);
+}

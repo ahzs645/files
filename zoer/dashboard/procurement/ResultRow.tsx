@@ -1,22 +1,22 @@
-import { Hint } from '../host-ui';
+import { Hint, StatusBadge } from '../host-ui';
 import type { ReactNode } from 'react';
 import { Star } from 'lucide-react';
 import { cardDeadline } from '../review-workspace/deadline-text';
-import { noticeStatus, sourceName } from './display';
+import { rowStatus, sourceName } from './display';
 import { cleanRegionText } from './region';
 
 /** The fields a result card reads from a saved-notice row. */
 export type ResultRowData = { id: string; kind: string; title?: string | null; buyer?: string | null; region?: string | null; deadline?: string | null; sourceId?: string | null; status?: string | null; hidden?: number | string | null; externalId?: string | null; starred?: boolean | number | null };
 /**
- * One saved notice: title, buyer, one meta line ("Closes Nov 1 · BC Bid · Open"; the type only when it is not an
- * opportunity), then the tags and decision lines passed as children. A shortlisted notice shows a small star; the
+ * One saved notice: title, buyer, one meta line ("Closes Tue, Dec 1 · 4 days left · BC Bid · Open"; every row has one
+ * status chip from the same vocabulary, `rowStatus`; another record type is named), then the tags and decision lines passed as children. A shortlisted notice shows a small star; the
  * selection checkbox only exists when the host can act on a selection.
  */
 export function ResultRow({ row, asOf, writes, checked, open, onCheck, onOpen, flags, side, children }: { row: ResultRowData; asOf: number; writes: boolean; checked: boolean; open: boolean; onCheck(checked: boolean): void; onOpen(): void; flags?: ReactNode; side?: ReactNode; children?: ReactNode }) {
-  const when = cardDeadline(row.deadline, row.kind, asOf), status = noticeStatus(row.status, row.deadline, row.kind, asOf), isHidden = Number(row.hidden) === 1, cleaned = cleanRegionText(row.region);
+  const when = cardDeadline(row.deadline, row.kind, asOf), status = rowStatus(row.status, row.deadline, row.kind, asOf), isHidden = Number(row.hidden) === 1, cleaned = cleanRegionText(row.region);
   const region = cleaned && cleaned.toLowerCase() !== (row.buyer ?? '').trim().toLowerCase() ? cleaned : ''; // "Capital Regional District · Capital Regional District" says it once
-  const meta = [<Hint key="date" content={when.detail || undefined}><span className="pc-row-date" data-tone={when.tone || undefined}>{status?.early ? when.text.replace(/^Closes /, 'Closing date ') : when.text}</span></Hint>, <span key="source" className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId || 'bc-bid')}</span>,
-    row.kind !== 'opportunity' && <span key="kind" data-kind={row.kind}>{row.kind === 'award' ? 'Award' : row.kind}</span>, status && !(when.state === 'closed' && status.key === 'closed' && !status.title) && <Hint key="status" content={status.title}><span className="pc-row-status" data-status={status.key}>{status.text}</span></Hint>,
+  const meta = [<Hint key="date" content={when.detail || undefined}><span className="pc-row-date" data-tone={when.tone || undefined}>{status.key !== 'open' && when.state !== 'closed' ? when.text.replace(/^Closes /, 'Closing date ') : when.text}</span></Hint>, <span key="source" className="pc-tag" data-source={row.sourceId || 'bc-bid'}>{sourceName(row.sourceId || 'bc-bid')}</span>,
+    row.kind !== 'opportunity' && row.kind !== 'award' && <span key="kind" data-kind={row.kind}>{row.kind}</span>, <Hint key="status" content={status.title}><span className="pc-row-status" data-status={status.key}><StatusBadge tone={status.tone}>{status.text}</StatusBadge></span></Hint>,
     isHidden && <span key="hidden" className="pc-row-hidden-tag">Hidden</span>].filter(Boolean);
   return <article className="pc-row" data-selected={checked || undefined} data-open={open || undefined} data-hidden={isHidden || undefined} data-row-id={row.id}>
     {writes && <label className="pc-check pc-row-check-hit"><input type="checkbox" className="pc-row-check" aria-label={`Select ${row.title || 'untitled notice'}`} checked={checked} onChange={event => onCheck(event.target.checked)} /></label>}

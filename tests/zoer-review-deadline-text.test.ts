@@ -57,14 +57,21 @@ describe('friendly deadline text', () => {
 });
 
 describe('result card dates', () => {
-  it('keeps the card line short and puts the caveats in the tooltip', async () => {
+  it('uses the one deadline format: "Closes Tue, Dec 1 · 4 days left" / "Closed Oct 2", caveats in the tooltip', async () => {
     const { cardDeadline } = await import('../zoer/dashboard/review-workspace/deadline-text');
-    expect(cardDeadline('2026-11-01', 'opportunity', AS_OF)).toMatchObject({ text: 'Closes Nov 1', detail: 'Sun, Nov 1 · 14 days left — 2026-11-01 · date only; closing time not verified' });
+    expect(cardDeadline('2026-11-01', 'opportunity', AS_OF)).toMatchObject({ text: 'Closes Sun, Nov 1 · 14 days left', detail: '2026-11-01 · date only; closing time not verified' });
+    expect(cardDeadline('2026-10-20', 'opportunity', AS_OF)).toMatchObject({ text: 'Closes Tue, Oct 20 · 2 days left', tone: 'soon' });
     expect(cardDeadline('2026-10-18', 'opportunity', AS_OF).text).toBe('Closes today');
     expect(cardDeadline('2026-10-19T14:00:00', 'opportunity', AS_OF).text).toBe('Closes tomorrow, 2:00 PM');
     expect(cardDeadline('2026-10-12', 'opportunity', AS_OF)).toMatchObject({ text: 'Closed Oct 12', tone: 'passed' });
-    expect(cardDeadline('2027-02-01', 'opportunity', AS_OF).text).toBe('Closes Feb 1, 2027');
+    expect(cardDeadline('2025-10-02', 'opportunity', AS_OF).text).toBe('Closed Oct 2, 2025');
+    expect(cardDeadline('2027-02-01', 'opportunity', AS_OF).text).toBe('Closes Mon, Feb 1, 2027 · 106 days left');
+    expect(cardDeadline('2074-12-31', 'opportunity', AS_OF).text).toBe('No fixed closing date');
     expect(cardDeadline('', 'opportunity', AS_OF).text).toBe('No closing date');
     expect(cardDeadline('2026-09-03', 'award', AS_OF).text).toBe('Awarded Sep 3');
+    // The row text is the same day label format.ts `deadline` gives, with "Closes" in front.
+    const { deadline } = await import('../zoer/dashboard/format');
+    expect(cardDeadline('2026-11-01', 'opportunity', AS_OF).text).toBe(`Closes ${deadline('2026-11-01', AS_OF).text}`);
   });
+
 });
