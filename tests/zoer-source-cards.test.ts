@@ -17,7 +17,7 @@ const row = (extra: Partial<ScheduleRow>): ScheduleRow => ({ actionId: 'procurem
 describe('source card: next run slot (schedule vocabulary)', () => {
   it('says "Needs review" with the real reason when Zoer turned the schedule off', () => {
     const slot = scheduleSlot(row({ enabled: false, error: 'The scheduled action, permissions or settings changed.' }), now);
-    expect(slot).toMatchObject({ text: 'Needs review', tone: 'warn', badge: true, reason: 'The scheduled action, permissions or settings changed.' });
+    expect(slot).toMatchObject({ text: 'Needs review', tone: 'warn', badge: true, reason: 'A plugin update changed what this schedule is approved to run, so Zoer turned it off.' });
     expect(slot.detail).toContain('Zoer’s message: The scheduled action, permissions or settings changed.');
   });
   it('says "Off" when the person turned it off, and never "Paused"', () => {
