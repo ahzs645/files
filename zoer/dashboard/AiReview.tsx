@@ -32,7 +32,8 @@ export function AiReview() {
   const [legacyModels, setLegacyModels] = useState<any[]>([]);
   const modelId = reviewModel?.modelProfileId ?? '';
   useEffect(() => {
-    if (ReviewModelSelector || !(writes && ai)) return;
+    // Older hosts do not provide the shared selector (the import is then undefined at run time).
+    if ((ReviewModelSelector as typeof ReviewModelSelector | undefined) || !(writes && ai)) return;
     let active = true;
     void host('models').then(r => { if (active) setLegacyModels(r.models.filter((m: any) => m.authReady)); }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
