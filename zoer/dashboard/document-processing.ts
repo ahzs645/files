@@ -94,7 +94,7 @@ export function processingRetry(batch: Batch): { actionId: string; input: Record
   return input.pendingOnly === true ? { actionId: 'documents.extract.pending', input: {} } : { actionId: 'documents.extract', input: { recordIds: input.recordIds } };
 }
 
-/** Why each saved file is left out of a document-stage preflight (AI workbench). */
+/** Why each saved file is left out of a document-stage preflight (Setup › AI pipeline). */
 export function workbenchExclusions(docs: Array<{ name: string; status: string; cp: number; pending?: boolean }>): string[] {
   return [
     ...docs.filter(doc => doc.status === 'downloaded' && !doc.cp).map(doc => `${doc.name}: ${doc.pending ? 'Text pending; extracted when this stage runs' : 'Saved; no usable text extracted'}`),

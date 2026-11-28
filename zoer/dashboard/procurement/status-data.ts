@@ -11,7 +11,7 @@ import { distinctFiles, documentFileKey, matchDocuments } from './document-ident
 import type { DocumentQueueCoverage } from '../document-queue';
 
 /**
- * Data for the Status page and Home's status card: the document gap of open BC Bid opportunities and the last successful
+ * Data for Operations › Overview and Home's operations line: the document gap of open BC Bid opportunities and the last successful
  * collection per source. Read-only catalog SQL only (the host validator: no `FROM (`, no keyword before `(`, at most
  * 200 rows per statement, so link and document lists are read in pages).
  */

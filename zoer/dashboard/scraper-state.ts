@@ -53,7 +53,7 @@ const collectedAfter = (runs: CardRun[], at: number) => runs.some(run => run.sta
 /**
  * @param runs display-model runs, newest first.
  * @param checkpoint the saved full checkpoint (`checkpoint:full`) while it is incomplete, else null.
- * @param sharedCheckSince the Status page's pending browser check (`DocumentGap.checkPendingSince`), passed only when
+ * @param sharedCheckSince Operations › Overview's pending browser check (`DocumentGap.checkPendingSince`), passed only when
  *   collection and downloads use the same Zoer browser, so the same check blocks both.
  */
 export function collectionState(runs: CardRun[], checkpoint: FullCheckpoint | null | undefined, sharedCheckSince?: string | null): CollectionState {

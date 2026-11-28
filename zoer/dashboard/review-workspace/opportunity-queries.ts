@@ -151,7 +151,7 @@ export function filterObject(params: URLSearchParams): Record<string, string> {
 export interface EvidenceFacts {
   /** Attachment discovery ran (attachments captured, even empty) or a document row exists. */
   discoveryChecked: boolean; hasLinks: boolean; downloaded: number; usable: number;
-  /** Downloaded files whose text has not been extracted yet (Documents → Processing). */
+  /** Downloaded files whose text has not been extracted yet (Operations › Documents). */
   pending?: number;
   triaged: boolean; extracted: boolean;
   /** Documents processed by the current extraction (coverage.processed); null when not recorded. */

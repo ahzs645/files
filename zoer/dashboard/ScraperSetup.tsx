@@ -18,7 +18,7 @@ import './scraper.css';
 function CollectionCard({ continuing, onDismiss }: { continuing: boolean; onDismiss: () => void }) {
   const { model } = useWorkspace();
   const browsers = useScheduleBrowsers();
-  // The Status page's pending browser check, when the same Zoer browser collects and downloads.
+  // Operations › Overview's pending browser check, when the same Zoer browser collects and downloads.
   const shared = !!browsers.data && !separateDocumentBrowser(browsers.data);
   const gap = useDocumentGap(shared);
   const start = useAction('scrapes.triggerNow'), stop = useAction('scrapes.stopActive');

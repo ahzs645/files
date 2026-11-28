@@ -112,7 +112,7 @@ export const textState = (doc: any): TextState => doc?.status !== 'downloaded' ?
 export const textStateDetail = (doc: any) => ({ readable: '', pending: ' · Text pending', none: ' · Saved; no usable text extracted', failed: '' })[textState(doc)];
 /** What the text preview says for a saved file without text. */
 export const noTextMessage = (doc: any) => textState(doc) === 'pending'
-  ? 'Text pending. Documents → Processing extracts this file’s text; an AI review of this notice extracts it first.'
+  ? 'Text pending. Operations › Documents extracts this file’s text; an AI review of this opportunity extracts it first.'
   : 'Saved; no usable text extracted. AI reviews can’t read this file. Scanned PDFs need OCR; use PDF or Download to read it.';
 /** Which saved files an AI question or review of this notice reads. */
 export function askScopeText({ readable, textless, pending }: { readable: number; textless: number; pending: number }): string {

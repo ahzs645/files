@@ -132,7 +132,7 @@ export function PipelinePreflight({ snapshot, stage, onClose }: { snapshot: Sele
         setProgress(`Starting run ${index + 1} of ${runs.length}…`);
         started.push((await startPipeline({ recordIds: ids, stage, profileVersionId: snapshot.profileVersionId, force }, model)).id);
       }
-      setResult({ ok: true, text: `Started ${runs.length === 1 ? 'one run' : `${n(runs.length)} sequential runs`} for ${n(gate.run.length)} notices${gate.run.length < snapshot.ids.length ? ` (${n(snapshot.ids.length - gate.run.length)} filtered by the profile were skipped)` : ''}. Follow progress on Home and in AI workbench → Pipeline stages. Results appear as each notice finishes.` });
+      setResult({ ok: true, text: `Started ${runs.length === 1 ? 'one run' : `${n(runs.length)} sequential runs`} for ${plural(gate.run.length, 'opportunity', 'opportunities')}${gate.run.length < snapshot.ids.length ? ` (${n(snapshot.ids.length - gate.run.length)} filtered by the profile were skipped)` : ''}. Follow progress on Home and in AI workbench → Pipeline stages. Results appear as each notice finishes.` });
     } catch (e) {
       setResult({ ok: false, text: `${started.length ? `Started ${started.length} of ${runs.length} runs; ` : ''}run ${started.length + 1} could not start: ${(e as Error).message}. Nothing further was started.` });
     } finally { setBusy(false); setProgress(''); void invalidate(); }
