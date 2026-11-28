@@ -44,7 +44,8 @@ export function browserSiteRows(state: ConnectorCollection | null | undefined, s
     if (entry.error?.code !== 'outside_visit_window') return make('not-run');
     // The saved hint names a window that has passed by now; the next one is computed from the site's own hours.
     const window = site.visitTimeUtc ? localVisitWindow(site.visitTimeUtc, new Date(now)) : null, next = site.visitTimeUtc ? nextVisitWindow(site.visitTimeUtc, now) : null;
-    return make('outside-hours', window ? { message: `Visits only ${window} your time${next ? `; next window opens ${when(next, now)}` : ''}.` } : {});
+    const open = !!site.visitTimeUtc && inVisitWindow(site.visitTimeUtc, now);
+    return make('outside-hours', window ? { message: `Visits only ${window} your time${open ? '; the window is open now, so the next run collects it' : next ? `; next window opens ${when(next, now)}` : ''}.` } : {});
   });
 }
 
@@ -69,6 +70,14 @@ export function nextVisitWindow(window: string, now = Date.now()): Date | null {
   if (!match) return null;
   const at = new Date(now), start = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), Number(match[1]), Number(match[2]));
   return new Date(start > now ? start : start + 86_400_000);
+}
+/** Whether `now` falls inside the site's daily UTC window ("1400-1600"; a window may run past midnight). */
+export function inVisitWindow(window: string, now = Date.now()): boolean {
+  const match = /^(\d{2})(\d{2})-(\d{2})(\d{2})$/.exec(window);
+  if (!match) return false;
+  const at = new Date(now), minute = at.getUTCHours() * 60 + at.getUTCMinutes();
+  const from = Number(match[1]) * 60 + Number(match[2]), to = Number(match[3]) * 60 + Number(match[4]);
+  return from <= to ? minute >= from && minute < to : minute >= from || minute < to;
 }
 
 /** Saved opportunities per browser site (read-only, bridge-safe). */

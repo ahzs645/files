@@ -30,3 +30,34 @@ describe('one source summary for Operations › Overview and Operations › Sour
     expect(sourceSummary('bidsandtenders', { entries: undefined, entriesError: true, schedulesError: true, now: NOW })).toMatchObject({ status: { text: 'Unknown' }, last: { text: 'Unknown' }, schedule: 'Unknown' });
   });
 });
+
+describe('browser sites outside their visiting hours', () => {
+  it('says the window is open now instead of naming tomorrow while it is open', async () => {
+    const { inVisitWindow } = await import('../zoer/dashboard/procurement/browser-source-overview');
+    expect(inVisitWindow('1400-1600', Date.parse('2026-11-27T15:00:00Z'))).toBe(true);
+    expect(inVisitWindow('1400-1600', Date.parse('2026-11-27T16:00:00Z'))).toBe(false);
+    expect(inVisitWindow('2300-0100', Date.parse('2026-11-28T00:30:00Z'))).toBe(true);
+    expect(inVisitWindow('2300-0100', Date.parse('2026-11-27T22:00:00Z'))).toBe(false);
+  });
+});
+
+describe('Operations › Overview: a count that is still loading or failed is not a missing step', () => {
+  it('lists extraction and the failure queue as not known yet', async () => {
+    const { setupChecklist } = await import('../zoer/dashboard/procurement/status-checklist');
+    const { needsYou } = await import('../zoer/dashboard/procurement/overview-data');
+    const list = setupChecklist({ browsers: undefined, rows: [], gap: undefined, extractionUnknown: 'Could not be read', failuresUnknown: 'Loading…' });
+    const overview = needsYou(list.steps);
+    expect(overview.unknown.map(step => [step.id, step.status])).toEqual(expect.arrayContaining([['extraction', 'Could not be read'], ['failures', 'Loading…']]));
+    expect(setupChecklist({ browsers: undefined, rows: [], gap: undefined }).steps.some(step => step.id === 'extraction')).toBe(false);
+  });
+});
+
+describe('schedules on: one count', () => {
+  it('the checklist summary and the grouped list count the same schedules as on', async () => {
+    const { scheduleSummary } = await import('../zoer/dashboard/procurement/schedule-state');
+    const { scheduleSections } = await import('../zoer/dashboard/procurement/overview-data');
+    const rows = [{ actionId: 'a', enabled: true }, { actionId: 'b', enabled: false }, { actionId: 'c', enabled: false, error: 'The scheduled action, permissions or settings changed.' },
+      { actionId: 'd', enabled: true, state: 'needs_attention', error: 'Scheduled action, permissions or settings changed.' }] as any[];
+    expect(scheduleSummary(rows, NOW).on).toBe(scheduleSections(rows, NOW).on.length);
+  });
+});

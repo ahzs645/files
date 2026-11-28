@@ -473,7 +473,7 @@
 .rw-panel[aria-label="Pipeline coverage"]{--rw-c:var(--rw-teal)}
 .rw-today-alert-badge{text-decoration:none}
 .rw-home-kpis{display:flex;flex-direction:column;gap:.75rem}
-@media(min-width:640px){.rw-home-kpis[data-prompt]{display:grid;grid-template-columns:minmax(0,18rem) minmax(0,1fr);align-items:stretch}.rw-home-kpis[data-prompt] .rw-tiles[data-count="1"]{grid-template-columns:minmax(0,1fr)}}
+@media(min-width:640px){.rw-home-kpis[data-prompt]{display:grid;grid-template-columns:minmax(0,18rem) minmax(0,1fr);align-items:start}.rw-home-kpis[data-prompt] .rw-tiles[data-count="1"]{grid-template-columns:minmax(0,1fr)}}
 
 /* ---- Review pages cleanup (2026-11-27): profile prompt, Decisions, extracted facts, AI pipeline, AI results ---- */
 /* The one profile prompt (ProfilePrompt.tsx): the same card on Home, Decisions and the Fit matrix. */

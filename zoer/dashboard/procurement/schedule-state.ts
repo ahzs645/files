@@ -1,5 +1,5 @@
 import { plainError } from '../error-text';
-import { when } from '../format';
+import { scheduleStateText, when } from '../format';
 
 /**
  * Plain-language state for Zoer plugin schedules (host `schedules.read` rows). Zoer schedules are an interval in
@@ -138,7 +138,8 @@ export function scheduleKind(row: ScheduleRow, now = Date.now()): ScheduleKind {
 export function scheduleSummary(rows: ScheduleRow[] | undefined, now = Date.now()) {
   const list = rows ?? [], kinds = list.map(row => scheduleKind(row, now));
   const count = (kind: ScheduleKind) => kinds.filter(value => value === kind).length;
-  const on = list.filter(row => row.enabled).length;
+  // "On" in the shared words (format.ts), so this count and Overview's grouped list (overview-data.ts) agree.
+  const on = kinds.filter(kind => scheduleStateText(kind) === 'On').length;
   return { total: list.length, on, off: list.length - on, stopped: count('stopped'), paused: count('paused'), retrying: count('retrying'), waiting: count('waiting'),
     text: !list.length ? 'No schedules saved' : `${on} of ${list.length} schedule${list.length === 1 ? '' : 's'} on` };
 }

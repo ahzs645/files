@@ -62,6 +62,8 @@ export function useOverviewStatus() {
   const active = (runs.data ?? []).filter(run => isActiveRun(run.status));
   const checklist = setupChecklist({ browsers: browsers.data, rows: schedules.data, gap: gap.data,
     downloadActive: active.some(run => BC_DOWNLOAD_ACTIONS.includes(run.actionId ?? '')), extractionRunning: active.some(run => (run.actionId ?? '').startsWith('documents.extract')),
-    extraction: extraction.data, failures: failures.data ? failureSummary(failures.data) : undefined });
+    extraction: extraction.data, failures: failures.data ? failureSummary(failures.data) : undefined,
+    // A failed or unfinished count is "not known yet", never a silently missing step (and never "Nothing needs you").
+    ...(collection ? { extractionUnknown: extraction.error ? 'Could not be read' : 'Loading…', failuresUnknown: failures.error ? 'Could not be read' : 'Loading…' } : {}) });
   return { schedules, browsers, gap, runs, extraction, failures, checklist, overview: needsYou(checklist.steps) };
 }

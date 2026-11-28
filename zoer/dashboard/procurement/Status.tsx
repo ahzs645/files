@@ -18,7 +18,7 @@ import { sourceSummary, type SourceSummaryInput } from './source-summary';
 import { ScheduleValue } from './SourceCard';
 import { BATCH_SQL, type BatchRow } from './source-health';
 import { runState, type Preset } from './source-schedules';
-import { batchProgress, runOutcome, runningNow, runsHref, scheduleLine, scheduleSections, runGroup, type Need, type Outcome, type RunGroup } from './overview-data';
+import { batchProgress, runOutcome, runningNow, runsHref, scheduleLine, scheduleSections, runGroup, stopGroups, type Need, type Outcome, type RunGroup } from './overview-data';
 import { useCollectionEntries, useOverviewStatus } from './overview-hooks';
 import { StoppedSchedules } from './schedule-actions';
 import { CoveragePanel } from '../review-workspace/CoveragePanel';
@@ -76,10 +76,13 @@ export function Status() {
 }
 
 function NeedRow({ need, rows, presets, writes, runNow, checkPending }: { need: Need; rows: ScheduleRow[]; presets?: Preset[]; writes: boolean; runNow: ReturnType<typeof useRunNow>; checkPending: boolean }) {
+  // Schedules need the person for other reasons too (none saved, all off, waiting for a check): then the step's own line says why.
+  const stopped = need.id === 'schedules' && stopGroups(rows).length > 0;
   const action = (item: StepAction) => {
     if (item === 'open-browser') return <a key={item} className="procurement-link" href={hostHref('#/browsers')}>Open the browser in Zoer</a>;
     if (item === 'settings-browsers') return <SettingsLink key={item} section="browsers" />;
-    if (item === 'settings-schedules') return null; // The grouped list below carries its own Settings link.
+    // The grouped stopped-schedule list carries its own Settings links; without stopped schedules the step's own link shows.
+    if (item === 'settings-schedules') return stopped ? null : <SettingsLink key={item} section="schedules" />;
     if (!writes) return null;
     // Downloads stop at a pending browser check, so starting one now would only stop there again.
     if (item === 'download-missing' && checkPending) return <span key={item} className="rw-muted">Downloads wait for the browser check above.</span>;
@@ -90,8 +93,8 @@ function NeedRow({ need, rows, presets, writes, runNow, checkPending }: { need: 
     <span className="pc-step-mark" aria-hidden="true">!</span>
     <div className="pc-step-body">
       <div className="pc-step-title"><strong>{need.title}</strong><StatusBadge tone="warning">{need.status}</StatusBadge></div>
-      {need.id !== 'schedules' && need.lines.map(line => <p key={line} className="pc-wrap">{line}</p>)}
-      {need.id === 'schedules' && <StoppedSchedules rows={rows} presets={presets} writes={writes} />}
+      {!stopped && need.lines.map(line => <p key={line} className="pc-wrap">{line}</p>)}
+      {stopped && <StoppedSchedules rows={rows} presets={presets} writes={writes} />}
       <div className="pc-step-actions">{need.actions.map(action)}{need.owner && <PluginLink to={need.owner.to}>{`Open ${need.owner.label}`}</PluginLink>}</div>
     </div>
   </li>;
@@ -125,7 +128,7 @@ const runListName = (group: RunGroup) => ({ collection: 'Collection runs', 'bc-b
 function SourcesGlance({ rows, rowsError, presets, presetsError }: { rows?: ScheduleRow[]; rowsError: boolean; presets?: Preset[]; presetsError: boolean }) {
   const { model } = useWorkspace(), recent = useRecentRuns(), collectionRuns = useCollectionRuns(), entries = useCollectionEntries();
   const inventory = useQuery({ queryKey: ['catalog', 'procurement-inventory'], queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60_000 });
-  const input: SourceSummaryInput = { entries: entries.data?.entries ?? (entries.data ? [] : undefined), entriesError: !!entries.error, runs: recent.data ?? (recent.error ? [] : undefined),
+  const input: SourceSummaryInput = { entries: entries.data?.entries ?? (entries.data ? [] : undefined), entriesError: !!entries.error, runs: recent.data,
     collectionRuns: collectionRuns.data, captureRuns: model?.captureRuns, schedules: rows, schedulesError: rowsError, presets, presetsError };
   const saved = (id: string) => inventory.error ? 'Unknown' : !inventory.data ? '…' : n((inventory.data ?? []).filter(row => row.sourceId === id && row.kind === 'opportunity').reduce((sum, row) => sum + Number(row.count), 0));
   return <section className="rw-panel" aria-labelledby="pc-ov-sources">

@@ -141,11 +141,15 @@ export function failuresStep(counts: FailureCounts | undefined): SetupStep | nul
 
 /** The whole checklist plus a one-line verdict. Steps for extraction and the failure queue appear only when their counts are passed. */
 export function setupChecklist(input: { browsers: ScheduleBrowsers | undefined; rows: ScheduleRow[] | undefined; gap: DocumentGap | undefined; now?: number;
-  downloadActive?: boolean; extraction?: ExtractionCounts; extractionRunning?: boolean; failures?: FailureCounts }) {
+  downloadActive?: boolean; extraction?: ExtractionCounts; extractionRunning?: boolean; failures?: FailureCounts;
+  /** "Loading…" or "Could not be read" while extraction or failure counts are missing, so the step is not known rather than absent. */
+  extractionUnknown?: string; failuresUnknown?: string }) {
+  const unknown = (id: string, title: string, status: string | undefined): SetupStep | null => status ? { id, title, actions: [], tone: 'idle', status, detail: '' } : null;
   const extractOn = input.rows ? !!input.rows.find(row => row.actionId === 'documents.extract.pending' && !row.presetId)?.enabled : undefined;
   const steps = [collectionBrowserStep(input.browsers, input.rows), downloadBrowserStep(input.browsers, input.rows, input.gap), schedulesStep(input.rows, input.now),
     browserCheckStep(input.gap, input.browsers, input.downloadActive, input.now), documentsStep(input.gap), detailsStep(input.gap),
-    extractionStep(input.extraction, extractOn, input.extractionRunning), failuresStep(input.failures)].filter((step): step is SetupStep => !!step);
+    extractionStep(input.extraction, extractOn, input.extractionRunning) ?? unknown('extraction', 'Text extraction', input.extractionUnknown),
+    failuresStep(input.failures) ?? unknown('failures', 'Failure queue', input.failuresUnknown)].filter((step): step is SetupStep => !!step);
   const needs = steps.filter(step => step.tone === 'warn').length;
   return { steps, needs, verdict: needs ? `${plural(needs, 'thing needs', 'things need')} you` : steps.some(step => step.tone === 'idle') ? 'Running; some details not reported' : 'Everything is running' };
 }
