@@ -59,7 +59,7 @@ function ExportImport({ entity }: { entity: Entity }) {
   const label = entity === 'award' ? 'Awards' : 'Opportunities';
   return <section className="zoer-history" aria-labelledby={`settings-${entity}`}>
     <h2 id={`settings-${entity}`}>{label}</h2>
-    <p>{count.isPending ? 'Counting…' : count.error ? `Could not count saved ${many}: ${(count.error as Error).message}` : `${rows!.toLocaleString()} ${onlyStarred ? 'shortlisted ' : ''}BC Bid ${rows === 1 ? one : many}${onlyStarred ? ` of ${count.data!.total.toLocaleString()} saved` : ' saved'}.`} {EXPORT_CONTENTS[entity]}</p>
+    <p>{count.isPending ? 'Counting…' : count.error ? `Could not count saved ${many}: ${(count.error as Error).message}` : `${rows!.toLocaleString()} ${onlyStarred ? 'shortlisted ' : ''}BC Bid ${one} row${rows === 1 ? '' : 's'}${onlyStarred ? ` of ${count.data!.total.toLocaleString()} saved` : ' saved'} (every saved row, repeat listings included, so this can exceed the count elsewhere).`} {EXPORT_CONTENTS[entity]}</p>
     <div className="zoer-record-tools">
       <Btn variant="secondary" disabled={!rows || exporting} onClick={() => void exportRows('csv')}>Download CSV</Btn>
       <Btn variant="secondary" disabled={!rows || exporting} onClick={() => void exportRows('json')}>Download JSON</Btn>
