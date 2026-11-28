@@ -28,7 +28,7 @@ export function AiReview() {
   const [recordId, setRecordId] = usePluginQuery('record');
   const [state, refresh] = useCatalogState(setError);
   const [reviewModel, setReviewModel] = useState<any>(null);
-  const { writes, ai } = useCapabilities();
+  const { writes, ai, collection } = useCapabilities();
   const [legacyModels, setLegacyModels] = useState<any[]>([]);
   const modelId = reviewModel?.modelProfileId ?? '';
   useEffect(() => {
@@ -79,7 +79,8 @@ export function AiReview() {
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {state.batches.some((batch: any) => batch.kind === 'review') ? <BatchHistory title="Review history" kind="review" batches={state.batches} tasks={state.tasks} modelId={modelId} onChanged={refresh} onError={setError}
       details={batch => <RunResults batch={batch} prompts={state.prompts} onOpen={setRecordId} />} />
-      : <p className="research-note">No AI reviews run yet. Past runs are listed in <a href={pluginHref(RUNS)} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); navigatePlugin(RUNS); } }}>Operations › Runs</a>.</p>}
+      // Only a read that answered can say there are none; Operations › Runs is linked where this host shows it (collection).
+      : state.loaded && !state.loadError ? <p className="research-note">No AI reviews run yet.{collection && <> Past runs are listed in <a href={pluginHref(RUNS)} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); navigatePlugin(RUNS); } }}>Operations › Runs</a>.</>}</p> : null}
     {prompt && <ReviewResults prompt={prompt} revision={revision} onOpen={setRecordId} />}
     </>}
     {writes && editing && <PromptEditor key={editing === 'new' ? 'new' : promptId} prompt={editing === 'new' ? null : prompt} testIds={[...selection]} runner={runner} includeDocuments={documents}

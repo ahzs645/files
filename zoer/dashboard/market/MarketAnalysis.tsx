@@ -273,7 +273,7 @@ export function MarketAnalysis() {
     <header className="market-header"><div>
       <h1 className="market-title">Market</h1>
       <ViewPicker value={view} onChange={setView} />
-      <p><span className="market-scope-label">{groupOf(view)} · {label} · </span>{total.data && total.current ? <>{counted(total.data.total, 'award')}{!!total.data.repeats && <span title="Saved more than once by the source and not yet marked by catalog cleanup; the Awards table still lists every saved row."> ({counted(total.data.repeats, 'repeated award')} counted once)</span>}</> : 'Counting awards…'}{query.stale ? ' · Updating…' : ''}</p>
+      <p><span className="market-scope-label">{groupOf(view)} · {label} · </span>{total.data && total.current ? <>{counted(total.data.total, 'award')}{!!total.data.repeats && <span title="Saved more than once by the source and not yet marked by catalog cleanup; the Awards table still lists every saved row."> ({counted(total.data.repeats, 'repeated award')} counted once)</span>}</> : total.error ? <span role="status">Award count could not be read ({total.error}); Refresh tries again.</span> : 'Counting awards…'}{query.stale ? ' · Updating…' : ''}</p>
     </div><div className="market-actions">
       {/* Labels stay visible at every width: icon-only squares had no meaning on touch, where tooltips never show. */}
       <Btn variant="secondary" size="sm" className="relative" aria-label={active ? `Filters, ${active} active` : 'Filters'} aria-haspopup="dialog" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" /><span className="market-action-label">Filters</span><CountBadge count={active} /></Btn>

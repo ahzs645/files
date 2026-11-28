@@ -8,7 +8,7 @@ import { useCapabilities } from './capabilities';
 import { readAll, useAction } from './backend';
 import { host } from './bridge';
 import { downloadRecords, EXPORT_CONTENTS } from './export';
-import { pluginHref } from './navigation';
+import { PluginLink } from './procurement/links';
 import './scraper.css';
 
 type Entity = 'award' | 'opportunity';
@@ -83,6 +83,6 @@ export function SettingsPage() {
     {setOnlyStarred && <label className="bid-settings-filter"><input type="checkbox" checked={!!onlyStarred} onChange={event => setOnlyStarred(event.target.checked)} /> Shortlisted only</label>}
     <ExportImport entity="opportunity" />
     <ExportImport entity="award" />
-    {collection && <p className="rw-muted">CanadaBuys CSV files are imported from <a className="procurement-link" href={pluginHref('/sources')}>Operations › Sources</a>.</p>}
+    {collection && <p className="rw-muted">CanadaBuys CSV files are imported from <PluginLink to="/sources">Operations › Sources</PluginLink>.</p>}
   </div>;
 }

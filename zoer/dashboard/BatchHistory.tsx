@@ -26,7 +26,7 @@ export function useCatalogState(onError: (message: string) => void) {
   useEffect(() => { if (state.error) onError(state.error.message); }, [state.error, onError]);
   const refresh = async () => { try { await state.refetch({ throwOnError: true }); } catch (e) { onError((e as Error).message); } };
   // Keep cached batches visible when switching Download / Files / History.
-  return [{ ...(state.data ?? { prompts: [], batches: [], tasks: [], verifications: [] as VerificationTask[] }), loadError: state.error?.message }, refresh] as const;
+  return [{ ...(state.data ?? { prompts: [], batches: [], tasks: [], verifications: [] as VerificationTask[] }), loaded: state.data !== undefined, loadError: state.error?.message }, refresh] as const;
 }
 
 const VERIFICATION_STATUS: Record<VerificationRun['status'], string> = { running: 'Checking', failed: 'Differs or failed', stopped: 'Stopped', succeeded: 'Matches' };

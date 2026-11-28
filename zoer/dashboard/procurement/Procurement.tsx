@@ -1,9 +1,9 @@
-import { Hint } from '../host-ui';
+import { EmptyState, Hint } from '../host-ui';
 import { MetadataFilters } from './MetadataFilters';
 import { METADATA_FILTER_KEYS } from './metadata-filter';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useQuery as useCachedQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bookmark, Search, SlidersHorizontal, Star } from 'lucide-react';
+import { ArrowLeft, Bookmark, Building2, Search, SlidersHorizontal, Star } from 'lucide-react';
 import { SUGGESTED_ACTIONS } from '@bcbid/procurement-core';
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import { LayoutToggle, NoticeTable, TABLE_FILTER_PARAMS, TableColumnsButton, useTableColumns } from '../BidGrid';
@@ -297,7 +297,7 @@ export function Procurement() {
     {view === 'compare' ? !compareReady(compareTargets) ? <CompareEmpty selected={compareTargets.length} />
         : <><div className="pc-back-row"><Btn size="sm" variant="ghost" icon={<ArrowLeft aria-hidden="true" className="h-4 w-4" />} onClick={() => patchPluginQuery({ view: '', ids: '' }, 'push')}>Back to Browse</Btn></div><Compare ids={compareTargets} profileVersionId={profile} profileText={profileText} workspace={available} onOpen={openNotice} onEvidence={setEvidenceIds} /></>
       : view === 'matrix' ? !available ? <p className="rw-upgrade">{workspace.isPending ? 'Checking the review workspace…' : workspace.data?.reason ?? 'Update Zoer to use the review workspace.'}</p>
-        : !profile ? <ChooseProfile picker />
+        : !profile ? active ? <div className="rw-profile-prompt"><EmptyState icon={<Building2 aria-hidden="true" />} title="This link sets no company profile" description="The fit matrix needs a profile. Show it with the profile chosen in “Assess as” instead." action={<Btn size="sm" variant="primary" onClick={() => patchPluginQuery({ profile: '' })}>Use {profileLabel(active)}</Btn>} /></div> : <ChooseProfile picker />
         : review.unavailable ? <p className="rw-upgrade">{review.unavailable}</p>
         : <FitMatrix base={{ sql: matrixWhere!.where, parameters: matrixWhere!.countParameters }} profileVersionId={profile} profileText={profileText} params={params} ignored={ignored} />
       : <>
