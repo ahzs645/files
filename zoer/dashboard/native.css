@@ -22,7 +22,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 .zoer-record-tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; font-size:13px; color:var(--color-text-secondary); }
 .zoer-history { padding:12px 14px; margin:12px 0; border:1px solid var(--color-border-default); border-radius:8px; background:var(--color-bg-surface); }
 .zoer-history h2 { font-size:14px; font-weight:600; color:var(--color-text-primary); }
-.zoer-history p { margin-top:6px; font-size:13px; line-height:1.5; color:var(--color-text-secondary); }
+.zoer-history p, .zoer-history .pc-missing-line { margin-top:6px; font-size:13px; line-height:1.5; color:var(--color-text-secondary); }
 .zoer-history details > summary { cursor:pointer; margin-top:8px; font-size:12px; color:var(--color-text-secondary); }
 .zoer-history details > p { margin-top:6px; }
 .zoer-history > .zoer-record-tools { margin:10px 0 0; }
@@ -162,7 +162,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--color-accent); 
 /* Settings section: export/import cards for both catalogs. */
 .bid-settings{display:grid;gap:12px}.bid-settings .zoer-history{margin:0}
 
-.research-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:12px;margin:16px 0}.research-metrics>div{border:1px solid var(--color-border-default);border-radius:10px;padding:12px}.research-metrics dt{font-size:12px;color:var(--color-text-secondary)}.research-metrics dd{margin:6px 0 0;font-size:22px;font-weight:600}.research-grow{flex:1;min-width:180px}.research-file-list{display:flex;flex-direction:column;gap:8px}.research-file-list article{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--color-border-default);padding:12px 0;min-width:0}.research-file-info{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}.research-file-warning{font-size:12px;color:var(--color-orange);margin:0;white-space:normal}.research-task{font-size:13px;overflow-wrap:anywhere}.research-task strong{font-weight:600}@media(max-width:640px){.research-file-list article{align-items:stretch;flex-direction:column}.research-grow{min-width:0;width:100%}}
+.research-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:12px;margin:16px 0}.research-metrics>div{border:1px solid var(--color-border-default);border-radius:10px;padding:12px}.research-metrics dt{font-size:12px;color:var(--color-text-secondary)}.research-metrics dd{margin:6px 0 0;font-size:22px;font-weight:600}.research-grow{flex:1;min-width:180px}.research-file-list{display:flex;flex-direction:column;gap:8px}.research-file-list article{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--color-border-default);padding:12px 0;min-width:0}.research-file-info{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}.research-file-warning{font-size:12px;color:var(--color-orange);margin:0;white-space:normal}.research-task{font-size:13px;overflow-wrap:anywhere}.research-task strong{font-weight:600}@media(max-width:640px){.research-file-list article{align-items:stretch;flex-direction:column}.research-grow{min-width:0;width:100%;flex:1 1 100%}}
 
 .research-file-list{max-height:36rem;overflow-y:auto;overscroll-behavior:contain}.research-progress p{overflow-wrap:anywhere}
 /* Review prompt editor and results */

@@ -31,6 +31,8 @@ function HistoryPage() {
         Back to Scraper
       </Link>}
 
+      {/* In the plugin this is Operations › Runs › BC Bid runs; the run-list name is its heading. */}
+      {plugin && <h1 className="text-lg font-semibold text-text-primary">BC Bid runs</h1>}
       {!plugin && <div>
         <h1 className="text-2xl font-bold text-text-primary">Run History</h1>
         <p className="text-sm text-text-secondary mt-1">

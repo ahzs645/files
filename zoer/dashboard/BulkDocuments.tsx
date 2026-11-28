@@ -113,7 +113,7 @@ export function BulkDocuments({running,activeBatch,onStarted,downloads=[],progre
     {active&&!pace&&progress}
     {loading?<p role="status">Counting attachments…</p>:preview&&<>
       <p><strong>{count(preview.saved)} of {plural(preview.files,'linked file')} saved</strong> · {count(preview.fullySaved)} of {count(preview.withLinks)} opportunities with links complete</p>
-      {parts.main.length+parts.more.length>0&&<p aria-label="Files still missing">{plural(preview.files-preview.saved,'file')} missing: {[...parts.main].join(' · ') || 'none to download now'}{parts.more.length>0&&<> <details className="pc-inline-more"><summary data-zoer-disclosure="">More</summary>{parts.more.join(' · ')}</details></>}</p>}
+      {parts.main.length+parts.more.length>0&&<div className="pc-missing-line" role="group" aria-label="Files still missing">{plural(preview.files-preview.saved,'file')} missing: {[...parts.main].join(' · ') || 'none to download now'}{parts.more.length>0&&<> <details className="pc-inline-more"><summary data-zoer-disclosure="">More reasons</summary>{parts.more.join(' · ')}</details></>}</div>}
       {preview.nextRetryAt!==null&&<p>Next file eligible for retry {when(preview.nextRetryAt)}.</p>}
       <p className="research-note">{PACING_TEXT}</p>
       {(preview.waitingForBrowser>0||preview.retryDue+preview.retryScheduled+preview.skipped+preview.exhausted>0)&&<div className="procurement-actions">
