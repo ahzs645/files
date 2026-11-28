@@ -20,7 +20,7 @@ import { needsYou } from './overview-data';
  * needs the person without importing the page). Status.tsx re-exports the older hooks for other pages.
  */
 
-/** The document gap of open BC Bid notices (one cached read; heavy, so refreshed every two minutes). */
+/** The document gap of open BC Bid opportunities (one cached read; heavy, so refreshed every two minutes). */
 export function useDocumentGap(enabled = true) {
   const schedules = useSchedules(), { data: browsers } = useScheduleBrowsers(enabled);
   const downloads = findSchedule(schedules.data, 'documents.download.missing');

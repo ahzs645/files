@@ -15,12 +15,12 @@ describe('plain-language source errors', () => {
   });
   it('explains portal and CanadaBuys codes in words, with the HTTP status when there is one', () => {
     const http = httpFailure('burnaby.bidsandtenders.ca', 503);
-    expect(sourceErrorText({ code: http.code, message: http.message })).toEqual({ text: 'The site did not respond normally (HTTP 503). Notices saved earlier are kept; try again later.',
+    expect(sourceErrorText({ code: http.code, message: http.message })).toEqual({ text: 'The site did not respond normally (HTTP 503). Opportunities saved earlier are kept; try again later.',
       detail: 'source_http_error: burnaby.bidsandtenders.ca returned HTTP 503. Saved records are kept.' });
     expect(sourceErrorText({ code: 'source_forbidden', message: 'x returned HTTP 403.' })!.text).toMatch(/refused/);
     expect(sourceErrorText({ code: 'source_changed', message: 'The CanadaBuys snapshot changed…' })!.text).toMatch(/new daily file/);
     expect(sourceErrorText({ code: 'source_records_excluded', message: '1 notice(s) exceed the 250 kB record limit and were not saved.' })!.text).toBe('1 notice was too large to save (over 250 kB). The rest were saved.');
-    expect(sourceErrorText({ code: 'source_incomplete', message: 'The portal reported 400 open notices; 7 were saved.' })!.text).toBe('The portal reports 400 open notices but listed 7; those were saved.');
+    expect(sourceErrorText({ code: 'source_incomplete', message: 'The portal reported 400 open notices; 7 were saved.' })!.text).toBe('The portal reports 400 open opportunities but listed 7; those were saved.');
     expect(sourceErrorText({ code: 'network_budget', message: 'Network request budget exhausted.' })!.text).toMatch(/request allowance/);
   });
   it('never invents a cause: unknown codes show the source message, and no error is null', () => {
@@ -31,13 +31,13 @@ describe('plain-language source errors', () => {
   });
   it('errors that had no code of their own get a plain sentence; the raw text stays in detail', () => {
     expect(sourceErrorText({ code: 'portal_failed', message: 'Unexpected token < in JSON at position 0' })).toEqual({
-      text: 'This portal could not be collected because of an unexpected error. Notices saved earlier are kept; try again later.',
+      text: 'This portal could not be collected because of an unexpected error. Opportunities saved earlier are kept; try again later.',
       detail: 'portal_failed: Unexpected token < in JSON at position 0' });
     expect(sourceErrorText({ code: 'collection_failed', message: 'boom' })!.text).toMatch(/^The collection stopped because of an unexpected error\./);
   });
   it('portal rows carry the sentence for display and the raw text for the tooltip', () => {
     const state = readConnectorCollection({ version: 1, sourceId: 'bidsandtenders', status: 'incomplete', portals: { burnaby: { status: 'failed', error: { code: 'source_http_error', message: 'burnaby.bidsandtenders.ca returned HTTP 503. Saved records are kept.' } } } }, 'bidsandtenders');
     const row = portalRows(BIDSANDTENDERS_PORTALS, state).find(item => item.id === 'burnaby')!;
-    expect(row).toMatchObject({ errorText: 'The site did not respond normally (HTTP 503). Notices saved earlier are kept; try again later.', error: 'source_http_error: burnaby.bidsandtenders.ca returned HTTP 503. Saved records are kept.' });
+    expect(row).toMatchObject({ errorText: 'The site did not respond normally (HTTP 503). Opportunities saved earlier are kept; try again later.', error: 'source_http_error: burnaby.bidsandtenders.ca returned HTTP 503. Saved records are kept.' });
   });
 });

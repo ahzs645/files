@@ -101,10 +101,10 @@ describe('collection runs in plain words (runs.recent, S1)', () => {
   it('says what a resumable run is doing and what can be done about it', () => {
     expect(runState(run({ resumable: { state: 'running', progress: { phase: 'bids&tenders (BC): City of Burnaby', done: 3, total: 25 } } }))).toMatchObject({ text: 'Collecting · bids&tenders (BC): City of Burnaby · 3 of 25', tone: 'busy', canPause: true, canResume: false });
     expect(runState(run({ status: 'retry_scheduled', resumable: { state: 'waiting', nextStepAt: '2026-10-04T10:05:00Z', lastError: { code: 'source_rate_limited', message: 'Burnaby search returned HTTP 429.' } } }))).toMatchObject({ text: expect.stringMatching(/^Waiting to retry at /), canPause: true, detail: expect.stringContaining('HTTP 429') });
-    expect(runState(run({ status: 'waiting_for_user', resumable: { state: 'paused' } }))).toMatchObject({ text: 'Paused', canResume: true, canPause: false });
-    expect(runState(run({ status: 'waiting_for_user', resumable: { state: 'resume-needed' } }))).toMatchObject({ text: 'Resume needed', tone: 'warn', canResume: true });
-    expect(runState(run({ resumable: { state: 'paused-for-update' } }))).toMatchObject({ text: 'Paused for a Zoer update', canResume: false });
-    expect(runState(run({ status: 'succeeded' }))).toMatchObject({ text: 'Finished', canCancel: false });
+    expect(runState(run({ status: 'waiting_for_user', resumable: { state: 'paused' } }))).toMatchObject({ text: 'Interrupted', canResume: true, canPause: false });
+    expect(runState(run({ status: 'waiting_for_user', resumable: { state: 'resume-needed' } }))).toMatchObject({ text: 'Interrupted', tone: 'warn', canResume: true });
+    expect(runState(run({ resumable: { state: 'paused-for-update' } }))).toMatchObject({ text: 'Interrupted', canResume: false });
+    expect(runState(run({ status: 'succeeded' }))).toMatchObject({ text: 'Done', canCancel: false });
     expect(runState(run({ status: 'failed', error: 'Every source failed' }))).toMatchObject({ text: 'Failed', detail: 'Every source failed' });
   });
   it('a live run of the source (or of all sources) decides the source status over its saved state', () => {
@@ -113,7 +113,7 @@ describe('collection runs in plain words (runs.recent, S1)', () => {
     expect(liveRunFor(runs, 'browser-sites')).toBeUndefined();
     const stale = readConnectorCollection({ version: 1, status: 'running', leaseUntil: '2026-10-04T09:00:00Z', portals: {} }, 'bidsandtenders');
     expect(connectorStatus(stale, Date.parse('2026-10-04T10:00:00Z')).text).toBe('Interrupted; the next run continues');
-    expect(connectorStatus(stale, Date.parse('2026-10-04T10:00:00Z'), runs[1]).text).toBe('Paused');
+    expect(connectorStatus(stale, Date.parse('2026-10-04T10:00:00Z'), runs[1]).text).toBe('Interrupted');
   });
 });
 
@@ -176,13 +176,13 @@ describe('Download all documents (zip export bundle, S2)', () => {
 
   it('zips the saved files with the notices as CSV and a manifest, downloads it and leaves nothing behind', async () => {
     const zoer = bundleHost([{ id: 'd1', recordId: 'opportunity:a', name: 'Spec.pdf', bytes: 1000 }]);
-    const result = await downloadDocumentBundle(zoer.host, ['opportunity:a', 'opportunity:b'], { scope: 'ticked notices', now: new Date('2026-10-04T12:00:00Z') });
+    const result = await downloadDocumentBundle(zoer.host, ['opportunity:a', 'opportunity:b'], { scope: 'ticked opportunities', now: new Date('2026-10-04T12:00:00Z') });
     expect(result).toEqual({ name: 'procurement-documents-2-notices-2026-10-04.zip', documents: 1, bytes: 4096, withoutFiles: 1 });
     const archive = zoer.calls.find(([method]) => method === 'archive.create')![1];
     expect(archive).toMatchObject({ format: 'zip', target: { catalog: { name: 'procurement-documents-2-notices-2026-10-04.zip' } } });
     expect(archive.sources).toEqual([{ name: 'opportunities.csv', catalogFileId: 'tmp-1' }, { name: 'opportunities.manifest.json', catalogFileId: 'tmp-2' }, { name: 'a/Spec.pdf', catalogFileId: 'd1' }]);
     const manifest = JSON.parse(await (zoer.calls.filter(([method]) => method === 'catalog.files.put')[1][1].file as Blob).text());
-    expect(manifest).toMatchObject({ file: 'opportunities.csv', scope: 'ticked notices', rowsExported: 2, totalMatching: 2, truncated: false });
+    expect(manifest).toMatchObject({ file: 'opportunities.csv', scope: 'ticked opportunities', rowsExported: 2, totalMatching: 2, truncated: false });
     expect(manifest.notes.join(' ')).toContain('1 notice has no saved documents');
     expect(zoer.calls.find(([method]) => method === 'catalog.download')![1]).toEqual({ id: 'zip-1', name: 'procurement-documents-2-notices-2026-10-04.zip' });
     expect(zoer.calls.filter(([method]) => method === 'catalog.files.delete').map(([, input]) => input.id)).toEqual(['tmp-1', 'tmp-2', 'zip-1']);
@@ -195,7 +195,7 @@ describe('Download all documents (zip export bundle, S2)', () => {
     const none = bundleHost([]);
     await expect(downloadDocumentBundle(none.host, ['opportunity:a'], { scope: 'one notice' })).rejects.toThrow(/has saved documents yet/);
     const big = bundleHost([{ id: 'd1', recordId: 'opportunity:a', name: 'Plans.zip', bytes: BUNDLE_MAX_BYTES + 1 }]);
-    await expect(downloadDocumentBundle(big.host, ['opportunity:a'], { scope: 'one notice' })).rejects.toThrow(/Choose fewer notices/);
+    await expect(downloadDocumentBundle(big.host, ['opportunity:a'], { scope: 'one notice' })).rejects.toThrow(/Choose fewer opportunities/);
     for (const zoer of [none, big]) expect(zoer.calls.some(([method]) => method === 'catalog.files.put')).toBe(false);
   });
 });

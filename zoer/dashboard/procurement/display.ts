@@ -11,7 +11,7 @@ export async function sql(statement: string, parameters: (string | number)[] = [
 }
 
 /**
- * Saved notices and awards per source. `count` is one row per notice/award (duplicates.ts canonical rule: current
+ * Saved opportunities and awards per source. `count` is one row per notice/award (duplicates.ts canonical rule: current
  * CanadaBuys amendment, no merged rows or repeated awards); `saved` counts every stored row; `linked` counts a
  * source's copies of BC Bid notices, which all-source totals subtract so a notice is counted once.
  */

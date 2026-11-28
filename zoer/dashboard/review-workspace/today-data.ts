@@ -18,7 +18,7 @@ const MAX_PURSUED = 150;
 /** Actions that save opportunity records and their `record_history` rows. */
 export const COLLECT_ACTIONS = ['scrape.full', 'scrape.sample', 'listing.capture', 'detail.capture', 'procurement.collect', 'opportunities.import'];
 
-/** Open notices (all sources unless one is chosen) closing today through `days` days ahead: pursued first, then shortlisted, then soonest. */
+/** Open opportunities (all sources unless one is chosen) closing today through `days` days ahead: pursued first, then shortlisted, then soonest. */
 export async function readClosingSoon(source: string, asOf: number, pursued: string[], days = SOON_DAYS) {
   // Same open population as Home's tiles and "Closing later" (hidden "not relevant" notices left out).
   const scope = and(sourceSql(source), openSql(asOf, '', { crossSource: 'exclude', source }), { sql: `${r.id} NOT IN (${HIDDEN_IDS_SQL})`, parameters: [] }, deadlineWindowSql(days, asOf)), ids = pursued.slice(0, MAX_PURSUED);

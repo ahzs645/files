@@ -43,7 +43,7 @@ function FitMatrix({ scope, filter, profile }: { scope: ReviewScope; filter: Fra
     <Loadable query={matrix} what="the fit matrix">{m => {
       const lanes = unplacedLanes(scope, m), unplaced = lanes.reduce((sum, lane) => sum + lane.count, 0);
       const assessed = KNOWN_RELEVANCE.reduce((sum, relevance) => sum + KNOWN_READINESS.reduce((s, readiness) => s + m.count(relevance, readiness), 0), 0) + unplaced - m.notAssessed;
-      if (assessed === 0) return <div className="rw-empty"><p>No assessments yet — triage or extract notices in Opportunities.</p></div>;
+      if (assessed === 0) return <div className="rw-empty"><p>No assessments yet — triage or extract opportunities in Opportunities.</p></div>;
       return <>
         <div className="rw-matrix-wrap"><table className="rw-matrix">
           <caption className="sr-only">Notices by work relevance (columns) and qualification readiness (rows)</caption>
@@ -85,7 +85,7 @@ function ReviewCoverage({ scope, filter }: { scope: ReviewScope; filter: Fragmen
   </Panel>;
 }
 
-/** Open notices waiting at each step, as one compact list (Home owns the full queue view; pipeline runs are on Operations › Overview and tasks on Pursuits). */
+/** Open opportunities waiting at each step, as one compact list (Home owns the full queue view; pipeline runs are on Operations › Overview and tasks on Pursuits). */
 function Bottlenecks({ source, profile, asOf }: { source: string; profile: string | null; asOf: number }) {
   const data = useQuery({ queryKey: [...REVIEW_KEY, 'insights', 'bottlenecks', source, profile, asOf], queryFn: () => readBottlenecks(source, profile, asOf), refetchInterval: 60_000 });
   const queues = data.data ? visibleQueues(data.data.queues as readonly (readonly [QueueId, number | null])[]) : [];

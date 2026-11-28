@@ -34,7 +34,7 @@ export const PROCUREMENT_SOURCE_ADAPTERS: ProcurementSourceAdapter[] = [
       auth: { status: 'unavailable', method: 'Public CSV requires no credentials; HTTP 403 is reported without bypass' },
     } },
   { id: 'bidsandtenders', label: 'bids&tenders (BC)',
-    coverage: `Open notices listed by ${BIDSANDTENDERS_PORTALS.length} BC public buyers on bids&tenders, one portal at a time; a failed portal does not stop the others. Closed and awarded notices are not listed; absence is not proof of closure. Saved records are retained.`, capabilities: {
+    coverage: `Open opportunities listed by ${BIDSANDTENDERS_PORTALS.length} BC public buyers on bids&tenders, one portal at a time; a failed portal does not stop the others. Closed and awarded notices are not listed; absence is not proof of closure. Saved records are retained.`, capabilities: {
       listing: { status: 'available', method: 'procurement.collect: each portal\'s open-notice search (homepage session, then form search), paged' },
       detail: { status: 'partial', method: 'Public notice page per notice (up to 30 per portal per run): type, classification, categories, question deadline, zoned published date. Buyer contacts and document lists need a vendor login and are not read' },
       attachments: { status: 'unavailable', method: 'Document and addenda names and links from each notice page, marked as needing a sign-in; files need a free supplier login on the portal and are not downloaded' },
@@ -50,7 +50,7 @@ export const PROCUREMENT_SOURCE_ADAPTERS: ProcurementSourceAdapter[] = [
       auth: { status: 'unavailable', method: 'Public pages only; no login, cookies or browser checks' },
     } },
   { id: 'browser-sites', label: 'BC sites (your browser)',
-    coverage: `The bids page of ${BROWSER_SITES.length} BC sites that block plain automated requests (${BROWSER_SITES.map(site => site.label).join(', ')}), loaded in your Zoer browser, one page per site, spaced as each site's robots.txt asks. A site that shows a browser check waits for you; the others still run. Page layouts are not confirmed yet, so check saved notices against the site. Absence is not proof of closure. Saved records are retained.`, capabilities: {
+    coverage: `The bids page of ${BROWSER_SITES.length} BC sites that block plain automated requests (${BROWSER_SITES.map(site => site.label).join(', ')}), loaded in your Zoer browser, one page per site, spaced as each site's robots.txt asks. A site that shows a browser check waits for you; the others still run. Page layouts are not confirmed yet, so check saved opportunities against the site. Absence is not proof of closure. Saved records are retained.`, capabilities: {
       listing: { status: 'partial', method: 'procurement.collect.browser: each site\'s bids page as your Zoer browser shows it (one page; later pages are not read). Read as a table with title and closing columns, else as one block per notice' },
       detail: { status: 'unavailable', method: 'Notice pages are not read; each notice links to its page on the site. Closing times are exact only where the page states the zone' },
       attachments: { status: 'unavailable', method: 'Documents stay on the site; files are not downloaded' },

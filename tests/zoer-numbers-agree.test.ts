@@ -46,7 +46,7 @@ describe('document completeness: Status, Sources and Home say what Documents say
     const gap = computeDocumentGap({ open: 689, withLinks: 466 }, links, docs, [], queue);
     expect(gap).toMatchObject({ withLinks: 466, fullySaved: 367, links: 3359, saved: 2371, never: 451, waiting: 1, failed: 536, missingNotices: 99 });
     expect(documentsStep(gap)).toMatchObject({ status: '367 of 466 have every file' });
-    expect(documentsStep(gap).detail).toMatch(/^367 of 466 open BC Bid notices with attachment links have every file saved\. 988 linked files missing on 99 notices: 451 never tried, 528 ready to retry, 3 scheduled for retry, 1 waiting for a browser check, 3 skipped, 1 unavailable, 1 retry limit reached\./);
+    expect(documentsStep(gap).detail).toMatch(/^367 of 466 open BC Bid opportunities with attachment links have every file saved\. 988 linked files missing on 99 opportunities: 451 never tried, 528 ready to retry, 3 scheduled for retry, 1 waiting for a browser check, 3 skipped, 1 unavailable, 1 retry limit reached\./);
     // The per-notice list stays local and is not hidden by the host counts.
     expect(gap.notices.map(notice => notice.id)).toEqual(['o1']);
   });
@@ -59,7 +59,7 @@ describe('document completeness: Status, Sources and Home say what Documents say
   it('states browser-check waits in files', () => {
     const gap = computeDocumentGap({ open: 1, withLinks: 1 }, links, [], [{ recordId: 'o1', url: 'https://example.com/b' }]);
     const step = browserCheckStep({ ...gap, checkPendingSince: '2026-11-27T21:23:00Z' })!;
-    expect(step.detail).toMatch(/ so 2 missing files of open notices wait \(1 file of an open notice hit the check\)\./);
+    expect(step.detail).toMatch(/ so 2 missing files of open opportunities wait \(1 file of an open opportunity hit the check\)\./);
     expect(gap.reasons).toEqual([{ text: expect.stringMatching(/browser check/), count: 1 }]);
   });
 });

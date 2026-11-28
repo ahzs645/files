@@ -8,7 +8,7 @@ import { normalizeDraft } from './profile-types';
  * Opportunities "Exclude words" filter) and the profile's internal min/max contract value.
  *
  * Values come only from the current extraction's stated buyer budget / estimated value (reviewer-rejected facts
- * dropped, corrections used). Saved notices rarely carry a value, so an unknown value, or one in another currency,
+ * dropped, corrections used). Saved opportunities rarely carry a value, so an unknown value, or one in another currency,
  * always passes; a notice is filtered only when every comparable stated amount is outside the range.
  */
 export interface ProfileFilterRules { terms: string[]; min: number | null; max: number | null; currency: string | null }

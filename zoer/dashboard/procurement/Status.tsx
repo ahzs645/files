@@ -32,15 +32,15 @@ export { useDocumentGap, useLastCollections, useSetupStatus } from './overview-h
 
 const TONE: Record<string, BadgeTone> = { good: 'success', warn: 'warning', busy: 'running', idle: 'neutral' };
 
-/** Starts the one run a "Needs you" row offers: download the missing files of open BC Bid notices, or capture missing details. */
+/** Starts the one run a "Needs you" row offers: download the missing files of open BC Bid opportunities, or capture missing details. */
 function useRunNow() {
   const client = useQueryClient(), [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState('');
   const run = async (key: StepAction) => {
     setBusy(key); setError(''); setMessage('');
     try {
       await assertDocumentBrowserIdle(host, key === 'download-missing' ? 'download' : 'capture');
-      if (key === 'download-missing') { await host('action', { actionId: 'documents.download.queue', input: { scope: 'open' } }); setMessage('Downloading the missing files of open BC Bid notices, soonest closing first. It shows under Running now.'); }
-      else { await host('action', { actionId: 'scrape.details', input: { missing: { limit: 50 } } }); setMessage('Capturing missing or incomplete details for up to 50 open BC Bid notices. It shows under Running now.'); }
+      if (key === 'download-missing') { await host('action', { actionId: 'documents.download.queue', input: { scope: 'open' } }); setMessage('Downloading the missing files of open BC Bid opportunities, soonest closing first. It shows under Running now.'); }
+      else { await host('action', { actionId: 'scrape.details', input: { missing: { limit: 50 } } }); setMessage('Capturing missing or incomplete details for up to 50 open BC Bid opportunities. It shows under Running now.'); }
       await client.invalidateQueries({ queryKey: RUNS_KEY }); await client.invalidateQueries({ queryKey: ['catalog', 'procurement-workflow-runs'] });
     } catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(''); }
   };

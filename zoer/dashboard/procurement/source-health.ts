@@ -79,13 +79,13 @@ export function bcSourceHealth(runs: readonly BcBidCollectionRun[] | undefined, 
   const scope = latest ? collectionScope(latest) : current?.completed ? BC_COLLECTION_SCOPES['scrape.full'] : null;
   const summary = (tone: RunTone, status: string) => ({ tone, status, scope, lastSuccess, currentCompletedAt });
   if (active) { const state = bcLiveState(active); return summary(state.tone, state.text); }
-  if (latest?.status === 'failed') return summary('warn', 'Last collection failed');
+  if (latest?.status === 'failed') return summary('warn', 'Needs attention · last collection failed');
   if (latest?.status === 'outcome_unknown') return summary('warn', 'Last outcome unknown');
   if (checkpointIssue) return summary('warn', 'Needs attention');
-  if (latest?.status === 'cancelled') return summary('idle', 'Last collection cancelled');
+  if (latest?.status === 'cancelled') return summary('idle', 'Stopped');
   if (!runs) return summary('idle', 'Status unknown');
-  if (latest?.status === 'succeeded') return summary('good', 'Last collection succeeded');
-  if (current?.completed) return summary('good', 'Completed scope recorded');
+  if (latest?.status === 'succeeded') return summary('good', 'Collected');
+  if (current?.completed) return summary('good', 'Collected');
   return summary('idle', 'No recent collection');
 }
 

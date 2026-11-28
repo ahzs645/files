@@ -24,7 +24,7 @@ describe('BC Bid collection outcome and scope', () => {
 
  it('keeps an old successful scrape dated without claiming the source is up to date', () => {
   expect(bcSourceHealth([run()], current())).toMatchObject({
-   status: 'Last collection succeeded', scope: 'Current opportunities (full scrape)',
+   status: 'Collected', scope: 'Current opportunities (full scrape)',
    lastSuccess: { at: old, scope: 'Current opportunities (full scrape)' }, currentCompletedAt: old,
   });
  });
@@ -41,14 +41,14 @@ describe('BC Bid collection outcome and scope', () => {
  ])('does not let %s establish or advance full current coverage', (actionId, input, scope) => {
   const latest = run({ actionId, input, runId: 'run-2', createdAt: recent, finishedAt: recent });
   const withoutFull = bcSourceHealth([latest], bcCheckpointHealth('checkpoint:full', null));
-  expect(withoutFull).toMatchObject({ status: 'Last collection succeeded', scope, lastSuccess: { at: recent, scope }, currentCompletedAt: null });
+  expect(withoutFull).toMatchObject({ status: 'Collected', scope, lastSuccess: { at: recent, scope }, currentCompletedAt: null });
   // Even an older full run placed first in the input cannot steal the newer run's scope.
   expect(bcSourceHealth([run(), latest], current())).toMatchObject({ scope, lastSuccess: { at: recent, scope }, currentCompletedAt: old });
  });
 
  it('shows a failed latest attempt while keeping the earlier successful scope and date', () => {
   const result = bcSourceHealth([run(), run({ runId: 'run-2', actionId: 'scrape.targeted', createdAt: recent, finishedAt: recent, status: 'failed' })], current());
-  expect(result).toMatchObject({ tone: 'warn', status: 'Last collection failed', scope: 'Targeted opportunities', lastSuccess: { at: old }, currentCompletedAt: old });
+  expect(result).toMatchObject({ tone: 'warn', status: 'Needs attention · last collection failed', scope: 'Targeted opportunities', lastSuccess: { at: old }, currentCompletedAt: old });
  });
 
  it('never uses the run start or an incomplete checkpoint as a successful completion date', () => {
@@ -61,8 +61,8 @@ describe('BC Bid collection outcome and scope', () => {
  });
 
  it('uses a completed full checkpoint even when its run has fallen out of bounded recent history', () => {
-  expect(bcSourceHealth([], current())).toMatchObject({ status: 'Completed scope recorded', lastSuccess: { at: old, scope: 'Current opportunities (full scrape)' }, currentCompletedAt: old });
-  expect(bcSourceHealth([], current({ capturedAt: undefined, updatedAt: recent }))).toMatchObject({ status: 'Completed scope recorded', lastSuccess: null, currentCompletedAt: null });
+  expect(bcSourceHealth([], current())).toMatchObject({ status: 'Collected', lastSuccess: { at: old, scope: 'Current opportunities (full scrape)' }, currentCompletedAt: old });
+  expect(bcSourceHealth([], current({ capturedAt: undefined, updatedAt: recent }))).toMatchObject({ status: 'Collected', lastSuccess: null, currentCompletedAt: null });
  });
 
  it('keeps unread history distinct from an empty recent history and excludes other sources', () => {
@@ -74,11 +74,11 @@ describe('BC Bid collection outcome and scope', () => {
  it.each([
   [{ status: 'pending' }, 'Queued', 'busy'],
   [{ status: 'waiting_for_event', waitKey: 'maintenance:update' }, 'Paused for update', 'idle'],
-  [{ status: 'running', resumable: { state: 'paused' } }, 'Paused', 'idle'],
-  [{ status: 'running', resumable: { state: 'resume-needed' } }, 'Resume needed', 'warn'],
-  [{ status: 'waiting_for_user' }, 'Waiting for approval', 'warn'],
+  [{ status: 'running', resumable: { state: 'paused' } }, 'Interrupted', 'idle'],
+  [{ status: 'running', resumable: { state: 'resume-needed' } }, 'Interrupted', 'warn'],
+  [{ status: 'waiting_for_user' }, 'Waiting for you', 'warn'],
   [{ status: 'running', cancelRequestedAt: recent }, 'Stopping', 'busy'],
-  [{ status: 'cancelled' }, 'Last collection cancelled', 'idle'],
+  [{ status: 'cancelled' }, 'Stopped', 'idle'],
   [{ status: 'outcome_unknown' }, 'Last outcome unknown', 'warn'],
  ] as const)('preserves %j without calling it a successful or active scrape', (state, status, tone) => {
   const result = bcSourceHealth([run({ ...state, createdAt: recent, finishedAt: undefined })], undefined);

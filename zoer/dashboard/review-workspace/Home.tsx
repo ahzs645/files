@@ -24,7 +24,7 @@ import './review.css';
 
 /** One short line per queue for the compact attention row (QUEUE_TEXT's own description is the long form, kept for its title attribute). */
 const QUEUE_SUMMARY: Record<QueueId, string> = {
-  acquire: 'Open notices with no attachment list yet, no file saved yet, or only unreadable files.',
+  acquire: 'Open opportunities with no attachment list yet, no file saved yet, or only unreadable files.',
   requirements: 'Extracted requirements awaiting a reviewer decision.',
   eligibility: 'Unresolved eligibility or an unknown requirement match.',
   changes: 'Unacknowledged changes or decisions to reconfirm.',
@@ -154,7 +154,7 @@ function Deadlines({ source, asOf }: { source: string; asOf: number }) {
         <RouteLink to={`/procurement?notice=${encodeURIComponent(row.id)}`} className="rw-item-title">{row.title || row.id}</RouteLink>
         <Hint content={d.detail || undefined}><span className="rw-muted">{[d.text, row.buyer].filter(Boolean).join(' · ')}</span></Hint>
       </li>; })}</ul>
-      {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'open notice')}{source ? '' : ' (all sources)'} in days {SOON_DAYS + 1}–14 · all open notices by closing date →</RouteLink>}
+      {total > rows.length && <RouteLink to={reviewScopeHref({ source: source || undefined, open: true }) + '&sort=deadline'} className="rw-drill">{plural(total, 'open opportunity', 'open opportunities')}{source ? '' : ' (all sources)'} in days {SOON_DAYS + 1}–14 · all open opportunities by closing date →</RouteLink>}
     </>}</Loadable>
   </Panel>;
 }
@@ -162,7 +162,7 @@ function Deadlines({ source, asOf }: { source: string; asOf: number }) {
 function PursuitSummary() {
   const state = useQuery({ queryKey: ['catalog', 'procurement-state'], queryFn: readProcurementState }), { writes } = useCapabilities();
   return <Panel title="Pursuits" note={<RouteLink to="/pursuits">Open the board</RouteLink>}>
-    <Loadable query={state} what="pursuits">{({ pursuits }) => pursuits.length === 0 ? <p className="rw-muted">{writes ? 'No pursuits yet. Add a notice to the board from its detail view.' : 'No pursuits yet.'}</p> : <dl className="rw-stats rw-stats-inline">{PURSUIT_STAGES.filter(stage => pursuits.some(p => p.stage === stage)).map(stage => <div key={stage}><dt>{stage}</dt><dd>{n(pursuits.filter(p => p.stage === stage).length)}</dd></div>)}</dl>}</Loadable>
+    <Loadable query={state} what="pursuits">{({ pursuits }) => pursuits.length === 0 ? <p className="rw-muted">{writes ? 'No pursuits yet. Add an opportunity to the board from its detail view.' : 'No pursuits yet.'}</p> : <dl className="rw-stats rw-stats-inline">{PURSUIT_STAGES.filter(stage => pursuits.some(p => p.stage === stage)).map(stage => <div key={stage}><dt>{stage}</dt><dd>{n(pursuits.filter(p => p.stage === stage).length)}</dd></div>)}</dl>}</Loadable>
   </Panel>;
 }
 
@@ -189,7 +189,7 @@ export function Home() {
       </div>
     </header>
     {collection && <OperationsLine />}
-    {!workspace.isPending && !available && <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved notices, documents, deadlines and pursuits are still shown below.</p>}
+    {!workspace.isPending && !available && <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved opportunities, documents, deadlines and pursuits are still shown below.</p>}
     <Today source={source} asOf={asOf} />
     <div className="rw-home-kpis" data-prompt={prompting || undefined}>
       <AttentionTiles source={source} profile={profileVersionId} active={active !== null} asOf={asOf} available={available} />

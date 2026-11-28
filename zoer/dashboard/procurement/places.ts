@@ -157,7 +157,7 @@ export function placeOptions(rows: readonly PlaceRow[]): { value: string; label:
   for (const row of rows) if (row.regionalDistrict) districts.set(row.regionalDistrict, (districts.get(row.regionalDistrict) ?? 0) + Number(row.count));
   const options: { value: string; label: string; description?: string }[] = [];
   for (const [district, count] of districts) options.push({ value: `rd:${district}`, label: `${district} · ${count.toLocaleString()}`, description: 'Whole regional district' });
-  // One option per municipality (its filter matches the municipality alone), even when saved notices name its
+  // One option per municipality (its filter matches the municipality alone), even when saved opportunities name its
   // regional district two ways, e.g. portal places saved before they used official district names.
   const municipalities = new Map<string, { count: number; district: string | null }>();
   for (const row of rows) if (row.municipality) {

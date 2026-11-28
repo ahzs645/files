@@ -15,6 +15,7 @@ import { label } from './queries';
 import { hasProfileFilters, profileGate, readProfileFilterHits, readProfileRules } from './profile-filter';
 import { EXPORT_COLUMNS, PIPELINE_BATCH, chunkRuns, exportJson, readExportRows, readPreflight, preflightScopeText, snapshotManifest, summarizePreflight, type PipelineStage, type SelectionSnapshot } from './selection';
 import './review.css';
+import { plural } from '../format';
 
 function Chip({ value, text, tone }: { value?: unknown; text?: string; tone?: string }) {
   return <span className="rw-chip" data-tone={tone ?? toneOf(value)}><b>{text ?? label(value)}</b></span>;
@@ -84,11 +85,11 @@ export function SelectionActions({ snapshot, workspace, onError }: { snapshot: S
       setNote(manifestNote(manifest));
     } catch (e) { onError((e as Error).message); } finally { setBusy(''); }
   };
-  /** S2: the saved files of the selected notices and the selection as CSV, in one zip built and verified by Zoer. */
+  /** S2: the saved files of the selected opportunities and the selection as CSV, in one zip built and verified by Zoer. */
   const bundle = async () => {
     setBusy('zip'); setNote('');
     try {
-      const result = await downloadDocumentBundle(host, snapshot.ids, { scope: snapshot.origin === 'manual' ? 'ticked notices' : 'all matching notices' });
+      const result = await downloadDocumentBundle(host, snapshot.ids, { scope: snapshot.origin === 'manual' ? 'ticked opportunities' : 'all matching opportunities' });
       setNote(`Downloaded ${result.name}: ${result.documents} file${result.documents === 1 ? '' : 's'} (${sizeText(result.bytes)})${result.withoutFiles ? `; ${result.withoutFiles} notice${result.withoutFiles === 1 ? ' has' : 's have'} no saved files and ${result.withoutFiles === 1 ? 'is' : 'are'} in the CSV only` : ''}.`);
     } catch (e) { onError((e as Error).message); } finally { setBusy(''); }
   };
@@ -143,17 +144,17 @@ export function PipelinePreflight({ snapshot, stage, onClose }: { snapshot: Sele
   </>}>
     <div className="rw-o-preflight">
       <dl>
-        <div><dt>Records</dt><dd>{n(snapshot.ids.length)} notice{snapshot.ids.length === 1 ? '' : 's'} · {snapshot.origin === 'matching' ? 'frozen selection of all matching notices' : 'individually selected'} · captured {new Date(snapshot.capturedAt).toLocaleString()}{snapshot.note && <span className="rw-warn"> {snapshot.note}</span>}</dd></div>
-        <div><dt>Scope</dt><dd>{snapshot.description.join(' · ') || 'All saved notices'}</dd></div>
+        <div><dt>Opportunities</dt><dd>{plural(snapshot.ids.length, 'opportunity', 'opportunities')} · {snapshot.origin === 'matching' ? 'frozen selection of all matching opportunities' : 'individually selected'} · captured {new Date(snapshot.capturedAt).toLocaleString()}{snapshot.note && <span className="rw-warn"> {snapshot.note}</span>}</dd></div>
+        <div><dt>Scope</dt><dd>{snapshot.description.join(' · ') || 'All saved opportunities'}</dd></div>
         <div><dt>Stage</dt><dd><strong>{STAGE_TEXT[stage].title}.</strong> {STAGE_TEXT[stage].scope}</dd></div>
         <div><dt>Evidence scope</dt><dd>{preflight.isPending ? 'Reading…' : preflight.isError ? `Could not read the evidence scope: ${preflight.error.message}` : preflightScopeText(stage, summary!)}</dd></div>
         <div><dt>Estimated model calls</dt><dd>{summary ? <>About {n(summary.estimatedCalls)}. <span className="rw-o-muted">{stage === 'triage' ? 'One call per notice processed.' : 'One call per 12,000 characters (code points) of each readable document, plus one per notice.'}{stage === 'extract' && summary.pendingDocs > 0 ? ' Files with text pending are extracted when the run starts and are not in this estimate.' : ''} This is an estimate; chunk overlap and repair retries can add calls.</span></> : '—'}</dd></div>
         <div><dt>Reuse</dt><dd>{summary ? force ? `Re-running all ${n(summary.records)}, including ${n(preflight.data!.filter(r => r.current).length)} with a current result.` : `${n(summary.reused)} already have a current ${stage === 'triage' ? 'triage' : 'extraction'} result and will be reused unless you re-run them.` : '—'}</dd></div>
-        <div><dt>Limits</dt><dd>At most {PIPELINE_BATCH} notices per run. {runs.length > 1 ? `This selection starts as ${runs.length} sequential runs.` : 'This selection fits in one run.'}</dd></div>
-        <div><dt>Profile filters</dt><dd>{gateQuery.isPending ? 'Checking…' : gateQuery.isError ? 'Could not be checked; nothing starts until they can.' : !hasProfileFilters(gateQuery.data?.rules) ? `${snapshot.profileText} has no quick filters (excluded keywords or contract value range).` : gate.filtered.length ? <>{n(gate.filtered.length)} filtered by the profile{gate.kinds.keyword ? ` · ${n(gate.kinds.keyword)} excluded keyword` : ''}{gate.kinds.value ? ` · ${n(gate.kinds.value)} value out of range` : ''}. {includeFiltered ? 'They are included in this run.' : 'They are skipped, so no model calls are spent on them.'}</> : 'None of the selected notices is filtered by the profile. Unknown contract values pass.'}</dd></div>
+        <div><dt>Limits</dt><dd>At most {PIPELINE_BATCH} opportunities per run. {runs.length > 1 ? `This selection starts as ${runs.length} sequential runs.` : 'This selection fits in one run.'}</dd></div>
+        <div><dt>Profile filters</dt><dd>{gateQuery.isPending ? 'Checking…' : gateQuery.isError ? 'Could not be checked; nothing starts until they can.' : !hasProfileFilters(gateQuery.data?.rules) ? `${snapshot.profileText} has no quick filters (excluded keywords or contract value range).` : gate.filtered.length ? <>{n(gate.filtered.length)} filtered by the profile{gate.kinds.keyword ? ` · ${n(gate.kinds.keyword)} excluded keyword` : ''}{gate.kinds.value ? ` · ${n(gate.kinds.value)} value out of range` : ''}. {includeFiltered ? 'They are included in this run.' : 'They are skipped, so no model calls are spent on them.'}</> : 'None of the selected opportunities is filtered by the profile. Unknown contract values pass.'}</dd></div>
         <div><dt>Profile</dt><dd>{stage === 'extract' ? `Assessment after extraction uses ${snapshot.profileText}.` : `Triage does not assess eligibility. Active profile: ${snapshot.profileText}.`}</dd></div>
       </dl>
-      <label className="procurement-check"><input type="checkbox" checked={force} disabled={busy} onChange={event => setForce(event.target.checked)} />Re-run notices that already have a current result</label>
+      <label className="procurement-check"><input type="checkbox" checked={force} disabled={busy} onChange={event => setForce(event.target.checked)} />Re-run opportunities that already have a current result</label>
       {gate.filtered.length > 0 && <label className="procurement-check"><input type="checkbox" checked={includeFiltered} disabled={busy} onChange={event => setIncludeFiltered(event.target.checked)} />Include the {n(gate.filtered.length)} notice{gate.filtered.length === 1 ? '' : 's'} filtered by the profile</label>}
       {ReviewModelSelector ? <ReviewModelSelector request={host} onChange={setModel} disabled={busy} /> : <p className="rw-upgrade">Update Zoer to choose computers and models for pipeline runs.</p>}
       <p className="rw-o-muted">Nothing is submitted to buyers or portals. This only prepares review material; AI results start as proposals for your review.</p>

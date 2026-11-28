@@ -35,7 +35,7 @@ export function PipelineWorkbench() {
   const stage = WORKBENCH_STAGES.find(item => item.key === stageKey) ?? WORKBENCH_STAGES[3];
   const template = templateFor(stage.templateId), prompt = promptFor(template?.path);
   return <section className="rw-page" aria-labelledby="workbench-title">
-    <header className="rw-page-head"><div><h1 id="workbench-title">AI pipeline</h1><p className="rw-note">Inspect each stage and test it on one saved notice before running it on many. Test runs never replace current results.</p></div>
+    <header className="rw-page-head"><div><h1 id="workbench-title">AI pipeline</h1><p className="rw-note">Inspect each stage and test it on one saved opportunity before running it on many. Test runs never replace current results.</p></div>
       <Btn variant="ghost" onClick={() => navigatePlugin('/ai-review')}>Review prompts</Btn></header>
     <div className="rw-workbench">
       <nav className="rw-stage-rail" aria-label="Pipeline stages">
@@ -137,7 +137,7 @@ function TestPanel({ stage, testStage }: { stage: WorkbenchStage; testStage: 'tr
   };
   const hostFailed = mine && ['failed', 'cancelled', 'outcome_unknown'].includes(hostRun.data?.status) ? hostRun.data : null;
   return <div className="rw-form">
-    <label className="rw-field"><span>Find a saved opportunity</span><input value={search} maxLength={200} placeholder="Title or notice number" onChange={e => setSearch(e.target.value)} /></label>
+    <label className="rw-field"><span>Find a saved opportunity</span><input value={search} maxLength={200} placeholder="Title or opportunity number" onChange={e => setSearch(e.target.value)} /></label>
     <div className="rw-picks" role="listbox" aria-label="Matching notices">{(matches.data ?? []).map(row => <button key={row.id} type="button" role="option" aria-selected={row.id === recordId} onClick={() => { setRecordId(row.id); setRunId(''); }}><span>{row.title || 'Untitled opportunity'}</span><small className="rw-note">{[row.buyer || 'Buyer not provided', row.closing ? cardDeadline(row.closing, 'opportunity', Date.now()).text : ''].filter(Boolean).join(' · ')}</small></button>)}{matches.data && !matches.data.length && <p className="rw-note">No saved opportunities match.</p>}</div>
     {ReviewModelSelector ? <ReviewModelSelector request={host} onChange={setModel} disabled={busy} /> : <p className="rw-note">Update Zoer to choose computers and models.</p>}
     {lines.length > 0 && <div className="rw-preflight" aria-label="Preflight"><strong>Before you run</strong><ul>{lines.map((line, i) => <li key={i}>{line}</li>)}</ul></div>}

@@ -14,7 +14,7 @@ export function awardProgress(checkpoint: any): string {
 /**
  * Award history on the BC Bid page: collect the public award history by date range, resume it, or check recent awards.
  * One primary at a time ("Collect award history" or "Resume award history"); a complete history is stated as text with
- * only the secondary "Refresh recent awards". Never a disabled primary.
+ * only the secondary "Collect recent awards". Never a disabled primary.
  */
 export function awardHistoryState(model: { awardCheckpoint: any; awardRecentCheckpoint: any; awardRuns: any[] }, active: any) {
   const checkpoint = model.awardCheckpoint, latest = model.awardRuns[0];

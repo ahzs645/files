@@ -25,7 +25,7 @@ function Bars({ buckets, onPick, empty = 'No values yet.' }: { buckets: Bucket[]
   const max = Math.max(1, ...buckets.map(b => b.count));
   if (!buckets.some(b => b.count)) return <p className="research-note">{empty}</p>;
   return <ul className="ai-bars">{buckets.map(b => <li key={b.label}>
-    <button type="button" disabled={!b.count} onClick={() => onPick(b)} aria-label={`${b.label}: ${plural(b.count, 'notice')}`}>
+    <button type="button" disabled={!b.count} onClick={() => onPick(b)} aria-label={`${b.label}: ${plural(b.count, 'opportunity', 'opportunities')}`}>
       <span className="ai-bar-label">{b.label}</span>
       <span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${(b.count / max) * 100}%` }} /></span>
       <span className="ai-bar-count">{count(b.count)}</span>
@@ -121,14 +121,14 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
     {error && <p role="alert">{error}</p>}
     {!rows ? <p className="research-note">Loading saved results…</p> : <>
       <dl className="research-metrics">
-        <div><dt>Notices reviewed</dt><dd>{count(records.size)}</dd></div>
+        <div><dt>Opportunities reviewed</dt><dd>{count(records.size)}</dd></div>
         <div><dt>{source ? `Open ${sourceName(source)} opportunities reviewed` : 'Open opportunities reviewed (all sources)'}</dt><dd>{openReviewed ? `${count(openReviewed.reviewed)} of ${count(openReviewed.open)}` : '—'}</dd></div>
         <div><dt>Reviewed, closing in 14 days</dt><dd>{count(soon.length)}</dd></div>
         <div><dt>Last review</dt><dd>{latest ? when(latest) : '—'}</dd></div>
       </dl>
       {truncated && <p className="research-note">The current result projection is incomplete. Reload before relying on these totals.</p>}
       {prompt && version !== undefined && <p className="research-note" role="status">{version === current ? `Showing results from the current version ${version} only.` : `Showing results from older version ${version} only; its fields may differ from the current version.`}
-        {versions && version === current && versions.olderOnly > 0 && ` ${plural(versions.olderOnly, 'notice')}${versions.olderOnly === 1 ? ' has' : ' have'} results only from older versions and ${versions.olderOnly === 1 ? 'is' : 'are'} excluded, because field definitions can change between versions. Choose a version above to view them separately.`}</p>}
+        {versions && version === current && versions.olderOnly > 0 && ` ${plural(versions.olderOnly, 'opportunity', 'opportunities')}${versions.olderOnly === 1 ? ' has' : ' have'} results only from older versions and ${versions.olderOnly === 1 ? 'is' : 'are'} excluded, because field definitions can change between versions. Choose a version above to view them separately.`}</p>}
 
       {focus && <section ref={focusRef} className="zoer-history ai-focus" aria-label="Selected notices">
         <div className="research-toolbar review-results-head"><h2>{focus.title} · {count(focus.recordIds.length)}</h2>
@@ -147,7 +147,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
             <span className="ai-bar-track" aria-hidden="true"><span style={{ width: `${c.open ? (c.reviewed / c.open) * 100 : 0}%` }} /></span>
             {onSelect && c.open > c.reviewed && <Button variant="ghost" disabled={!!busy} onClick={() => void selectUnreviewed(c.source)}>{busy === c.source ? 'Selecting…' : `Select ${Math.min(50, c.open - c.reviewed)} unreviewed`}</Button>}
           </li>)}</ul>}
-          <p className="research-note">Each source counts its own copy of a notice posted on several sources, and includes notices you hid, so these add up to more than the open opportunities above. A newer failed review excludes an older successful result. Unreviewed notices are selected soonest-closing first.</p>
+          <p className="research-note">Each source counts its own copy of an opportunity posted on several sources, and includes opportunities you hid, so these add up to more than the open opportunities above. A newer failed review excludes an older successful result. Unreviewed opportunities are selected soonest-closing first.</p>
         </section>
 
         <section className="zoer-history" aria-label="Closing soon">
@@ -177,7 +177,7 @@ export function ReviewAnalysis({ prompts, onOpen, onSelect }: { prompts: any[]; 
 
         {prompt && <section className="zoer-history" aria-label="Output fields">
           <h2>{prompt.name} · output fields</h2>
-          <p className="research-note">Latest result per notice from version {version ?? '?'}{source ? ` from ${sourceName(source)}` : ''}. Money is grouped by currency and basis and never combined across groups. Choose a bar to list its notices. Values that don’t match their type are left out; Results flags them.</p>
+          <p className="research-note">Latest result per opportunity from version {version ?? '?'}{source ? ` from ${sourceName(source)}` : ''}. Money is grouped by currency and basis and never combined across groups. Choose a bar to list its opportunities. Values that don’t match their type are left out; Results flags them.</p>
           <div className="ai-cards">{summaries.map(s => <FieldCard key={s.key} summary={s} pick={pick} />)}</div>
         </section>}
       </>}

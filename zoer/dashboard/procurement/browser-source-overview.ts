@@ -18,7 +18,7 @@ export interface BrowserSiteRow {
   site: BrowserSite; status: BrowserSiteStatus; statusText: string; tone: Tone;
   /** Notices the site listed when it was last collected; null when never collected or unknown. */
   listed: number | null;
-  /** Notices saved in Zoer for this site; null while unknown. */
+  /** Opportunities saved in Zoer for this site; null while unknown. */
   saved: number | null;
   lastSuccessAt?: string;
   /** Plain message (shown) and raw `code: message` (details). */

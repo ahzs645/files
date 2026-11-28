@@ -57,7 +57,7 @@ export function RunsPage() {
     ['collection', <CollectionRuns key="collection" runs={collection.data} error={collection.error as Error | null} loading={collection.isPending} />],
     ['bc-bid', <section key="bc-bid" className="rw-panel" aria-labelledby="pc-bcbid-runs-title">
       <header className="rw-panel-head"><h2 id="pc-bcbid-runs-title">BC Bid runs</h2></header>
-      <p className="rw-muted pc-wrap">Opportunity scrapes, detail passes and award-history runs are still listed on BC Bid’s own page. <PluginLink to="/scraper/history">Open BC Bid runs</PluginLink></p>
+      <p className="rw-muted pc-wrap">Full, detail and award-history collections are listed on BC Bid’s own page. <PluginLink to="/scraper/history">Open BC Bid runs</PluginLink></p>
     </section>],
     ['downloads', <Fragment key="downloads">
       <BatchHistory title="Download runs" kind="download" links={false} batches={downloads} tasks={state.tasks} onChanged={refresh} onError={setError} browserBusy={browserBusy} />

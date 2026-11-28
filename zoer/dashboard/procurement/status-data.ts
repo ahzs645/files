@@ -11,7 +11,7 @@ import { distinctFiles, documentFileKey, matchDocuments } from './document-ident
 import type { DocumentQueueCoverage } from '../document-queue';
 
 /**
- * Data for the Status page and Home's status card: the document gap of open BC Bid notices and the last successful
+ * Data for the Status page and Home's status card: the document gap of open BC Bid opportunities and the last successful
  * collection per source. Read-only catalog SQL only (the host validator: no `FROM (`, no keyword before `(`, at most
  * 200 rows per statement, so link and document lists are read in pages).
  */
@@ -131,7 +131,7 @@ export function computeDocumentGap(counts: any, linkRows: any[], documentRows: a
 }
 
 /**
- * The document gap of open BC Bid notices: per attachment file, saved / failed / waiting for you / never tried.
+ * The document gap of open BC Bid opportunities: per attachment file, saved / failed / waiting for you / never tried.
  * `readQueue` reads the host downloader's plan (`readDocumentQueue` in document-queue.ts); it resolves null when this
  * Zoer cannot answer, and the plugin's own count (same matching rule) stands in.
  */
@@ -148,7 +148,7 @@ export async function readDocumentGap(asOf = Date.now(), browserId = '', readQue
   const waiting = checkPendingSince ? await paged(WAITING_FILES_SQL, [browserId, browserId, lastSuccess]) : [];
   const documents = [];
   for (let start = 0; start < links.length; start += PAGE - 1) {
-    // Reuse the selected notices and leave one parameter for the page offset.
+    // Reuse the selected opportunities and leave one parameter for the page offset.
     const ids = links.slice(start, start + PAGE - 1).map(row => String(row.id));
     const placeholders = ids.map(() => '?').join(',');
     const statement = `SELECT record_id AS recordId, url, status, error, updated_at AS updatedAt FROM documents WHERE record_id IN (${placeholders}) ORDER BY record_id, url`;

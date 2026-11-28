@@ -28,7 +28,7 @@ const emptyCounts = () => ({ listingCount: 0, detailCount: 0, opportunityCount: 
 const defaults = { descriptionText: '', detailFields: [], attachments: [], addenda: [], commodities: [], searchText: '' };
 const SCRAPE_ACTIONS = ['scrape.full', 'scrape.details', 'scrape.targeted', 'scrape.sample', 'listing.capture', 'detail.capture'];
 /** What each BC Bid run was, in plain words (run cards on the BC Bid page and BC Bid runs). */
-export const RUN_TITLES: Record<string, string> = { 'scrape.full': 'Full collection', 'scrape.details': 'Detail refresh', 'scrape.targeted': 'Targeted collection', 'scrape.sample': 'Browser test', 'listing.capture': 'One listing page', 'detail.capture': 'One opportunity page' };
+export const RUN_TITLES: Record<string, string> = { 'scrape.full': 'Full collection', 'scrape.details': 'Detail collection', 'scrape.targeted': 'Targeted collection', 'scrape.sample': 'Test browser', 'listing.capture': 'One listing page', 'detail.capture': 'One opportunity page' };
 export const BROWSER_CHECK = /browser check|browser verification|verification required|complete (?:the|any required) (?:browser )?check/i;
 const num = (value: number) => value.toLocaleString();
 const opportunities_ = (value: number) => `${num(value)} ${value === 1 ? 'opportunity' : 'opportunities'}`;

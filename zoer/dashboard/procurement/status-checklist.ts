@@ -75,17 +75,17 @@ export function missingFileParts(gap: DocumentGap): [number, string][] {
 }
 
 export function documentsStep(gap: DocumentGap | undefined): SetupStep {
-  const base = { id: 'documents', title: 'Documents for open BC Bid notices', actions: ['download-missing'] as StepAction[] };
+  const base = { id: 'documents', title: 'Documents for open BC Bid opportunities', actions: ['download-missing'] as StepAction[] };
   if (!gap) return { ...base, tone: 'idle', status: 'Loading…', detail: '' };
   if (!gap.withLinks) return { ...base, tone: 'idle', status: 'No links yet', detail: 'No open BC Bid notice has attachment links saved yet.' };
   if (!gap.missingNotices) return { ...base, tone: 'good', status: 'Every file saved', detail: `Every file of the ${plural(gap.withLinks, 'open notice')} with attachment links is saved.` };
   const missing = gap.links - gap.saved;
   const parts = missingFileParts(gap).map(([count, text]) => `${n(count)} ${text}`);
-  return { ...base, tone: 'warn', status: `${n(gap.fullySaved)} of ${n(gap.withLinks)} have every file`, detail: `${n(gap.fullySaved)} of ${n(gap.withLinks)} open BC Bid notices with attachment links have every file saved. ${plural(missing, 'linked file')} missing on ${plural(gap.missingNotices, 'notice')}: ${parts.join(', ')}.` };
+  return { ...base, tone: 'warn', status: `${n(gap.fullySaved)} of ${n(gap.withLinks)} have every file`, detail: `${n(gap.fullySaved)} of ${n(gap.withLinks)} open BC Bid opportunities with attachment links have every file saved. ${plural(missing, 'linked file')} missing on ${plural(gap.missingNotices, 'opportunity', 'opportunities')}: ${parts.join(', ')}.` };
 }
 
 export function detailsStep(gap: DocumentGap | undefined): SetupStep {
-  const base = { id: 'details', title: 'Attachment links for open notices', actions: ['capture-details'] as StepAction[] };
+  const base = { id: 'details', title: 'Attachment links for open opportunities', actions: ['capture-details'] as StepAction[] };
   if (!gap) return { ...base, tone: 'idle', status: 'Loading…', detail: '' };
   const noFiles = gap.noFiles ? ` ${plural(gap.noFiles, 'open notice')} ${gap.noFiles === 1 ? 'has' : 'have'} no public files on BC Bid after a complete capture.` : '';
   const remaining = gap.noLinks + gap.detailsWithLinks;
@@ -108,8 +108,8 @@ export function browserCheckStep(gap: DocumentGap | undefined, browsers?: Schedu
   const where = browser ? ` in ${browserText(browser)}, the download browser` : ' in the download browser';
   const since = gap.checkPendingSince ? `, ${when(gap.checkPendingSince, now)}` : '';
   const missing = Math.max(0, gap.links - gap.saved);
-  const held = gap.waiting ? ` (${plural(gap.waiting, 'file of an open notice', 'files of open notices')} hit the check)` : '';
-  const blocked = missing ? ` BC Bid attachment downloads stop at it, so ${plural(missing, 'missing file')} of open notices wait${held}.` : gap.waiting ? ` ${plural(gap.waiting, 'file of an open notice waits', 'files of open notices wait')} for it.` : '';
+  const held = gap.waiting ? ` (${plural(gap.waiting, 'file of an open opportunity', 'files of open opportunities')} hit the check)` : '';
+  const blocked = missing ? ` BC Bid attachment downloads stop at it, so ${plural(missing, 'missing file')} of open opportunities wait${held}.` : gap.waiting ? ` ${plural(gap.waiting, 'file of an open opportunity waits', 'files of open opportunities wait')} for it.` : '';
   const next = downloadActive ? ' Complete the check in Zoer and hand control back; the active download run then continues.'
     : ' Complete the check in Zoer and hand control back. No download run is active, so start one afterwards under Operations › Documents.';
   return { id: 'browser-check', title: 'Browser check', tone: 'warn', status: 'Waiting for you', actions: ['open-browser'],
@@ -123,7 +123,7 @@ export function extractionStep(counts: ExtractionCounts | undefined, scheduleOn:
   if (!counts) return null;
   const stalled = counts.pendingFiles > 0 && scheduleOn === false && !running;
   const parts = [
-    counts.failedFiles ? `${plural(counts.failedFiles, 'saved file')} on ${plural(counts.failedNotices, 'notice')} failed text extraction.` : '',
+    counts.failedFiles ? `${plural(counts.failedFiles, 'saved file')} on ${plural(counts.failedNotices, 'opportunity', 'opportunities')} failed text extraction.` : '',
     counts.pendingFiles ? `${plural(counts.pendingFiles, 'saved file waits', 'saved files wait')} for text${running ? '; extraction is running.' : scheduleOn ? '; the schedule extracts them.' : scheduleOn === false ? ' and the text extraction schedule is not on, so nothing extracts them until you turn it on or extract them under Operations › Documents.' : '.'}` : '',
   ].filter(Boolean);
   if (!counts.failedFiles && !stalled) return { ...base, tone: 'good', status: counts.pendingFiles ? `${n(counts.pendingFiles)} waiting` : 'Up to date', detail: parts.join(' ') || 'Every saved file has been through text extraction.' };
@@ -136,7 +136,7 @@ export function failuresStep(counts: FailureCounts | undefined): SetupStep | nul
   if (!counts) return null;
   const base = { id: 'failures', title: 'Failure queue', actions: [] as StepAction[] };
   if (!counts.files) return { ...base, tone: 'good', status: 'Empty', detail: 'No file is left unsaved after a download attempt.' };
-  return { ...base, tone: 'warn', status: `${plural(counts.files, 'file')} not saved`, detail: `${plural(counts.files, 'file')} on ${plural(counts.fileNotices, 'notice')} were not saved after a download attempt (all sources, open and closed${counts.waitingFiles ? `; ${n(counts.waitingFiles)} wait for a browser check` : ''}). Retry them under Opportunities › Files.` };
+  return { ...base, tone: 'warn', status: `${plural(counts.files, 'file')} not saved`, detail: `${plural(counts.files, 'file')} on ${plural(counts.fileNotices, 'opportunity', 'opportunities')} were not saved after a download attempt (all sources, open and closed${counts.waitingFiles ? `; ${n(counts.waitingFiles)} wait for a browser check` : ''}). Retry them under Opportunities › Files.` };
 }
 
 /** The whole checklist plus a one-line verdict. Steps for extraction and the failure queue appear only when their counts are passed. */

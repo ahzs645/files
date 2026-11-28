@@ -46,7 +46,7 @@ export async function captureSnapshot(where: Fragment, meta: Pick<SelectionSnaps
 }
 
 export function manualSnapshot(ids: string[], meta: Pick<SelectionSnapshot, 'description' | 'filters' | 'profileVersionId' | 'profileText'>, now = new Date()): SelectionSnapshot {
-  return { ...meta, ids: [...ids], capturedAt: now.toISOString(), origin: 'manual', description: ['Individually selected notices', ...meta.description.filter(line => line.startsWith('Profile:'))], matching: null, truncated: false, note: null };
+  return { ...meta, ids: [...ids], capturedAt: now.toISOString(), origin: 'manual', description: ['Individually selected opportunities', ...meta.description.filter(line => line.startsWith('Profile:'))], matching: null, truncated: false, note: null };
 }
 
 /** Split ids into sequential pipeline runs of at most PIPELINE_BATCH records. */
@@ -106,7 +106,7 @@ export type SnapshotManifest = ExportManifest & { capturedAt: string; selection:
 
 /** Manifest for a snapshot export; `truncated` is set whenever fewer rows were written than the selection or match held. */
 export function snapshotManifest(snapshot: SelectionSnapshot, input: { file: string; rowsExported: number; workspace: boolean; generatedAt?: string }): SnapshotManifest {
-  const reasons = [snapshot.note && snapshot.truncated ? snapshot.note : '', input.rowsExported < snapshot.ids.length ? `Exported ${input.rowsExported} of ${snapshot.ids.length} selected notices (some were removed from the catalog after capture).` : ''].filter(Boolean);
+  const reasons = [snapshot.note && snapshot.truncated ? snapshot.note : '', input.rowsExported < snapshot.ids.length ? `Exported ${input.rowsExported} of ${snapshot.ids.length} selected opportunities (some were removed from the catalog after capture).` : ''].filter(Boolean);
   const base = exportManifest({
     file: input.file, scope: snapshot.origin === 'matching' ? 'Frozen selection of every notice matching the filters at capture time' : 'Frozen selection of individually chosen notices',
     filters: snapshot.filters, rowsExported: input.rowsExported, totalMatching: snapshot.matching ?? snapshot.ids.length, truncationReason: reasons.join(' ') || undefined,

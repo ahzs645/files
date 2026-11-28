@@ -126,15 +126,16 @@ export function runState(run: RecentRun | undefined): { text: string; tone: RunT
   const at = (iso: string | null | undefined) => iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : null;
   const live = isLive(run);
   if (!live) {
-    const text = run.status === 'succeeded' ? 'Finished' : run.status === 'cancelled' ? 'Cancelled' : run.status === 'failed' ? 'Failed' : 'Outcome unknown';
-    return { text, tone: run.status === 'succeeded' ? 'good' : run.status === 'cancelled' ? 'idle' : 'warn', detail: run.error ?? null, canPause: false, canResume: false, canCancel: false };
+    // The shared run words (format.ts): Done, Stopped, Failed; an unknown outcome is Interrupted, with the reason in detail.
+    const text = run.status === 'succeeded' ? 'Done' : run.status === 'cancelled' ? 'Stopped' : run.status === 'failed' ? 'Failed' : 'Interrupted';
+    return { text, tone: run.status === 'succeeded' ? 'good' : run.status === 'cancelled' ? 'idle' : 'warn', detail: run.error ?? (text === 'Interrupted' ? 'Outcome unknown.' : null), canPause: false, canResume: false, canCancel: false };
   }
-  if (run.status === 'waiting_for_user' && !state) return { text: 'Waiting for approval', tone: 'warn', detail: null, canPause: false, canResume: false, canCancel: true };
+  if (run.status === 'waiting_for_user' && !state) return { text: 'Waiting for you', tone: 'warn', detail: 'Waiting for your approval in Zoer.', canPause: false, canResume: false, canCancel: true };
   switch (state) {
-    case 'paused': return { text: 'Paused', tone: 'idle', detail: progress?.phase ? `Stopped after ${progress.phase}${count}` : null, canPause: false, canResume: true, canCancel: true };
-    case 'paused-for-update': return { text: 'Paused for a Zoer update', tone: 'idle', detail: 'Continues by itself when the update is done.', canPause: false, canResume: false, canCancel: true };
-    case 'resume-needed': return { text: 'Resume needed', tone: 'warn', detail: 'Zoer restarted during this step. Resume to continue from the last saved point.', canPause: false, canResume: true, canCancel: true };
-    case 'needs-user': return { text: 'Needs you', tone: 'warn', detail: run.resumable?.lastError?.message ?? 'Review the run in Zoer, then resume it.', canPause: false, canResume: true, canCancel: true };
+    case 'paused': return { text: 'Interrupted', tone: 'idle', detail: progress?.phase ? `Paused after ${progress.phase}${count}; Resume continues it.` : 'Paused; Resume continues it.', canPause: false, canResume: true, canCancel: true };
+    case 'paused-for-update': return { text: 'Interrupted', tone: 'idle', detail: 'Paused for a Zoer update; continues by itself when the update is done.', canPause: false, canResume: false, canCancel: true };
+    case 'resume-needed': return { text: 'Interrupted', tone: 'warn', detail: 'Zoer restarted during this step. Resume to continue from the last saved point.', canPause: false, canResume: true, canCancel: true };
+    case 'needs-user': return { text: 'Waiting for you', tone: 'warn', detail: run.resumable?.lastError?.message ?? 'Review the run in Zoer, then resume it.', canPause: false, canResume: true, canCancel: true };
     case 'waiting': {
       const next = at(run.resumable?.nextStepAt), why = run.resumable?.lastError?.message;
       return { text: next ? `Waiting to retry at ${next}` : 'Waiting to retry', tone: 'busy', detail: why ? `The site asked to slow down or did not answer: ${why}` : null, canPause: true, canResume: false, canCancel: true };

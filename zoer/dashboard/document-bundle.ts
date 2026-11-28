@@ -70,7 +70,7 @@ export async function downloadDocumentBundle(host: Host, recordIds: string[], op
   if (ids.length > BUNDLE_MAX_NOTICES) throw new Error(`Choose at most ${BUNDLE_MAX_NOTICES} notices for one download.`);
   const plan = planBundle(ids, await readBundleDocuments(host, ids));
   if (!plan.documents.length) throw new Error('None of these notices has saved documents yet. Download their documents first.');
-  if (plan.tooLarge) throw new Error(`These documents add up to ${sizeText(plan.bytes)}; one download holds at most ${sizeText(BUNDLE_MAX_BYTES)}. Choose fewer notices.`);
+  if (plan.tooLarge) throw new Error(`These documents add up to ${sizeText(plan.bytes)}; one download holds at most ${sizeText(BUNDLE_MAX_BYTES)}. Choose fewer opportunities.`);
   const rows: any[] = [];
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
@@ -81,7 +81,7 @@ export async function downloadDocumentBundle(host: Host, recordIds: string[], op
   const zipName = options.fileName ?? `procurement-documents-${ids.length === 1 ? safeSegment(notices[0]?.sourceKey ?? 'notice') : `${ids.length}-notices`}-${date}.zip`;
   const csv = exportRecords(notices, 'opportunity', 'csv');
   const manifest = exportManifest({ file: 'opportunities.csv', scope: options.scope, filters: { notices: ids.length }, rowsExported: notices.length, totalMatching: ids.length,
-    notes: [`${plural(plan.documents.length, 'saved document')} (${sizeText(plan.bytes)}) from ${plural(plan.withFiles, 'notice')}, each in a folder named after the notice.`,
+    notes: [`${plural(plan.documents.length, 'saved document')} (${sizeText(plan.bytes)}) from ${plural(plan.withFiles, 'opportunity', 'opportunities')}, each in a folder named after the notice.`,
       ...(plan.withoutFiles ? [`${plural(plan.withoutFiles, 'notice has', 'notices have')} no saved documents and appear${plan.withoutFiles === 1 ? 's' : ''} only in the CSV.`] : []),
       'Zoer verified every file against its saved SHA-256 while building the zip.'] });
   const temporary: string[] = [];

@@ -58,7 +58,7 @@ export function Documents() {
   };
   const bundle = async () => {
     setBusy(true); setError(''); setMessage('');
-    try { const result = await downloadDocumentBundle(host, [...selection], { scope: 'selected notices' }); setMessage(`Downloaded ${result.name}: ${plural(result.documents, 'file')} (${sizeText(result.bytes)}).`); }
+    try { const result = await downloadDocumentBundle(host, [...selection], { scope: 'selected opportunities' }); setMessage(`Downloaded ${result.name}: ${plural(result.documents, 'file')} (${sizeText(result.bytes)}).`); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   const { collection } = useCapabilities();

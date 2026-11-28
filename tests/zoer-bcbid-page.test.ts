@@ -65,7 +65,7 @@ describe('BC Bid page: a browser check is "Waiting for you", never "Idle"', () =
 describe('BC Bid run labels', () => {
   it('names each run, says "Nothing to update" for an empty detail refresh and omits the unknown trigger', () => {
     const [run] = buildModel({ runs: [details('d1', '2026-11-26T12:08:00Z')], artifacts: [] }, []).runs;
-    expect(run).toMatchObject({ title: 'Detail refresh', trigger: null, status: 'succeeded' });
+    expect(run).toMatchObject({ title: 'Detail collection', trigger: null, status: 'succeeded' });
     expect(run.progress.message).toBe('Nothing to update');
     expect(run.progress.message).not.toMatch(/bounded capture|listings/);
   });
@@ -87,7 +87,7 @@ describe('BC Bid run labels', () => {
 
 describe('Award history actions', () => {
   const v2 = (complete: boolean) => ({ version: 2, complete, ranges: [{ complete }], active: 0, count: 10, pages: 1, page: 1 });
-  it('shows a complete history as text with no primary (only Refresh recent awards)', () => {
+  it('shows a complete history as text with no primary (only Collect recent awards)', () => {
     expect(awardHistoryState({ awardCheckpoint: v2(true), awardRecentCheckpoint: null, awardRuns: [] }, undefined)).toMatchObject({ primary: null, status: 'Award history complete.' });
   });
   it('offers Collect award history, or Resume for an unfinished dated history', () => {

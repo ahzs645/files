@@ -76,7 +76,7 @@ export function RecordPicker({ selection, setSelection, onDetails, actions, more
       {more.length > 0 && <MoreMenu label="More actions" items={more} />}
     </div>
     <div className="research-toolbar research-filters" data-open={filtersOpen || undefined}>
-      <label className="research-label research-source"><span className="sr-only">Record type</span><Select aria-label="Record type" presentation="dropdown" searchable={false} value={kind} onChange={e => setKind(e.target.value)}>
+      <label className="research-label research-source"><span className="sr-only">Opportunities or awards</span><Select aria-label="Opportunities or awards" presentation="dropdown" searchable={false} value={kind} onChange={e => setKind(e.target.value)}>
         <option value="opportunity">Opportunities</option><option value="award">Awards</option>
       </Select></label>
       <label className="research-label research-source"><span className="sr-only">Source</span><Select aria-label="Source" presentation="dropdown" searchable={false} value={source} onChange={e => setSource(e.target.value)}>

@@ -34,7 +34,7 @@ async function* openWorkRanges(asOf: number, source: string): AsyncGenerator<Fra
 }
 
 /**
- * Saved notices from one source (or all), open and closed, each counted once: the canonical-notice rule Opportunities
+ * Saved opportunities from one source (or all), open and closed, each counted once: the canonical-notice rule Opportunities
  * uses (canonical.ts; all sources exclude cross-posted copies, one source keeps its own copies). See populations.ts.
  */
 export const opportunityScope = (source: string): Fragment => and({ sql: `${r.kind}='opportunity'`, parameters: [] }, sourceSql(source),
@@ -146,7 +146,7 @@ export async function readRecentDecisions(source: string) {
 }
 
 /**
- * Open notices closing within `days` (inclusive of today), soonest first, with the exact total. `fromDay` skips the
+ * Open opportunities closing within `days` (inclusive of today), soonest first, with the exact total. `fromDay` skips the
  * first days (Home passes SOON_DAYS + 1 so it leaves out what Today's "Closing within 3 days" already lists).
  */
 export async function readDeadlines(source: string, asOf: number, days = 14, fromDay = 0) {
@@ -183,7 +183,7 @@ export async function readRequirementCoverage(scope: Fragment) {
   return { states: Object.fromEntries(states.map(row => [row.reviewState, num(row.count)])) as Record<string, number>, total: num(extracted[0]?.total), extracted: num(extracted[0]?.extracted) };
 }
 
-/** Open notices waiting in each queue (null = needs a profile), unfinished/failed stage runs (excluding test runs) and open tasks. */
+/** Open opportunities waiting in each queue (null = needs a profile), unfinished/failed stage runs (excluding test runs) and open tasks. */
 export async function readBottlenecks(source: string, profile: string | null, asOf: number) {
   const queues = await Promise.all(QUEUES.map(async queue => {
     const q = queueSql(queue, profile);

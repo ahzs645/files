@@ -63,9 +63,9 @@ export function PossibleDuplicates({ notice }: { notice: NoticeSummary }) {
   } });
   return <section className="pc-card pc-duplicates" aria-label="Possible duplicates">
     <header><h3>Possible duplicates</h3>{result.data && result.data.matches.length > 0 && <span className="pc-card-meta">{result.data.matches.length} found</span>}</header>
-    {result.isPending ? <p className="pc-card-meta" role="status">Checking saved notices…</p>
+    {result.isPending ? <p className="pc-card-meta" role="status">Checking saved opportunities…</p>
       : result.error ? <p role="alert">Could not check for duplicates: {(result.error as Error).message} <Btn size="sm" variant="secondary" onClick={() => void result.refetch()}>Retry</Btn></p>
-      : !result.data.matches.length ? <p className="pc-card-meta">None found among saved notices with the same title, a closing date within a day, or a similar buyer.{result.data.capped ? ` Only the ${CANDIDATE_LIMIT} closest candidates were checked.` : ''}</p>
+      : !result.data.matches.length ? <p className="pc-card-meta">None found among saved opportunities with the same title, a closing date within a day, or a similar buyer.{result.data.capped ? ` Only the ${CANDIDATE_LIMIT} closest candidates were checked.` : ''}</p>
       : <><ul className="pc-dup-list">{result.data.matches.map(match => <DuplicateItem key={match.notice.id} match={match} />)}</ul>
         <p className="pc-card-meta">Scored on title (40%), buyer (30%), closing date (20%) and link (10%); shown at 85% or more, and always for the same title and buyer. Nothing is merged.{result.data.capped ? ` Only the ${CANDIDATE_LIMIT} closest candidates were checked.` : ''}</p></>}
   </section>;
@@ -105,7 +105,7 @@ export function PlaceFilter({ value, onChange }: { value: string; onChange(value
   const { writes } = useCapabilities();
   const options = placeOptions(places.data ?? []);
   // Keep a linked value selectable even when no saved notice has it (yet).
-  if (value && !options.some(option => option.value === value)) options.unshift({ value, label: value.replace(/^(m|rd):/, ''), description: 'No saved notices' });
+  if (value && !options.some(option => option.value === value)) options.unshift({ value, label: value.replace(/^(m|rd):/, ''), description: 'No saved opportunities' });
   const tag = async () => {
     setBusy(true); setError(''); setMessage('');
     try {
@@ -124,7 +124,7 @@ export function PlaceFilter({ value, onChange }: { value: string; onChange(value
       <option value="">{places.isPending ? 'Loading places…' : 'Any place'}</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></label>
     {places.error && <p role="alert">Could not load places: {(places.error as Error).message}</p>}
     <p className="procurement-coverage">Municipality and regional district from the buyer’s name or the notice text. Notices that don’t name one clearly are left untagged, so a place filter hides them.</p>
-    {writes && <div className="procurement-actions"><Btn size="sm" variant="secondary" disabled={busy} onClick={() => void tag()}>{busy ? 'Tagging saved notices…' : 'Tag saved notices'}</Btn></div>}
+    {writes && <div className="procurement-actions"><Btn size="sm" variant="secondary" disabled={busy} onClick={() => void tag()}>{busy ? 'Tagging saved opportunities…' : 'Tag saved opportunities'}</Btn></div>}
     {message && <p role="status" className="procurement-coverage">{message}</p>}{error && <p role="alert">{error}</p>}
   </section>;
 }

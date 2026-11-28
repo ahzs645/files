@@ -42,7 +42,7 @@ export function readinessBucket(action: unknown): ReadinessBucket {
 }
 
 export const QUEUE_TEXT: Record<QueueId, { title: string; description: string }> = {
-  acquire: { title: 'Acquire evidence', description: 'Open notices whose attachment discovery was not checked, whose links are not downloaded, or whose saved files have no usable text.' },
+  acquire: { title: 'Acquire evidence', description: 'Open opportunities whose attachment discovery was not checked, whose links are not downloaded, or whose saved files have no usable text.' },
   requirements: { title: 'Review requirements', description: 'Requirements from the current extraction that are still proposed or ungrounded and have no reviewer decision.' },
   eligibility: { title: 'Resolve eligibility', description: 'Current assessments for this profile with unresolved eligibility or a blocker, or a requirement match still unknown.' },
   changes: { title: 'Reconfirm changes', description: 'Unacknowledged source changes, assessments whose evidence changed, and decisions that need reconfirmation.' },

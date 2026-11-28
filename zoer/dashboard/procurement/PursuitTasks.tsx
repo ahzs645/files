@@ -49,7 +49,7 @@ export function PursuitTasks({ pursuits, enabled }: { pursuits: PursuitDue[]; en
       <strong>Overlapping due dates</strong>
       <ul>
         {deadlineHints.map((cluster, i) => <li key={`d${i}`}>{count(cluster.records)} pursuits have closings or tasks between {cluster.from} and {cluster.to}: {cluster.items.map(item => item.label).join('; ')}.</li>)}
-        {ownerHints.map((cluster, i) => <li key={`o${i}`}>{cluster.owner} has {cluster.items.length} tasks across {cluster.records} notices between {cluster.from} and {cluster.to}.</li>)}
+        {ownerHints.map((cluster, i) => <li key={`o${i}`}>{cluster.owner} has {cluster.items.length} tasks across {cluster.records} opportunities between {cluster.from} and {cluster.to}.</li>)}
       </ul>
       <p className="rw-note">Each notice’s own delivery or response label does not account for these overlaps. Check proposal capacity before committing.</p>
     </div>}

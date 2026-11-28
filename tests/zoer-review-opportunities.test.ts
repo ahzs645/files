@@ -165,7 +165,7 @@ describe('selection snapshots and batch preflight', () => {
     expect(manifest.truncationReason).toMatch(/first 3 by record id.*Exported 2 of 3 selected/);
     const manual = manualSnapshot(['a'], meta, new Date('2026-09-27T12:00:00Z'));
     expect(snapshotManifest(manual, { file: 'y.json', rowsExported: 1, workspace: false })).toMatchObject({ truncated: false, truncationReason: null, reviewColumns: 'omitted: review workspace unavailable', selection: 'manual' });
-    expect(manual.description).toEqual(['Individually selected notices', 'Profile: No company profile']);
+    expect(manual.description).toEqual(['Individually selected opportunities', 'Profile: No company profile']);
   });
   it('neutralizes spreadsheet formulas in CSV exports', () => {
     const row = { id: 'a', title: '=HYPERLINK("http://x")', buyer: '+cmd', sourceId: '@x', nextAction: '-1' } as unknown as ExportRow;

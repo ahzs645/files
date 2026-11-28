@@ -29,13 +29,13 @@ export function AwardHistoryCard() {
       <div className="zoer-record-tools zoer-setup-actions">
         {state.primary === 'collect' && <Btn variant="primary" loading={busy} onClick={() => void act(() => startAwardHistory(), 'Started.')}>Collect award history</Btn>}
         {state.primary === 'resume' && <Btn variant="primary" loading={busy} onClick={() => void act(() => startAwardHistory(true), 'Resumed.')}>Resume award history</Btn>}
-        {!active && <Btn variant="secondary" disabled={busy} onClick={() => void act(() => startAwardHistory(false, true), 'Checking the last 30 days.')}>Refresh recent awards</Btn>}
+        {!active && <Btn variant="secondary" disabled={busy} onClick={() => void act(() => startAwardHistory(false, true), 'Checking the last 30 days.')}>Collect recent awards</Btn>}
         {active && <Btn variant="secondary" disabled={busy || !!active.cancelRequestedAt} onClick={() => void act(stopAwardHistory, 'Stopping after the current request.')}>{active.cancelRequestedAt ? 'Stopping…' : 'Stop'}</Btn>}
       </div>
     </div>
     {message && <p role="status">{message}</p>}
     {error && <p role="alert">{error}</p>}
-    <details><summary data-zoer-disclosure="">About award history</summary><p>Checks public awards in date ranges and saves each page. Completed ranges are skipped; oversized ranges are split into smaller periods. Resume rechecks only the unfinished range, and unchanged awards are kept. Refresh recent awards checks the last 30 days for new or changed awards without replacing the dated history. Undated awards and attachments are not collected.</p></details>
+    <details><summary data-zoer-disclosure="">About award history</summary><p>Checks public awards in date ranges and saves each page. Completed ranges are skipped; oversized ranges are split into smaller periods. Resume rechecks only the unfinished range, and unchanged awards are kept. Collect recent awards checks the last 30 days for new or changed awards without replacing the dated history. Undated awards and attachments are not collected.</p></details>
   </section>;
 }
 

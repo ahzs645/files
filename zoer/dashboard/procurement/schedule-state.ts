@@ -106,7 +106,7 @@ const ACTION_LABELS: Record<string, string> = {
   'procurement.alerts': 'Alert checks', 'procurement.collect.browser': 'BC sites (your browser)', 'procurement.collect': 'Collection',
   // Runs started by hand (Operations › Overview › Running now names them too).
   'scrape.targeted': 'BC Bid · targeted collection', 'scrape.historical': 'BC Bid · historical import', 'listing.capture': 'BC Bid · one listing page', 'detail.capture': 'BC Bid · one notice page',
-  'documents.download': 'Download selected files', 'documents.extract': 'Text extraction of selected notices', 'records.review': 'AI review', 'records.review.cli': 'AI review (installed CLI)',
+  'documents.download': 'Download selected files', 'documents.extract': 'Text extraction of selected opportunities', 'records.review': 'AI review', 'records.review.cli': 'AI review (installed CLI)',
   'records.evidence': 'Evidence analysis', 'records.evidence.cli': 'Evidence analysis (installed CLI)', 'procurement.pipeline': 'Review pipeline', 'procurement.pipeline.cli': 'Review pipeline (installed CLI)',
   'procurement.enrich': 'Place and contact tagging', 'catalog.normalize': 'Duplicate clean-up', 'opportunities.import': 'Opportunity import', 'awards.import': 'Award import',
 };

@@ -23,7 +23,7 @@ export type ProcurementSource = {
 export const SOURCES: readonly ProcurementSource[] = [
   { id: 'bc-bid', label: 'BC Bid', jurisdiction: 'British Columbia', description: 'Saved BC Bid opportunities and contract awards.', mode: 'scraper', url: 'https://bcbid.gov.bc.ca' },
   { id: 'canadabuys', label: 'CanadaBuys', jurisdiction: 'Canada', description: 'Federal notices collected from the official dataset or imported from CSV files.', mode: 'csv-import', url: 'https://canadabuys.canada.ca/en/tender-opportunities' },
-  { id: 'bidsandtenders', label: 'bids&tenders (BC)', jurisdiction: 'British Columbia', description: 'Open notices from BC municipalities, regional districts and other public buyers on bids&tenders.', mode: 'scraper', url: 'https://bidsandtenders.com' },
+  { id: 'bidsandtenders', label: 'bids&tenders (BC)', jurisdiction: 'British Columbia', description: 'Open opportunities from BC municipalities, regional districts and other public buyers on bids&tenders.', mode: 'scraper', url: 'https://bidsandtenders.com' },
   { id: 'municipal-sites', label: 'BC local government websites', jurisdiction: 'British Columbia', description: 'Bids listed on the own websites of BC municipalities and regional districts that publish them outside BC Bid and bids&tenders.', mode: 'scraper', url: 'https://rdn.bc.ca/current-bid-opportunities' },
   { id: 'browser-sites', label: 'BC sites (your browser)', jurisdiction: 'British Columbia', description: 'Bids pages of BC sites that block automated requests (CivicInfo BC, Kelowna, YVR, BC Ferries and others), loaded in your Zoer browser.', mode: 'scraper', url: 'https://www.civicinfo.bc.ca/bids' },
 ];

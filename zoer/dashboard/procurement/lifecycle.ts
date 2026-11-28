@@ -24,7 +24,7 @@ export { NO_FIXED_DATE_FROM, NO_FIXED_DATE_TEXT };
  *    - A passed closing date → `closed`, whatever the source status says.
  *    - Otherwise `open` when the source says it accepts bids (open, active, published), else `unknown` (no status, or an unrecognized one such as "N/A").
  *
- * Open lists keep the source-open notices whose closing date is unknown (`listedOpen`): an unreadable date never
+ * Open lists keep the source-open opportunities whose closing date is unknown (`listedOpen`): an unreadable date never
  * hides or closes a notice. `effectiveStatusSql`/`listedOpenSql` express exactly the same rule in host SQL.
  */
 export type EffectiveStatus = 'open' | 'closed' | 'awarded' | 'cancelled' | 'unknown';

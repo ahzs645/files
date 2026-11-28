@@ -75,7 +75,7 @@ describe('Needs you on the live shape', () => {
     expect(result.needs.map(need => [need.id, need.title, need.status])).toEqual([
       ['browsers', 'Browser check', 'Waiting for you'],
       ['schedules', 'Schedules', '11 of 13 schedules need review'],
-      ['documents', 'Documents for open BC Bid notices', '367 of 466 have every file'],
+      ['documents', 'Documents for open BC Bid opportunities', '367 of 466 have every file'],
       ['extraction', 'Text extraction', '192 waiting'],
       ['failures', 'Failure queue', '8 files not saved'],
     ]);
@@ -84,7 +84,7 @@ describe('Needs you on the live shape', () => {
   });
   it('names the browser and the time, says what waits behind the check, and never claims downloads continue', () => {
     const browser = result.needs[0];
-    expect(browser.lines[0]).toMatch(/^BC Bid asked for a browser check in 30s pacing test \(Clearcote\), the download browser, .+\. BC Bid attachment downloads stop at it, so 988 missing files of open notices wait/);
+    expect(browser.lines[0]).toMatch(/^BC Bid asked for a browser check in 30s pacing test \(Clearcote\), the download browser, .+\. BC Bid attachment downloads stop at it, so 988 missing files of open opportunities wait/);
     expect(browser.lines.join(' ')).not.toMatch(/continue/);
     expect(browser.actions[0]).toBe('open-browser');
     expect(browser.owner).toEqual({ to: '/documents', label: 'Operations › Documents' });
