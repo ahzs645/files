@@ -256,6 +256,7 @@ export function Procurement() {
   </>;
   else bar = <>
     <span role="status">{(table ? tableTotal === null : list.isPending && !waitForWorkspace) ? 'Loading…' : countText}{activeCount > 0 && <Btn size="sm" variant="ghost" onClick={clearAll}>Clear filters</Btn>}</span>
+    {/* The table sorts by its column headers, so the list's Sort menu is hidden there; `sort` stays in the link for when the reader returns to List. */}
     <span className="pc-resultbar-end">{available && <ProfilePicker />}{table ? <TableColumnsButton columns={tableColumns} /> : <label className="pc-sort"><span className="sr-only">Sort</span>{sortSelect}</label>}</span>
   </>;
 
@@ -300,7 +301,7 @@ export function Procurement() {
         : review.unavailable ? <p className="rw-upgrade">{review.unavailable}</p>
         : <FitMatrix base={{ sql: matrixWhere!.where, parameters: matrixWhere!.countParameters }} profileVersionId={profile} profileText={profileText} params={params} ignored={ignored} />
       : <>
-        <div className="pc-resultbar">{bar}{layoutToggle && <LayoutToggle value={table ? 'table' : 'list'} onChange={layout => patchPluginQuery({ layout: layout === 'table' ? 'table' : '', page: '', after: '', notice: '', ...(layout === 'table' ? { sort: '' } : {}) })} />}</div>
+        <div className="pc-resultbar">{bar}{layoutToggle && <LayoutToggle value={table ? 'table' : 'list'} onChange={layout => patchPluginQuery({ layout: layout === 'table' ? 'table' : '', page: '', after: '', notice: '' })} />}</div>
         {(error || list.error || inventory.error) && <p role="alert">{error || list.error?.message || inventory.error?.message} <Btn size="sm" variant="secondary" onClick={() => void client.invalidateQueries({ queryKey: ['catalog'] })}>Retry</Btn></p>}
         {!table && !list.isPending && !list.error && !rows.length && <div className="procurement-empty"><h2>No matching {many}</h2>
           <p>{review.unavailable ?? (search.trim() ? `No saved ${one} matches “${search.trim()}”${activeCount ? ' with the filters below' : ''}.${hidden === 'exclude' ? ' Hidden notices are left out of lists.' : ''}` : !collection ? (activeCount ? `No saved ${one} matches every filter below. Remove a filter.` : `This copy has no saved ${many}.`) : source === 'canadabuys' && activeCount <= 1 ? 'Collect or import CanadaBuys notices from Sources.' : activeCount ? `No saved ${one} matches every filter below. Remove a filter, or collect more from Sources.` : `No ${many} are saved yet. Collect them from Sources.`)}</p>
