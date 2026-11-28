@@ -108,7 +108,8 @@ function share<T>(cache: Map<string, Shared<T>>, key: string, start: (signal: Ab
 }
 // One award snapshot per catalog revision: Overview's SQL figures, drilldowns and the other market views share it.
 const snapshots = new Map<string, Shared<any[]>>();
-let snapshotResults: { revision: number; results: Map<string, Promise<any>> } = { revision: -1, results: new Map() };
+/** Calculated market views per revision and arguments, shared like the snapshot so one caller's abort never hands another a rejected result. */
+const analysisResults = new Map<string, Shared<any>>();
 const summaries = new Map<string, Shared<any>>();
 /** Rows read so far by the award snapshot the page is waiting for. */
 let progress: { revision: number; read: number; total: number } | undefined;
@@ -149,7 +150,8 @@ function analysisKey(name: string, args: any) {
 }
 function readSnapshot(revision: number, signal?: AbortSignal) {
   for (const key of snapshots.keys()) if (key !== String(revision)) { const old = snapshots.get(key)!; if (!old.settled) old.controller.abort(); snapshots.delete(key); }
-  return share(snapshots, String(revision), inner => readAnalysis(revision, inner), signal);
+  // A cancelled or failed read clears its progress, so a later view never shows a frozen "Reading awards…" count.
+  return share(snapshots, String(revision), inner => readAnalysis(revision, inner).catch(error => { if (progress?.revision === revision) { progress = undefined; emitProgress(); } throw error; }), signal);
 }
 /** Unmarked repeats (market/sql-summary.ts `unmarkedDuplicates`) for one revision. Null: read every award instead. */
 function repeats(revision: number, signal?: AbortSignal): Promise<string[] | null> {
@@ -185,21 +187,13 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
     }, options.signal);
   }
   if (name.startsWith('contractAwardsAnalysis.')) {
-    const awards = readSnapshot(revision, options.signal);
-    if (snapshotResults.revision !== revision) snapshotResults = { revision, results: new Map() };
-    const entry = snapshotResults;
-    const key = analysisKey(name, args);
-    let result = entry.results.get(key);
-    if (!result) {
-      const computed = awards.then(rows => {
-        for (const row of rows) model.stars.set('award:' + row.importKey, row.starred === true);
-        return queryModel({ ...model, awards: rows }, name, args);
-      });
-      entry.results.set(key, computed);
-      if (entry.results.size > 32) entry.results.delete(entry.results.keys().next().value!);
-      void computed.catch(() => { if (entry.results.get(key) === computed) entry.results.delete(key); });
-      result = computed;
-    }
+    for (const key of analysisResults.keys()) if (!key.startsWith(revision + '|')) analysisResults.delete(key);
+    const result = share(analysisResults, revision + '|' + analysisKey(name, args), inner => readSnapshot(revision, inner).then(rows => {
+      for (const row of rows) model.stars.set('award:' + row.importKey, row.starred === true);
+      return queryModel({ ...model, awards: rows }, name, args);
+    }), options.signal);
+    // Bounded: drop the oldest calculated views (a pending one still answers the callers already waiting on it).
+    while (analysisResults.size > 32) analysisResults.delete(analysisResults.keys().next().value!);
     return result;
   }
   if(name === 'catalog.facets') {
@@ -346,5 +340,6 @@ export async function queryCatalog(name: string, args: any, model: Model, revisi
 export function resetCatalogCache() {
   buyerInventories.clear();
   for (const entry of [...snapshots.values(), ...summaries.values()]) if (!entry.settled) entry.controller.abort();
-  snapshots.clear(); summaries.clear(); snapshotResults = { revision: -1, results: new Map() }; progress = undefined; emitProgress();
+  for (const entry of analysisResults.values()) if (!entry.settled) entry.controller.abort();
+  snapshots.clear(); summaries.clear(); analysisResults.clear(); progress = undefined; emitProgress();
 }
