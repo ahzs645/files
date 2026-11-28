@@ -1,5 +1,6 @@
 import { BROWSER_CHECK } from './model';
 import { formatWhen } from '../../apps/dashboard/src/lib/formatting';
+import { plural } from './format';
 
 type Tone = 'success' | 'running' | 'warning' | 'error' | 'info' | 'neutral';
 
@@ -39,7 +40,6 @@ export function savedProgress(checkpoint: FullCheckpoint | null | undefined): Sa
   return { listingCount, detailsCompleted, remaining, currentPage, totalPages: checkpoint.totalPages ? n(checkpoint.totalPages) : null, listing: checkpoint.phase === 'listing' };
 }
 
-const plural = (value: number, one: string, many: string) => `${value.toLocaleString()} ${value === 1 ? one : many}`;
 /** "792 opportunities saved from 53 of 53 listing pages" or "6 of 792 opportunities have details · 786 remaining". */
 export function progressText(progress: SavedProgress) {
   if (progress.listing || (!progress.remaining && !progress.detailsCompleted))

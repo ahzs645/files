@@ -138,8 +138,6 @@ export function batchStatusText(status: string, run?: { status: string } | null,
  * its own status and counts; it never reads as zero results, and it never hides the last successful run.
  */
 /** Plain names for batch kinds (the run-list vocabulary); anything unlisted shows its stored kind. Shared by Home and Sources. */
-export const BATCH_KIND_TEXT: Record<string, string> = { download: 'Download runs', extract: 'Text extraction runs', review: 'AI review runs', 'document-review': 'Document reviews', 'document-synthesis': 'Document synthesis', 'record-review': 'Notice reviews', 'host-action': 'Review pipeline', 'procurement-extract': 'Requirement extraction', 'procurement-triage': 'Notice triage' };
-
 export function batchHealth(rows: BatchRow[], runs?: readonly { id: string; status: string }[] | null) {
   const kinds = [...new Set(rows.map(row => row.kind))].sort();
   return kinds.map(kind => {

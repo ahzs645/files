@@ -15,12 +15,6 @@
 .procurement-detail dt{color:var(--text-secondary);font-size:.75rem}
 .procurement-detail dd{overflow-wrap:anywhere}
 .procurement-detail details summary{cursor:pointer;min-height:36px;display:flex;align-items:center;color:var(--text-secondary);font-size:.8125rem}
-.procurement-description{white-space:pre-wrap;overflow-wrap:anywhere;max-height:18rem;overflow:auto;line-height:1.6}
-.pc-detail-meta{color:var(--text-secondary);font-size:.8125rem}
-.procurement-comparison{max-width:100%;overflow:auto}
-.procurement-comparison table{min-width:650px;border-collapse:collapse}
-.procurement-comparison td,.procurement-comparison th{border-bottom:1px solid var(--border-default);padding:.75rem;text-align:left;vertical-align:top;min-width:130px;font-size:.875rem}
-.procurement-comparison th{font-weight:600}
 .procurement-workspace button:focus-visible,.pc-chip:focus-visible,.pc-star:focus-visible{outline:2px solid var(--input-focus);outline-offset:2px}
 
 /* Search: one toolbar row. Tablets fold the inline filters into Filters; phones keep search, Filters and Saved. */
@@ -63,16 +57,12 @@
 .bid-database-grid[data-select] .db-selection-head,.bid-database-grid[data-select] td:first-child{display:none}
 .pc-sort .ui-select-trigger{height:32px;border-color:transparent;background:transparent;font-size:13px;color:var(--text-secondary)}
 .pc-sort .ui-select-trigger:hover{color:var(--text-primary)}
-/* Plugin-owned so the host's utility order can't hide both labels. */
-.pc-tab-short{display:none}
-@media(max-width:639px){.pc-tab-short{display:inline}.pc-tab-long{display:none}}
 .pc-row-meta{margin-top:.375rem;display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .625rem;font-size:12px;color:var(--text-secondary)}
 .pc-tag{padding:0 .375rem;border-radius:.25rem;background:var(--surface-secondary);color:var(--text-primary)}
 .pc-row-side{display:flex;align-items:center;gap:.5rem;flex:none}
 .pc-row-date{font-size:12px;color:var(--text-secondary);white-space:nowrap}
 .pc-row-date[data-tone=soon]{color:var(--status-warning)}
 .pc-row-date[data-tone=passed]{color:var(--text-muted)}
-.pc-row-date-inline{display:none}
 .pc-star{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:.375rem;color:var(--text-secondary)}
 .pc-star:hover{background:var(--surface-secondary);color:var(--text-primary)}
 .pc-star[aria-pressed=true]{color:#eab308}
@@ -100,7 +90,6 @@
   .pc-row{padding:.75rem;gap:.625rem}
   .pc-row-check{margin-top:.125rem;width:20px;height:20px}
   .pc-row-side .pc-row-date{display:none}
-  .pc-row-date-inline{display:inline;white-space:normal}
   .pc-star{width:44px;height:44px;margin:-.625rem -.5rem 0 0}
   .pc-extra-fields{grid-template-columns:1fr}
   .pc-selection-actions{width:100%}
@@ -109,8 +98,6 @@
   .procurement-detail dl{grid-template-columns:1fr}
 }
 
-/* Sources */
-.pc-source-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem;align-items:start}
 .pc-source-card{display:flex;flex-direction:column;gap:1rem;padding:1.25rem;border:1px solid var(--border-default);border-radius:.75rem;background:var(--surface-primary);min-width:0}
 .pc-source-card>header{display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem}
 .pc-source-card h2{font-size:1rem;font-weight:650}
@@ -143,10 +130,6 @@
 /* Many sources: overview first, two columns of cards on desktop, wide cards for many-portal sources. */
 .pc-sources{gap:1rem}
 .pc-source-card[data-wide]{grid-column:1/-1}
-@media(min-width:1024px){.pc-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.pc-link-button{font:inherit;font-weight:600;color:var(--text-primary);text-align:left;min-height:0;padding:0;background:none;border:0;cursor:pointer}
-.pc-link-button:hover{text-decoration:underline}
-@media(pointer:coarse),(max-width:640px){.pc-link-button{display:flex;align-items:center;min-height:44px}}
 /* Responsive table: a table from 768px, stacked labelled rows below (no horizontal scroll on phones). */
 .pc-rtable{width:100%;border-collapse:collapse;font-size:12.5px}
 .pc-rtable th,.pc-rtable td{padding:.5rem;border-bottom:1px solid var(--border-default);text-align:left;vertical-align:middle;overflow-wrap:anywhere}
@@ -208,8 +191,6 @@
 .pc-schedule-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap}
 .pc-schedule-meta,.pc-schedule-note{font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
 .pc-schedule-line{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;font-size:12px;font-weight:400;color:var(--text-secondary)}
-/* One collect schedule for every source, in the Sources overview header. Wraps under the title on phones. */
-.pc-overview-schedule{display:flex;flex-wrap:wrap;align-items:center;gap:.375rem .625rem;margin-left:auto;font-size:12.5px;color:var(--text-secondary)}
 .pc-schedule-stopped{border:1px solid color-mix(in srgb,var(--status-warning) 40%,transparent);background:color-mix(in srgb,var(--status-warning) 8%,transparent);border-radius:.5rem;padding:.5rem .75rem;font-size:12.5px;line-height:1.5;color:var(--text-primary)}
 .pc-source-card .pc-schedule-stopped details,.pc-schedule-stopped details{border:0;padding:0}
 .pc-schedule-stopped summary{cursor:pointer;color:var(--text-secondary);min-height:32px;display:flex;align-items:center}
@@ -234,20 +215,10 @@
 @media(max-width:640px){.procurement-board{scroll-snap-type:x mandatory}.procurement-board-column{scroll-snap-align:start}}
 /* Five or fewer sections fit a phone without scrolling: spread them across the strip instead of hiding the last one under the fade. */
 
-/* Source page header: breadcrumb and a segmented control on desktop, one picker on phones. */
-.pc-source-header{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;width:100%;max-width:1400px;margin:0 auto;padding:.75rem .75rem 0}
 .pc-source-crumb{display:flex;align-items:center;gap:.375rem;font-size:13px;color:var(--text-secondary);white-space:nowrap}
 .pc-source-crumb a{color:var(--text-secondary)}
 .pc-source-crumb a:hover{color:var(--text-primary);text-decoration:underline}
 .pc-source-crumb strong{color:var(--text-primary);font-weight:600}
-.pc-segmented{display:inline-flex;border:1px solid var(--border-default);border-radius:.5rem;overflow:hidden;background:var(--surface-primary)}
-.pc-segmented a{display:flex;align-items:center;min-height:32px;padding:0 .75rem;font-size:12.5px;color:var(--text-secondary);white-space:nowrap;border-left:1px solid var(--border-default)}
-.pc-segmented a:first-child{border-left:0}
-.pc-segmented a:hover{color:var(--text-primary);background:var(--surface-secondary)}
-.pc-segmented a[aria-current=page]{color:var(--text-primary);background:var(--accent-subtle);font-weight:600}
-.pc-source-picker{display:none}
-@media(min-width:640px){.pc-source-header{padding:1rem 1rem 0}}
-@media(max-width:899px){.pc-segmented{display:none}.pc-source-picker{display:block;flex:1 1 12rem;min-width:0}.pc-source-header{flex-wrap:nowrap}}
 
 /* Search with an open notice; pursuit cards; AI category filters */
 .pc-search-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(26rem,48%);gap:1rem;align-items:start}
@@ -346,19 +317,9 @@ p.pc-source-crumb{margin-bottom:.75rem}
   .procurement-board .procurement-board-column[data-empty]{display:none}
   .procurement-workflow .pc-board-empty-stages{display:block}
 }
-/* Schedules turned off by an update, per-source schedule offer (S6), and collection runs (S1): phone first. */
-.pc-schedule-notice{display:flex;flex-direction:column;gap:.75rem;border:1px solid color-mix(in srgb,var(--status-warning) 40%,transparent);background:color-mix(in srgb,var(--status-warning) 8%,transparent);border-radius:.5rem;padding:.75rem 1rem;font-size:13px;line-height:1.5;color:var(--text-primary)}
-.pc-schedule-notice>div{display:flex;flex-direction:column;align-items:flex-start;gap:.5rem}
-.pc-schedule-notice p{margin:0;overflow-wrap:anywhere}
-@media(min-width:1024px){.pc-schedule-notice>div{flex-direction:row;align-items:center;justify-content:space-between;gap:1rem}.pc-schedule-notice>div>button{flex:none}}
-@media(pointer:coarse),(max-width:640px){.pc-schedule-notice button{min-height:44px;width:100%}}
 .pc-run-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .pc-run-list>li{display:grid;grid-template-columns:minmax(0,1fr);gap:.375rem;padding:.625rem 0;border-top:1px solid var(--border-default);min-width:0}
 .pc-run-list>li:first-child{border-top:0}
-.pc-run-main{display:flex;flex-direction:column;min-width:0}
-.pc-run-main strong{font-size:13px;overflow-wrap:anywhere}
-.pc-run-main small,.pc-run-state small{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
-.pc-run-state{display:flex;flex-direction:column;align-items:flex-start;gap:.125rem;min-width:0}
 .pc-run-actions{display:flex;flex-wrap:wrap;gap:.375rem}
 @media(pointer:coarse),(max-width:640px){.pc-run-actions button{min-height:44px;flex:1 1 6rem}}
 @media(min-width:1024px){.pc-run-list>li{grid-template-columns:minmax(12rem,1fr) minmax(14rem,1.5fr) auto;align-items:center;gap:1rem}.pc-run-actions{justify-content:flex-end}}
@@ -375,11 +336,7 @@ p.pc-source-crumb{margin-bottom:.75rem}
 @media(max-width:640px){
   .pc-rtable .pc-portal-error{max-width:none;white-space:normal;overflow-wrap:anywhere}
 }
-.pc-source-attention{display:flex;flex-direction:column;gap:.25rem;padding:.625rem .75rem;border:1px solid var(--border-default);border-radius:.625rem;background:var(--surface-secondary);font-size:13px;line-height:1.5}
 .pc-portal-disclosure>summary{font-size:13px;font-weight:600}
-.pc-schedule-reasons{display:flex;flex-direction:column;gap:.25rem;margin:.375rem 0;font-size:13px;line-height:1.45}
-.pc-schedule-notice>div.pc-schedule-stopped-list{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:.5rem}
-.pc-schedule-stopped-list details>summary{font-size:12.5px;color:var(--text-secondary)}
 /* Operations › Sources (Sources.tsx, SourceCard.tsx, PortalTable.tsx): one card per source, same slots, one column. */
 .pc-ops-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:.25rem;padding:.5rem .75rem;border:1px solid var(--border-default);border-radius:.625rem;background:var(--surface-secondary);font-size:13px;line-height:1.5}
 .pc-ops-line .pc-ops-link{margin-left:auto}

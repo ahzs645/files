@@ -6,13 +6,12 @@ import { useWorkspace } from '../backend';
 import { useCapabilities } from '../capabilities';
 import { assertDocumentBrowserIdle } from '../document-run';
 import { plainError } from '../error-text';
-import { hostHref, usePluginLocation } from '../navigation';
+import { hostHref } from '../navigation';
 import { StatusBadge, type Tone as BadgeTone } from '../host-ui';
 import { count as n } from '../format';
 import { INVENTORY_SQL, sourceName, sql } from './display';
 import { PluginLink, SettingsLink } from './links';
 import { scheduleLabel, type ScheduleRow } from './schedule-state';
-import { useSchedules } from './ScheduleControl';
 import { RUNS_KEY, useCollectionRuns, usePresets, useRecentRuns, useWorkflowRuns } from './CollectionRuns';
 import { STATUS_SOURCES } from './status-data';
 import { sourceSummary, type SourceSummaryInput } from './source-summary';
@@ -28,7 +27,7 @@ import './status.css';
 
 // Other pages import these from here.
 export { PluginLink, SettingsLink } from './links';
-export { useDocumentGap, useLastCollections, useSetupStatus } from './overview-hooks';
+export { useDocumentGap } from './overview-hooks';
 
 const TONE: Record<string, BadgeTone> = { good: 'success', warn: 'warning', busy: 'running', idle: 'neutral' };
 
@@ -45,13 +44,6 @@ function useRunNow() {
     } catch (e) { setError(plainError((e as Error).message)); } finally { setBusy(''); }
   };
   return { busy, error, message, run };
-}
-
-/** Run lists now live on Operations › Runs; this stays for pages that still render it. */
-export function RunLinks({ compact = false, except }: { compact?: boolean; except?: string }) {
-  const location = usePluginLocation();
-  if (except === '/runs' || location.split('?')[0] === '/runs') return null;
-  return <p className={compact ? 'pc-run-links rw-muted' : 'rw-muted'}>Every run list is under <PluginLink to="/runs">Operations › Runs</PluginLink>.</p>;
 }
 
 /** Operations › Overview (`/status`): what needs you, what is running, the sources, schedules, coverage and last outcomes. */
@@ -199,11 +191,3 @@ function LastOutcomes() {
     </li>)}</ul>
   </section>;
 }
-
-/** Home used to show this card; it now shows one line (review-workspace/OperationsLine.tsx). Kept as that line for older imports. */
-export function StatusCard() {
-  const { overview } = useOverviewStatus();
-  if (!overview.needs.length) return null;
-  return <p className="rw-ops-line"><PluginLink to="/status">{`Operations: ${overview.verdict} →`}</PluginLink></p>;
-}
-

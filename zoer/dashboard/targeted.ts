@@ -3,7 +3,7 @@ import { targetedLabel } from './model';
 import reference from '../data/bc-bid-filter-reference.json';
 export const BC_REGIONS = reference.regions.filter(t=>t.level==='regional-district' || t.level==='province').map(t=>t.title).sort();
 import { formatWhen } from '../../apps/dashboard/src/lib/formatting';
-const plural = (value: number, one: string, many: string) => `${Number(value || 0).toLocaleString()} ${value === 1 ? one : many}`;
+import { plural } from './format';
 
 /** Receipt text for `checkpoint:targeted`: what was searched, what came back, and whether BC Bid's search was cleared. */
 export function receiptSummary(receipt: any) {

@@ -3,16 +3,15 @@ import { BIDSANDTENDERS_PORTALS } from './portals';
 import { SITE_PORTALS } from './site-portals';
 import { regionalDistrictShort } from './place-data';
 import { SOURCES } from './catalog';
-import { connectorCollectionKey } from './source-adapters';
 import { isLive, runState, type RecentRun } from './source-schedules';
 import { sourceErrorText } from './source-errors';
+import { plural } from '../format';
 
 /**
  * Sources page model for many sources and many portals (CONNECTORS.md §4). Pure: the page reads workspace state,
  * inventory counts and schedules, and these helpers turn them into statuses. Unknown is never shown as zero.
  */
 
-export const collectionKey = connectorCollectionKey;
 export { COLLECT_ACTION } from './source-schedules';
 
 /** A source collected by `procurement.collect` from portals on one platform. Other connectors add rows here. */
@@ -60,7 +59,6 @@ export function readConnectorCollection(value: unknown, sourceId: string): Conne
 }
 
 export type Tone = 'good' | 'busy' | 'warn' | 'idle';
-const many = (n: number, one: string) => `${n.toLocaleString()} ${one}${n === 1 ? '' : 's'}`;
 /** Portals of the last attempt that were skipped on purpose (outside visiting hours, robots.txt), not failures. */
 const skippedPortals = (state: ConnectorCollection, code?: string) => Object.values(state.portals).filter(portal => portal.status === 'not-run' && !!portal.error?.code && (code ? portal.error.code === code : portal.error.code !== 'robots_disallowed')).length;
 /**
@@ -80,12 +78,12 @@ export function connectorStatus(state: ConnectorCollection | null | undefined, n
     case 'incomplete': {
       const code = state.error?.code;
       if (code === 'waiting_for_user') return { tone: 'warn', text: 'Waiting for you' };
-      if (code === 'portals_skipped') { const n = skippedPortals(state); return { tone: 'good', text: n ? `Collected · ${many(n, noun)} skipped` : 'Collected' }; }
-      if (code === 'robots_disallowed') { const n = skippedPortals(state, 'robots_disallowed'); return { tone: 'good', text: n ? `Collected · ${many(n, noun)} disallowed by robots.txt` : 'Collected' }; }
+      if (code === 'portals_skipped') { const n = skippedPortals(state); return { tone: 'good', text: n ? `Collected · ${plural(n, noun)} skipped` : 'Collected' }; }
+      if (code === 'robots_disallowed') { const n = skippedPortals(state, 'robots_disallowed'); return { tone: 'good', text: n ? `Collected · ${plural(n, noun)} disallowed by robots.txt` : 'Collected' }; }
       if (code === 'time_budget') return { tone: 'warn', text: 'Part-way · the next run continues' };
-      if (code === 'portals_incomplete') { const n = Object.values(state.portals).filter(portal => portal.status === 'incomplete').length; return { tone: 'warn', text: n ? `Part-way · ${many(n, noun)} partly collected` : 'Part-way' }; }
+      if (code === 'portals_incomplete') { const n = Object.values(state.portals).filter(portal => portal.status === 'incomplete').length; return { tone: 'warn', text: n ? `Part-way · ${plural(n, noun)} partly collected` : 'Part-way' }; }
       const failed = Object.values(state.portals).filter(portal => portal.status === 'failed').length;
-      return { tone: 'warn', text: failed ? `Needs attention · ${many(failed, noun)} failed` : 'Needs attention' };
+      return { tone: 'warn', text: failed ? `Needs attention · ${plural(failed, noun)} failed` : 'Needs attention' };
     }
     case 'failed': return { tone: 'warn', text: 'Needs attention · last collection failed' };
     case 'paused': return { tone: 'idle', text: state.error?.code === 'cancelled' ? 'Stopped; the next run continues' : 'Interrupted; the next run continues' };

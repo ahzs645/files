@@ -1,13 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CONFIGURE_SECTIONS, OPERATE_SECTIONS, PRIMARY_SECTIONS, SECTION_VIEWS, SHELL_PATHS, pageOf, redirectOf, sectionOf, viewHref, viewOf } from '../zoer/dashboard/review-workspace/nav';
+import { OPERATE_SECTIONS, PRIMARY_SECTIONS, SECTION_VIEWS, SHELL_PATHS, pageOf, redirectOf, sectionOf, viewHref, viewOf } from '../zoer/dashboard/review-workspace/nav';
 
 describe('review workspace navigation', () => {
   it('has four daily sections, then Operations and Setup', () => {
     expect(PRIMARY_SECTIONS.map(([id]) => id)).toEqual(['home', 'opportunities', 'pursuits', 'insights']);
     expect(OPERATE_SECTIONS.map(([id, label, to]) => [id, label, to])).toEqual([['operations', 'Operations', '/status'], ['setup', 'Setup', '/profiles']]);
     expect([...PRIMARY_SECTIONS, ...OPERATE_SECTIONS].map(([, label]) => label)).toEqual(['Home', 'Opportunities', 'Pursuits', 'Insights', 'Operations', 'Setup']);
-    // The old name stays one release for importers.
-    expect(CONFIGURE_SECTIONS).toBe(OPERATE_SECTIONS);
     // Every size uses one full name for a section.
     expect([...PRIMARY_SECTIONS, ...OPERATE_SECTIONS].every(tab => tab.length === 3)).toBe(true);
   });

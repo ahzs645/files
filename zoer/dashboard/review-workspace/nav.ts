@@ -12,8 +12,6 @@ export const PRIMARY_SECTIONS: SectionTab[] = [
 ];
 /** Keeping collection running (Operations) and rarely changed configuration (Setup), after the daily sections. */
 export const OPERATE_SECTIONS: SectionTab[] = [['operations', 'Operations', '/status'], ['setup', 'Setup', '/profiles']];
-/** @deprecated Use OPERATE_SECTIONS; kept for one release. */
-export const CONFIGURE_SECTIONS = OPERATE_SECTIONS;
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + '/');
 const pathOf = (location: string) => location.split('?')[0] || '/';

@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { host } from '../bridge';
-import { useWorkspace } from '../backend';
 import { useCapabilities } from '../capabilities';
 import { readDocumentQueue } from '../document-queue';
 import { EXTRACTION_FAILED_COUNT_SQL, PENDING_COUNT_SQL } from '../document-processing';
@@ -8,8 +7,8 @@ import { isActiveRun } from '../format';
 import { sql } from './display';
 import { findSchedule } from './schedule-state';
 import { useScheduleBrowsers, useSchedules } from './ScheduleControl';
-import { useRecentRuns, useWorkflowRuns } from './CollectionRuns';
-import { DOCUMENT_GAP_KEY, lastCollections, paged, readDocumentGap } from './status-data';
+import { useWorkflowRuns } from './CollectionRuns';
+import { DOCUMENT_GAP_KEY, paged, readDocumentGap } from './status-data';
 import { SOURCE_SUMMARY_KEYS } from './source-summary';
 import { setupChecklist, type ExtractionCounts } from './status-checklist';
 import { FAILED_FILES_SQL, FAILED_TASKS_SQL, failedFiles, failureSummary, type FailureTask } from './source-health';
@@ -35,11 +34,6 @@ export function useDocumentGap(enabled = true) {
 export function useCollectionEntries() {
   return useQuery({ queryKey: ['catalog', 'procurement-status', 'collections'], queryFn: () => host('catalog.workspace', { keys: SOURCE_SUMMARY_KEYS }), refetchInterval: 30_000 });
 }
-/** Last successful collection per source (the same helper Sources uses). */
-export function useLastCollections() {
-  const { model } = useWorkspace(), recent = useRecentRuns(), entries = useCollectionEntries();
-  return lastCollections(entries.data?.entries, recent.data ?? (recent.error ? [] : undefined), model?.captureRuns);
-}
 
 /** Actions whose runs use the BC Bid download browser (portal downloads use their own browser). */
 const BC_DOWNLOAD_ACTIONS = ['documents.download', 'documents.download.all', 'documents.download.missing', 'documents.download.queue'];
@@ -58,7 +52,7 @@ export function useFailures(enabled = true) {
 }
 
 /**
- * Everything "Needs you" is built from. `checklist` keeps the older shape for pages that import `useSetupStatus`;
+ * Everything "Needs you" is built from. `checklist` is the step list;
  * `overview` is the Needs you / All clear split and its verdict, the count Home's line shows.
  */
 export function useOverviewStatus() {
@@ -70,9 +64,4 @@ export function useOverviewStatus() {
     downloadActive: active.some(run => BC_DOWNLOAD_ACTIONS.includes(run.actionId ?? '')), extractionRunning: active.some(run => (run.actionId ?? '').startsWith('documents.extract')),
     extraction: extraction.data, failures: failures.data ? failureSummary(failures.data) : undefined });
   return { schedules, browsers, gap, runs, extraction, failures, checklist, overview: needsYou(checklist.steps) };
-}
-/** The checklist from today's reads; shared by Operations › Overview and older callers. */
-export function useSetupStatus() {
-  const { schedules, gap, checklist } = useOverviewStatus();
-  return { schedules, gap, checklist };
 }

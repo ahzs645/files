@@ -7,7 +7,7 @@ import { List, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { parseExclusions, addExclusion, removeExclusion, defaultFilters, inspectionFilters, type Award, type MarketFilters, type MarketOptions, type Slice, type Overview, type Metadata, type Trends, type Distribution, type Comparison, type Matrix, type QualityFlag, type MappingOverview } from './model';
 import { useMarket } from './useMarket';
 import type { OverviewSummary } from './sql-summary';
-import { ComparisonPlot, DependencePlot, Heatmap, LinePlot, Metrics, Panel, compact, count, counted, money, percent } from './charts';
+import { ComparisonPlot, DependencePlot, Heatmap, LinePlot, Metrics, Panel, count, counted, money, percent } from './charts';
 import type { AnalysisAction } from './HeatmapActions';
 import { downloadRecords } from '../export';
 import { ProcurementMarket } from '../procurement/ProcurementMarket';

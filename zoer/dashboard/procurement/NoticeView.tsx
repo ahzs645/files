@@ -11,7 +11,7 @@ import { Archive, ChevronLeft, Download, FileText, FileWarning, RefreshCw, Star,
 import { Btn, Modal, Select } from '@zoer/plugin-ui/controls';
 import * as Controls from '@zoer/plugin-ui/controls';
 import { hasNativeHost, host } from '../bridge';
-import { setStar, useWorkspace } from '../backend';
+import { setStar } from '../backend';
 import { useDocumentBrowsers } from '../use-document-browsers';
 import { downloadNoticeFiles, openPublisherDownload, readPublisherReceipt } from './publisher-downloads';
 import { downloadDocumentBundle, sizeText } from '../document-bundle';

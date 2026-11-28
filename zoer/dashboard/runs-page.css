@@ -1,5 +1,3 @@
-/* Operations › Runs lists every run kind behind one filter, so the composed lists' "Other run lists" bars are redundant here. */
-.pc-runs-page .pc-run-links { display: none; }
 .pc-run-kinds { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* One line per run: state, what it did, when. The detail line is plain text, never an alert. */
