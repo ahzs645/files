@@ -41,7 +41,7 @@ describe('cell state derivation', () => {
   it('shows the correction as the value while keeping the AI fact id for the inspector', () => {
     const original = fact({ reviewState: 'corrected', reviewValue: money(80000) });
     const cell = deriveCell('budget', [original], false);
-    expect(cell.value).toBe('CAD 80,000 · total contract');
+    expect(cell.value).toBe('$80,000 · Total contract');
     expect(cell.factId).toBe(original.id);
   });
   it('names empty causes explicitly', () => {
@@ -79,10 +79,10 @@ describe('cell state derivation', () => {
 });
 
 describe('money display', () => {
-  it('keeps kind, currency and basis; unknown currency is never assumed', () => {
-    expect(formatFactValue('money:insurance_limit', { lower: 5_000_000, upper: 5_000_000, currency: 'CAD', basis: 'unknown' })).toBe('CAD 5,000,000 · basis not stated');
-    expect(formatFactValue('money:buyer_budget', { lower: 10, upper: 20, currency: null, basis: 'annual' })).toBe('Currency not stated 10–20 · per year');
-    expect(formatFactValue('money:award_value', { lower: 7, upper: 7, currency: 'CAD', basis: 'total_contract' })).toBe('CAD 7 · total contract (Award value)');
+  it('keeps kind, currency and basis through the one money formatter (factDisplay); unknown currency is named', () => {
+    expect(formatFactValue('money:insurance_limit', { lower: 5_000_000, upper: 5_000_000, currency: 'CAD', basis: 'unknown' })).toBe('$5,000,000 · Basis not stated');
+    expect(formatFactValue('money:buyer_budget', { lower: 10, upper: 20, currency: null, basis: 'annual' })).toBe('$10–$20 per year · Currency not stated');
+    expect(formatFactValue('money:award_value', { lower: 7, upper: 7, currency: 'CAD', basis: 'total_contract' })).toBe('$7 · Total contract · Award value');
     expect(formatFactValue('money:buyer_budget', { lower: null, upper: null, raw: 'To be negotiated' })).toBe('To be negotiated');
   });
 });

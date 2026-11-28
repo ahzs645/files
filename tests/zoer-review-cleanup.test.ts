@@ -85,7 +85,7 @@ describe('extracted facts: readable money and dates', () => {
     const cell = deriveCell('bid_security', [fact({ value: { lower: 6_000_000, upper: 6_000_000, currency: null, basis: 'unknown' } }), fact({ id: 'f2', value: { lower: 5, upper: 5, currency: null, basis: 'unknown' } })], false);
     expect(cell.display.text).toMatch(/^2 values, e\.g\. \$/);
     expect(cell.display.detail).toBe('Currency and basis not stated');
-    expect(cell.value).toMatch(/^2 different values · e\.g\. Currency not stated/);
+    expect(cell.value).toMatch(/^2 different values · e\.g\. \$6,000,000 · Currency and basis not stated/);
   });
   it('reads dates in the app format and keeps the source wording', () => {
     expect(factDisplay('date', { raw: '2026-09-11', precision: 'date' })).toEqual({ text: 'Sep 11, 2026', detail: '', raw: '2026-09-11' });

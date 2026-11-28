@@ -117,8 +117,8 @@ describe('compare budget row', () => {
       { recordId: 'r', kind: 'buyer_budget', value: { lower: 75000, upper: 75000, currency: 'CAD', basis: 'total_contract', taxBasis: 'exclusive', raw: '$75,000' }, state: 'proposed' },
       { recordId: 'r', kind: 'buyer_estimated_value', value: { lower: 50000, upper: 90000, currency: null, basis: 'annual', taxBasis: 'unknown', raw: '' }, state: 'accepted' },
     ] });
-    expect(lines[0]).toMatch(/^Buyer budget: CAD 75,000 · total contract · Proposed$/);
-    expect(lines[1]).toMatch(/^Buyer estimated value: Currency not stated 50,000–90,000 · per year · Accepted$/);
+    expect(lines[0]).toBe('Buyer budget: $75,000 · Total contract · Proposed');
+    expect(lines[1]).toBe('Buyer estimated value: $50,000–$90,000 per year · Currency not stated · Accepted');
   });
 });
 

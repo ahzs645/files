@@ -77,18 +77,14 @@ export function cellProblems(facts: FactRow[], runStale: boolean): Set<Problem> 
   return out;
 }
 
-const n = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : null;
-/** Display text for a fact value. Money keeps its own kind, currency and basis; nothing is converted or merged. */
+/**
+ * Plain text for a fact value (CSV export, Compare, tooltips): `factDisplay` text with its caveat after " · ", so
+ * money reads the same everywhere ("$6,000,000 · Currency and basis not stated"). Nothing is converted or merged.
+ */
 export function formatFactValue(semanticType: string, value: unknown): string {
   const v: any = value;
   if (v === null || v === undefined || v === '') return 'Value not recorded';
-  if (semanticType.startsWith('money:') && typeof v === 'object') {
-    const lower = n(v.lower), upper = n(v.upper);
-    const amount = lower && upper && lower !== upper ? `${lower}–${upper}` : lower ?? upper;
-    if (!amount) return v.raw ? String(v.raw) : 'Amount not stated';
-    const kind = MONEY_KIND_LABELS[semanticType.slice(6) as MoneyKind];
-    return `${v.currency ?? 'Currency not stated'} ${amount} · ${MONEY_BASIS_LABELS[v.basis as MoneyBasis] ?? 'basis not stated'}${kind && !['buyer_budget', 'buyer_estimated_value', 'insurance_limit', 'bid_security'].includes(semanticType.slice(6)) ? ` (${kind})` : ''}`;
-  }
+  if (semanticType.startsWith('money:') && typeof v === 'object') { const display = factDisplay(semanticType, v); return display.detail ? `${display.text} · ${display.detail}` : display.text; }
   if (typeof v === 'object') return v.raw ? `${v.raw}${v.precision === 'date' ? ' (date only)' : v.precision === 'unknown' ? ' (unrecognized date)' : ''}` : JSON.stringify(v);
   return String(v);
 }
