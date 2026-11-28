@@ -24,6 +24,6 @@ export function DatabaseSetup({ setup }: { setup: SetupState }) {
       : <p>Setup prepares that database and moves in any records and run history this plugin already saved. Source files are kept.</p>}
     {setup.blocked && <p role="status">{setup.blocked}</p>}
     {failure && <p role="alert" className="pc-setup-error">{error ? 'Setup could not start: ' : 'The last setup attempt failed: '}{failure.replace(/\.$/, '')}.</p>}
-    {!setup.readOnly && <div><Btn variant="primary" loading={busy} disabled={!!setup.blocked} onClick={() => void start()}>{failure ? 'Try setup again' : 'Set up database'}</Btn></div>}
+    {!setup.readOnly && <div><Btn variant={setup.blocked ? 'secondary' : 'primary'} loading={busy} disabled={!!setup.blocked} onClick={() => void start()}>{failure ? 'Try setup again' : 'Set up database'}</Btn></div>}
   </section>;
 }

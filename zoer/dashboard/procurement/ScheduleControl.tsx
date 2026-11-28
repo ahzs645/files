@@ -73,7 +73,7 @@ export function ScheduleControl({ actionId, input = {}, title, defaultHours = 24
     </fieldset>
     {selected === 'custom' && hours === null && <p className="pc-schedule-note" role="alert">Use whole hours from 1 to 720 (30 days).</p>}
     <div className="procurement-actions">
-      <Btn size="sm" variant="primary" disabled={busy || schedules.isPending || !!schedules.error || hours === null || !changed} onClick={() => void save(true)}>{busy ? 'Saving…' : mine?.enabled ? 'Save interval' : state.stopped ? 'Turn on again' : 'Turn on'}</Btn>
+      <Btn size="sm" variant={schedules.isPending || schedules.error || hours === null || !changed ? 'secondary' : 'primary'} disabled={busy || schedules.isPending || !!schedules.error || hours === null || !changed} onClick={() => void save(true)}>{busy ? 'Saving…' : mine?.enabled ? 'Save interval' : state.stopped ? 'Turn on again' : 'Turn on'}</Btn>
       {mine?.enabled && <Btn size="sm" variant="secondary" disabled={busy} onClick={() => void save(false)}>Turn off</Btn>}
     </div>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="pc-schedule-meta">{message}</p>}

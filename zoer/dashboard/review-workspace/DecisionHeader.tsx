@@ -195,7 +195,7 @@ function StagePanel({ recordId, runs, loading, error, profileVersionId }: { reco
       {ReviewModelSelector ? <ReviewModelSelector request={host} onChange={setChoice} disabled={!!starting} /> : <p className="rw-note">Update Zoer to choose a computer and model here; AI review keeps working meanwhile.</p>}
       <label className="rw-check"><input type="checkbox" checked={force} onChange={event => setForce(event.target.checked)} />Run again even if unchanged</label>
       <Btn size="sm" variant="secondary" disabled={!choice || !!starting} loading={starting === 'triage'} onClick={() => void launch('triage')}>Triage from notice</Btn>
-      <Btn size="sm" variant="primary" disabled={!choice || !!starting} loading={starting === 'extract'} onClick={() => void launch('extract')}>Extract requirements</Btn>
+      <Btn size="sm" variant={choice ? 'primary' : 'secondary'} disabled={!choice || !!starting} loading={starting === 'extract'} onClick={() => void launch('extract')}>Extract requirements</Btn>
     </div>
     <p className="rw-note">Triage reads only the saved notice; extraction also reads every downloaded file, then re-assesses. Neither makes a bid decision.</p></>}
     {running && <p role="status" className="pc-running"><span className="pc-spinner" aria-hidden="true" />{activeLaunch ? stageName(activeLaunch.stage) : 'A stage'} is running on the server. You can close this notice; results appear here when it finishes.</p>}

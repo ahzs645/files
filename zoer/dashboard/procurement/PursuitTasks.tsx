@@ -88,7 +88,7 @@ function TaskEditor({ task, onClose, onSaved }: { task: TaskRow; onClose(): void
     try { await reviewWrite({ op: 'task.update', taskId: task.id, recordId: task.recordId, status, owner: owner.trim() || undefined, dueAt: due || undefined, ...(note.trim() ? { completionNote: note.trim() } : {}), expectedVersion: task.version }); await onSaved(); }
     catch (e) { setError(friendly(e)); } finally { setBusy(false); }
   };
-  return <Modal fit title={`Update task: ${task.title}`} mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant="primary" disabled={busy || needsNote} loading={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save task'}</Btn></div>}>
+  return <Modal fit title={`Update task: ${task.title}`} mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant={needsNote ? 'secondary' : 'primary'} disabled={busy || needsNote} loading={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save task'}</Btn></div>}>
     <div className="rw-form">
       <p className="rw-note">{task.recordTitle ?? task.recordId}{task.linkedText ? ` · Requirement: ${task.linkedText}` : ''}</p>
       <label className="rw-field"><span>Status</span><Select aria-label="Task status" presentation="dropdown" searchable={false} value={status} disabled={busy} onChange={e => setStatus(e.target.value as TaskRow['status'])}><option value="open">Open</option><option value="done">Done</option><option value="cancelled">Cancelled</option></Select></label>
@@ -109,7 +109,7 @@ function TaskCreator({ pursuits, onClose, onSaved }: { pursuits: PursuitDue[]; o
     try { await reviewWrite({ op: 'task.create', recordId, title: title.trim(), kind, ...(owner.trim() ? { owner: owner.trim() } : {}), ...(due ? { dueAt: due } : {}), expectedVersion: 0 }); await onSaved(); }
     catch (e) { setError(friendly(e)); } finally { setBusy(false); }
   };
-  return <Modal fit title="Add task" mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant="primary" disabled={busy || !recordId || title.trim().length < 3} loading={busy} onClick={() => void save()}>{busy ? 'Adding…' : 'Add task'}</Btn></div>}>
+  return <Modal fit title="Add task" mobileSheet onClose={() => { if (!busy) onClose(); }} footer={<div className="rw-actions"><Btn variant="secondary" disabled={busy} onClick={onClose}>Cancel</Btn><Btn variant={!recordId || title.trim().length < 3 ? 'secondary' : 'primary'} disabled={busy || !recordId || title.trim().length < 3} loading={busy} onClick={() => void save()}>{busy ? 'Adding…' : 'Add task'}</Btn></div>}>
     <div className="rw-form">
       <label className="rw-field"><span>Pursuit</span><Select aria-label="Pursuit" value={recordId} disabled={busy} onChange={e => setRecordId(e.target.value)}>{pursuits.map(item => <option key={item.recordId} value={item.recordId}>{item.title}</option>)}</Select></label>
       <label className="rw-field"><span>Task</span><input value={title} maxLength={300} disabled={busy} onChange={e => setTitle(e.target.value)} /></label>
