@@ -1,7 +1,7 @@
 import { Hint } from '../host-ui';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronRight, RefreshCw } from 'lucide-react';
 import { Btn, Select } from '@zoer/plugin-ui/controls';
 import { navigatePlugin, patchPluginQuery, pluginHref, usePluginLocation } from '../navigation';
 import { useCapabilities } from '../capabilities';
@@ -9,14 +9,15 @@ import { INVENTORY_SQL, sourceName, sql } from '../procurement/display';
 import { readProcurementState } from '../procurement/state-client';
 import { PURSUIT_STAGES } from '../procurement/state-contract';
 import { REVIEW_KEY, useReviewWorkspace } from './actions';
-import { useActiveProfile } from './profile-context';
+import { useActiveProfile, useProfileState } from './profile-context';
+import { ProfilePrompt } from './ProfilePrompt';
 import { ProfilePicker } from './ProfilePicker';
 import { label } from './queries';
 import { ACQUIRE_REASON_TEXT, QUEUES, QUEUE_TEXT, queueSql, reviewScopeHref, type QueueId } from './queue';
 import { Today } from './Today';
 import { SOON_DAYS } from './today-data';
 import { friendlyDeadline } from './deadline-text';
-import { profileState, readAttentionSummary, readDeadlines, readPolicies, readProfileNames, readQueue, readQueueExamples, readRecentDecisions, type ProfileState } from './home-data';
+import { readAttentionSummary, readDeadlines, readPolicies, readQueue, readQueueExamples, readRecentDecisions } from './home-data';
 import { OperationsLine } from './OperationsLine';
 import { count, plural, when as shortWhen } from '../format';
 import './review.css';
@@ -129,20 +130,6 @@ function AttentionTiles({ source, profile, active, asOf, available }: { source: 
   </div>;
 }
 
-/** The one profile prompt on Home, worded for the real state (no profile, an unpublished draft, or none chosen). */
-function ProfilePrompt({ state }: { state: ProfileState }) {
-  const { writes } = useCapabilities();
-  if (state.state === 'chosen') return null;
-  const [title, text] = state.state === 'unchosen' ? ['Choose a profile', 'Fit, eligibility and decisions are assessed against a company profile.']
-    : state.state === 'draft-only' ? ['Publish your profile', `${state.draftName ? `“${state.draftName}”` : 'Your company profile'} is a draft. Publish it to assess fit, eligibility and decisions.`]
-    : ['Create a company profile', 'Fit, eligibility and decisions are assessed against one.'];
-  return <section className="rw-panel rw-profile-prompt" aria-label="Company profile">
-    <Building2 aria-hidden="true" size={20} />
-    <div><h2>{title}</h2><p className="rw-muted">{text}</p></div>
-    {state.state === 'unchosen' ? <div className="rw-choose-profile"><ProfilePicker label={false} /></div> : writes ? <RouteLink to="/profiles" className="rw-drill">Open Setup › Profiles</RouteLink> : null}
-  </section>;
-}
-
 function RecentDecisions({ source }: { source: string }) {
   const decisions = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'decisions', source], refetchInterval: 60_000, queryFn: () => readRecentDecisions(source) });
   // Empty: one quiet line, not a card.
@@ -183,13 +170,12 @@ function PursuitSummary() {
 export function Home() {
   const location = usePluginLocation(), source = new URLSearchParams(location.split('?')[1]).get('source') ?? '';
   const workspace = useReviewWorkspace(), available = workspace.data?.available === true;
-  const { profileVersionId, active, versions, loading: profilesLoading } = useActiveProfile();
-  const profiles = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'profiles'], enabled: available, queryFn: readProfileNames, refetchInterval: 60_000 });
+  const { profileVersionId, active } = useActiveProfile(), profileState = useProfileState();
   const [asOf, setAsOf] = useState(() => Date.now()), client = useQueryClient(), { surface, collection } = useCapabilities();
   const inventory = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'inventory'], queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60_000 });
   const policies = useQuery({ queryKey: [...REVIEW_KEY, 'home', 'policies', profileVersionId], enabled: available, queryFn: () => readPolicies(profileVersionId) });
-  // One prompt for the profile chain; shown once the profile reads have answered.
-  const prompt = available && !profilesLoading && profiles.data ? profileState(profiles.data, versions.length, active !== null) : { state: 'chosen' as const };
+  // The shared profile prompt (ProfilePrompt), shown once the profile reads have answered; it carries the only call to action.
+  const prompting = available && !profileState.loading && profileState.state !== 'chosen';
   const sources = [...new Set((inventory.data ?? []).filter(row => row.kind === 'opportunity').map(row => String(row.sourceId)))];
   const refresh = () => { setAsOf(Date.now()); void client.invalidateQueries({ queryKey: [...REVIEW_KEY, 'home'] }); };
   const policy = !available ? (workspace.isPending ? 'Checking…' : 'Requires the review workspace') : policies.isPending ? 'Loading…' : policies.isError ? 'Could not load' : policies.data?.length ? `Assessment policy: ${policies.data.map(row => `${row.policy} (${plural(Number(row.count), 'assessment')})`).join(', ')}` : 'No current assessments for this profile';
@@ -198,16 +184,16 @@ export function Home() {
       <div className="rw-scope-title"><h1>What needs attention?</h1><p>{source ? sourceName(source) : 'All saved sources'} · as of {when(new Date(asOf).toISOString())}</p></div>
       <div className="rw-controls">
         <label className="rw-control"><span>Source</span><Select aria-label="Source" presentation="dropdown" searchable={false} value={source} onChange={event => patchPluginQuery({ source: event.target.value || null })}><option value="">All saved sources</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}</option>)}</Select></label>
-        {available ? <Hint content={policy}><span><ProfilePicker /></span></Hint> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
+        {available ? <Hint content={policy}><span><ProfilePicker publish={false} /></span></Hint> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
         {surface !== 'societyer' && <Btn size="sm" variant="secondary" className="rw-scope-refresh" aria-label="Refresh" icon={<RefreshCw size={14} />} onClick={refresh} tooltip={`As of ${when(new Date(asOf).toISOString())}`}><span className="rw-scope-refresh-label">Refresh</span></Btn>}
       </div>
     </header>
     {collection && <OperationsLine />}
     {!workspace.isPending && !available && <p className="rw-upgrade" role="status">{workspace.data?.reason ?? 'Update Zoer to use the review workspace.'} Saved notices, documents, deadlines and pursuits are still shown below.</p>}
     <Today source={source} asOf={asOf} />
-    <div className="rw-home-kpis" data-prompt={prompt.state !== 'chosen' || undefined}>
+    <div className="rw-home-kpis" data-prompt={prompting || undefined}>
       <AttentionTiles source={source} profile={profileVersionId} active={active !== null} asOf={asOf} available={available} />
-      <ProfilePrompt state={prompt} />
+      {available && <ProfilePrompt picker={false} />}
     </div>
     {/* Two independent columns, so a long panel on one side never leaves a gap on the other. */}
     <div className="rw-home-grid">

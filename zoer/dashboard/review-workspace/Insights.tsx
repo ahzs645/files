@@ -128,7 +128,7 @@ export function Insights() {
       <div className="rw-controls">
         <label className="rw-control"><span>Source</span><Select aria-label="Source" presentation="dropdown" searchable={false} value={source} onChange={event => patchPluginQuery({ source: event.target.value || null })}><option value="">All saved sources</option>{sources.map(id => <option key={id} value={id}>{sourceName(id)}</option>)}</Select></label>
         <label className="rw-control"><span>Opportunities</span><Select aria-label="Opportunities" presentation="dropdown" searchable={false} value={open ? 'open' : 'all'} onChange={event => patchPluginQuery({ all: event.target.value === 'all' ? '1' : null })}><option value="open">Open opportunities</option><option value="all">All saved opportunities</option></Select></label>
-        {available ? <ProfilePicker /> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
+        {available ? <ProfilePicker publish={false} /> : <span className="rw-muted">{workspace.isPending ? 'Checking the review workspace…' : 'Requires the review workspace'}</span>}
       </div>
     </header>
     {workspace.isPending ? <p className="rw-muted" role="status">Checking the review workspace…</p>

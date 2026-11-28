@@ -8,7 +8,7 @@ import { coverageBar, needsYou, runOutcome, runningNow, scheduleSections, stopGr
 import { nextVisit, visitSeen, VISIT_GAP_MS } from '../zoer/dashboard/review-workspace/today-data';
 
 vi.mock('../zoer/dashboard/procurement/display', () => ({ sourceName: (id: string) => id, sql: async () => [] }));
-const { profileState } = await import('../zoer/dashboard/review-workspace/home-data');
+const { profileStateOf } = await import('../zoer/dashboard/review-workspace/profile-summaries');
 
 /** The thirteen schedules on the live host on 2026-11-27 (findings/raw/schedules.json, signatures left out). */
 const CHANGED = 'Scheduled action, permissions or settings changed. Review and save this schedule again.';
@@ -149,11 +149,11 @@ describe('Home: last visit', () => {
   });
 });
 
-describe('Home: profile prompt', () => {
+describe('Home: profile prompt (shared profileStateOf)', () => {
   it('says create, publish or choose according to the real state', () => {
-    expect(profileState([], 0, false)).toEqual({ state: 'none' });
-    expect(profileState([{ name: 'dssdf', published: false }], 0, false)).toEqual({ state: 'draft-only', draftName: 'dssdf' });
-    expect(profileState([{ name: 'Acme', published: true }, { name: 'dssdf', published: false }], 1, false)).toEqual({ state: 'unchosen' });
-    expect(profileState([{ name: 'Acme', published: true }], 1, true)).toEqual({ state: 'chosen' });
+    expect(profileStateOf([], null)).toEqual({ state: 'none' });
+    expect(profileStateOf([{ id: 'p1', name: 'dssdf', published: false }], null)).toEqual({ state: 'draft-only', draftName: 'dssdf' });
+    expect(profileStateOf([{ id: 'p2', name: 'Acme', published: true }, { id: 'p1', name: 'dssdf', published: false }], null)).toEqual({ state: 'unchosen' });
+    expect(profileStateOf([{ id: 'p2', name: 'Acme', published: true }], 'v1')).toEqual({ state: 'chosen' });
   });
 });

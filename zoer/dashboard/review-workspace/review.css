@@ -508,15 +508,11 @@
 .rw-today-alert-badge{text-decoration:none}
 .rw-home-kpis{display:flex;flex-direction:column;gap:.75rem}
 @media(min-width:640px){.rw-home-kpis[data-prompt]{display:grid;grid-template-columns:minmax(0,18rem) minmax(0,1fr);align-items:stretch}.rw-home-kpis[data-prompt] .rw-tiles[data-count="1"]{grid-template-columns:minmax(0,1fr)}}
-.rw-profile-prompt{flex-direction:row;align-items:center;flex-wrap:wrap;gap:.75rem 1rem}
-.rw-profile-prompt>svg{flex:none;color:var(--text-secondary)}
-.rw-profile-prompt>div:first-of-type{flex:1;min-width:12rem}
-.rw-profile-prompt h2{font-size:14.5px;font-weight:650;color:var(--text-primary)}
-.rw-profile-prompt h2::before{display:none}
-.rw-profile-prompt>.rw-drill,.rw-profile-prompt>.rw-choose-profile{margin:0;align-self:center}
 
 /* ---- Review pages cleanup (2026-11-27): profile prompt, Decisions, extracted facts, AI pipeline, AI results ---- */
-.rw-profile-prompt{grid-column:1/-1;padding:.5rem 0}
+/* The one profile prompt (ProfilePrompt.tsx): the same card on Home, Decisions and the Fit matrix. */
+.rw-profile-prompt{grid-column:1/-1;min-width:0;border:1px solid var(--border-default);border-radius:.75rem;background:var(--surface-primary)}
+.rw-home-kpis .rw-profile-prompt{grid-column:auto}
 .rw-profile-publish{font-size:12.5px;color:var(--accent);text-decoration:underline;text-underline-offset:2px}
 .rw-insights-line{grid-column:1/-1;font-size:13px;color:var(--text-secondary)}
 .rw-insights-line a{color:var(--accent)}

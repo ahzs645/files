@@ -296,7 +296,7 @@ export function Procurement() {
     {view === 'compare' ? !compareReady(compareTargets) ? <CompareEmpty selected={compareTargets.length} />
         : <><div className="pc-back-row"><Btn size="sm" variant="ghost" icon={<ArrowLeft aria-hidden="true" className="h-4 w-4" />} onClick={() => patchPluginQuery({ view: '', ids: '' }, 'push')}>Back to Browse</Btn></div><Compare ids={compareTargets} profileVersionId={profile} profileText={profileText} workspace={available} onOpen={openNotice} onEvidence={setEvidenceIds} /></>
       : view === 'matrix' ? !available ? <p className="rw-upgrade">{workspace.isPending ? 'Checking the review workspace…' : workspace.data?.reason ?? 'Update Zoer to use the review workspace.'}</p>
-        : !profile ? <section className="rw-panel rw-fit-panel" aria-label="Fit matrix"><ChooseProfile picker /></section>
+        : !profile ? <ChooseProfile picker />
         : review.unavailable ? <p className="rw-upgrade">{review.unavailable}</p>
         : <FitMatrix base={{ sql: matrixWhere!.where, parameters: matrixWhere!.countParameters }} profileVersionId={profile} profileText={profileText} params={params} ignored={ignored} />
       : <>

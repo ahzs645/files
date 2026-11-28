@@ -207,22 +207,3 @@ export async function readStale(scope: Fragment, profile: string | null) {
   ]);
   return { decisions, staleAssessments: num(stale[0]?.count) };
 }
-
-/** Every company profile with whether any version of it is published (drafts included, unlike the "Assess as" list). */
-export async function readProfileNames(): Promise<{ id: string; name: string; published: boolean }[]> {
-  const rows = await sql('SELECT p.id, p.name, (SELECT count(*) FROM procurement_profile_versions v WHERE v.profile_id=p.id) AS versions FROM procurement_profiles p ORDER BY lower(p.name), p.id LIMIT 200');
-  return rows.map(row => ({ id: String(row.id), name: String(row.name ?? ''), published: num(row.versions) > 0 }));
-}
-export type ProfileState = { state: 'none' | 'draft-only' | 'unchosen' | 'chosen'; draftName?: string };
-/**
- * Which profile prompt Home shows. Same return shape as the shared `useProfileState()` the profile owner is adding in
- * profile-context.ts; this local copy stands in until then. `chosen`: a version is in use; `unchosen`: published
- * versions exist but none is chosen; `draft-only`: profiles exist but none is published (`draftName` names one);
- * `none`: no profile at all.
- */
-export function profileState(profiles: readonly { name: string; published: boolean }[], publishedVersions: number, chosen: boolean): ProfileState {
-  if (chosen) return { state: 'chosen' };
-  if (publishedVersions > 0 || profiles.some(profile => profile.published)) return { state: 'unchosen' };
-  const draft = profiles.find(profile => !profile.published);
-  return draft ? { state: 'draft-only', ...(draft.name ? { draftName: draft.name } : {}) } : { state: 'none' };
-}

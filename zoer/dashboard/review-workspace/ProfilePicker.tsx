@@ -27,14 +27,15 @@ export function profilePickerOptions(versions: readonly Pick<ProfileVersionRow, 
 /**
  * "Assess as" company profile version, the one picker every page uses. "No company profile" keeps triage and
  * extraction useful but leaves eligibility not assessed. Drafts are listed but cannot be chosen; a "Publish" link next
- * to the menu opens the draft in Setup › Profiles.
+ * to the menu opens the draft in Setup › Profiles. Pages that also show the profile prompt (ProfilePrompt) pass
+ * `publish={false}` so the prompt is the one call to action.
  */
-export function ProfilePicker({ label = true }: { label?: boolean }) {
+export function ProfilePicker({ label = true, publish = true }: { label?: boolean; publish?: boolean }) {
   const { profileVersionId, active, versions, loading, setProfileVersionId } = useActiveProfile(), { writes } = useCapabilities();
   const { profiles } = useProfileSummaries();
   // A read-only copy with at most one profile has nothing to choose: name the profile in use as quiet text.
   if (!loading && !profileSelectable(writes, versions.length)) return <span className="rw-profile-picker rw-profile-quiet">{label && <span>Assess as</span>}<b>{active ? `${active.name} · v${active.version}` : 'No company profile'}</b></span>;
-  const draft = writes && !versions.length ? profiles.find(profile => !profile.published) : undefined;
+  const draft = publish && writes && !versions.length ? profiles.find(profile => !profile.published) : undefined;
   const publishHref = draft ? `/profiles?profile=${encodeURIComponent(draft.id)}` : '';
   return <label className="rw-profile-picker">
     {label && <span>Assess as</span>}
