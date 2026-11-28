@@ -178,7 +178,7 @@ test('evidence grid problem filters in SQL match the cell derivation on every no
     .toEqual(['accepted', 'proposed', 'ungrounded', 'conflicting', 'rejected', 'not_reviewed', 'not_found', 'not_found']);   // the old run's conflict is ignored
   expect(o4).toMatchObject({ mandatory: 3, unreviewed: 2, ungrounded: 1 });   // rejected q5 and the old run's requirement excluded
   expect(everything.rows[1].cells.find(cell => cell.field === 'budget')!.state).toBe('accepted');   // different lots never conflict
-  expect(everything.rows[2].cells.find(cell => cell.field === 'budget')).toMatchObject({ state: 'outdated', value: 'CAD 12 · total contract' });
+  expect(everything.rows[2].cells.find(cell => cell.field === 'budget')).toMatchObject({ state: 'outdated', value: '$12 · Total contract' });
   for (const field of [undefined, ...ev.GRID_FIELDS]) {
     const [counts] = await read(ev.problemCountsSql(field));
     for (const problem of ev.PROBLEMS) {
