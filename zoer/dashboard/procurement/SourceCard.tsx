@@ -30,9 +30,13 @@ export function SourceCard({ id, name, kind, status, saved, last, schedule, acti
   </article>;
 }
 
-/** The "Next run" value: a "Needs review" badge with its real reason, or plain "On · next run …" / "Off" text. */
-export function ScheduleValue({ slot }: { slot: ScheduleSlot | string }) {
+/**
+ * The "Next run" value: a "Needs review" badge with its real reason, or plain "On · next run …" / "Off" text. `compact`
+ * (Overview's table) keeps the reason in the tooltip; Overview's "Needs you" already says it in full.
+ */
+export function ScheduleValue({ slot, compact = false }: { slot: ScheduleSlot | string; compact?: boolean }) {
   if (typeof slot === 'string') return <>{slot}</>;
+  if (compact) return <Hint content={slot.detail ?? slot.reason ?? undefined}>{slot.badge ? <span><StatusBadge tone={BADGE_TONE[slot.tone]}>{slot.text}</StatusBadge></span> : <span>{slot.text}</span>}</Hint>;
   if (!slot.badge) return slot.reason ? <>{slot.text}<Hint content={slot.detail ?? undefined}><small>{slot.reason}</small></Hint></> : <>{slot.text}</>;
   return <><StatusBadge tone={BADGE_TONE[slot.tone]}>{slot.text}</StatusBadge>{slot.reason && <Hint content={slot.detail ?? undefined}><small className="pc-wrap">{slot.reason}</small></Hint>}</>;
 }

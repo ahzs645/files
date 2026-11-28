@@ -57,3 +57,4 @@
   .pc-ov-table td::before{content:attr(data-label) ": ";color:var(--text-muted)}
 }
 .pc-ov-compact>li{padding:.375rem 0}
+.pc-ov-table .pc-ov-note{display:block;font-size:12px;margin-top:.125rem}

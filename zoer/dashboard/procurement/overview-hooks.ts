@@ -9,7 +9,8 @@ import { sql } from './display';
 import { findSchedule } from './schedule-state';
 import { useScheduleBrowsers, useSchedules } from './ScheduleControl';
 import { useRecentRuns, useWorkflowRuns } from './CollectionRuns';
-import { DOCUMENT_GAP_KEY, LAST_COLLECTION_KEYS, lastCollections, paged, readDocumentGap } from './status-data';
+import { DOCUMENT_GAP_KEY, lastCollections, paged, readDocumentGap } from './status-data';
+import { SOURCE_SUMMARY_KEYS } from './source-summary';
 import { setupChecklist, type ExtractionCounts } from './status-checklist';
 import { FAILED_FILES_SQL, FAILED_TASKS_SQL, failedFiles, failureSummary, type FailureTask } from './source-health';
 import { needsYou } from './overview-data';
@@ -32,7 +33,7 @@ export function useDocumentGap(enabled = true) {
 
 /** catalog.workspace values behind "last successful collection" and each source's collection state. */
 export function useCollectionEntries() {
-  return useQuery({ queryKey: ['catalog', 'procurement-status', 'collections'], queryFn: () => host('catalog.workspace', { keys: LAST_COLLECTION_KEYS }), refetchInterval: 30_000 });
+  return useQuery({ queryKey: ['catalog', 'procurement-status', 'collections'], queryFn: () => host('catalog.workspace', { keys: SOURCE_SUMMARY_KEYS }), refetchInterval: 30_000 });
 }
 /** Last successful collection per source (the same helper Sources uses). */
 export function useLastCollections() {

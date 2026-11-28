@@ -13,8 +13,8 @@ import { BROWSER_SITE_COUNT_SQL, browserSiteRows, localVisitWindow } from './bro
 import { browserText, findSchedule } from './schedule-state';
 import { useSchedules } from './ScheduleControl';
 import { connectorCollectionKey } from './source-adapters';
-import { connectorStatus, readConnectorCollection } from './source-overview';
-import { browserTableRows, lastCollectedSlot, scheduleSlot } from './source-cards';
+import { browserTableRows } from './source-cards';
+import { sourceSummary } from './source-summary';
 import type { RecentRun } from './source-schedules';
 import { COLLECTION_RUNS_KEY, RUNS_KEY } from './CollectionRuns';
 import { HowCollected, SourceCard } from './SourceCard';
@@ -36,10 +36,10 @@ export function BrowserSourcesCard({ run }: { run?: RecentRun; phone?: boolean }
   const health = useQuery({ queryKey: ['catalog', 'procurement-browser-sites', KEY], queryFn: () => host('catalog.workspace', { keys: [KEY] }), refetchInterval: 5000 });
   const counts = useQuery({ queryKey: ['catalog', 'procurement-browser-site-counts'], enabled: !!model, queryFn: async () => new Map((await sql(BROWSER_SITE_COUNT_SQL)).map(row => [String(row.portalId), Number(row.count)])), refetchInterval: 60_000 });
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [message, setMessage] = useState('');
-  let state, stateError = '';
-  try { state = health.data ? readConnectorCollection(health.data.entries?.find((entry: any) => entry.key === KEY)?.value, BROWSER_SOURCE_ID) : undefined; }
-  catch (e) { state = undefined; stateError = (e as Error).message; }
-  const sites = browserSiteRows(state, counts.data), rows = browserTableRows(sites), status = connectorStatus(state, Date.now(), run);
+  // Status, last collected and next run from the one helper Operations › Overview uses too.
+  const summary = sourceSummary(BROWSER_SOURCE_ID, { entries: health.data?.entries ?? (health.data ? [] : undefined), entriesError: !!health.error, runs: run ? [run] : undefined, schedules: schedules.data, schedulesError: !!schedules.error });
+  const state = summary.state, stateError = summary.stateError ?? '';
+  const sites = browserSiteRows(state, counts.data), rows = browserTableRows(sites);
   const running = !!busy || !!run, waiting = sites.filter(row => row.status === 'waiting');
   const saved = counts.error ? 'Unknown' : !counts.data ? 'Loading…' : count([...counts.data.values()].reduce((sum, n) => sum + n, 0));
   const schedule = findSchedule(schedules.data, BROWSER_COLLECT_ACTION);
@@ -52,13 +52,9 @@ export function BrowserSourcesCard({ run }: { run?: RecentRun; phone?: boolean }
     } catch (e) { setError(plainError((e as Error).message)); }
     finally { setBusy(''); await client.invalidateQueries({ queryKey: RUNS_KEY }); await client.invalidateQueries({ queryKey: COLLECTION_RUNS_KEY }); await client.invalidateQueries({ queryKey: ['catalog'] }); }
   };
-  const tone = busy ? 'busy' : run ? status.tone : waiting.length ? 'warn' : status.tone;
-  const statusText = busy ? 'Starting' : run ? status.text : waiting.length ? 'Waiting for you' : health.isPending ? 'Loading…' : status.text;
   const browser = schedule?.browser !== undefined ? browserText(schedule.browser) : null;
   return <SourceCard id={BROWSER_SOURCE_ID} name={sourceName(BROWSER_SOURCE_ID)} kind={`British Columbia · ${plural(BROWSER_SITES.length, 'site')} collected in your Zoer browser`}
-    status={{ tone, text: statusText }} saved={saved}
-    last={health.isPending ? { text: 'Loading…' } : stateError ? { text: 'Unknown' } : lastCollectedSlot(state, 'site')}
-    schedule={schedules.error ? 'Unknown' : schedules.isPending ? 'Loading…' : scheduleSlot(schedule)}
+    status={busy ? { tone: 'busy', text: 'Starting' } : summary.status} saved={saved} last={summary.last} schedule={summary.schedule}
     action={canCollect && <Btn variant="secondary" disabled={running || !model} onClick={() => void collect(null, 'all')}>{busy === 'all' ? 'Starting…' : 'Collect now'}</Btn>}
     options={<>
       <p className="procurement-coverage">This schedule runs in {browser ? <strong>{browser}</strong> : 'the browser chosen in Zoer’s Settings'}, so it is set there, not here. A scheduled run that meets a check leaves that site waiting for you and still collects the others. <SettingsLink section="schedules" /></p>

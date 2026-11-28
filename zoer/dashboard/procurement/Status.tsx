@@ -11,14 +11,14 @@ import { StatusBadge, type Tone as BadgeTone } from '../host-ui';
 import { count as n } from '../format';
 import { INVENTORY_SQL, sourceName, sql } from './display';
 import { PluginLink, SettingsLink } from './links';
-import { findSchedule, scheduleKind, scheduleLabel, scheduleState, type ScheduleRow } from './schedule-state';
+import { scheduleLabel, type ScheduleRow } from './schedule-state';
 import { useSchedules } from './ScheduleControl';
 import { RUNS_KEY, useCollectionRuns, usePresets, useRecentRuns, useWorkflowRuns } from './CollectionRuns';
-import { STATUS_SOURCES, lastCollectionText, lastCollections } from './status-data';
-import { COLLECTION_KEY, connectorCollectionKey } from './source-adapters';
-import { connectorStatus, readConnectorCollection } from './source-overview';
-import { BATCH_SQL, bcCheckpointHealth, bcSourceHealth, type BatchRow } from './source-health';
-import { liveRunFor, runState, sourceSchedule, type Preset, type RecentRun } from './source-schedules';
+import { STATUS_SOURCES } from './status-data';
+import { sourceSummary, type SourceSummaryInput } from './source-summary';
+import { ScheduleValue } from './SourceCard';
+import { BATCH_SQL, type BatchRow } from './source-health';
+import { runState, type Preset } from './source-schedules';
 import { batchProgress, runOutcome, runningNow, runsHref, scheduleLine, scheduleSections, runGroup, type Need, type Outcome, type RunGroup } from './overview-data';
 import { useCollectionEntries, useOverviewStatus } from './overview-hooks';
 import { StoppedSchedules } from './schedule-actions';
@@ -76,7 +76,7 @@ export function Status() {
     </section>
 
     {collection && <RunningNow />}
-    {collection && <SourcesGlance rows={status.schedules.data} presets={presets.data} />}
+    {collection && <SourcesGlance rows={status.schedules.data} rowsError={!!status.schedules.error} presets={presets.data} presetsError={!!presets.error} />}
     <SchedulesPanel rows={status.schedules.data} error={status.schedules.error as Error | null} presets={presets.data} />
     <CoveragePanel />
     {collection && <LastOutcomes />}
@@ -126,45 +126,26 @@ function RunningNow() {
 }
 const runListName = (group: RunGroup) => ({ collection: 'Collection runs', 'bc-bid': 'BC Bid runs', downloads: 'Download runs', extraction: 'Text extraction runs', reviews: 'AI review runs', other: 'All runs' })[group];
 
-/** One compact row per source: status, saved, last successful collection, next scheduled run. Actions live on Sources. */
-function SourcesGlance({ rows, presets }: { rows?: ScheduleRow[]; presets?: Preset[] }) {
+/**
+ * One compact row per source: status, saved, last collected, next run. The words come from the same helper as the cards
+ * on Operations › Sources (source-summary.ts), so both pages say the same thing. Actions live on Sources.
+ */
+function SourcesGlance({ rows, rowsError, presets, presetsError }: { rows?: ScheduleRow[]; rowsError: boolean; presets?: Preset[]; presetsError: boolean }) {
   const { model } = useWorkspace(), recent = useRecentRuns(), collectionRuns = useCollectionRuns(), entries = useCollectionEntries();
   const inventory = useQuery({ queryKey: ['catalog', 'procurement-inventory'], queryFn: () => sql(INVENTORY_SQL), refetchInterval: 60_000 });
-  const values = entries.data?.entries as { key: string; value: unknown }[] | undefined, entry = (key: string) => values?.find(item => item.key === key)?.value;
-  const runs = recent.data ?? (recent.error ? [] : undefined);
-  const last = lastCollections(values, runs, model?.captureRuns);
-  const live = [...(collectionRuns.data ?? []), ...(recent.data ?? [])] as RecentRun[];
-  const bcRuns = [...new Map([...(recent.data ?? []), ...((model?.captureRuns ?? []) as any[])].map((run: any) => [run.runId ?? run.id, run])).values()];
+  const input: SourceSummaryInput = { entries: entries.data?.entries ?? (entries.data ? [] : undefined), entriesError: !!entries.error, runs: recent.data ?? (recent.error ? [] : undefined),
+    collectionRuns: collectionRuns.data, captureRuns: model?.captureRuns, schedules: rows, schedulesError: rowsError, presets, presetsError };
   const saved = (id: string) => inventory.error ? 'Unknown' : !inventory.data ? '…' : n((inventory.data ?? []).filter(row => row.sourceId === id && row.kind === 'opportunity').reduce((sum, row) => sum + Number(row.count), 0));
-  const status = (id: string): { tone: string; text: string } => {
-    if (!values) return { tone: 'idle', text: entries.error ? 'Status unknown' : 'Loading…' };
-    if (id === 'bc-bid') { const health = bcSourceHealth(runs || model ? bcRuns : undefined, bcCheckpointHealth('checkpoint:full', entry('checkpoint:full'))); return { tone: health.tone, text: health.status }; }
-    const run = liveRunFor(live, id);
-    if (id === 'canadabuys') {
-      const state = run ? runState(run) : null, value = entry(COLLECTION_KEY) as any;
-      if (state) return { tone: state.tone, text: state.text };
-      return value?.error ? { tone: 'warn', text: 'Needs attention' } : value?.status === 'paused' ? { tone: 'idle', text: 'Part-way; continues next run' } : value?.lastSuccessAt ? { tone: 'good', text: 'Collected' } : { tone: 'idle', text: 'Not collected' };
-    }
-    try { return connectorStatus(readConnectorCollection(entry(connectorCollectionKey(id)), id), Date.now(), run); } catch { return { tone: 'warn', text: 'Saved state not readable' }; }
-  };
-  const next = (id: string) => {
-    if (!rows) return '…';
-    const row = id === 'bc-bid' ? findSchedule(rows, 'scrape.full') : sourceSchedule(rows, presets, id);
-    if (!row) return 'Not scheduled';
-    const kind = scheduleKind(row);
-    return kind === 'stopped' ? 'Schedule needs review' : kind === 'paused' ? 'Schedule off' : scheduleState(row).next ?? 'Next run not recorded';
-  };
-  const known = new Set<string>(STATUS_SOURCES);
   return <section className="rw-panel" aria-labelledby="pc-ov-sources">
     <header className="rw-panel-head"><h2 id="pc-ov-sources">Sources at a glance</h2><PluginLink to="/sources">Open Operations › Sources</PluginLink></header>
     <table className="pc-ov-table">
-      <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Saved</th><th scope="col">Last successful collection</th><th scope="col">Next scheduled run</th></tr></thead>
-      <tbody>{STATUS_SOURCES.filter(id => known.has(id)).map(id => { const s = status(id), item = last.find(entry => entry.id === id); return <tr key={id}>
+      <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Saved</th><th scope="col">Last collected</th><th scope="col">Next run</th></tr></thead>
+      <tbody>{STATUS_SOURCES.map(id => { const item = sourceSummary(id, input); return <tr key={id}>
         <th scope="row"><PluginLink to={id === 'bc-bid' ? '/scraper' : '/sources'}>{sourceName(id)}</PluginLink></th>
-        <td data-label="Status"><StatusBadge tone={TONE[s.tone] ?? 'neutral'} variant="dot">{s.text}</StatusBadge></td>
+        <td data-label="Status"><StatusBadge tone={TONE[item.status.tone] ?? 'neutral'} variant="dot">{item.status.text}</StatusBadge></td>
         <td data-label="Saved">{saved(id)}</td>
-        <td data-label="Last successful collection">{lastCollectionText(item)}</td>
-        <td data-label="Next scheduled run">{next(id)}</td>
+        <td data-label="Last collected">{item.last.text}{item.last.note && <small className="rw-muted pc-ov-note">{item.last.note}</small>}</td>
+        <td data-label="Next run"><ScheduleValue slot={item.schedule} compact /></td>
       </tr>; })}</tbody>
     </table>
   </section>;
